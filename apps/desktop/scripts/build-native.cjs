@@ -26,7 +26,8 @@ if (process.platform === 'darwin') {
     },
     {
       name: 'JaMeetRemote.driver',
-      cmd: 'bash src/main/driver-macos/build-driver.sh bin'
+      cmd: 'bash src/main/driver-macos/build-driver.sh src/main/driver-macos/dist',
+      dest: path.join(rootDir, 'src/main/driver-macos/dist/JaMeetRemote.driver')
     }
   ];
 
@@ -34,7 +35,7 @@ if (process.platform === 'darwin') {
     try {
       console.log(`[build-native] Compiling ${build.name}...`);
       execSync(build.cmd, { cwd: rootDir, stdio: 'inherit' });
-      const dest = path.join(binDir, build.name);
+      const dest = build.dest || path.join(binDir, build.name);
       if (!fs.existsSync(dest)) {
         throw new Error(`Binary ${build.name} was not found at ${dest} after compilation`);
       }

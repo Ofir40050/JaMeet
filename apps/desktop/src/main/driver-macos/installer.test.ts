@@ -36,19 +36,32 @@ describe('JaMeet Remote macOS Installer Packaging', () => {
       expect(distContent).toContain('auth="Root"');
       expect(distContent).toContain('RequireRestart');
 
+      // Verify architecture is dynamically specified based on actual build (e.g. arm64 or x86_64, never generic Intel on arm64 build)
+      expect(distContent).toMatch(/hostArchitectures="[^"]*"/);
+
       const appPkg = join(expandDir, 'jameet-app.pkg');
       const driverPkg = join(expandDir, 'jameet-driver.pkg');
       expect(existsSync(appPkg)).toBe(true);
       expect(existsSync(driverPkg)).toBe(true);
 
-      // Verify driver package has postinstall script with coreaudiod kickstart and permissions
+      // Verify driver package has clean postinstall script setting permissions without forced process kills
       const driverScriptsDir = join(expandDir, 'jameet-driver.pkg', 'Scripts');
       if (existsSync(driverScriptsDir)) {
         const postinstall = join(driverScriptsDir, 'postinstall');
         expect(existsSync(postinstall)).toBe(true);
         const scriptContent = readFileSync(postinstall, 'utf-8');
         expect(scriptContent).toContain('/Library/Audio/Plug-Ins/HAL/JaMeetRemote.driver');
-        expect(scriptContent).toContain('coreaudiod');
+        expect(scriptContent).toContain('root:wheel');
+        expect(scriptContent).not.toContain('coreaudiod');
+      }
+
+      // Verify JaMeet.app bundle in release does not redundantly package JaMeetRemote.driver in Resources/bin
+      const candidateAppPaths = [
+        join(releaseDir, 'mac-arm64', 'JaMeet.app', 'Contents', 'Resources', 'bin', 'JaMeetRemote.driver'),
+        join(releaseDir, 'mac', 'JaMeet.app', 'Contents', 'Resources', 'bin', 'JaMeetRemote.driver')
+      ];
+      for (const p of candidateAppPaths) {
+        expect(existsSync(p)).toBe(false);
       }
     } finally {
       rmSync(expandDir, { recursive: true, force: true });

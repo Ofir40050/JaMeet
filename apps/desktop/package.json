@@ -57,7 +57,11 @@
       "extraResources": [
         {
           "from": "bin",
-          "to": "bin"
+          "to": "bin",
+          "filter": [
+            "!**/*.driver",
+            "!**/*.driver/**"
+          ]
         }
       ],
       "target": [
