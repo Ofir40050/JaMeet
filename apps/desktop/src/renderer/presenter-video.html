@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MusicZoom Floating Video</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+
+    .main-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #0d1117;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.4);
+      -webkit-app-region: drag;
+      cursor: grab;
+    }
+
+    .main-wrapper:active {
+      cursor: grabbing;
+    }
+
+    /* Top Mode Selector Bar */
+    .top-controls {
+      -webkit-app-region: no-drag;
+      position: absolute;
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 4px;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      opacity: 0.95;
+      pointer-events: auto;
+      transition: opacity 0.18s ease;
+    }
+
+    .main-wrapper:hover .top-controls {
+      opacity: 1;
+    }
+
+    .mode-btn {
+      -webkit-app-region: no-drag;
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 10.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.14s ease;
+      white-space: nowrap;
+    }
+
+    .mode-btn:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .mode-btn.active {
+      background: #2563eb;
+      color: #ffffff;
+      box-shadow: 0 0 8px rgba(37, 99, 235, 0.5);
+    }
+
+    /* Video Viewport Container */
+    .video-viewport {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      gap: 4px;
+      background: #080b10;
+      position: relative;
+    }
+
+    /* Single Tile Layout */
+    .video-viewport.mode-remote #tile-local,
+    .video-viewport.mode-self #tile-remote {
+      display: none;
+    }
+
+    .video-viewport.mode-remote #tile-remote,
+    .video-viewport.mode-self #tile-local {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Dual Layout (Side by Side) */
+    .video-viewport.mode-dual {
+      flex-direction: row;
+    }
+
+    .video-viewport.mode-dual .video-tile {
+      flex: 1;
+      height: 100%;
+    }
+
+    /* Video Tile */
+    .video-tile {
+      position: relative;
+      background: #0e131b;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .video-tile.mirror .video-img {
+      transform: scaleX(-1);
+    }
+
+    .video-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      background: #090c10;
+    }
+
+    .video-img.hidden {
+      display: none;
+    }
+
+    /* Fallback Avatar Placeholder */
+    .placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: radial-gradient(circle at center, #1b2333 0%, #0a0d14 100%);
+      color: #94a3b8;
+    }
+
+    .placeholder.hidden {
+      display: none;
+    }
+
+    .avatar-circle {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 700;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+    }
+
+    .avatar-circle.local {
+      background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+    }
+
+    .placeholder-label {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      color: #cbd5e1;
+    }
+
+    /* Bottom Overlay Bar */
+    .overlay-bar {
+      position: absolute;
+      bottom: 5px;
+      left: 5px;
+      right: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .name-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      background: rgba(15, 23, 42, 0.84);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-radius: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #f1f5f9;
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .live-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 5px #22c55e;
+    }
+
+    .live-dot.off {
+      background: #64748b;
+      box-shadow: none;
+    }
+
+    .audio-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 1.5px;
+      height: 8px;
+    }
+
+    .audio-bar {
+      width: 2px;
+      height: 2px;
+      background: #22c55e;
+      border-radius: 1px;
+      transition: height 0.08s ease;
+    }
+  </style>
+</head>
+<body>
+  <div class="main-wrapper" id="main-wrapper" title="Drag to reposition floating video">
+    <!-- Top Mode Selector Bar -->
+    <div class="top-controls">
+      <button class="mode-btn active" id="btn-mode-remote" title="Show Musician Video">
+        <span>Musician</span>
+      </button>
+      <button class="mode-btn" id="btn-mode-dual" title="Show Both Videos Side-by-Side">
+        <span>Dual</span>
+      </button>
+      <button class="mode-btn" id="btn-mode-self" title="Show Your Video">
+        <span>You</span>
+      </button>
+    </div>
+
+    <!-- Video Viewport -->
+    <div class="video-viewport mode-remote" id="viewport">
+      <!-- Remote Tile -->
+      <div class="video-tile" id="tile-remote">
+        <img id="remote-img" class="video-img hidden" alt="" />
+        <div id="remote-placeholder" class="placeholder">
+          <div id="remote-avatar" class="avatar-circle">M</div>
+          <span id="remote-placeholder-text" class="placeholder-label">Musician</span>
+        </div>
+        <div class="overlay-bar">
+          <div class="name-badge">
+            <span class="live-dot" id="remote-dot"></span>
+            <span id="remote-name">Musician</span>
+          </div>
+          <div class="audio-indicator">
+            <span class="audio-bar" id="remote-b1"></span>
+            <span class="audio-bar" id="remote-b2"></span>
+            <span class="audio-bar" id="remote-b3"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Local Tile -->
+      <div class="video-tile mirror" id="tile-local">
+        <img id="local-img" class="video-img hidden" alt="" />
+        <div id="local-placeholder" class="placeholder">
+          <div id="local-avatar" class="avatar-circle local">Y</div>
+          <span id="local-placeholder-text" class="placeholder-label">You (Camera Off)</span>
+        </div>
+        <div class="overlay-bar">
+          <div class="name-badge">
+            <span class="live-dot" id="local-dot"></span>
+            <span id="local-name">You</span>
+          </div>
+          <div class="audio-indicator">
+            <span class="audio-bar" id="local-b1"></span>
+            <span class="audio-bar" id="local-b2"></span>
+            <span class="audio-bar" id="local-b3"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentMode = 'remote'; // 'remote' | 'dual' | 'self'
+
+    const viewport = document.getElementById('viewport');
+    const btnRemote = document.getElementById('btn-mode-remote');
+    const btnDual = document.getElementById('btn-mode-dual');
+    const btnSelf = document.getElementById('btn-mode-self');
+
+    const remoteImg = document.getElementById('remote-img');
+    const remotePlaceholder = document.getElementById('remote-placeholder');
+    const remoteNameEl = document.getElementById('remote-name');
+    const remoteAvatarEl = document.getElementById('remote-avatar');
+    const remotePlaceholderTextEl = document.getElementById('remote-placeholder-text');
+    const remoteDot = document.getElementById('remote-dot');
+    const remoteB1 = document.getElementById('remote-b1');
+    const remoteB2 = document.getElementById('remote-b2');
+    const remoteB3 = document.getElementById('remote-b3');
+
+    const localImg = document.getElementById('local-img');
+    const localPlaceholder = document.getElementById('local-placeholder');
+    const localNameEl = document.getElementById('local-name');
+    const localAvatarEl = document.getElementById('local-avatar');
+    const localPlaceholderTextEl = document.getElementById('local-placeholder-text');
+    const localDot = document.getElementById('local-dot');
+    const localB1 = document.getElementById('local-b1');
+    const localB2 = document.getElementById('local-b2');
+    const localB3 = document.getElementById('local-b3');
+
+    function setViewMode(mode) {
+      currentMode = mode;
+      viewport.className = `video-viewport mode-${mode}`;
+      btnRemote.classList.toggle('active', mode === 'remote');
+      btnDual.classList.toggle('active', mode === 'dual');
+      btnSelf.classList.toggle('active', mode === 'self');
+    }
+
+    btnRemote?.addEventListener('click', () => setViewMode('remote'));
+    btnDual?.addEventListener('click', () => setViewMode('dual'));
+    btnSelf?.addEventListener('click', () => setViewMode('self'));
+
+    if (window.musiczoom?.onPresenterVideoFrame) {
+      window.musiczoom.onPresenterVideoFrame((frame) => {
+        if (!frame) return;
+
+        // 1. Remote participant frame
+        const hasRemote = Boolean(frame.hasRemoteVideo ?? frame.hasVideo);
+        const remoteData = frame.remoteDataUrl ?? frame.dataUrl;
+        const remoteName = frame.remoteName || frame.participantName || 'Musician';
+
+        remoteNameEl.textContent = remoteName;
+        remoteAvatarEl.textContent = remoteName.trim().charAt(0).toUpperCase() || 'M';
+        remotePlaceholderTextEl.textContent = hasRemote ? remoteName : `${remoteName} (Audio Only)`;
+
+        if (hasRemote && remoteData) {
+          remoteImg.src = remoteData;
+          remoteImg.classList.remove('hidden');
+          remotePlaceholder.classList.add('hidden');
+          remoteDot.classList.remove('off');
+        } else {
+          remoteImg.classList.add('hidden');
+          remotePlaceholder.classList.remove('hidden');
+          remoteDot.classList.add('off');
+        }
+
+        if (typeof frame.remoteAudioLevel === 'number') {
+          const db = frame.remoteAudioLevel;
+          const norm = Math.max(0, Math.min(1, (db + 60) / 54));
+          if (remoteB1) remoteB1.style.height = `${Math.max(2, norm * 8)}px`;
+          if (remoteB2) remoteB2.style.height = `${Math.max(2, norm * 10)}px`;
+          if (remoteB3) remoteB3.style.height = `${Math.max(2, norm * 6)}px`;
+        }
+
+        // 2. Local participant frame (You)
+        const hasLocal = Boolean(frame.hasLocalVideo);
+        const localData = frame.localDataUrl;
+        const localName = frame.localName || 'You';
+
+        localNameEl.textContent = localName;
+        localPlaceholderTextEl.textContent = hasLocal ? localName : 'Camera Off';
+
+        if (hasLocal && localData) {
+          localImg.src = localData;
+          localImg.classList.remove('hidden');
+          localPlaceholder.classList.add('hidden');
+          localDot.classList.remove('off');
+        } else {
+          localImg.classList.add('hidden');
+          localPlaceholder.classList.remove('hidden');
+          localDot.classList.add('off');
+        }
+
+        if (typeof frame.localAudioLevel === 'number') {
+          const db = frame.localAudioLevel;
+          const norm = Math.max(0, Math.min(1, (db + 60) / 54));
+          if (localB1) localB1.style.height = `${Math.max(2, norm * 8)}px`;
+          if (localB2) localB2.style.height = `${Math.max(2, norm * 10)}px`;
+          if (localB3) localB3.style.height = `${Math.max(2, norm * 6)}px`;
+        }
+      });
+    }
+  </script>
+</body>
+</html>

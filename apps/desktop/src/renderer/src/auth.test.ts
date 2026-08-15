@@ -1,0 +1,177 @@
+import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { AuthManager } from './auth';
+
+describe('AuthManager', () => {
+  let auth: AuthManager;
+
+  beforeEach(() => {
+    auth = new AuthManager('http://localhost:3000');
+    vi.restoreAllMocks();
+  });
+
+  it('manages guest display name', () => {
+    expect(auth.getEffectiveDisplayName()).toBe('Guest Musician');
+    auth.setGuestName('Sarah Vocals');
+    expect(auth.getGuestName()).toBe('Sarah Vocals');
+    expect(auth.getEffectiveDisplayName()).toBe('Sarah Vocals');
+  });
+
+  it('handles registration success and notifies listeners', async () => {
+    const userProfile = {
+      id: 'usr_1',
+      username: 'sarah',
+      email: 'sarah@music.com',
+      displayName: 'Sarah Vocals',
+      avatarColor: '#06b6d4',
+      createdAt: new Date().toISOString()
+    };
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, token: 'jwt_token_123', user: userProfile })
+    } as Response);
+
+    let notifiedUser = null;
+    auth.onStateChange((u) => { notifiedUser = u; });
+
+    const registered = await auth.register({
+      displayName: 'Sarah Vocals',
+      username: 'sarah',
+      email: 'sarah@music.com',
+      password: 'password123'
+    });
+
+    expect(registered.username).toBe('sarah');
+    expect(auth.getUser()?.displayName).toBe('Sarah Vocals');
+    expect(auth.getToken()).toBe('jwt_token_123');
+    expect(notifiedUser).toEqual(userProfile);
+  });
+
+  it('handles registration failure with server error message', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ ok: false, message: 'Username is already registered.' })
+    } as Response);
+
+    await expect(auth.register({
+      displayName: 'Sarah Vocals',
+      username: 'sarah',
+      email: 'sarah@music.com',
+      password: 'password123'
+    })).rejects.toThrow('Username is already registered.');
+  });
+
+  it('logs out and clears session state', async () => {
+    const userProfile = {
+      id: 'usr_1',
+      username: 'sarah',
+      email: 'sarah@music.com',
+      displayName: 'Sarah Vocals',
+      avatarColor: '#06b6d4',
+      createdAt: new Date().toISOString()
+    };
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, token: 'jwt_token_123', user: userProfile })
+    } as Response);
+
+    await auth.login({ usernameOrEmail: 'sarah', password: 'password123' });
+    expect(auth.getUser()).not.toBeNull();
+
+    await auth.logout();
+    expect(auth.getUser()).toBeNull();
+    expect(auth.getToken()).toBeNull();
+  });
+
+  it('fetches recent sessions for authenticated user', async () => {
+    const userProfile = {
+      id: 'usr_1',
+      username: 'sarah',
+      email: 'sarah@music.com',
+      displayName: 'Sarah Vocals',
+      avatarColor: '#06b6d4',
+      createdAt: new Date().toISOString()
+    };
+
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, token: 'jwt_token_123', user: userProfile })
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          sessions: [{
+            id: 'usr_1_ABC1DEF2',
+            code: 'ABC1DEF2',
+            role: 'host',
+            startedAt: Date.now(),
+            collaborator: { displayName: 'Dan Beats', username: 'dan', isGuest: false }
+          }]
+        })
+      } as Response);
+
+    await auth.login({ usernameOrEmail: 'sarah', password: 'password123' });
+    const sessions = await auth.getRecentSessions();
+    expect(sessions.length).toBe(1);
+    expect(sessions[0]?.code).toBe('ABC1DEF2');
+    expect(sessions[0]?.collaborator?.displayName).toBe('Dan Beats');
+  });
+
+  it('updates profile and notifies listeners', async () => {
+    const initialUser = {
+      id: 'usr_1',
+      username: 'dan',
+      email: 'dan@music.com',
+      displayName: 'Dan',
+      avatarColor: '#06b6d4',
+      createdAt: Date.now()
+    };
+
+    const updatedUser = {
+      ...initialUser,
+      displayName: 'Dan Producer',
+      role: 'Music Producer',
+      location: 'Tel Aviv',
+      primaryDaw: 'Ableton Live'
+    };
+
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, token: 'jwt_token_123', user: initialUser })
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, user: updatedUser })
+      } as Response);
+
+    await auth.login({ usernameOrEmail: 'dan', password: 'password123' });
+
+    let notifiedDisplayName = '';
+    auth.onStateChange((u) => {
+      if (u) notifiedDisplayName = u.displayName;
+    });
+
+    const res = await auth.updateProfile({
+      displayName: 'Dan Producer',
+      role: 'Music Producer',
+      location: 'Tel Aviv',
+      primaryDaw: 'Ableton Live'
+    });
+
+    expect(res.displayName).toBe('Dan Producer');
+    expect(res.role).toBe('Music Producer');
+    expect(auth.getUser()?.displayName).toBe('Dan Producer');
+    expect(notifiedDisplayName).toBe('Dan Producer');
+  });
+});

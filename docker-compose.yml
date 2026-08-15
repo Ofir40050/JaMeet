@@ -1,0 +1,58 @@
+services:
+  signaling:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: ${MUSICZOOM_ENV_FILE:-.env}
+        required: true
+    expose: ["3000"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      signaling:
+        condition: service_healthy
+    environment:
+      SIGNALING_DOMAIN: ${SIGNALING_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  coturn:
+    image: coturn/coturn:4.15.0-r0
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET}
+      TURN_REALM: ${TURN_REALM}
+      TURN_EXTERNAL_IP: ${TURN_EXTERNAL_IP}
+      TURN_PRIVATE_IP: ${TURN_PRIVATE_IP:-}
+      TURN_PORT: ${TURN_PORT:-3478}
+      TURN_MIN_PORT: ${TURN_MIN_PORT:-49160}
+      TURN_MAX_PORT: ${TURN_MAX_PORT:-49200}
+      TURN_TLS_ENABLED: ${TURN_TLS_ENABLED:-false}
+      TURN_TLS_PORT: ${TURN_TLS_PORT:-5349}
+      TURN_TLS_CERT_FILE: ${TURN_TLS_CERT_FILE:-/certs/fullchain.pem}
+      TURN_TLS_KEY_FILE: ${TURN_TLS_KEY_FILE:-/certs/privkey.pem}
+    entrypoint: ["/bin/sh", "/config/turn-entrypoint.sh"]
+    volumes:
+      - ./deploy:/config:ro
+      - ./certs:/certs:ro
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  caddy_data:
+  caddy_config:

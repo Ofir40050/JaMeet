@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "users": [
+    {
+      "id": "722c903a-7db2-4602-b2ca-cfaa699f8fe4",
+      "username": "arranger_sarah",
+      "email": "sarah@music.com",
+      "displayName": "Sarah Arranger",
+      "passwordHash": "fb5d1e6ebe7c7193eb191c65d813a586:25668428c27da9cc1b99c7eb88bbd6d328a1d48fc862127e2dd64ed5cf535ad7f81cb02e044983547d02b09700f26bbb392d692cbb7404fa16e32e3e43cf09dc",
+      "avatarColor": "#3b82f6",
+      "createdAt": 1786774536894,
+      "updatedAt": 1786774536894,
+      "sessionsHostedCount": 0
+    }
+  ],
+  "tokens": [
+    {
+      "token": "759a9057e448239aa33aba1fe4baa090eb2f403172fdad680e7d1d1f2b144c96",
+      "userId": "722c903a-7db2-4602-b2ca-cfaa699f8fe4",
+      "createdAt": 1786774536894,
+      "expiresAt": 1789366536894
+    }
+  ],
+  "sessions": [],
+  "scheduledSessions": []
+}

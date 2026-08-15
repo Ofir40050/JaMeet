@@ -1,0 +1,104 @@
+{
+  "name": "@musiczoom/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Two-person remote music sessions",
+  "author": "MusicZoom",
+  "desktopName": "MusicZoom",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "dev:2": "node scripts/dev-instance.cjs 2",
+    "dev:instance": "node scripts/dev-instance.cjs",
+    "build:native": "mkdir -p bin && clang -O2 -framework CoreAudio -framework CoreFoundation src/main/set-rate.c -o bin/set-rate && clang -O2 -framework CoreAudio -framework AudioToolbox -framework CoreFoundation src/main/musiczoom-hardware-input.c -o bin/musiczoom-hardware-input && swiftc -O src/main/musiczoom-app-audio-tap.swift -o bin/musiczoom-app-audio-tap",
+    "build": "npm run build:native && electron-vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "package:mac": "npm run build && electron-builder --mac --publish never",
+    "package:mac:arm64": "npm run build && electron-builder --mac dmg --arm64 --publish never",
+    "package:win": "npm run build && electron-builder --win --publish never",
+    "package:linux": "npm run build && electron-builder --linux --publish never"
+  },
+  "dependencies": {
+    "@musiczoom/shared": "0.1.0",
+    "lucide": "^1.31.0",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "electron": "43.4.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^5.0.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3",
+    "vitest": "^4.1.10"
+  },
+  "build": {
+    "appId": "com.musiczoom.app",
+    "productName": "MusicZoom",
+    "executableName": "MusicZoom",
+    "asar": true,
+    "files": [
+      "out/**/*",
+      "bin/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin"
+      }
+    ],
+    "protocols": [
+      {
+        "name": "MusicZoom Session",
+        "schemes": [
+          "musiczoom"
+        ]
+      }
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.music",
+      "hardenedRuntime": true,
+      "extendInfo": {
+        "NSCameraUsageDescription": "MusicZoom uses your camera for remote music sessions.",
+        "NSMicrophoneUsageDescription": "MusicZoom uses your microphone or audio interface for remote music sessions."
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "AudioVideo",
+      "syncDesktopName": true
+    },
+    "directories": {
+      "output": "release"
+    },
+    "artifactName": "MusicZoom-${version}-${os}-${arch}.${ext}"
+  }
+}

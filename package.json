@@ -1,0 +1,30 @@
+{
+  "name": "musiczoom",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @musiczoom/shared && npm run build -w @musiczoom/server && npm run build -w @musiczoom/desktop",
+    "dev:server": "npm run build -w @musiczoom/shared && npm run dev -w @musiczoom/server",
+    "dev:desktop": "npm run build -w @musiczoom/shared && npm run dev -w @musiczoom/desktop",
+    "dev:desktop:2": "node apps/desktop/scripts/dev-instance.cjs 2",
+    "dev:desktop:peer": "node apps/desktop/scripts/dev-instance.cjs 2",
+    "test": "npm run build -w @musiczoom/shared && npm test --workspaces --if-present",
+    "typecheck": "npm run build -w @musiczoom/shared && npm run typecheck --workspaces --if-present",
+    "package:mac": "npm run package:mac -w @musiczoom/desktop",
+    "package:mac:production": "sh deploy/build-production-mac.sh",
+    "package:win": "npm run package:win -w @musiczoom/desktop",
+    "package:linux": "npm run package:linux -w @musiczoom/desktop"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "allowScripts": {
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true
+  }
+}
