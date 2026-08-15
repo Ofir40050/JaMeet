@@ -16,5 +16,5 @@ certs/*
 apps/desktop/.vite/
 apps/desktop/bin/*
 !apps/desktop/bin/.gitkeep
-apps/server/data/*.json
-!apps/server/data/test-auth/**
+apps/server/data/**
+
