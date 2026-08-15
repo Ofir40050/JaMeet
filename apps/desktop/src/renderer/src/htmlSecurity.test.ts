@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, sanitizeLyricsHtml } from './htmlSecurity';
+import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor, isSafeCssValue } from './htmlSecurity';
 
 describe('Desktop HTML Security & Safe Rendering', () => {
   describe('escapeHtml utility', () => {
@@ -29,7 +29,60 @@ describe('Desktop HTML Security & Safe Rendering', () => {
     });
   });
 
-  describe('sanitizeLyricsHtml utility', () => {
+  describe('safeAvatarColor utility', () => {
+    it('allows valid hex colors, rgb/rgba, hsl/hsla, and CSS variables', () => {
+      expect(safeAvatarColor('#38bdf8')).toBe('#38bdf8');
+      expect(safeAvatarColor('#fff')).toBe('#fff');
+      expect(safeAvatarColor('#06b6d4')).toBe('#06b6d4');
+      expect(safeAvatarColor('#f59e0b')).toBe('#f59e0b');
+      expect(safeAvatarColor('#ec4899')).toBe('#ec4899');
+      expect(safeAvatarColor('rgb(56, 189, 248)')).toBe('rgb(56, 189, 248)');
+      expect(safeAvatarColor('rgba(56, 189, 248, 0.8)')).toBe('rgba(56, 189, 248, 0.8)');
+      expect(safeAvatarColor('hsl(200, 95%, 60%)')).toBe('hsl(200, 95%, 60%)');
+      expect(safeAvatarColor('var(--accent-voice)')).toBe('var(--accent-voice)');
+      expect(safeAvatarColor('var(--accent-primary)')).toBe('var(--accent-primary)');
+    });
+
+    it('neutralizes quote breakout and attribute injection attempts in avatarColor', () => {
+      expect(safeAvatarColor('red" onmouseover="alert(1)"')).toBe('#38bdf8');
+      expect(safeAvatarColor('"><script>alert(1)</script>')).toBe('#38bdf8');
+      expect(safeAvatarColor('#38bdf8; position: fixed; z-index: 9999;')).toBe('#38bdf8');
+      expect(safeAvatarColor('#38bdf8" style="background: red')).toBe('#38bdf8');
+      expect(safeAvatarColor('expression(alert(1))')).toBe('#38bdf8');
+      expect(safeAvatarColor('url(javascript:alert(1))')).toBe('#38bdf8');
+    });
+
+    it('handles null, undefined, and non-string types with fallback', () => {
+      expect(safeAvatarColor(null)).toBe('#38bdf8');
+      expect(safeAvatarColor(undefined)).toBe('#38bdf8');
+      expect(safeAvatarColor('', '#f59e0b')).toBe('#f59e0b');
+      expect(safeAvatarColor(12345, '#06b6d4')).toBe('#06b6d4');
+    });
+  });
+
+  describe('isSafeCssValue utility', () => {
+    it('accepts valid safe CSS values', () => {
+      expect(isSafeCssValue('#38bdf8')).toBe(true);
+      expect(isSafeCssValue('16px')).toBe(true);
+      expect(isSafeCssValue('center')).toBe(true);
+      expect(isSafeCssValue('bold')).toBe(true);
+      expect(isSafeCssValue('1.5')).toBe(true);
+      expect(isSafeCssValue('rgb(255, 0, 0)')).toBe(true);
+    });
+
+    it('rejects CSS values with quotes, breakouts, or dangerous schemes', () => {
+      expect(isSafeCssValue('red" onmouseover="alert(1)')).toBe(false);
+      expect(isSafeCssValue("red' onclick='alert(1)")).toBe(false);
+      expect(isSafeCssValue('red&quot; onload=alert(1)')).toBe(false);
+      expect(isSafeCssValue('url("javascript:alert(1)")')).toBe(false);
+      expect(isSafeCssValue('expression(alert(1))')).toBe(false);
+      expect(isSafeCssValue('javascript:alert(1)')).toBe(false);
+      expect(isSafeCssValue('red; position: fixed')).toBe(false);
+      expect(isSafeCssValue('<script>')).toBe(false);
+    });
+  });
+
+  describe('sanitizeLyricsHtml utility (DOM-based allowlist)', () => {
     it('removes executable <script> tags completely', () => {
       const dirty = 'Verse 1<script>alert("hacked")</script> Line 2';
       const clean = sanitizeLyricsHtml(dirty);
@@ -56,6 +109,39 @@ describe('Desktop HTML Security & Safe Rendering', () => {
       expect(clean).toContain('<p>My lyrics line</p>');
     });
 
+    it('prevents CSS style attribute quote breakout attacks', () => {
+      // 1. Single quote wrapper with double quote breakout
+      const attack1 = '<span style=\'color: red" onmouseover="alert(1)\'>Vocal Line</span>';
+      const clean1 = sanitizeLyricsHtml(attack1);
+      expect(clean1).not.toContain('onmouseover');
+      expect(clean1).not.toContain('alert');
+
+      // 2. Entity encoded quote breakout
+      const attack2 = '<p style="font-family: &quot; onfocus=alert(1)&quot;;">Chorus Line</p>';
+      const clean2 = sanitizeLyricsHtml(attack2);
+      expect(clean2).not.toContain('onfocus');
+      expect(clean2).not.toContain('alert');
+
+      // 3. Double quote wrapper with single quote breakout
+      const attack3 = '<div style="font-size: 14px\' onclick=\'alert(1)">Bridge Line</div>';
+      const clean3 = sanitizeLyricsHtml(attack3);
+      expect(clean3).not.toContain('onclick');
+      expect(clean3).not.toContain('alert');
+
+      // 4. Injected javascript scheme in style
+      const attack4 = '<span style="background-image: url(\'javascript:alert(1)\'); color: red;">Injected</span>';
+      const clean4 = sanitizeLyricsHtml(attack4);
+      expect(clean4).not.toContain('javascript');
+      expect(clean4).not.toContain('background-image');
+      expect(clean4).toContain('color: red');
+
+      // 5. Injected expression in style
+      const attack5 = '<b style="color: expression(alert(1)); font-weight: bold;">Bold Line</b>';
+      const clean5 = sanitizeLyricsHtml(attack5);
+      expect(clean5).not.toContain('expression');
+      expect(clean5).toContain('font-weight: bold');
+    });
+
     it('preserves rich songwriting formatting tags (b, i, u, strike, strong, em, p, div, br)', () => {
       const songwritingHtml = '<b>[Verse 1]</b><br><i>Soft whisper</i> in the <u>night</u><br><s>Old line</s><br><div>Second block</div>';
       const clean = sanitizeLyricsHtml(songwritingHtml);
@@ -76,17 +162,12 @@ describe('Desktop HTML Security & Safe Rendering', () => {
       expect(clean).not.toContain('untrusted');
     });
 
-    it('preserves safe styling (color, background-color, font-size, line-height, text-align) while stripping expressions and javascript URLs', () => {
+    it('preserves safe styling (color, background-color, font-size, line-height, text-align)', () => {
       const styled = '<span style="color: #38bdf8; font-size: 16px; text-align: center;">Vocal Hook</span>';
       const clean = sanitizeLyricsHtml(styled);
       expect(clean).toContain('color: #38bdf8');
       expect(clean).toContain('font-size: 16px');
       expect(clean).toContain('text-align: center');
-
-      const maliciousStyle = '<span style="background-image: url(\'javascript:alert(1)\'); color: red;">Injected</span>';
-      const cleanMalicious = sanitizeLyricsHtml(maliciousStyle);
-      expect(cleanMalicious).not.toContain('javascript');
-      expect(cleanMalicious).toContain('color: red');
     });
 
     it('preserves multi-line formatting and intentional line breaks', () => {
@@ -114,16 +195,19 @@ describe('Desktop HTML Security & Safe Rendering', () => {
       const collaborator = {
         displayName: '<b onmouseover=alert(1)>Producer Bob</b>',
         username: 'bob"><script>',
-        avatarColor: '#38bdf8'
+        avatarColor: 'red" onmouseover="alert(1)"'
       };
 
       const initials = escapeHtml(collaborator.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2));
       const safeName = escapeHtml(collaborator.displayName);
       const safeHandle = escapeHtml(collaborator.username);
+      const safeColor = safeAvatarColor(collaborator.avatarColor);
 
       expect(safeName).toContain('&lt;b onmouseover=alert(1)&gt;Producer Bob&lt;/b&gt;');
       expect(safeHandle).toContain('bob&quot;&gt;&lt;script&gt;');
       expect(initials).not.toContain('<');
+      expect(safeColor).toBe('#38bdf8');
+      expect(safeColor).not.toContain('onmouseover');
     });
 
     it('ensures session summary event descriptions are safely formatted', () => {

@@ -18,10 +18,10 @@ import { WebRtcSession } from './webrtc';
 import { cameraConstraints, performanceVideoQuality } from './videoQuality';
 import { icons } from './icons';
 import { presenter } from './presenter';
-import { escapeHtml, sanitizeLyricsHtml } from './htmlSecurity';
+import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor } from './htmlSecurity';
 import './style.css';
 
-export { escapeHtml, sanitizeLyricsHtml };
+export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const views = ['home-view', 'project-view', 'all-sessions-view', 'auth-view', 'setup-view', 'waiting-view', 'call-view'] as const;
@@ -2887,10 +2887,11 @@ function applyAvatarToElement(
     el.style.backgroundPosition = 'center';
     el.style.backgroundColor = 'transparent';
   } else {
+    const safeColor = safeAvatarColor(avatarColor, '#06b6d4');
     el.textContent = initials;
     el.style.backgroundImage = 'none';
-    el.style.backgroundColor = avatarColor;
-    el.style.background = `linear-gradient(135deg, ${avatarColor}, #0284c7)`;
+    el.style.backgroundColor = safeColor;
+    el.style.background = `linear-gradient(135deg, ${safeColor}, #0284c7)`;
   }
 }
 
@@ -2956,7 +2957,7 @@ function showProfileFeedback(msg: string, type: 'error' | 'success' | 'info'): v
 // User Authentication, Personalized Home & Identity Management
 function updateAuthUi(user: UserProfile | null, guestName: string): void {
   const isLogged = Boolean(user);
-  const avatarBg = user?.avatarColor || '#38bdf8';
+  const avatarBg = safeAvatarColor(user?.avatarColor, '#38bdf8');
   const avatarUrl = user?.avatarUrl;
 
   // 1. Home Navigation Bar Controls
@@ -3034,7 +3035,7 @@ function updateAuthUi(user: UserProfile | null, guestName: string): void {
 
   if (isLogged && user) {
     setText('auth-dialog-title', 'Account Profile');
-    editingAvatarColor = user.avatarColor || '#06b6d4';
+    editingAvatarColor = safeAvatarColor(user.avatarColor, '#06b6d4');
     editingAvatarUrl = user.avatarUrl;
 
     // Populate profile form fields
@@ -3120,7 +3121,7 @@ function openSessionSummaryDialog(session: SessionHistoryItem): void {
             role: 'Host',
             isHost: session.role === 'host',
             isGuest: false,
-            avatarColor: session.role === 'host' ? (auth.getUser()?.avatarColor || '#38bdf8') : (session.collaborator?.avatarColor || '#38bdf8')
+            avatarColor: session.role === 'host' ? safeAvatarColor(auth.getUser()?.avatarColor, '#38bdf8') : safeAvatarColor(session.collaborator?.avatarColor, '#38bdf8')
           },
           ...(session.collaborator ? [{
             displayName: session.collaborator.displayName,
@@ -3128,7 +3129,7 @@ function openSessionSummaryDialog(session: SessionHistoryItem): void {
             role: 'Collaborator',
             isHost: false,
             isGuest: session.collaborator.isGuest,
-            avatarColor: session.collaborator.avatarColor || '#38bdf8'
+            avatarColor: safeAvatarColor(session.collaborator.avatarColor, '#38bdf8')
           }] : [])
         ];
 
@@ -3139,10 +3140,11 @@ function openSessionSummaryDialog(session: SessionHistoryItem): void {
       const handle = p.username ? `@${p.username}` : p.isGuest ? 'Guest' : '';
       const roleTagClass = p.isHost ? 'role-host' : 'role-participant';
       const roleText = p.isHost ? 'Host' : 'Collaborator';
+      const safeBg = safeAvatarColor(p.avatarColor, '#38bdf8');
 
       row.innerHTML = `
         <div class="summary-participant-info">
-          <div class="summary-participant-avatar" style="background-color: ${p.avatarColor || '#38bdf8'}">${escapeHtml(initials)}</div>
+          <div class="summary-participant-avatar" style="background-color: ${safeBg}">${escapeHtml(initials)}</div>
           <div>
             <span class="summary-participant-name">${escapeHtml(p.displayName)}</span>
             ${handle ? `<span class="summary-participant-handle"> (${escapeHtml(handle)})</span>` : ''}
@@ -3196,7 +3198,7 @@ function createRecentSessionElement(session: SessionHistoryItem): HTMLElement {
 
   const collabName = session.collaborator?.displayName || 'Solo Studio Session';
   const collabHandle = session.collaborator?.username ? `@${session.collaborator.username}` : session.collaborator?.isGuest ? 'Guest' : '';
-  const avatarColor = session.collaborator?.avatarColor || '#38bdf8';
+  const avatarColor = safeAvatarColor(session.collaborator?.avatarColor, '#38bdf8');
   const initials = session.collaborator
     ? session.collaborator.displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : 'MZ';
@@ -4144,7 +4146,8 @@ function renderProjectsGrid(): void {
     const showCollabs = project.collaborators.slice(0, 4);
     for (const c of showCollabs) {
       const ini = c.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-      collabAvatarsHtml += `<div class="project-card-avatar" style="background:${c.avatarColor || '#38bdf8'}" title="${escapeHtml(c.displayName)} (@${escapeHtml(c.username)})">${escapeHtml(ini)}</div>`;
+      const safeBg = safeAvatarColor(c.avatarColor, '#38bdf8');
+      collabAvatarsHtml += `<div class="project-card-avatar" style="background-color: ${safeBg};" title="${escapeHtml(c.displayName)} (@${escapeHtml(c.username)})">${escapeHtml(ini)}</div>`;
     }
     if (collabCount > 4) {
       collabAvatarsHtml += `<div class="project-card-avatar project-card-avatar-overflow">+${collabCount - 4}</div>`;
@@ -4285,7 +4288,7 @@ function renderProjectCollaborators(): void {
   const user = auth.getUser();
   const isOwner = user?.id === activeProject.ownerId;
   const allMembers = [
-    { userId: activeProject.ownerId, displayName: activeProject.ownerDisplayName, username: activeProject.ownerUsername, avatarColor: activeProject.ownerAvatarColor || '#f59e0b', role: 'owner' as const, addedAt: activeProject.createdAt },
+    { userId: activeProject.ownerId, displayName: activeProject.ownerDisplayName, username: activeProject.ownerUsername, avatarColor: safeAvatarColor(activeProject.ownerAvatarColor, '#f59e0b'), role: 'owner' as const, addedAt: activeProject.createdAt },
     ...activeProject.collaborators
   ];
 
@@ -4298,10 +4301,11 @@ function renderProjectCollaborators(): void {
       const roleIcon = member.role === 'owner' ? icons.crown({ size: 12 }) : icons.users({ size: 12 });
       const roleLabel = `${roleIcon} <span>${member.role === 'owner' ? 'Owner' : member.role.charAt(0).toUpperCase() + member.role.slice(1)}</span>`;
       const roleClass = member.role === 'owner' ? 'role-owner' : 'role-collaborator';
+      const safeBg = safeAvatarColor(member.avatarColor, '#f59e0b');
       const item = document.createElement('div');
       item.className = 'collab-item';
       item.innerHTML = `
-        <div class="collab-avatar" style="background:${member.avatarColor}">${escapeHtml(ini)}</div>
+        <div class="collab-avatar" style="background-color: ${safeBg};">${escapeHtml(ini)}</div>
         <div class="collab-info">
           <div class="collab-name">${escapeHtml(member.displayName)}</div>
           <div class="collab-username">@${escapeHtml(member.username)}</div>
@@ -4361,7 +4365,7 @@ function createSessionItemEl(session: ProjectSessionItem): HTMLElement {
   const item = document.createElement('div');
   item.className = 'project-session-item';
   const collabText = session.collaborator ? session.collaborator.displayName : 'Solo Studio Session';
-  const collabAvatarBg = session.collaborator?.avatarColor || '#38bdf8';
+  const collabAvatarBg = safeAvatarColor(session.collaborator?.avatarColor, '#38bdf8');
   const initials = session.collaborator
     ? session.collaborator.displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : 'MZ';
@@ -4373,7 +4377,7 @@ function createSessionItemEl(session: ProjectSessionItem): HTMLElement {
 
   item.innerHTML = `
     <div class="project-session-left">
-      <div class="session-avatar-mini" style="background:${collabAvatarBg}">${escapeHtml(initials)}</div>
+      <div class="session-avatar-mini" style="background-color: ${collabAvatarBg};">${escapeHtml(initials)}</div>
       <div class="project-session-details">
         <div class="project-session-collab-row">
           <span class="project-session-collab">${escapeHtml(collabText)}</span>
@@ -7242,10 +7246,10 @@ function renderProjectActivities(): void {
     row.className = 'overview-activity-item';
 
     const avatarInitial = (item.userDisplayName || item.userUsername || 'U').charAt(0).toUpperCase();
-    const avatarColor = item.userAvatarColor || 'var(--accent-voice)';
+    const avatarColor = safeAvatarColor(item.userAvatarColor, 'var(--accent-voice)');
 
     row.innerHTML = `
-      <span class="activity-avatar-chip" style="background: ${avatarColor};" title="${escapeHtml(item.userDisplayName || item.userUsername)}">${avatarInitial}</span>
+      <span class="activity-avatar-chip" style="background-color: ${avatarColor};" title="${escapeHtml(item.userDisplayName || item.userUsername)}">${avatarInitial}</span>
       <span class="activity-summary-text">${escapeHtml(item.summary)}</span>
       <span class="activity-time-text">${formatRelativeTime(item.createdAt)}</span>
     `;
@@ -7305,7 +7309,7 @@ function renderActivityDialog(query = ''): void {
     const el = document.createElement('div');
     el.className = 'activity-history-item';
     const avatarInitial = (item.userDisplayName || item.userUsername || 'U').charAt(0).toUpperCase();
-    const avatarColor = item.userAvatarColor || 'var(--accent-voice)';
+    const avatarColor = safeAvatarColor(item.userAvatarColor, 'var(--accent-voice)');
 
     const iconSvg = getActivityIconSvg(item.type);
     const dateFormatted = new Date(item.createdAt).toLocaleString(undefined, {
@@ -7322,7 +7326,7 @@ function renderActivityDialog(query = ''): void {
       <div class="activity-history-content">
         <div class="activity-history-summary">${escapeHtml(item.summary)}</div>
         <div class="activity-history-meta">
-          <span class="activity-avatar-chip" style="width: 16px; height: 16px; font-size: 8.5px; background: ${avatarColor};">${avatarInitial}</span>
+          <span class="activity-avatar-chip" style="width: 16px; height: 16px; font-size: 8.5px; background-color: ${avatarColor};">${avatarInitial}</span>
           <span>${escapeHtml(item.userDisplayName || item.userUsername)}</span>
           <span>•</span>
           <span>${formatRelativeTime(item.createdAt)}</span>
