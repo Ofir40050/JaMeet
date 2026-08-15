@@ -54,11 +54,11 @@ describe('JaMeet Remote macOS Driver (Phase 2 AudioServerPlugIn)', () => {
 
     const output = execSync(`"${testBinary}"`, { stdio: 'pipe', encoding: 'utf-8' });
 
-    expect(output).toContain('[PASS] test_driver_factory_and_com');
-    expect(output).toContain('[PASS] test_driver_properties_and_hierarchy');
-    expect(output).toContain('[PASS] test_driver_clock_monotonicity');
-    expect(output).toContain('[PASS] test_driver_io_silence_on_disconnected_bridge');
-    expect(output).toContain('[PASS] test_driver_io_audio_from_producer');
+    expect(output).toContain('[PASS] test_driver_factory_and_com_lifecycle');
+    expect(output).toContain('[PASS] test_driver_buffer_properties_and_hierarchy');
+    expect(output).toContain('[PASS] test_driver_period_aligned_clock');
+    expect(output).toContain('[PASS] test_multiple_independent_clients');
+    expect(output).toContain('[PASS] test_out_of_band_reconnection');
     expect(output).toContain('All Phase 2 AudioServerPlugIn Tests Passed Successfully!');
   });
 });

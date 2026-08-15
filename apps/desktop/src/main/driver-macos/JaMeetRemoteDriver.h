@@ -27,6 +27,21 @@ extern "C" {
 #define JAMEET_DRIVER_DEFAULT_BUFFER_SIZE   512U
 #define JAMEET_DRIVER_MIN_BUFFER_SIZE       32U
 #define JAMEET_DRIVER_MAX_BUFFER_SIZE       4096U
+#define JAMEET_DRIVER_ZERO_TIMESTAMP_PERIOD 4096U
+#define JAMEET_DRIVER_MAX_CLIENTS           32U
+
+/* Standard Core Audio Buffer Property Selectors */
+#ifndef kAudioDevicePropertyBufferFrameSize
+#define kAudioDevicePropertyBufferFrameSize 'fsiz'
+#endif
+
+#ifndef kAudioDevicePropertyBufferFrameSizeRange
+#define kAudioDevicePropertyBufferFrameSizeRange 'fsz#'
+#endif
+
+#ifndef kAudioDevicePropertyUsesVariableIOBufferFrameSizes
+#define kAudioDevicePropertyUsesVariableIOBufferFrameSizes 'vbsz'
+#endif
 
 /* Core Audio Object IDs within this plug-in */
 enum {

@@ -8,25 +8,41 @@
 #define UNUSED_PARAM(x) ((void)(x))
 
 /* ========================================================================= */
-/* Global Plug-In State & Clock State                                        */
+/* Client State Management (Bounded, Preallocated Client Table)              */
 /* ========================================================================= */
 
-static ULONG gRefCount = 1;
+typedef struct JaMeetClientSlot {
+    _Atomic uint32_t clientID;
+    pid_t processID;
+    JaMeetConsumer consumer;
+} JaMeetClientSlot;
+
+static JaMeetClientSlot gClientSlots[JAMEET_DRIVER_MAX_CLIENTS];
+static JaMeetConsumer gFallbackConsumer;
+
+/* ========================================================================= */
+/* Global Plug-In & Clock State                                              */
+/* ========================================================================= */
+
+static ULONG gRefCount = 0;
 static AudioServerPlugInHostRef gHost = NULL;
 static mach_timebase_info_data_t gTimebaseInfo = { 0, 0 };
 
 /* Real-Time Safe Bridge State */
 static _Atomic(JaMeetSharedSegment*) gSharedSegment = NULL;
 static JaMeetTransport* gActiveTransport = NULL;
-static JaMeetConsumer gConsumer;
 
 /* Clock State */
-static uint64_t gAnchorHostTime = 0;
-static Float64 gAnchorSampleTime = 0.0;
 static uint64_t gClockSeed = 1;
 
 /* Device Configuration State */
 static _Atomic uint32_t gIOState = 0; /* 0 = stopped, >0 = running client count */
+static _Atomic uint32_t gBufferFrameSize = JAMEET_DRIVER_DEFAULT_BUFFER_SIZE;
+
+/* Forward declarations */
+static void JaMeetDriver_DetachBridge(void);
+static ULONG STDMETHODCALLTYPE JaMeetDriver_AddRef(void* inDriver);
+static ULONG STDMETHODCALLTYPE JaMeetDriver_Release(void* inDriver);
 
 /* ========================================================================= */
 /* Out-of-band Shared Memory Lifecycle                                       */
@@ -67,21 +83,20 @@ static HRESULT STDMETHODCALLTYPE JaMeetDriver_QueryInterface(
     REFIID inUUID,
     LPVOID* outInterface
 ) {
-    UNUSED_PARAM(inDriver);
     if (!outInterface) return E_POINTER;
+    *outInterface = NULL;
 
     CFUUIDRef reqUUID = CFUUIDCreateFromUUIDBytes(kCFAllocatorDefault, inUUID);
     if (!reqUUID) return E_NOINTERFACE;
 
     if (CFEqual(reqUUID, IUnknownUUID) || CFEqual(reqUUID, kAudioServerPlugInDriverInterfaceUUID)) {
-        JaMeetRemote_Create(kCFAllocatorDefault, reqUUID);
-        CFRelease(reqUUID);
+        JaMeetDriver_AddRef(inDriver);
         *outInterface = inDriver;
+        CFRelease(reqUUID);
         return S_OK;
     }
 
     CFRelease(reqUUID);
-    *outInterface = NULL;
     return E_NOINTERFACE;
 }
 
@@ -118,13 +133,18 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_Initialize(
         gTimebaseInfo.denom = 1;
     }
 
-    gAnchorHostTime = mach_absolute_time();
-    gAnchorSampleTime = 0.0;
     gClockSeed = 1;
 
-    JaMeetConsumer_Init(&gConsumer);
+    /* Initialize fallback and preallocated client slots */
+    JaMeetConsumer_Init(&gFallbackConsumer);
+    for (uint32_t i = 0; i < JAMEET_DRIVER_MAX_CLIENTS; i++) {
+        atomic_store_explicit(&gClientSlots[i].clientID, 0, memory_order_relaxed);
+        gClientSlots[i].processID = 0;
+        JaMeetConsumer_Init(&gClientSlots[i].consumer);
+    }
 
-    /* Out-of-band attempt to connect to bridge */
+    /* Out-of-band attempt to connect to bridge (clean prior state first) */
+    JaMeetDriver_DetachBridge();
     JaMeetDriver_TryAttachBridge();
 
     return kAudioHardwareNoError;
@@ -159,7 +179,32 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_AddDeviceClient(
 ) {
     UNUSED_PARAM(inDriver);
     UNUSED_PARAM(inDeviceObjectID);
-    UNUSED_PARAM(inClientInfo);
+    if (!inClientInfo) return kAudioHardwareIllegalOperationError;
+
+    /* Recheck bridge connectivity outside real-time path */
+    JaMeetDriver_TryAttachBridge();
+
+    /* Find existing or allocate new client slot */
+    for (uint32_t i = 0; i < JAMEET_DRIVER_MAX_CLIENTS; i++) {
+        uint32_t currentID = atomic_load_explicit(&gClientSlots[i].clientID, memory_order_relaxed);
+        if (currentID == inClientInfo->mClientID) {
+            /* Client already registered; reset its consumer cursor */
+            JaMeetConsumer_Init(&gClientSlots[i].consumer);
+            gClientSlots[i].processID = inClientInfo->mProcessID;
+            return kAudioHardwareNoError;
+        }
+    }
+
+    /* Allocate free slot */
+    for (uint32_t i = 0; i < JAMEET_DRIVER_MAX_CLIENTS; i++) {
+        uint32_t expected = 0;
+        if (atomic_compare_exchange_strong_explicit(&gClientSlots[i].clientID, &expected, inClientInfo->mClientID, memory_order_release, memory_order_relaxed)) {
+            gClientSlots[i].processID = inClientInfo->mProcessID;
+            JaMeetConsumer_Init(&gClientSlots[i].consumer);
+            return kAudioHardwareNoError;
+        }
+    }
+
     return kAudioHardwareNoError;
 }
 
@@ -170,7 +215,17 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_RemoveDeviceClient(
 ) {
     UNUSED_PARAM(inDriver);
     UNUSED_PARAM(inDeviceObjectID);
-    UNUSED_PARAM(inClientInfo);
+    if (!inClientInfo) return kAudioHardwareIllegalOperationError;
+
+    for (uint32_t i = 0; i < JAMEET_DRIVER_MAX_CLIENTS; i++) {
+        uint32_t currentID = atomic_load_explicit(&gClientSlots[i].clientID, memory_order_relaxed);
+        if (currentID == inClientInfo->mClientID) {
+            atomic_store_explicit(&gClientSlots[i].clientID, 0, memory_order_release);
+            gClientSlots[i].processID = 0;
+            break;
+        }
+    }
+
     return kAudioHardwareNoError;
 }
 
@@ -251,6 +306,9 @@ static Boolean STDMETHODCALLTYPE JaMeetDriver_HasProperty(
                 case kAudioDevicePropertyAvailableNominalSampleRates:
                 case kAudioDevicePropertyPreferredChannelsForStereo:
                 case kAudioDevicePropertyPreferredChannelLayout:
+                case kAudioDevicePropertyBufferFrameSize:
+                case kAudioDevicePropertyBufferFrameSizeRange:
+                case kAudioDevicePropertyUsesVariableIOBufferFrameSizes:
                 case kAudioDevicePropertyLatency:
                 case kAudioDevicePropertySafetyOffset:
                 case kAudioDevicePropertyZeroTimeStampPeriod:
@@ -294,12 +352,17 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_IsPropertySettable(
     Boolean* outIsSettable
 ) {
     UNUSED_PARAM(inDriver);
-    UNUSED_PARAM(inObjectID);
     UNUSED_PARAM(inClientPID);
-    UNUSED_PARAM(inAddress);
-    if (!outIsSettable) return kAudioHardwareIllegalOperationError;
+    if (!inAddress || !outIsSettable) return kAudioHardwareIllegalOperationError;
 
     *outIsSettable = false;
+
+    if (inObjectID == kObjectID_Device) {
+        if (inAddress->mSelector == kAudioDevicePropertyBufferFrameSize) {
+            *outIsSettable = true;
+        }
+    }
+
     return kAudioHardwareNoError;
 }
 
@@ -363,6 +426,8 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyDataSize(
                 case kAudioDevicePropertyDeviceCanBeDefaultDevice:
                 case kAudioDevicePropertyDeviceCanBeDefaultSystemDevice:
                 case kAudioDevicePropertyIsHidden:
+                case kAudioDevicePropertyBufferFrameSize:
+                case kAudioDevicePropertyUsesVariableIOBufferFrameSizes:
                 case kAudioDevicePropertyLatency:
                 case kAudioDevicePropertySafetyOffset:
                 case kAudioDevicePropertyZeroTimeStampPeriod:
@@ -389,6 +454,9 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyDataSize(
                     return kAudioHardwareNoError;
                 case kAudioDevicePropertyPreferredChannelLayout:
                     *outDataSize = sizeof(AudioChannelLayout);
+                    return kAudioHardwareNoError;
+                case kAudioDevicePropertyBufferFrameSizeRange:
+                    *outDataSize = sizeof(AudioValueRange);
                     return kAudioHardwareNoError;
                 default:
                     return kAudioHardwareUnknownPropertyError;
@@ -586,13 +654,29 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyData(
                     *outDataSize = sizeof(AudioChannelLayout);
                     return kAudioHardwareNoError;
                 }
+                case kAudioDevicePropertyBufferFrameSize:
+                    *((UInt32*)outData) = atomic_load_explicit(&gBufferFrameSize, memory_order_relaxed);
+                    *outDataSize = sizeof(UInt32);
+                    return kAudioHardwareNoError;
+                case kAudioDevicePropertyBufferFrameSizeRange: {
+                    if (inDataSize < sizeof(AudioValueRange)) return kAudioHardwareBadPropertySizeError;
+                    AudioValueRange* range = (AudioValueRange*)outData;
+                    range->mMinimum = (Float64)JAMEET_DRIVER_MIN_BUFFER_SIZE;
+                    range->mMaximum = (Float64)JAMEET_DRIVER_MAX_BUFFER_SIZE;
+                    *outDataSize = sizeof(AudioValueRange);
+                    return kAudioHardwareNoError;
+                }
+                case kAudioDevicePropertyUsesVariableIOBufferFrameSizes:
+                    *((UInt32*)outData) = 1;
+                    *outDataSize = sizeof(UInt32);
+                    return kAudioHardwareNoError;
                 case kAudioDevicePropertyLatency:
                 case kAudioDevicePropertySafetyOffset:
                     *((UInt32*)outData) = 0;
                     *outDataSize = sizeof(UInt32);
                     return kAudioHardwareNoError;
                 case kAudioDevicePropertyZeroTimeStampPeriod:
-                    *((UInt32*)outData) = 4096;
+                    *((UInt32*)outData) = JAMEET_DRIVER_ZERO_TIMESTAMP_PERIOD;
                     *outDataSize = sizeof(UInt32);
                     return kAudioHardwareNoError;
                 case kAudioDevicePropertyClockDomain:
@@ -697,13 +781,22 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_SetPropertyData(
     const void* inData
 ) {
     UNUSED_PARAM(inDriver);
-    UNUSED_PARAM(inObjectID);
     UNUSED_PARAM(inClientPID);
-    UNUSED_PARAM(inAddress);
     UNUSED_PARAM(inQualifierDataSize);
     UNUSED_PARAM(inQualifierData);
-    UNUSED_PARAM(inDataSize);
-    UNUSED_PARAM(inData);
+    if (!inAddress || !inData) return kAudioHardwareIllegalOperationError;
+
+    if (inObjectID == kObjectID_Device) {
+        if (inAddress->mSelector == kAudioDevicePropertyBufferFrameSize) {
+            if (inDataSize < sizeof(UInt32)) return kAudioHardwareBadPropertySizeError;
+            UInt32 newSize = *((const UInt32*)inData);
+            if (newSize < JAMEET_DRIVER_MIN_BUFFER_SIZE) newSize = JAMEET_DRIVER_MIN_BUFFER_SIZE;
+            if (newSize > JAMEET_DRIVER_MAX_BUFFER_SIZE) newSize = JAMEET_DRIVER_MAX_BUFFER_SIZE;
+            atomic_store_explicit(&gBufferFrameSize, newSize, memory_order_relaxed);
+            return kAudioHardwareNoError;
+        }
+    }
+
     return kAudioHardwareUnknownPropertyError;
 }
 
@@ -762,12 +855,20 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetZeroTimeStamp(
     if (!outSampleTime || !outHostTime || !outSeed) return kAudioHardwareIllegalOperationError;
 
     uint64_t currentHostTime = mach_absolute_time();
-    uint64_t elapsedTicks = currentHostTime - gAnchorHostTime;
-    uint64_t elapsedNanos = (elapsedTicks * gTimebaseInfo.numer) / gTimebaseInfo.denom;
-    Float64 elapsedSeconds = (Float64)elapsedNanos / 1000000000.0;
+    uint64_t currentNanos = (currentHostTime * gTimebaseInfo.numer) / gTimebaseInfo.denom;
+    Float64 continuousSampleTime = ((Float64)currentNanos * JAMEET_DRIVER_SAMPLE_RATE) / 1000000000.0;
 
-    *outSampleTime = gAnchorSampleTime + (elapsedSeconds * JAMEET_DRIVER_SAMPLE_RATE);
-    *outHostTime = currentHostTime;
+    /* Align to declared zero timestamp period */
+    const Float64 period = (Float64)JAMEET_DRIVER_ZERO_TIMESTAMP_PERIOD;
+    uint64_t periodIndex = (uint64_t)(continuousSampleTime / period);
+    Float64 zeroSampleTime = (Float64)(periodIndex * (uint64_t)period);
+
+    /* Compute exact host ticks when zero sample occurred */
+    uint64_t zeroNanos = (uint64_t)((zeroSampleTime * 1000000000.0) / JAMEET_DRIVER_SAMPLE_RATE);
+    uint64_t zeroTicks = (zeroNanos * gTimebaseInfo.denom) / gTimebaseInfo.numer;
+
+    *outSampleTime = zeroSampleTime;
+    *outHostTime = zeroTicks;
     *outSeed = gClockSeed;
 
     return kAudioHardwareNoError;
@@ -828,7 +929,6 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_DoIOOperation(
     UNUSED_PARAM(inDriver);
     UNUSED_PARAM(inDeviceObjectID);
     UNUSED_PARAM(inStreamObjectID);
-    UNUSED_PARAM(inClientID);
     UNUSED_PARAM(inIOCycleInfo);
 
     if (inOperationID != kAudioServerPlugInIOOperationReadInput) {
@@ -849,16 +949,25 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_DoIOOperation(
     /*
      * Real-Time IO Path Guarantees:
      * - Strictly non-blocking, zero locks, zero memory allocations, zero filesystem access.
-     * - Consumes frames via Phase 1 JaMeetConsumer_ReadFrames when segment is available.
+     * - Dispatches to per-client consumer cursor to prevent client cursor interference.
      * - Returns clean digital silence (0.0f) if bridge is unavailable, disconnected, or inactive.
      */
     JaMeetSharedSegment* seg = atomic_load_explicit(&gSharedSegment, memory_order_acquire);
     if (seg != NULL) {
+        /* Locate per-client consumer cursor */
+        JaMeetConsumer* consumer = &gFallbackConsumer;
+        for (uint32_t i = 0; i < JAMEET_DRIVER_MAX_CLIENTS; i++) {
+            if (atomic_load_explicit(&gClientSlots[i].clientID, memory_order_relaxed) == inClientID) {
+                consumer = &gClientSlots[i].consumer;
+                break;
+            }
+        }
+
         uint64_t nowTicks = mach_absolute_time();
         uint64_t nowNanos = (nowTicks * gTimebaseInfo.numer) / gTimebaseInfo.denom;
         uint64_t nowMs = nowNanos / 1000000ULL;
 
-        JaMeetConsumer_ReadFrames(&gConsumer, seg, dest, frameCount, nowMs);
+        JaMeetConsumer_ReadFrames(consumer, seg, dest, frameCount, nowMs);
     } else {
         memset(dest, 0, totalBytes);
     }
@@ -925,6 +1034,7 @@ void* JaMeetRemote_Create(CFAllocatorRef inAllocator, CFUUIDRef inRequestedTypeU
     if (!inRequestedTypeUUID) return NULL;
 
     if (CFEqual(inRequestedTypeUUID, kAudioServerPlugInTypeUUID)) {
+        JaMeetDriver_AddRef((void*)&gDriverInterfacePtr);
         return (void*)&gDriverInterfacePtr;
     }
     return NULL;
