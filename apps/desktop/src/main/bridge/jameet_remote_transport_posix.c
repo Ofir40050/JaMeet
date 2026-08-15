@@ -1,9 +1,15 @@
 #include "jameet_remote_transport.h"
+#include "jameet_remote_bridge.h"
 #include <stdlib.h>
 #include <string.h>
 
 #if defined(_MSC_VER)
 /* Stubs for non-POSIX platforms (e.g. Windows in Phase 1 before native driver) */
+JaMeetTransport* JaMeetTransport_OpenPosixShmConfig(const JaMeetTransportConfig* config) {
+    (void)config;
+    return JaMeetTransport_CreateMemory();
+}
+
 JaMeetTransport* JaMeetTransport_OpenPosixShm(const char* name, bool createIfMissing, bool readOnly) {
     (void)name; (void)createIfMissing; (void)readOnly;
     return JaMeetTransport_CreateMemory();
@@ -24,8 +30,7 @@ JaMeetSharedSegment* JaMeetTransport_GetSegment(JaMeetTransport* transport) {
 
 bool JaMeetTransport_CheckHealth(const JaMeetTransport* transport) {
     if (!transport || !transport->segment) return false;
-    return (transport->segment->header.magic == JAMEET_SHM_MAGIC &&
-            transport->segment->header.abiVersion == JAMEET_ABI_VERSION);
+    return JaMeetSegment_ValidateGeometry(transport->segment);
 }
 
 #else
@@ -36,35 +41,58 @@ bool JaMeetTransport_CheckHealth(const JaMeetTransport* transport) {
 #include <unistd.h>
 #include <errno.h>
 
-JaMeetTransport* JaMeetTransport_OpenPosixShm(const char* name, bool createIfMissing, bool readOnly) {
-    const char* shmName = (name && name[0] != '\0') ? name : JAMEET_DEFAULT_SHM_NAME;
-    const size_t segmentSize = sizeof(JaMeetSharedSegment);
+JaMeetTransport* JaMeetTransport_OpenPosixShmConfig(const JaMeetTransportConfig* config) {
+    if (!config) return NULL;
 
-    int flags = readOnly ? O_RDONLY : O_RDWR;
-    if (createIfMissing && !readOnly) {
+    const char* shmName = (config->shmName && config->shmName[0] != '\0') ? config->shmName : JAMEET_DEFAULT_SHM_NAME;
+    const size_t segmentSize = sizeof(JaMeetSharedSegment);
+    const mode_t mode = config->posixMode ? config->posixMode : JAMEET_DEFAULT_POSIX_SHM_MODE;
+
+    int flags = config->readOnly ? O_RDONLY : O_RDWR;
+    if (config->createIfMissing && !config->readOnly) {
         flags |= O_CREAT;
     }
 
-    int fd = shm_open(shmName, flags, 0666);
+    int fd = shm_open(shmName, flags, mode);
     if (fd < 0) {
         return NULL;
     }
 
-    if (createIfMissing && !readOnly) {
-        struct stat st;
-        if (fstat(fd, &st) == 0 && (size_t)st.st_size < segmentSize) {
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        close(fd);
+        return NULL;
+    }
+
+    if (config->createIfMissing && !config->readOnly) {
+        if ((size_t)st.st_size < segmentSize) {
             if (ftruncate(fd, (off_t)segmentSize) != 0) {
                 close(fd);
                 return NULL;
             }
         }
+    } else {
+        /* Consumer requires an existing object with at least the full declared segment size */
+        if ((size_t)st.st_size < segmentSize) {
+            close(fd);
+            return NULL;
+        }
     }
 
-    int prot = readOnly ? PROT_READ : (PROT_READ | PROT_WRITE);
+    int prot = config->readOnly ? PROT_READ : (PROT_READ | PROT_WRITE);
     void* mapped = mmap(NULL, segmentSize, prot, MAP_SHARED, fd, 0);
     if (mapped == MAP_FAILED) {
         close(fd);
         return NULL;
+    }
+
+    /* For consumer handles, validate complete declared geometry before returning */
+    if (config->readOnly) {
+        if (!JaMeetSegment_ValidateGeometry((const JaMeetSharedSegment*)mapped)) {
+            munmap(mapped, segmentSize);
+            close(fd);
+            return NULL;
+        }
     }
 
     JaMeetTransport* t = (JaMeetTransport*)malloc(sizeof(JaMeetTransport));
@@ -79,11 +107,19 @@ JaMeetTransport* JaMeetTransport_OpenPosixShm(const char* name, bool createIfMis
     t->segment = (JaMeetSharedSegment*)mapped;
     t->mappedSize = segmentSize;
     t->fd = fd;
-    t->isOwner = createIfMissing;
-    t->isReadOnly = readOnly;
+    t->isOwner = config->createIfMissing && !config->readOnly;
+    t->isReadOnly = config->readOnly;
     strncpy(t->shmName, shmName, sizeof(t->shmName) - 1);
 
     return t;
+}
+
+JaMeetTransport* JaMeetTransport_OpenPosixShm(const char* name, bool createIfMissing, bool readOnly) {
+    JaMeetTransportConfig cfg = JaMeetTransportConfig_Default(createIfMissing, readOnly);
+    if (name && name[0] != '\0') {
+        cfg.shmName = name;
+    }
+    return JaMeetTransport_OpenPosixShmConfig(&cfg);
 }
 
 void JaMeetTransport_Close(JaMeetTransport* transport, bool unlinkShm) {
@@ -114,8 +150,7 @@ JaMeetSharedSegment* JaMeetTransport_GetSegment(JaMeetTransport* transport) {
 
 bool JaMeetTransport_CheckHealth(const JaMeetTransport* transport) {
     if (!transport || !transport->segment || transport->segment == MAP_FAILED) return false;
-    return (transport->segment->header.magic == JAMEET_SHM_MAGIC &&
-            transport->segment->header.abiVersion == JAMEET_ABI_VERSION);
+    return JaMeetSegment_ValidateGeometry(transport->segment);
 }
 
 #endif
