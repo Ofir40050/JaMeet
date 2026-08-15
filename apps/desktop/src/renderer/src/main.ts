@@ -47,7 +47,8 @@ scheduledNotifications.onSessionClick((sessionId) => {
     section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 });
-const participantId = sessionStorage.getItem('musiczoom-participant') ?? crypto.randomUUID();
+const participantId = sessionStorage.getItem('jameet-participant') ?? sessionStorage.getItem('musiczoom-participant') ?? crypto.randomUUID();
+sessionStorage.setItem('jameet-participant', participantId);
 sessionStorage.setItem('musiczoom-participant', participantId);
 
 const auth = new AuthManager(signalingUrl);
@@ -135,7 +136,7 @@ const SPEAKER_SWITCH_HOLD_MS = 1200;
 
 function readPreferences(): Preferences {
   try {
-    const raw = JSON.parse(localStorage.getItem('musiczoom-preferences') ?? '{}');
+    const raw = JSON.parse(localStorage.getItem('jameet-preferences') ?? localStorage.getItem('musiczoom-preferences') ?? '{}');
     let voiceInputs: VoiceInputConfig[] = Array.isArray(raw.voiceInputs) && raw.voiceInputs.length > 0
       ? raw.voiceInputs
       : [
@@ -201,7 +202,11 @@ function readPreferences(): Preferences {
     };
   }
 }
-function savePreferences(): void { localStorage.setItem('musiczoom-preferences', JSON.stringify(prefs)); }
+function savePreferences(): void {
+  const json = JSON.stringify(prefs);
+  localStorage.setItem('jameet-preferences', json);
+  localStorage.setItem('musiczoom-preferences', json);
+}
 function showView(id: string): void {
   for (const view of views) $(view)?.classList.toggle('hidden', view !== id);
   updateLocalPreviews();
@@ -2445,8 +2450,9 @@ $('home-button')?.addEventListener('click', () => showView('home-view'));
 
 $('copy-invite')?.addEventListener('click', () => {
   if (!currentCode) return;
-  const link = `musiczoom://join/${currentCode}`;
-  void window.musiczoom.copyText(link).then(() => {
+  const link = `jameet://join/${currentCode}`;
+  const api = window.jameet || window.musiczoom;
+  void (api?.copyText ? api.copyText(link) : Promise.reject()).then(() => {
     const btn = $('copy-invite');
     if (btn) {
       const origHtml = btn.innerHTML;
@@ -6362,7 +6368,7 @@ signaling.on('project:activity:new', (data: { projectId: string; activities: Pro
 
 // Initialize saved workspace width
 try {
-  const savedDrawerWidth = parseInt(localStorage.getItem('musiczoom-session-workspace-width') || '460', 10);
+  const savedDrawerWidth = parseInt(localStorage.getItem('jameet-session-workspace-width') || localStorage.getItem('musiczoom-session-workspace-width') || '460', 10);
   if (savedDrawerWidth && savedDrawerWidth >= 340 && savedDrawerWidth <= 780) {
     document.documentElement.style.setProperty('--session-drawer-width', `${savedDrawerWidth}px`);
   }
@@ -6384,7 +6390,7 @@ function setSessionWorkspaceOpen(open: boolean): void {
     syncWorkspaceInputsFromProject();
 
     // Restore saved workspace tab
-    const savedTab = localStorage.getItem('musiczoom-session-workspace-tab') || 'lyrics';
+    const savedTab = localStorage.getItem('jameet-session-workspace-tab') || localStorage.getItem('musiczoom-session-workspace-tab') || 'lyrics';
     const targetTabBtn = document.querySelector<HTMLButtonElement>(`.drawer-tab-btn[data-drawer-tab="${savedTab}"]`);
     if (targetTabBtn) {
       targetTabBtn.click();
@@ -6412,6 +6418,7 @@ document.querySelectorAll<HTMLButtonElement>('.drawer-tab-btn').forEach((btn) =>
     $('drawer-panel-notes')?.classList.toggle('hidden', tab !== 'notes');
     $('drawer-panel-tasks')?.classList.toggle('hidden', tab !== 'tasks');
     try {
+      localStorage.setItem('jameet-session-workspace-tab', tab);
       localStorage.setItem('musiczoom-session-workspace-tab', tab);
     } catch {
       // ignore
@@ -6451,7 +6458,9 @@ window.addEventListener('mouseup', () => {
   const currentWidth = $('session-workspace-drawer')?.getBoundingClientRect().width;
   if (currentWidth) {
     try {
-      localStorage.setItem('musiczoom-session-workspace-width', Math.round(currentWidth).toString());
+      const w = Math.round(currentWidth).toString();
+      localStorage.setItem('jameet-session-workspace-width', w);
+      localStorage.setItem('musiczoom-session-workspace-width', w);
     } catch {
       // ignore
     }

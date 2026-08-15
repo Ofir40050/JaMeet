@@ -1,5 +1,5 @@
 /**
- * MusicZoom High-End SVG Icon System
+ * JaMeet High-End SVG Icon System
  * Standardized 24x24 stroke-based SVG icons (Lucide / Studio grade).
  * Fully scalable, retina-crisp, dark-theme optimized with currentColor support.
  */
@@ -263,6 +263,10 @@ export const icons = {
 
   maximize: createSvg(
     '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'
+  ),
+
+  logo: createSvg(
+    '<path d="M4 12V8a4 4 0 0 1 4-4h2"/><path d="M8 12h8"/><path d="M12 4v16"/><path d="M16 12v4a4 4 0 0 1-4 4h-2"/><circle cx="12" cy="12" r="2" fill="currentColor"/>'
   )
 };
 

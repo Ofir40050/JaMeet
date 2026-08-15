@@ -357,8 +357,9 @@
     btnDual?.addEventListener('click', () => setViewMode('dual'));
     btnSelf?.addEventListener('click', () => setViewMode('self'));
 
-    if (window.musiczoom?.onPresenterVideoFrame) {
-      window.musiczoom.onPresenterVideoFrame((frame) => {
+    const api = window.jameet || window.musiczoom;
+    if (api?.onPresenterVideoFrame) {
+      api.onPresenterVideoFrame((frame) => {
         if (!frame) return;
 
         // 1. Remote participant frame

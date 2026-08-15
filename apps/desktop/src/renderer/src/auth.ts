@@ -29,6 +29,7 @@ export class AuthManager {
     this.currentGuestName = name.trim();
     try {
       if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('jameet_guest_name', this.currentGuestName);
         localStorage.setItem('musiczoom_guest_name', this.currentGuestName);
       }
     } catch {
@@ -55,8 +56,9 @@ export class AuthManager {
 
   private async persistSession(token: string, user: UserProfile): Promise<void> {
     try {
-      if (typeof window !== 'undefined' && window.musiczoom?.auth?.setSession) {
-        await window.musiczoom.auth.setSession({ token, user });
+      const authApi = (typeof window !== 'undefined') ? (window.jameet?.auth || window.musiczoom?.auth) : undefined;
+      if (authApi?.setSession) {
+        await authApi.setSession({ token, user });
       }
     } catch (err) {
       console.warn('Could not persist session via safeStorage:', err);
@@ -65,8 +67,9 @@ export class AuthManager {
 
   private async readPersistedSession(): Promise<{ token?: string; user?: unknown } | null> {
     try {
-      if (typeof window !== 'undefined' && window.musiczoom?.auth?.getSession) {
-        return await window.musiczoom.auth.getSession();
+      const authApi = (typeof window !== 'undefined') ? (window.jameet?.auth || window.musiczoom?.auth) : undefined;
+      if (authApi?.getSession) {
+        return await authApi.getSession();
       }
     } catch (err) {
       console.warn('Could not read persisted session from safeStorage:', err);
@@ -76,8 +79,9 @@ export class AuthManager {
 
   private async clearPersistedSession(): Promise<void> {
     try {
-      if (typeof window !== 'undefined' && window.musiczoom?.auth?.clearSession) {
-        await window.musiczoom.auth.clearSession();
+      const authApi = (typeof window !== 'undefined') ? (window.jameet?.auth || window.musiczoom?.auth) : undefined;
+      if (authApi?.clearSession) {
+        await authApi.clearSession();
       }
     } catch (err) {
       console.warn('Could not clear persisted session from safeStorage:', err);
@@ -87,7 +91,7 @@ export class AuthManager {
   async init(): Promise<void> {
     try {
       if (typeof localStorage !== 'undefined') {
-        this.currentGuestName = localStorage.getItem('musiczoom_guest_name') || '';
+        this.currentGuestName = localStorage.getItem('jameet_guest_name') || localStorage.getItem('musiczoom_guest_name') || '';
       }
     } catch {
       // ignore

@@ -464,7 +464,7 @@ export type MeetingAck =
   | { ok: false; code: MeetingErrorCode; message: string };
 
 export function normalizeMeetingCode(value: string): string {
-  const deepLink = value.match(/^musiczoom:\/\/join\/([a-z0-9]+)/i);
+  const deepLink = value.match(/^(?:jameet|musiczoom):\/\/join\/([a-z0-9]+)/i) || value.match(/\/join\/([a-z0-9]+)/i);
   return (deepLink?.[1] ?? value).replace(/[^a-z0-9]/gi, '').toUpperCase();
 }
 

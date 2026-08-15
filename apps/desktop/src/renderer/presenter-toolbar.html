@@ -316,8 +316,9 @@
     };
 
     function sendAction(action, data) {
-      if (window.musiczoom?.sendPresenterAction) {
-        window.musiczoom.sendPresenterAction(action, data);
+      const api = window.jameet || window.musiczoom;
+      if (api?.sendPresenterAction) {
+        api.sendPresenterAction(action, data);
       }
     }
 
@@ -342,8 +343,9 @@
     }
 
     function setMouseIgnore(ignore) {
-      if (window.musiczoom?.setPresenterMouseIgnore) {
-        window.musiczoom.setPresenterMouseIgnore(ignore);
+      const api = window.jameet || window.musiczoom;
+      if (api?.setPresenterMouseIgnore) {
+        api.setPresenterMouseIgnore(ignore);
       }
     }
 
@@ -458,8 +460,9 @@
     });
 
     // Listen for state updates from main process
-    if (window.musiczoom?.onPresenterStateUpdate) {
-      window.musiczoom.onPresenterStateUpdate((state) => {
+    const api = window.jameet || window.musiczoom;
+    if (api?.onPresenterStateUpdate) {
+      api.onPresenterStateUpdate((state) => {
         updateUi(state);
       });
     }
