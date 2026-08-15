@@ -88,9 +88,9 @@ function createWindow(): void {
     }
   });
 
-  // Enable window content protection as defense-in-depth safeguard
+  // Content protection disabled to allow normal screenshots and screen recordings
   try {
-    mainWindow.setContentProtection(true);
+    mainWindow.setContentProtection(false);
   } catch (e) {
     console.warn('Could not set content protection on main window:', e);
   }
@@ -187,7 +187,7 @@ function createOrGetPresenterToolbarWindow(): BrowserWindow {
   });
 
   try {
-    presenterToolbarWindow.setContentProtection(true);
+    presenterToolbarWindow.setContentProtection(false);
     presenterToolbarWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     presenterToolbarWindow.setAlwaysOnTop(true, 'screen-saver');
     // Transparent areas pass mouse events through to desktop/DAW.
@@ -250,7 +250,7 @@ function createOrGetPresenterVideoWindow(): BrowserWindow {
   });
 
   try {
-    presenterVideoWindow.setContentProtection(true);
+    presenterVideoWindow.setContentProtection(false);
     presenterVideoWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     presenterVideoWindow.setAlwaysOnTop(true, 'screen-saver');
   } catch (e) {
