@@ -10,13 +10,14 @@
     "dev": "electron-vite dev",
     "dev:2": "node scripts/dev-instance.cjs 2",
     "dev:instance": "node scripts/dev-instance.cjs",
-    "build:native": "mkdir -p bin && clang -O2 -framework CoreAudio -framework CoreFoundation src/main/set-rate.c -o bin/set-rate && clang -O2 -framework CoreAudio -framework AudioToolbox -framework CoreFoundation src/main/musiczoom-hardware-input.c -o bin/musiczoom-hardware-input && swiftc -O src/main/musiczoom-app-audio-tap.swift -o bin/musiczoom-app-audio-tap",
+    "build:native": "node scripts/build-native.cjs",
     "build": "npm run build:native && electron-vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "package:mac": "npm run build && electron-builder --mac --publish never",
     "package:mac:arm64": "npm run build && electron-builder --mac dmg --arm64 --publish never",
-    "package:win": "npm run build && electron-builder --win --publish never",
+    "package:win": "npm run build && electron-builder --win --x64 --publish never",
+    "package:win:x64": "npm run build && electron-builder --win --x64 --publish never",
     "package:linux": "npm run build && electron-builder --linux --publish never"
   },
   "dependencies": {
@@ -40,14 +41,7 @@
     "asar": true,
     "files": [
       "out/**/*",
-      "bin/**/*",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "bin",
-        "to": "bin"
-      }
     ],
     "protocols": [
       {
@@ -59,6 +53,12 @@
       }
     ],
     "mac": {
+      "extraResources": [
+        {
+          "from": "bin",
+          "to": "bin"
+        }
+      ],
       "target": [
         {
           "target": "dmg",
@@ -84,6 +84,13 @@
           ]
         }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "JaMeet"
     },
     "linux": {
       "target": [
