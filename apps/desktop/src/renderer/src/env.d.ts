@@ -52,8 +52,6 @@ export interface JaMeetDesktopApi {
   [key: string]: any;
 }
 
-export type JameetDesktopApi = JaMeetDesktopApi;
-
 declare global {
   interface Window {
     jameet: JaMeetDesktopApi;
