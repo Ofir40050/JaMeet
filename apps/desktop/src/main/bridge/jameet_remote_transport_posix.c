@@ -3,6 +3,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+JaMeetTransportConfig JaMeetTransportConfig_Default(bool createIfMissing, bool readOnly) {
+    JaMeetTransportConfig cfg;
+    cfg.shmName = JAMEET_DEFAULT_SHM_NAME;
+    cfg.createIfMissing = createIfMissing;
+    cfg.readOnly = readOnly;
+    cfg.posixMode = JAMEET_DEFAULT_POSIX_SHM_MODE;
+    return cfg;
+}
+
 #if defined(_MSC_VER)
 /* Stubs for non-POSIX platforms (e.g. Windows in Phase 1 before native driver) */
 JaMeetTransport* JaMeetTransport_OpenPosixShmConfig(const JaMeetTransportConfig* config) {

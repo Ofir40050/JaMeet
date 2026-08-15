@@ -15,15 +15,6 @@
 #define jameet_aligned_free(ptr) free(ptr)
 #endif
 
-JaMeetTransportConfig JaMeetTransportConfig_Default(bool createIfMissing, bool readOnly) {
-    JaMeetTransportConfig cfg;
-    cfg.shmName = JAMEET_DEFAULT_SHM_NAME;
-    cfg.createIfMissing = createIfMissing;
-    cfg.readOnly = readOnly;
-    cfg.posixMode = JAMEET_DEFAULT_POSIX_SHM_MODE;
-    return cfg;
-}
-
 JaMeetTransport* JaMeetTransport_CreateMemory(void) {
     JaMeetTransport* t = (JaMeetTransport*)malloc(sizeof(JaMeetTransport));
     if (!t) return NULL;
