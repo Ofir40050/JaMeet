@@ -48,47 +48,67 @@ JaMeetTransport* JaMeetTransport_OpenPosixShmConfig(const JaMeetTransportConfig*
     const size_t segmentSize = sizeof(JaMeetSharedSegment);
     const mode_t mode = config->posixMode ? config->posixMode : JAMEET_DEFAULT_POSIX_SHM_MODE;
 
-    int flags = config->readOnly ? O_RDONLY : O_RDWR;
-    if (config->createIfMissing && !config->readOnly) {
-        flags |= O_CREAT;
-    }
+    int fd = -1;
+    bool isNewlyCreated = false;
 
-    int fd = shm_open(shmName, flags, mode);
-    if (fd < 0) {
-        return NULL;
+    if (config->createIfMissing && !config->readOnly) {
+        /*
+         * First attempt exclusive creation with O_EXCL to detect if the object is genuinely new.
+         */
+        fd = shm_open(shmName, O_RDWR | O_CREAT | O_EXCL, mode);
+        if (fd >= 0) {
+            isNewlyCreated = true;
+            if (ftruncate(fd, (off_t)segmentSize) != 0) {
+                close(fd);
+                shm_unlink(shmName);
+                return NULL;
+            }
+        } else if (errno == EEXIST) {
+            /* Object already exists: open existing handle without re-truncating or resetting permissions */
+            fd = shm_open(shmName, O_RDWR, mode);
+            if (fd < 0) {
+                return NULL;
+            }
+            isNewlyCreated = false;
+        } else {
+            return NULL;
+        }
+    } else {
+        /* Consumer opens existing object in read-only mode */
+        fd = shm_open(shmName, O_RDONLY, mode);
+        if (fd < 0) {
+            return NULL;
+        }
+        isNewlyCreated = false;
     }
 
     struct stat st;
-    if (fstat(fd, &st) != 0) {
+    if (fstat(fd, &st) != 0 || (size_t)st.st_size < segmentSize) {
         close(fd);
+        if (isNewlyCreated) {
+            shm_unlink(shmName);
+        }
         return NULL;
-    }
-
-    if (config->createIfMissing && !config->readOnly) {
-        if ((size_t)st.st_size < segmentSize) {
-            if (ftruncate(fd, (off_t)segmentSize) != 0) {
-                close(fd);
-                return NULL;
-            }
-        }
-    } else {
-        /* Consumer requires an existing object with at least the full declared segment size */
-        if ((size_t)st.st_size < segmentSize) {
-            close(fd);
-            return NULL;
-        }
     }
 
     int prot = config->readOnly ? PROT_READ : (PROT_READ | PROT_WRITE);
     void* mapped = mmap(NULL, segmentSize, prot, MAP_SHARED, fd, 0);
     if (mapped == MAP_FAILED) {
         close(fd);
+        if (isNewlyCreated) {
+            shm_unlink(shmName);
+        }
         return NULL;
     }
 
-    /* For consumer handles, validate complete declared geometry before returning */
-    if (config->readOnly) {
-        if (!JaMeetSegment_ValidateGeometry((const JaMeetSharedSegment*)mapped)) {
+    JaMeetSharedSegment* seg = (JaMeetSharedSegment*)mapped;
+
+    if (isNewlyCreated) {
+        /* Format genuinely new segment */
+        JaMeetSegment_FormatFirstTime(seg, 0, (uint32_t)getpid());
+    } else {
+        /* Existing segment: validate complete declared geometry before allowing use */
+        if (!JaMeetSegment_ValidateGeometry(seg)) {
             munmap(mapped, segmentSize);
             close(fd);
             return NULL;
@@ -104,11 +124,12 @@ JaMeetTransport* JaMeetTransport_OpenPosixShmConfig(const JaMeetTransportConfig*
 
     memset(t, 0, sizeof(JaMeetTransport));
     t->kind = JAMEET_TRANSPORT_KIND_POSIX_SHM;
-    t->segment = (JaMeetSharedSegment*)mapped;
+    t->segment = seg;
     t->mappedSize = segmentSize;
     t->fd = fd;
     t->isOwner = config->createIfMissing && !config->readOnly;
     t->isReadOnly = config->readOnly;
+    t->isNewlyCreated = isNewlyCreated;
     strncpy(t->shmName, shmName, sizeof(t->shmName) - 1);
 
     return t;

@@ -8,9 +8,6 @@
 extern "C" {
 #endif
 
-/* Default POSIX SHM Permissions: Owner Read/Write (0644 or 0660) */
-#define JAMEET_DEFAULT_POSIX_SHM_MODE 0644
-
 typedef enum JaMeetTransportKind {
     JAMEET_TRANSPORT_KIND_MEMORY = 0,
     JAMEET_TRANSPORT_KIND_POSIX_SHM = 1,
@@ -21,7 +18,7 @@ typedef struct JaMeetTransportConfig {
     const char* shmName;
     bool createIfMissing;
     bool readOnly;
-    mode_t posixMode; /* Intentional permission mode (e.g. 0644 for owner RW / consumer RO) */
+    mode_t posixMode; /* Private mode (0600) by default */
 } JaMeetTransportConfig;
 
 typedef struct JaMeetTransport {
@@ -32,12 +29,12 @@ typedef struct JaMeetTransport {
     char shmName[128];
     bool isOwner;
     bool isReadOnly;
+    bool isNewlyCreated; /* True if POSIX object was genuinely created fresh with O_EXCL */
 } JaMeetTransport;
 
 /**
  * Construct default transport configuration.
- * Producer uses createIfMissing=true, readOnly=false, mode=0644.
- * Consumer uses createIfMissing=false, readOnly=true, mode=0644.
+ * Sets private owner-only permissions (0600) by default.
  */
 JaMeetTransportConfig JaMeetTransportConfig_Default(bool createIfMissing, bool readOnly);
 
@@ -49,10 +46,10 @@ JaMeetTransport* JaMeetTransport_CreateMemory(void);
 /**
  * Open or create a POSIX Shared Memory transport with explicit configuration and permissions.
  * 
- * Safety & Geometry Validation:
- * - Checks file size via fstat before mapping.
- * - If attaching as consumer: validates complete declared geometry before returning transport handle.
- * - Rejects incompatible, truncated, or undersized objects safely.
+ * Safety & Creation Guarantees:
+ * - Uses O_EXCL to detect genuinely new objects vs existing objects.
+ * - Only a genuinely new object is allowed to be initialized from scratch.
+ * - Existing objects with incompatible sizes or invalid geometry are rejected safely without modification.
  */
 JaMeetTransport* JaMeetTransport_OpenPosixShmConfig(const JaMeetTransportConfig* config);
 

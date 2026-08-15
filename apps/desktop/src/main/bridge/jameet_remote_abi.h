@@ -33,50 +33,70 @@ extern "C" {
 /* Default transport object identifier for POSIX Shared Memory */
 #define JAMEET_DEFAULT_SHM_NAME     "/jameet_remote_voice_v1"
 
+/* Default POSIX Permission: Private Owner-Only (0600: read/write for owner only) */
+#define JAMEET_DEFAULT_POSIX_SHM_MODE 0600
+
 /* Slot flags */
 #define JAMEET_SLOT_FLAG_NONE       0x00000000U
 #define JAMEET_SLOT_FLAG_VOICE_ON   0x00000001U
 #define JAMEET_SLOT_FLAG_DISCONT    0x00000002U
 
 /**
- * Single audio slot within the circular buffer (1088 bytes, 64-byte aligned).
+ * Audio slot payload bank (1088 bytes, 64-byte aligned).
  * 
- * Uses explicit fixed-width fields with seqlock publication:
- * - seq is odd while producer is modifying the slot.
- * - seq is even when the slot is committed and safe to read.
- * - Consumer reads seq before and after copying; if seq changed, odd, or mismatched,
- *   the slot was torn/overwritten and the consumer safely outputs digital silence.
+ * Each slot has two immutable banks (Bank 0 and Bank 1).
+ * When writing, the producer writes exclusively to the inactive bank.
+ * Upon completion, the producer publishes the bank index with memory_order_release.
+ * Consumers read exclusively from the published active bank with memory_order_acquire.
+ * This guarantees zero concurrent data races under the C11 and C++11/17/20 memory models.
  */
-typedef struct JAMEET_ALIGNED(64) JaMeetAudioSlot {
-    /* Offset 0x00 (0): Seqlock publication sequence (odd = writing, even = committed) */
-    uint64_t seq;
-
-    /* Offset 0x08 (8): Stream epoch/generation when this slot was written */
+typedef struct JAMEET_ALIGNED(64) JaMeetAudioSlotBank {
+    /* Offset 0x00 (0): Stream epoch/generation when this bank was published */
     uint64_t producerGeneration;
 
-    /* Offset 0x10 (16): Absolute monotonic frame index of sample 0 in this slot */
+    /* Offset 0x08 (8): Absolute monotonic frame index of sample 0 in this bank */
     uint64_t slotStartFrame;
 
-    /* Offset 0x18 (24): Sample rate (48000) */
+    /* Offset 0x10 (16): Sample rate (48000) */
     uint32_t sampleRate;
 
-    /* Offset 0x1C (28): Channels (2) */
+    /* Offset 0x14 (20): Channels (2) */
     uint16_t channels;
 
-    /* Offset 0x1E (30): Number of valid frames in this slot (1..128) */
+    /* Offset 0x16 (22): Number of valid frames in this bank (1..128) */
     uint16_t validFrames;
 
-    /* Offset 0x20 (32): Slot flags (JAMEET_SLOT_FLAG_*) */
+    /* Offset 0x18 (24): Slot flags (JAMEET_SLOT_FLAG_*) */
     uint32_t flags;
 
-    /* Offset 0x24 (36): Reserved padding */
+    /* Offset 0x1C (28): Reserved metadata */
     uint32_t reserved;
 
-    /* Offset 0x28 (40): Explicit padding to align pcmData to offset 0x40 (64) */
-    uint8_t headerPadding[24];
+    /* Offset 0x20 (32): Explicit padding to align pcmData to offset 0x40 (64) */
+    uint8_t metadataPadding[32];
 
     /* Offset 0x40 (64): Interleaved Stereo 32-bit Float PCM [256 floats = 1024 bytes] */
     float pcmData[JAMEET_SLOT_SAMPLES];
+} JaMeetAudioSlotBank;
+
+/**
+ * Double-buffered slot container (2240 bytes, 64-byte aligned).
+ */
+typedef struct JAMEET_ALIGNED(64) JaMeetAudioSlot {
+    /* Offset 0x00 (0): Published active bank index (0 or 1) */
+    uint32_t publishedBank;
+
+    /* Offset 0x04 (4): Reserved padding */
+    uint32_t reserved;
+
+    /* Offset 0x08 (8): Monotonic slot publication sequence */
+    uint64_t publishSequence;
+
+    /* Offset 0x10 (16): Explicit padding to align banks to offset 0x40 (64) */
+    uint8_t slotPadding[48];
+
+    /* Offset 0x40 (64): Bank 0 (1088 bytes) and Bank 1 (1088 bytes) [Total 2176 bytes] */
+    JaMeetAudioSlotBank banks[2];
 } JaMeetAudioSlot;
 
 /**
@@ -93,7 +113,7 @@ typedef struct JAMEET_ALIGNED(64) JaMeetSharedHeader {
     /* Offset 0x08 (8): sizeof(JaMeetSharedHeader) = 128 */
     uint32_t headerSizeBytes;
 
-    /* Offset 0x0C (12): sizeof(JaMeetSharedSegment) = 139392 */
+    /* Offset 0x0C (12): sizeof(JaMeetSharedSegment) = 286848 */
     uint32_t totalSizeBytes;
 
     /* Offset 0x10 (16): 48000 */
@@ -131,13 +151,13 @@ typedef struct JAMEET_ALIGNED(64) JaMeetSharedHeader {
 } JaMeetSharedHeader;
 
 /**
- * Complete fixed-layout shared memory segment (139,392 bytes, 64-byte aligned).
+ * Complete fixed-layout shared memory segment (286,848 bytes, 64-byte aligned).
  */
 typedef struct JAMEET_ALIGNED(64) JaMeetSharedSegment {
     /* Offset 0x00000 (0): Segment Header (128 bytes) */
     JaMeetSharedHeader header;
 
-    /* Offset 0x00080 (128): Slot Array [128 slots * 1088 bytes = 139,264 bytes] */
+    /* Offset 0x00080 (128): Slot Array [128 slots * 2240 bytes = 286,720 bytes] */
     JaMeetAudioSlot slots[JAMEET_SLOT_COUNT];
 } JaMeetSharedSegment;
 
@@ -163,19 +183,24 @@ _Static_assert(offsetof(JaMeetSharedHeader, heartbeatMs) == 48, "heartbeatMs off
 _Static_assert(offsetof(JaMeetSharedHeader, isVoiceActive) == 56, "isVoiceActive offset must be 56");
 _Static_assert(offsetof(JaMeetSharedHeader, producerPid) == 60, "producerPid offset must be 60");
 
+/* JaMeetAudioSlotBank Assertions */
+_Static_assert(sizeof(JaMeetAudioSlotBank) == 1088, "JaMeetAudioSlotBank size must be exactly 1088 bytes");
+_Static_assert(offsetof(JaMeetAudioSlotBank, producerGeneration) == 0, "producerGeneration offset must be 0");
+_Static_assert(offsetof(JaMeetAudioSlotBank, slotStartFrame) == 8, "slotStartFrame offset must be 8");
+_Static_assert(offsetof(JaMeetAudioSlotBank, sampleRate) == 16, "sampleRate offset must be 16");
+_Static_assert(offsetof(JaMeetAudioSlotBank, channels) == 20, "channels offset must be 20");
+_Static_assert(offsetof(JaMeetAudioSlotBank, validFrames) == 22, "validFrames offset must be 22");
+_Static_assert(offsetof(JaMeetAudioSlotBank, flags) == 24, "flags offset must be 24");
+_Static_assert(offsetof(JaMeetAudioSlotBank, pcmData) == 64, "pcmData offset must be 64");
+
 /* JaMeetAudioSlot Assertions */
-_Static_assert(sizeof(JaMeetAudioSlot) == 1088, "JaMeetAudioSlot size must be exactly 1088 bytes");
-_Static_assert(offsetof(JaMeetAudioSlot, seq) == 0, "seq offset must be 0");
-_Static_assert(offsetof(JaMeetAudioSlot, producerGeneration) == 8, "producerGeneration offset must be 8");
-_Static_assert(offsetof(JaMeetAudioSlot, slotStartFrame) == 16, "slotStartFrame offset must be 16");
-_Static_assert(offsetof(JaMeetAudioSlot, sampleRate) == 24, "sampleRate offset must be 24");
-_Static_assert(offsetof(JaMeetAudioSlot, channels) == 28, "channels offset must be 28");
-_Static_assert(offsetof(JaMeetAudioSlot, validFrames) == 30, "validFrames offset must be 30");
-_Static_assert(offsetof(JaMeetAudioSlot, flags) == 32, "flags offset must be 32");
-_Static_assert(offsetof(JaMeetAudioSlot, pcmData) == 64, "pcmData offset must be 64");
+_Static_assert(sizeof(JaMeetAudioSlot) == 2240, "JaMeetAudioSlot size must be exactly 2240 bytes");
+_Static_assert(offsetof(JaMeetAudioSlot, publishedBank) == 0, "publishedBank offset must be 0");
+_Static_assert(offsetof(JaMeetAudioSlot, publishSequence) == 8, "publishSequence offset must be 8");
+_Static_assert(offsetof(JaMeetAudioSlot, banks) == 64, "banks offset must be 64");
 
 /* JaMeetSharedSegment Assertions */
-_Static_assert(sizeof(JaMeetSharedSegment) == 139392, "JaMeetSharedSegment size must be exactly 139,392 bytes");
+_Static_assert(sizeof(JaMeetSharedSegment) == 286848, "JaMeetSharedSegment size must be exactly 286,848 bytes");
 _Static_assert(offsetof(JaMeetSharedSegment, slots) == 128, "slots offset must be 128");
 
 #elif defined(__cplusplus)
@@ -195,17 +220,21 @@ static_assert(offsetof(JaMeetSharedHeader, heartbeatMs) == 48, "heartbeatMs offs
 static_assert(offsetof(JaMeetSharedHeader, isVoiceActive) == 56, "isVoiceActive offset must be 56");
 static_assert(offsetof(JaMeetSharedHeader, producerPid) == 60, "producerPid offset must be 60");
 
-static_assert(sizeof(JaMeetAudioSlot) == 1088, "JaMeetAudioSlot size must be exactly 1088 bytes");
-static_assert(offsetof(JaMeetAudioSlot, seq) == 0, "seq offset must be 0");
-static_assert(offsetof(JaMeetAudioSlot, producerGeneration) == 8, "producerGeneration offset must be 8");
-static_assert(offsetof(JaMeetAudioSlot, slotStartFrame) == 16, "slotStartFrame offset must be 16");
-static_assert(offsetof(JaMeetAudioSlot, sampleRate) == 24, "sampleRate offset must be 24");
-static_assert(offsetof(JaMeetAudioSlot, channels) == 28, "channels offset must be 28");
-static_assert(offsetof(JaMeetAudioSlot, validFrames) == 30, "validFrames offset must be 30");
-static_assert(offsetof(JaMeetAudioSlot, flags) == 32, "flags offset must be 32");
-static_assert(offsetof(JaMeetAudioSlot, pcmData) == 64, "pcmData offset must be 64");
+static_assert(sizeof(JaMeetAudioSlotBank) == 1088, "JaMeetAudioSlotBank size must be exactly 1088 bytes");
+static_assert(offsetof(JaMeetAudioSlotBank, producerGeneration) == 0, "producerGeneration offset must be 0");
+static_assert(offsetof(JaMeetAudioSlotBank, slotStartFrame) == 8, "slotStartFrame offset must be 8");
+static_assert(offsetof(JaMeetAudioSlotBank, sampleRate) == 16, "sampleRate offset must be 16");
+static_assert(offsetof(JaMeetAudioSlotBank, channels) == 20, "channels offset must be 20");
+static_assert(offsetof(JaMeetAudioSlotBank, validFrames) == 22, "validFrames offset must be 22");
+static_assert(offsetof(JaMeetAudioSlotBank, flags) == 24, "flags offset must be 24");
+static_assert(offsetof(JaMeetAudioSlotBank, pcmData) == 64, "pcmData offset must be 64");
 
-static_assert(sizeof(JaMeetSharedSegment) == 139392, "JaMeetSharedSegment size must be exactly 139,392 bytes");
+static_assert(sizeof(JaMeetAudioSlot) == 2240, "JaMeetAudioSlot size must be exactly 2240 bytes");
+static_assert(offsetof(JaMeetAudioSlot, publishedBank) == 0, "publishedBank offset must be 0");
+static_assert(offsetof(JaMeetAudioSlot, publishSequence) == 8, "publishSequence offset must be 8");
+static_assert(offsetof(JaMeetAudioSlot, banks) == 64, "banks offset must be 64");
+
+static_assert(sizeof(JaMeetSharedSegment) == 286848, "JaMeetSharedSegment size must be exactly 286,848 bytes");
 static_assert(offsetof(JaMeetSharedSegment, slots) == 128, "slots offset must be 128");
 #endif
 

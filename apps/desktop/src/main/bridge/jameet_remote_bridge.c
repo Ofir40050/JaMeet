@@ -4,80 +4,71 @@
 #define MIN_VAL(a, b) ((a) < (b) ? (a) : (b))
 
 /* ========================================================================= */
-/* Portable Lock-Free Atomic Helper Primitives                               */
+/* Portable Lock-Free Atomic Helper Primitives (Operating on Wire Storage)   */
 /* ========================================================================= */
 
-#if defined(__cplusplus)
-#include <atomic>
-static inline uint64_t atomic_load_u64_acquire(const uint64_t* ptr) {
-    return reinterpret_cast<const std::atomic<uint64_t>*>(ptr)->load(std::memory_order_acquire);
-}
-static inline void atomic_store_u64_release(uint64_t* ptr, uint64_t val) {
-    reinterpret_cast<std::atomic<uint64_t>*>(ptr)->store(val, std::memory_order_release);
-}
-static inline uint64_t atomic_load_u64_relaxed(const uint64_t* ptr) {
-    return reinterpret_cast<const std::atomic<uint64_t>*>(ptr)->load(std::memory_order_relaxed);
-}
-static inline uint32_t atomic_load_u32_acquire(const uint32_t* ptr) {
-    return reinterpret_cast<const std::atomic<uint32_t>*>(ptr)->load(std::memory_order_acquire);
-}
-static inline void atomic_store_u32_release(uint32_t* ptr, uint32_t val) {
-    reinterpret_cast<std::atomic<uint32_t>*>(ptr)->store(val, std::memory_order_release);
-}
-#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-#include <stdatomic.h>
-static inline uint64_t atomic_load_u64_acquire(const uint64_t* ptr) {
-    return atomic_load_explicit((const _Atomic uint64_t*)ptr, memory_order_acquire);
-}
-static inline void atomic_store_u64_release(uint64_t* ptr, uint64_t val) {
-    atomic_store_explicit((_Atomic uint64_t*)ptr, val, memory_order_release);
-}
-static inline uint64_t atomic_load_u64_relaxed(const uint64_t* ptr) {
-    return atomic_load_explicit((const _Atomic uint64_t*)ptr, memory_order_relaxed);
-}
-static inline uint32_t atomic_load_u32_acquire(const uint32_t* ptr) {
-    return atomic_load_explicit((const _Atomic uint32_t*)ptr, memory_order_acquire);
-}
-static inline void atomic_store_u32_release(uint32_t* ptr, uint32_t val) {
-    atomic_store_explicit((_Atomic uint32_t*)ptr, val, memory_order_release);
-}
-#elif defined(__GNUC__) || defined(__clang__)
-static inline uint64_t atomic_load_u64_acquire(const uint64_t* ptr) {
+#if defined(__GNUC__) || defined(__clang__)
+static inline uint64_t jameet_atomic_load_u64_acquire(const uint64_t* ptr) {
     return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
 }
-static inline void atomic_store_u64_release(uint64_t* ptr, uint64_t val) {
+static inline void jameet_atomic_store_u64_release(uint64_t* ptr, uint64_t val) {
     __atomic_store_n(ptr, val, __ATOMIC_RELEASE);
 }
-static inline uint64_t atomic_load_u64_relaxed(const uint64_t* ptr) {
+static inline uint64_t jameet_atomic_load_u64_relaxed(const uint64_t* ptr) {
     return __atomic_load_n(ptr, __ATOMIC_RELAXED);
 }
-static inline uint32_t atomic_load_u32_acquire(const uint32_t* ptr) {
+static inline void jameet_atomic_store_u64_relaxed(uint64_t* ptr, uint64_t val) {
+    __atomic_store_n(ptr, val, __ATOMIC_RELAXED);
+}
+
+static inline uint32_t jameet_atomic_load_u32_acquire(const uint32_t* ptr) {
     return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
 }
-static inline void atomic_store_u32_release(uint32_t* ptr, uint32_t val) {
+static inline void jameet_atomic_store_u32_release(uint32_t* ptr, uint32_t val) {
     __atomic_store_n(ptr, val, __ATOMIC_RELEASE);
 }
+static inline uint32_t jameet_atomic_load_u32_relaxed(const uint32_t* ptr) {
+    return __atomic_load_n(ptr, __ATOMIC_RELAXED);
+}
+
 #elif defined(_MSC_VER)
 #include <windows.h>
-static inline uint64_t atomic_load_u64_acquire(const uint64_t* ptr) {
-    return (uint64_t)InterlockedCompareExchange64((volatile LONG64*)ptr, 0, 0);
+#include <intrin.h>
+static inline uint64_t jameet_atomic_load_u64_acquire(const uint64_t* ptr) {
+    uint64_t val = (uint64_t)InterlockedCompareExchange64((volatile LONG64*)ptr, 0, 0);
+    _ReadWriteBarrier();
+    return val;
 }
-static inline void atomic_store_u64_release(uint64_t* ptr, uint64_t val) {
+static inline void jameet_atomic_store_u64_release(uint64_t* ptr, uint64_t val) {
+    _ReadWriteBarrier();
     InterlockedExchange64((volatile LONG64*)ptr, (LONG64)val);
 }
-static inline uint64_t atomic_load_u64_relaxed(const uint64_t* ptr) {
+static inline uint64_t jameet_atomic_load_u64_relaxed(const uint64_t* ptr) {
     return *ptr;
 }
-static inline uint32_t atomic_load_u32_acquire(const uint32_t* ptr) {
-    return (uint32_t)InterlockedCompareExchange((volatile LONG*)ptr, 0, 0);
+static inline void jameet_atomic_store_u64_relaxed(uint64_t* ptr, uint64_t val) {
+    *ptr = val;
 }
-static inline void atomic_store_u32_release(uint32_t* ptr, uint32_t val) {
+
+static inline uint32_t jameet_atomic_load_u32_acquire(const uint32_t* ptr) {
+    uint32_t val = (uint32_t)InterlockedCompareExchange((volatile LONG*)ptr, 0, 0);
+    _ReadWriteBarrier();
+    return val;
+}
+static inline void jameet_atomic_store_u32_release(uint32_t* ptr, uint32_t val) {
+    _ReadWriteBarrier();
     InterlockedExchange((volatile LONG*)ptr, (LONG)val);
+}
+static inline uint32_t jameet_atomic_load_u32_relaxed(const uint32_t* ptr) {
+    return *ptr;
+}
+static inline void jameet_atomic_store_u32_relaxed(uint32_t* ptr, uint32_t val) {
+    *ptr = val;
 }
 #endif
 
 /* ========================================================================= */
-/* Segment Lifecycle & Validation                                            */
+/* Segment Lifecycle & Geometry Validation                                   */
 /* ========================================================================= */
 
 bool JaMeetSegment_ValidateGeometry(const JaMeetSharedSegment* segment) {
@@ -117,15 +108,19 @@ void JaMeetSegment_FormatFirstTime(JaMeetSharedSegment* segment, uint64_t initia
 
     for (uint32_t i = 0; i < JAMEET_SLOT_COUNT; i++) {
         JaMeetAudioSlot* slot = &segment->slots[i];
-        slot->seq = 0;
-        slot->producerGeneration = initialEpoch;
-        slot->slotStartFrame = 0;
-        slot->sampleRate = JAMEET_SAMPLE_RATE;
-        slot->channels = JAMEET_CHANNELS;
-        slot->validFrames = 0;
-        slot->flags = JAMEET_SLOT_FLAG_NONE;
-        slot->reserved = 0;
-        memset(slot->pcmData, 0, sizeof(slot->pcmData));
+        slot->publishedBank = 0;
+        slot->publishSequence = 0;
+        for (uint32_t b = 0; b < 2; b++) {
+            JaMeetAudioSlotBank* bank = &slot->banks[b];
+            bank->producerGeneration = initialEpoch;
+            bank->slotStartFrame = 0;
+            bank->sampleRate = JAMEET_SAMPLE_RATE;
+            bank->channels = JAMEET_CHANNELS;
+            bank->validFrames = 0;
+            bank->flags = JAMEET_SLOT_FLAG_NONE;
+            bank->reserved = 0;
+            memset(bank->pcmData, 0, sizeof(bank->pcmData));
+        }
     }
 }
 
@@ -141,10 +136,10 @@ bool JaMeetProducer_Attach(JaMeetProducer* producer, JaMeetSharedSegment* segmen
          * DO NOT memset or zero active memory.
          * Atomically publish new epoch, reset sequence, and update pid.
          */
-        atomic_store_u32_release(&segment->header.producerPid, pid);
-        atomic_store_u32_release(&segment->header.isVoiceActive, 0);
-        atomic_store_u64_release(&segment->header.writeSequence, 0);
-        atomic_store_u64_release(&segment->header.producerGeneration, newEpoch);
+        jameet_atomic_store_u32_release(&segment->header.producerPid, pid);
+        jameet_atomic_store_u32_release(&segment->header.isVoiceActive, 0);
+        jameet_atomic_store_u64_release(&segment->header.writeSequence, 0);
+        jameet_atomic_store_u64_release(&segment->header.producerGeneration, newEpoch);
     }
 
     producer->segment = segment;
@@ -191,25 +186,31 @@ uint32_t JaMeetProducer_WriteFrames(
 
         JaMeetAudioSlot* slot = &segment->slots[slotIndex];
 
-        uint64_t curSeq = atomic_load_u64_relaxed(&slot->seq);
-        atomic_store_u64_release(&slot->seq, curSeq + 1); /* Make odd -> write in progress */
+        /*
+         * Dual-Bank Publication:
+         * Write exclusively to the inactive bank (1 - publishedBank).
+         * Consumers reading the active bank are never exposed to in-flight writes.
+         */
+        uint32_t curPublishedBank = jameet_atomic_load_u32_relaxed(&slot->publishedBank);
+        uint32_t targetBank = (curPublishedBank == 0U) ? 1U : 0U;
+        JaMeetAudioSlotBank* writeBank = &slot->banks[targetBank];
 
-        slot->producerGeneration = producer->currentEpoch;
-        slot->slotStartFrame = slotStartFrame;
-        slot->sampleRate = JAMEET_SAMPLE_RATE;
-        slot->channels = JAMEET_CHANNELS;
-        slot->validFrames = (uint16_t)(offsetInSlot + toWrite);
-        slot->flags = isVoiceActive ? JAMEET_SLOT_FLAG_VOICE_ON : JAMEET_SLOT_FLAG_NONE;
+        writeBank->producerGeneration = producer->currentEpoch;
+        writeBank->slotStartFrame = slotStartFrame;
+        writeBank->sampleRate = JAMEET_SAMPLE_RATE;
+        writeBank->channels = JAMEET_CHANNELS;
+        writeBank->validFrames = (uint16_t)(offsetInSlot + toWrite);
+        writeBank->flags = isVoiceActive ? JAMEET_SLOT_FLAG_VOICE_ON : JAMEET_SLOT_FLAG_NONE;
 
         if (interleavedStereoPcm && isVoiceActive) {
             memcpy(
-                &slot->pcmData[offsetInSlot * JAMEET_CHANNELS],
+                &writeBank->pcmData[offsetInSlot * JAMEET_CHANNELS],
                 &interleavedStereoPcm[framesProcessed * JAMEET_CHANNELS],
                 toWrite * JAMEET_CHANNELS * sizeof(float)
             );
         } else {
             memset(
-                &slot->pcmData[offsetInSlot * JAMEET_CHANNELS],
+                &writeBank->pcmData[offsetInSlot * JAMEET_CHANNELS],
                 0,
                 toWrite * JAMEET_CHANNELS * sizeof(float)
             );
@@ -217,25 +218,27 @@ uint32_t JaMeetProducer_WriteFrames(
 
         /* 
          * Partial Slot Sanitization:
-         * Ensure any unwritten remainder of the slot is completely zeroed so
-         * stale PCM from previous generations or cycles can never be read.
+         * Zero unwritten remainder of the bank so stale PCM can never leak.
          */
         if (offsetInSlot + toWrite < JAMEET_SLOT_FRAMES) {
             uint32_t remainderOffset = (offsetInSlot + toWrite) * JAMEET_CHANNELS;
             uint32_t remainderSamples = (JAMEET_SLOT_FRAMES - (offsetInSlot + toWrite)) * JAMEET_CHANNELS;
-            memset(&slot->pcmData[remainderOffset], 0, remainderSamples * sizeof(float));
+            memset(&writeBank->pcmData[remainderOffset], 0, remainderSamples * sizeof(float));
         }
 
-        atomic_store_u64_release(&slot->seq, curSeq + 2); /* Make even -> commit */
+        /* Atomically publish the completed bank */
+        uint64_t curSeq = jameet_atomic_load_u64_relaxed(&slot->publishSequence);
+        jameet_atomic_store_u64_relaxed(&slot->publishSequence, curSeq + 1);
+        jameet_atomic_store_u32_release(&slot->publishedBank, targetBank);
 
         framesProcessed += toWrite;
     }
 
     producer->totalFramesWritten += frameCount;
 
-    atomic_store_u64_release(&segment->header.writeSequence, producer->totalFramesWritten);
-    atomic_store_u64_release(&segment->header.heartbeatMs, timestampMs);
-    atomic_store_u32_release(&segment->header.isVoiceActive, isVoiceActive ? 1 : 0);
+    jameet_atomic_store_u64_release(&segment->header.writeSequence, producer->totalFramesWritten);
+    jameet_atomic_store_u64_release(&segment->header.heartbeatMs, timestampMs);
+    jameet_atomic_store_u32_release(&segment->header.isVoiceActive, isVoiceActive ? 1 : 0);
 
     return frameCount;
 }
@@ -244,8 +247,8 @@ void JaMeetProducer_UpdateHeartbeat(JaMeetProducer* producer, uint64_t timestamp
     if (!producer || !producer->isInitialized || !producer->segment) return;
     JaMeetSharedSegment* segment = producer->segment;
 
-    atomic_store_u64_release(&segment->header.heartbeatMs, timestampMs);
-    atomic_store_u32_release(&segment->header.isVoiceActive, isVoiceActive ? 1 : 0);
+    jameet_atomic_store_u64_release(&segment->header.heartbeatMs, timestampMs);
+    jameet_atomic_store_u32_release(&segment->header.isVoiceActive, isVoiceActive ? 1 : 0);
 }
 
 void JaMeetProducer_ResetGeneration(JaMeetProducer* producer, uint64_t newEpoch) {
@@ -254,8 +257,8 @@ void JaMeetProducer_ResetGeneration(JaMeetProducer* producer, uint64_t newEpoch)
     producer->totalFramesWritten = 0;
     JaMeetSharedSegment* segment = producer->segment;
 
-    atomic_store_u64_release(&segment->header.writeSequence, 0);
-    atomic_store_u64_release(&segment->header.producerGeneration, newEpoch);
+    jameet_atomic_store_u64_release(&segment->header.writeSequence, 0);
+    jameet_atomic_store_u64_release(&segment->header.producerGeneration, newEpoch);
 }
 
 /* ========================================================================= */
@@ -292,10 +295,10 @@ uint32_t JaMeetConsumer_ReadFrames(
         return frameCount;
     }
 
-    uint64_t currentGen = atomic_load_u64_acquire(&segment->header.producerGeneration);
-    uint64_t writeSeq   = atomic_load_u64_acquire(&segment->header.writeSequence);
-    uint64_t heartbeat  = atomic_load_u64_acquire(&segment->header.heartbeatMs);
-    uint32_t isVoice    = atomic_load_u32_acquire(&segment->header.isVoiceActive);
+    uint64_t currentGen = jameet_atomic_load_u64_acquire(&segment->header.producerGeneration);
+    uint64_t writeSeq   = jameet_atomic_load_u64_acquire(&segment->header.writeSequence);
+    uint64_t heartbeat  = jameet_atomic_load_u64_acquire(&segment->header.heartbeatMs);
+    uint32_t isVoice    = jameet_atomic_load_u32_acquire(&segment->header.isVoiceActive);
 
     /* 1. Generation Epoch Check */
     if (currentGen == 0 || currentGen != consumer->lastObservedGeneration) {
@@ -325,7 +328,7 @@ uint32_t JaMeetConsumer_ReadFrames(
         consumer->localReadFrame = writeSeq - JAMEET_TOTAL_FRAMES;
     }
 
-    /* 5. Read Frames across slots using Seqlock Verification */
+    /* 5. Read Frames across slots using Dual-Bank Extraction */
     uint32_t framesRead = 0;
     uint64_t targetFrame = consumer->localReadFrame;
 
@@ -348,34 +351,36 @@ uint32_t JaMeetConsumer_ReadFrames(
 
         const JaMeetAudioSlot* slot = &segment->slots[slotIndex];
 
-        uint64_t seq1 = atomic_load_u64_acquire(&slot->seq);
+        /* Atomically load active published bank */
+        uint32_t bankIdx = jameet_atomic_load_u32_acquire(&slot->publishedBank);
 
         bool slotValid = true;
-        if ((seq1 & 1U) != 0U) {
-            /* Producer write currently in progress */
+        if (bankIdx > 1U) {
             slotValid = false;
         } else {
+            const JaMeetAudioSlotBank* bank = &slot->banks[bankIdx];
+
             /* Verify slot metadata */
-            if (slot->producerGeneration != currentGen || slot->slotStartFrame != slotStartFrame) {
+            if (bank->producerGeneration != currentGen || bank->slotStartFrame != slotStartFrame) {
                 slotValid = false;
             } else {
-                /* Copy audio data */
+                /* Copy audio data from immutable published bank */
                 memcpy(
                     &outInterleavedStereoPcm[framesRead * JAMEET_CHANNELS],
-                    &slot->pcmData[offsetInSlot * JAMEET_CHANNELS],
+                    &bank->pcmData[offsetInSlot * JAMEET_CHANNELS],
                     toCopy * JAMEET_CHANNELS * sizeof(float)
                 );
 
-                uint64_t seq2 = atomic_load_u64_acquire(&slot->seq);
-                if (seq1 != seq2) {
-                    /* Slot was modified while copying */
+                /* Verify bank remained active during read */
+                uint32_t bankIdx2 = jameet_atomic_load_u32_acquire(&slot->publishedBank);
+                if (bankIdx != bankIdx2) {
                     slotValid = false;
                 }
             }
         }
 
         if (!slotValid) {
-            /* Discard torn data and output clean digital silence */
+            /* Discard invalid data and output clean digital silence */
             memset(&outInterleavedStereoPcm[framesRead * JAMEET_CHANNELS], 0, toCopy * JAMEET_CHANNELS * sizeof(float));
             consumer->tornReadCount++;
         }
@@ -402,8 +407,8 @@ bool JaMeetConsumer_IsVoiceActive(
         return false;
     }
 
-    uint64_t heartbeat = atomic_load_u64_acquire(&segment->header.heartbeatMs);
-    uint32_t isVoice   = atomic_load_u32_acquire(&segment->header.isVoiceActive);
+    uint64_t heartbeat = jameet_atomic_load_u64_acquire(&segment->header.heartbeatMs);
+    uint32_t isVoice   = jameet_atomic_load_u32_acquire(&segment->header.isVoiceActive);
 
     if (!isVoice) return false;
     if (currentTimestampMs > 0 && heartbeat > 0 && currentTimestampMs > heartbeat + JAMEET_HEARTBEAT_TIMEOUT_MS) {

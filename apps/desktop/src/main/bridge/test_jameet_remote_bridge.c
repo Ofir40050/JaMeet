@@ -19,11 +19,13 @@
 static void test_abi_layout(void) {
     /* Exact Byte Sizes */
     assert(sizeof(JaMeetSharedHeader) == 128);
-    assert(sizeof(JaMeetAudioSlot) == 1088);
-    assert(sizeof(JaMeetSharedSegment) == 139392);
+    assert(sizeof(JaMeetAudioSlotBank) == 1088);
+    assert(sizeof(JaMeetAudioSlot) == 2240);
+    assert(sizeof(JaMeetSharedSegment) == 286848);
 
     /* 64-Byte Alignment */
     assert(sizeof(JaMeetSharedHeader) % 64 == 0);
+    assert(sizeof(JaMeetAudioSlotBank) % 64 == 0);
     assert(sizeof(JaMeetAudioSlot) % 64 == 0);
     assert(sizeof(JaMeetSharedSegment) % 64 == 0);
 
@@ -43,16 +45,21 @@ static void test_abi_layout(void) {
     assert(offsetof(JaMeetSharedHeader, isVoiceActive) == 56);
     assert(offsetof(JaMeetSharedHeader, producerPid) == 60);
 
+    /* JaMeetAudioSlotBank Numeric Offsets */
+    assert(offsetof(JaMeetAudioSlotBank, producerGeneration) == 0);
+    assert(offsetof(JaMeetAudioSlotBank, slotStartFrame) == 8);
+    assert(offsetof(JaMeetAudioSlotBank, sampleRate) == 16);
+    assert(offsetof(JaMeetAudioSlotBank, channels) == 20);
+    assert(offsetof(JaMeetAudioSlotBank, validFrames) == 22);
+    assert(offsetof(JaMeetAudioSlotBank, flags) == 24);
+    assert(offsetof(JaMeetAudioSlotBank, reserved) == 28);
+    assert(offsetof(JaMeetAudioSlotBank, pcmData) == 64);
+
     /* JaMeetAudioSlot Numeric Offsets */
-    assert(offsetof(JaMeetAudioSlot, seq) == 0);
-    assert(offsetof(JaMeetAudioSlot, producerGeneration) == 8);
-    assert(offsetof(JaMeetAudioSlot, slotStartFrame) == 16);
-    assert(offsetof(JaMeetAudioSlot, sampleRate) == 24);
-    assert(offsetof(JaMeetAudioSlot, channels) == 28);
-    assert(offsetof(JaMeetAudioSlot, validFrames) == 30);
-    assert(offsetof(JaMeetAudioSlot, flags) == 32);
-    assert(offsetof(JaMeetAudioSlot, reserved) == 36);
-    assert(offsetof(JaMeetAudioSlot, pcmData) == 64);
+    assert(offsetof(JaMeetAudioSlot, publishedBank) == 0);
+    assert(offsetof(JaMeetAudioSlot, reserved) == 4);
+    assert(offsetof(JaMeetAudioSlot, publishSequence) == 8);
+    assert(offsetof(JaMeetAudioSlot, banks) == 64);
 
     /* JaMeetSharedSegment Offset */
     assert(offsetof(JaMeetSharedSegment, slots) == 128);
@@ -162,9 +169,9 @@ static void test_fractional_and_multislot(void) {
 }
 
 /* ========================================================================= */
-/* Test 4: Seqlock Torn-Write & Overwrite Detection                          */
+/* Test 4: Dual-Bank Race-Free Publication Verification                       */
 /* ========================================================================= */
-static void test_seqlock_torn_write_detection(void) {
+static void test_dual_bank_publication(void) {
     JaMeetTransport* transport = JaMeetTransport_CreateMemory();
     JaMeetSharedSegment* segment = JaMeetTransport_GetSegment(transport);
 
@@ -178,8 +185,8 @@ static void test_seqlock_torn_write_detection(void) {
     for (int i = 0; i < 128 * 2; i++) writeBuf[i] = 1.0f;
     JaMeetProducer_WriteFrames(&producer, writeBuf, 128, true, 100);
 
-    /* Case A: Simulate write-in-progress (seq is odd) on slot 0 */
-    segment->slots[0].seq = 3; /* Odd -> in-progress */
+    /* Case A: Simulate corrupted publishedBank index (> 1) */
+    segment->slots[0].publishedBank = 99;
 
     float readBuf[128 * 2];
     for (int i = 0; i < 128 * 2; i++) readBuf[i] = 99.0f;
@@ -192,9 +199,9 @@ static void test_seqlock_torn_write_detection(void) {
     }
     assert(consumer.tornReadCount > 0);
 
-    /* Case B: Restore slot to even seq, write new frames, then simulate slot generation mismatch */
-    segment->slots[0].seq = 4; /* Even */
-    segment->slots[0].producerGeneration = 999ULL; /* Wrong epoch */
+    /* Case B: Restore slot to valid bank, write new frames, then simulate slot generation mismatch */
+    segment->slots[0].publishedBank = 1;
+    segment->slots[0].banks[1].producerGeneration = 999ULL; /* Wrong epoch */
 
     JaMeetConsumer_Init(&consumer);
     for (int i = 0; i < 128 * 2; i++) readBuf[i] = 99.0f;
@@ -226,9 +233,10 @@ static void test_generation_epoch_resync_and_sanitization(void) {
     for (int i = 0; i < 60 * 2; i++) data1[i] = 1.0f;
     JaMeetProducer_WriteFrames(&producer, data1, 60, true, 100);
 
-    /* Verify remainder of slot 0 was sanitized with zeros */
+    /* Verify remainder of published bank in slot 0 was sanitized with zeros */
+    uint32_t bankIdx = segment->slots[0].publishedBank;
     for (int i = 60 * 2; i < 128 * 2; i++) {
-        assert(segment->slots[0].pcmData[i] == 0.0f);
+        assert(segment->slots[0].banks[bankIdx].pcmData[i] == 0.0f);
     }
 
     /* Producer transitions to epoch 200 via JaMeetProducer_ResetGeneration */
@@ -239,12 +247,13 @@ static void test_generation_epoch_resync_and_sanitization(void) {
     for (int i = 0; i < 40 * 2; i++) data2[i] = 2.0f;
     JaMeetProducer_WriteFrames(&producer, data2, 40, true, 200);
 
-    /* Verify slot 0 in new generation has 2.0f for frames 0..39 and 0.0f for remainder */
+    /* Verify published bank in slot 0 has 2.0f for frames 0..39 and 0.0f for remainder */
+    bankIdx = segment->slots[0].publishedBank;
     for (int i = 0; i < 40 * 2; i++) {
-        assert(segment->slots[0].pcmData[i] == 2.0f);
+        assert(segment->slots[0].banks[bankIdx].pcmData[i] == 2.0f);
     }
     for (int i = 40 * 2; i < 128 * 2; i++) {
-        assert(segment->slots[0].pcmData[i] == 0.0f);
+        assert(segment->slots[0].banks[bankIdx].pcmData[i] == 0.0f);
     }
 
     /* Consumer reads 128 frames: must get 40 frames of 2.0f and 88 frames of 0.0f silence */
@@ -445,16 +454,18 @@ static void test_multithreaded_concurrency(void) {
 }
 
 /* ========================================================================= */
-/* Test 9: POSIX Shared Memory Geometry Validation & Lifetime               */
+/* Test 9: POSIX Shared Memory Geometry Validation & O_EXCL Reattachment    */
 /* ========================================================================= */
 static void test_posix_shm_geometry_and_lifetime(void) {
     const char* testShm = "/jameet_test_p1_shm";
 
-    /* Producer opens/creates with standard secure 0644 mode */
+    /* Producer opens/creates with standard private 0600 mode */
     JaMeetTransportConfig prodCfg = JaMeetTransportConfig_Default(true, false);
     prodCfg.shmName = testShm;
     JaMeetTransport* prodTransport = JaMeetTransport_OpenPosixShmConfig(&prodCfg);
     assert(prodTransport != NULL);
+    assert(prodTransport->isNewlyCreated == true);
+    assert(JaMeetTransport_CheckHealth(prodTransport) == true);
 
     JaMeetSharedSegment* prodSeg = JaMeetTransport_GetSegment(prodTransport);
     assert(prodSeg != NULL);
@@ -472,6 +483,7 @@ static void test_posix_shm_geometry_and_lifetime(void) {
     consCfg.shmName = testShm;
     JaMeetTransport* consTransport = JaMeetTransport_OpenPosixShmConfig(&consCfg);
     assert(consTransport != NULL);
+    assert(consTransport->isNewlyCreated == false);
     assert(JaMeetTransport_CheckHealth(consTransport) == true);
 
     JaMeetSharedSegment* consSeg = JaMeetTransport_GetSegment(consTransport);
@@ -545,7 +557,7 @@ int main(void) {
     test_abi_layout();
     test_basic_read_write();
     test_fractional_and_multislot();
-    test_seqlock_torn_write_detection();
+    test_dual_bank_publication();
     test_generation_epoch_resync_and_sanitization();
     test_producer_reattachment_without_memset();
     test_inactivity_and_heartbeat();

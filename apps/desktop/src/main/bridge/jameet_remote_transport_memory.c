@@ -34,6 +34,7 @@ JaMeetTransport* JaMeetTransport_CreateMemory(void) {
     t->fd = -1;
     t->isOwner = true;
     t->isReadOnly = false;
+    t->isNewlyCreated = true;
     strncpy(t->shmName, "in-memory", sizeof(t->shmName) - 1);
 
     t->segment = (JaMeetSharedSegment*)jameet_aligned_alloc(64, sizeof(JaMeetSharedSegment));
