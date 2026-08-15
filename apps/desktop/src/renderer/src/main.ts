@@ -21,8 +21,12 @@ import { presenter } from './presenter';
 import './style.css';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const views = ['home-view', 'auth-view', 'setup-view', 'waiting-view', 'call-view', 'project-view', 'all-sessions-view'];
-const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'http://localhost:3000';
+const DEFAULT_PROD_SIGNALING_URL = 'https://jameet-jwi8.onrender.com';
+const DEFAULT_DEV_SIGNALING_URL = 'http://localhost:3000';
+const signalingUrl = (
+  import.meta.env.VITE_SIGNALING_URL ||
+  (import.meta.env.PROD ? DEFAULT_PROD_SIGNALING_URL : DEFAULT_DEV_SIGNALING_URL)
+).replace(/\/+$/, '');
 projectsApi.setApiBase(signalingUrl);
 setScheduledApiBase(signalingUrl);
 const scheduledNotifications = new ScheduledNotificationManager();

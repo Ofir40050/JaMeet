@@ -4,7 +4,7 @@ set -eu
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repo_dir"
 
-url="${PRODUCTION_SIGNALING_URL:-}"
+url="${PRODUCTION_SIGNALING_URL:-https://jameet-jwi8.onrender.com}"
 case "$url" in
   https://*) ;;
   *) echo "Set PRODUCTION_SIGNALING_URL to the deployed HTTPS signaling origin." >&2; exit 1 ;;

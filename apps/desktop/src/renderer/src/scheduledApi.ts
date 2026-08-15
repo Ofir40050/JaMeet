@@ -4,7 +4,14 @@ import type {
   UpdateScheduledSessionRequest
 } from '@musiczoom/shared';
 
-let apiBase = 'http://localhost:3000';
+const DEFAULT_PROD_API_URL = 'https://jameet-jwi8.onrender.com';
+const DEFAULT_DEV_API_URL = 'http://localhost:3000';
+
+let apiBase = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SIGNALING_URL)
+  ? import.meta.env.VITE_SIGNALING_URL.replace(/\/+$/, '')
+  : (typeof import.meta !== 'undefined' && import.meta.env?.PROD)
+    ? DEFAULT_PROD_API_URL
+    : DEFAULT_DEV_API_URL;
 
 export function setScheduledApiBase(url: string): void {
   apiBase = url.replace(/\/+$/, '');

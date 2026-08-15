@@ -1,5 +1,8 @@
 import type { Project, CreateProjectRequest, UpdateProjectRequest, UpdateProjectWorkspaceRequest, ProjectWorkspace } from '@musiczoom/shared';
 
+const DEFAULT_PROD_SERVER_URL = 'https://jameet-jwi8.onrender.com';
+const DEFAULT_DEV_SERVER_URL = 'http://localhost:3000';
+
 let configuredBaseUrl: string | null = null;
 
 export function setApiBase(url: string): void {
@@ -9,13 +12,18 @@ export function setApiBase(url: string): void {
 export function getApiBase(): string {
   if (configuredBaseUrl) return configuredBaseUrl;
   if (typeof window !== 'undefined') {
-    const globalBase = (window as unknown as { __MUSICZOOM_API_BASE__?: string }).__MUSICZOOM_API_BASE__;
+    const globalBase =
+      (window as unknown as { __JAMEET_API_BASE__?: string }).__JAMEET_API_BASE__ ||
+      (window as unknown as { __MUSICZOOM_API_BASE__?: string }).__MUSICZOOM_API_BASE__;
     if (globalBase) return globalBase.replace(/\/$/, '');
   }
   if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SIGNALING_URL) {
     return import.meta.env.VITE_SIGNALING_URL.replace(/\/$/, '');
   }
-  return 'http://localhost:3000';
+  if (typeof import.meta !== 'undefined' && import.meta.env?.PROD) {
+    return DEFAULT_PROD_SERVER_URL;
+  }
+  return DEFAULT_DEV_SERVER_URL;
 }
 
 function authHeaders(token?: string): HeadersInit {

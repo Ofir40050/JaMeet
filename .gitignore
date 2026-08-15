@@ -5,6 +5,7 @@ release/
 coverage/
 .env
 .env.production
+!apps/desktop/.env.production
 .env.local
 .env.*.local
 certs/*
