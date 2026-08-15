@@ -6,13 +6,20 @@ export interface RateLimitConfig {
 }
 
 export const DEFAULT_SOCKET_RATE_LIMITS: Record<RateLimitCategory, RateLimitConfig> = {
-  session: { capacity: 60, refillRate: 10 },
-  workspace: { capacity: 120, refillRate: 20 },
-  signaling: { capacity: 100, refillRate: 20 },
-  ice: { capacity: 500, refillRate: 50 },
-  action: { capacity: 60, refillRate: 10 },
-  media: { capacity: 60, refillRate: 10 },
-  chat: { capacity: 60, refillRate: 10 }
+  // Session lifecycle (create, join, admit, lock, remove participant, join project)
+  session: { capacity: 20, refillRate: 2 },
+  // Real-time collaborative workspace mutations (lyrics, notes, tasks, sections)
+  workspace: { capacity: 60, refillRate: 10 },
+  // SDP offer/answer exchanges and renegotiation requests
+  signaling: { capacity: 30, refillRate: 3 },
+  // WebRTC ICE trickling can generate 20-60+ candidates in initial bursts or renegotiations
+  ice: { capacity: 150, refillRate: 30 },
+  // Generic session actions / reactions
+  action: { capacity: 30, refillRate: 5 },
+  // Mute/unmute, camera toggle, screen share, quality changes
+  media: { capacity: 30, refillRate: 5 },
+  // In-session chat messages
+  chat: { capacity: 20, refillRate: 2 }
 };
 
 export class SocketRateLimiter {
