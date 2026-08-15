@@ -1,31 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { ProjectActivityItem, ProjectActivityType } from '@jameet/shared';
-
-function formatRelativeTime(timestamp: number, now = Date.now()): string {
-  const diffMs = Math.max(0, now - timestamp);
-  const diffSec = Math.floor(diffMs / 1000);
-  if (diffSec < 45) return 'Just now';
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDays = Math.floor(diffHr / 24);
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays}d ago`;
-  const d = new Date(timestamp);
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function filterActivities(activities: ProjectActivityItem[], query: string): ProjectActivityItem[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return activities;
-  return activities.filter((a) =>
-    a.summary.toLowerCase().includes(q) ||
-    a.userDisplayName.toLowerCase().includes(q) ||
-    a.type.toLowerCase().includes(q) ||
-    (a.title && a.title.toLowerCase().includes(q))
-  );
-}
+import type { ProjectActivityItem } from '@jameet/shared';
+import { formatRelativeTime, filterActivities, getActivityIconSvg } from './activity';
 
 describe('Project Activity Engine & Helpers', () => {
   it('correctly calculates human-readable relative timestamps', () => {
@@ -109,5 +84,15 @@ describe('Project Activity Engine & Helpers', () => {
 
     expect(activities[0].id).toBe('act_newest');
     expect(activities[0].createdAt).toBeGreaterThan(activities[1].createdAt);
+  });
+
+  it('returns valid svg icons for all activity types', () => {
+    expect(getActivityIconSvg('project_created')).toContain('<svg');
+    expect(getActivityIconSvg('lyrics_edited')).toContain('<svg');
+    expect(getActivityIconSvg('notes_key_changed')).toContain('<svg');
+    expect(getActivityIconSvg('structure_changed')).toContain('<svg');
+    expect(getActivityIconSvg('task_completed')).toContain('<svg');
+    expect(getActivityIconSvg('collaborator_added')).toContain('<svg');
+    expect(getActivityIconSvg('session_started')).toContain('<svg');
   });
 });

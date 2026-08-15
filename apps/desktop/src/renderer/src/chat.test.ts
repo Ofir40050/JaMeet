@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sessionChatMessageSchema, sendChatMessageSchema } from '@jameet/shared';
+import { formatChatTime, isSessionChatOpen, getUnreadChatCount, resetChatUi } from './chat';
 
 describe('chat schema validation', () => {
   it('validates a valid chat message payload', () => {
@@ -28,5 +29,23 @@ describe('chat schema validation', () => {
     };
     const parsed = sessionChatMessageSchema.safeParse(msg);
     expect(parsed.success).toBe(true);
+  });
+});
+
+describe('session chat helpers', () => {
+  it('formats timestamp to human-readable 12-hour time', () => {
+    const date = new Date(2026, 7, 15, 14, 30); // 2:30 PM
+    const formatted = formatChatTime(date.getTime());
+    expect(formatted).toBe('2:30 PM');
+
+    const morningDate = new Date(2026, 7, 15, 9, 5); // 9:05 AM
+    const morningFormatted = formatChatTime(morningDate.getTime());
+    expect(morningFormatted).toBe('9:05 AM');
+  });
+
+  it('resets chat state properly', () => {
+    resetChatUi();
+    expect(isSessionChatOpen()).toBe(false);
+    expect(getUnreadChatCount()).toBe(0);
   });
 });
