@@ -13,26 +13,39 @@ if (process.platform !== 'darwin') {
   process.exit(0);
 }
 
-// 1. Ensure JaMeetRemote.driver is built
-if (!fs.existsSync(driverBundlePath)) {
-  console.log('[build-macos-pkg] JaMeetRemote.driver not found. Building native driver...');
-  const buildDriverScript = path.join(rootDir, 'src', 'main', 'driver-macos', 'build-driver.sh');
-  execSync(`"${buildDriverScript}" "${driverDistDir}"`, { cwd: rootDir, stdio: 'inherit' });
-}
+// 1. Ensure JaMeetRemote.driver is freshly compiled
+console.log('[build-macos-pkg] Building fresh JaMeetRemote.driver bundle from source...');
+const buildDriverScript = path.join(rootDir, 'src', 'main', 'driver-macos', 'build-driver.sh');
+execSync(`"${buildDriverScript}" "${driverDistDir}"`, { cwd: rootDir, stdio: 'inherit' });
 
 if (!fs.existsSync(driverBundlePath)) {
-  console.error('[build-macos-pkg] Error: Failed to find JaMeetRemote.driver at ' + driverBundlePath);
+  console.error('[build-macos-pkg] Error: Failed to find freshly built JaMeetRemote.driver at ' + driverBundlePath);
   process.exit(1);
 }
 
-// 2. Locate or package JaMeet.app
-let appPath = null;
+// 2. Always package a fresh JaMeet.app directory bundle from current source and compiled out/
+console.log('[build-macos-pkg] Packaging fresh JaMeet.app directory bundle via electron-builder...');
 const candidatePaths = [
   path.join(releaseDir, 'mac-arm64', 'JaMeet.app'),
   path.join(releaseDir, 'mac', 'JaMeet.app'),
   path.join(releaseDir, 'JaMeet.app')
 ];
 
+// Remove existing directory bundles so stale versions are never reused
+for (const p of candidatePaths) {
+  if (fs.existsSync(p)) {
+    fs.rmSync(p, { recursive: true, force: true });
+  }
+}
+
+try {
+  execSync('npx electron-builder --mac dir --publish never', { cwd: rootDir, stdio: 'inherit' });
+} catch (err) {
+  console.error('[build-macos-pkg] electron-builder error:', err.message);
+  process.exit(1);
+}
+
+let appPath = null;
 for (const p of candidatePaths) {
   if (fs.existsSync(p)) {
     appPath = p;
@@ -40,27 +53,12 @@ for (const p of candidatePaths) {
   }
 }
 
-if (!appPath) {
-  console.log('[build-macos-pkg] Packaging JaMeet.app directory bundle via electron-builder...');
-  try {
-    execSync('npx electron-builder --mac dir --publish never', { cwd: rootDir, stdio: 'inherit' });
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
-        appPath = p;
-        break;
-      }
-    }
-  } catch (err) {
-    console.error('[build-macos-pkg] electron-builder error:', err.message);
-  }
-}
-
 if (!appPath || !fs.existsSync(appPath)) {
-  console.error('[build-macos-pkg] Error: Could not locate built JaMeet.app');
+  console.error('[build-macos-pkg] Error: Could not locate freshly built JaMeet.app after packaging');
   process.exit(1);
 }
 
-console.log('[build-macos-pkg] Found JaMeet.app at: ' + appPath);
+console.log('[build-macos-pkg] Fresh JaMeet.app packaged at: ' + appPath);
 
 // 3. Inspect architectures contained in the app and driver
 function getArchitectures(binaryPath) {
