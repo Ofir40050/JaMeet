@@ -211,13 +211,18 @@ describe('ProjectStore & Workspace', () => {
     expect(updated1?.workspace.tasks.tasks[0].status).toBe('in_progress');
     expect(updated1?.workspace.tasks.tasks[1].assigneeName).toBe(mockCollaborator.displayName);
 
+    const task0 = updated1?.workspace.tasks.tasks[0];
+    const task1 = updated1?.workspace.tasks.tasks[1];
+    expect(task0).toBeDefined();
+    expect(task1).toBeDefined();
+
     // 2. Collaborator completes task_2 and adds a new task
     const updated2 = projectStore.updateWorkspace(project.id, mockCollaborator, {
       tasks: {
         tasks: [
-          updated1!.workspace.tasks.tasks[0],
+          task0!,
           {
-            ...updated1!.workspace.tasks.tasks[1],
+            ...task1!,
             status: 'done',
             completedAt: Date.now(),
             updatedAt: Date.now()
@@ -234,15 +239,15 @@ describe('ProjectStore & Workspace', () => {
     });
 
     expect(updated2?.workspace.tasks.tasks.length).toBe(3);
-    expect(updated2?.workspace.tasks.tasks[1].status).toBe('done');
-    expect(updated2?.workspace.tasks.tasks[2].title).toBe('Send new mix to mastering');
+    expect(updated2?.workspace.tasks.tasks[1]?.status).toBe('done');
+    expect(updated2?.workspace.tasks.tasks[2]?.title).toBe('Send new mix to mastering');
 
     // 3. Verify disk reload
     const reloadedStore = new ProjectStore(tmpDir);
     const reloaded = reloadedStore.getProject(project.id, mockOwner.id);
     expect(reloaded?.workspace.tasks.tasks.length).toBe(3);
-    expect(reloaded?.workspace.tasks.tasks[1].status).toBe('done');
-    expect(reloaded?.workspace.tasks.tasks[1].completedAt).toBeDefined();
+    expect(reloaded?.workspace.tasks.tasks[1]?.status).toBe('done');
+    expect(reloaded?.workspace.tasks.tasks[1]?.completedAt).toBeDefined();
   });
 
   it('rejects unauthorized users from updating workspace', () => {
@@ -252,6 +257,8 @@ describe('ProjectStore & Workspace', () => {
       username: 'stranger',
       displayName: 'Stranger',
       email: 'stranger@example.com',
+      isGuest: false,
+      avatarColor: '#3b82f6',
       createdAt: Date.now()
     };
 
@@ -323,6 +330,7 @@ describe('ProjectStore & Workspace', () => {
             id: 'task_voc',
             title: 'Record Lead Vocals',
             status: 'done',
+            createdAt: Date.now(),
             completedAt: Date.now(),
             updatedAt: Date.now()
           }

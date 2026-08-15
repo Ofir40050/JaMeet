@@ -111,7 +111,9 @@ describe('signaling integration', () => {
       // 6. Guest receives admitted payload with full session access
       const admittedAck = await admittedPromise;
       expect(admittedAck.ok).toBe(true);
-      expect(admittedAck.peerPresent).toBe(true);
+      if (admittedAck.ok) {
+        expect(admittedAck.peerPresent).toBe(true);
+      }
       expect((await hostPeerReady).identity).toBeDefined();
       expect((await hostWaitingUpdated).length).toBe(0);
 

@@ -8,6 +8,8 @@
   ],
   "scripts": {
     "build": "npm run build -w @musiczoom/shared && npm run build -w @musiczoom/server && npm run build -w @musiczoom/desktop",
+    "build:server": "npm run build -w @musiczoom/shared && npm run build -w @musiczoom/server",
+    "start:server": "node apps/server/dist/index.js",
     "dev:server": "npm run build -w @musiczoom/shared && npm run dev -w @musiczoom/server",
     "dev:desktop": "npm run build -w @musiczoom/shared && npm run dev -w @musiczoom/desktop",
     "dev:desktop:2": "node apps/desktop/scripts/dev-instance.cjs 2",

@@ -434,7 +434,11 @@ export const signalCandidateSchema = z.object({
     usernameFragment: z.string().nullable().optional()
   }).nullable()
 });
-export const meetingActionSchema = z.object({ code: meetingCodeSchema });
+export const meetingActionSchema = z.object({
+  code: meetingCodeSchema,
+  action: z.unknown().optional()
+});
+export type MeetingAction = z.infer<typeof meetingActionSchema>;
 export const mediaUpdateSchema = z.object({ code: meetingCodeSchema, media: mediaMetadataSchema });
 
 export type MeetingRole = 'host' | 'guest';

@@ -445,10 +445,11 @@ export class UserStore {
     for (const record of this.sessions.values()) {
       const match = record.sessionId === sessionId || (!record.sessionId && record.code === sessionId);
       if (match) {
-        if (!record.endedAt) {
-          record.endedAt = now;
-          record.durationSeconds = Math.max(1, Math.round((now - record.startedAt) / 1000));
-        }
+        const endedAt = record.endedAt ?? now;
+        const durationSeconds = record.durationSeconds ?? Math.max(1, Math.round((endedAt - record.startedAt) / 1000));
+        record.endedAt = endedAt;
+        record.durationSeconds = durationSeconds;
+
         if (roomData) {
           const participantsList = Array.from(roomData.allJoinedParticipants.values()).map((p) => ({
             id: p.isGuest ? undefined : p.id,
@@ -464,8 +465,8 @@ export class UserStore {
             sessionId: record.sessionId || sessionId,
             code: record.code,
             startedAt: record.startedAt,
-            endedAt: record.endedAt,
-            durationSeconds: record.durationSeconds,
+            endedAt,
+            durationSeconds,
             role: record.role,
             participants: participantsList,
             projectId: roomData.projectId,
