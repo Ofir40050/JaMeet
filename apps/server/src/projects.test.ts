@@ -507,7 +507,66 @@ describe('ProjectStore & Workspace', () => {
     }).toThrow();
     expect(projectStore.getProject(project.id, mockOwner.id)).not.toBeNull();
   });
+
+  it('keeps project ownership strictly authoritative through project.ownerId and rejects collaborator owner role', () => {
+    const mockImpostor: UserProfile = {
+      id: 'user-impostor',
+      displayName: 'Impostor Ian',
+      username: 'impostorian',
+      email: 'ian@music.com',
+      avatarColor: '#f97316',
+      isGuest: false,
+      createdAt: Date.now()
+    };
+
+    const project = projectStore.createProject(mockOwner, { name: 'Authoritative Owner Test' });
+
+    // 1. Attempting to assign 'owner' role to collaborator via addCollaborator is rejected
+    const tryOwnerRole = projectStore.addCollaborator(project.id, mockOwner.id, mockImpostor, 'owner' as any);
+    expect(tryOwnerRole).toBeNull();
+    expect(projectStore.hasAccess(project.id, mockImpostor.id)).toBe(false);
+
+    // 2. Add impostor as editor
+    const asEditor = projectStore.addCollaborator(project.id, mockOwner.id, mockImpostor, 'editor');
+    expect(asEditor).not.toBeNull();
+    expect(projectStore.isOwner(project.id, mockImpostor.id)).toBe(false);
+    expect(projectStore.getUserRole(project.id, mockImpostor.id)).toBe('editor');
+
+    // 3. Even if a collaborator somehow had role: 'owner' in raw project data, isOwner remains false
+    const rawProject = projectStore.getProject(project.id, mockOwner.id)!;
+    const impostorCollab = rawProject.collaborators.find(c => c.userId === mockImpostor.id)!;
+    (impostorCollab as any).role = 'owner';
+
+    // Verify isOwner still returns false because project.ownerId !== mockImpostor.id
+    expect(projectStore.isOwner(project.id, mockImpostor.id)).toBe(false);
+    expect(projectStore.getUserRole(project.id, mockImpostor.id)).not.toBe('owner');
+
+    // Verify impostor CANNOT delete project
+    expect(projectStore.deleteProject(project.id, mockImpostor.id)).toBe(false);
+
+    // Verify impostor CANNOT add other collaborators
+    const mockThirdUser: UserProfile = {
+      id: 'user-third',
+      displayName: 'Third User',
+      username: 'thirduser',
+      email: 'third@music.com',
+      avatarColor: '#14b8a6',
+      isGuest: false,
+      createdAt: Date.now()
+    };
+    expect(projectStore.addCollaborator(project.id, mockImpostor.id, mockThirdUser, 'viewer')).toBeNull();
+
+    // Verify impostor CANNOT remove other collaborators
+    expect(projectStore.removeCollaborator(project.id, mockImpostor.id, mockOwner.id)).toBeNull();
+
+    // 4. Verify disk reload sanitizes legacy owner role on collaborator
+    (projectStore as any).saveToDisk();
+    const reloadedStore = new ProjectStore(tmpDir);
+    expect(reloadedStore.isOwner(project.id, mockImpostor.id)).toBe(false);
+    expect(reloadedStore.getUserRole(project.id, mockImpostor.id)).toBe('collaborator');
+  });
 });
+
 
 
 

@@ -706,7 +706,16 @@ describe('signaling integration', () => {
       });
       expect(strangerAddRes.statusCode).toBe(404);
 
-      // 4. Owner adds viewerReg with 'viewer' role
+      // 4. Owner attempts to assign 'owner' role to collaborator -> 400 Bad Request
+      const rejectOwnerRoleRes = await app.inject({
+        method: 'POST',
+        url: `/api/projects/${project.id}/collaborators`,
+        headers: { authorization: `Bearer ${ownerReg.token}` },
+        payload: { usernameOrEmail: `viewer_${suffix}`, role: 'owner' }
+      });
+      expect(rejectOwnerRoleRes.statusCode).toBe(400);
+
+      // 4b. Owner adds viewerReg with 'viewer' role
       const addViewerRes = await app.inject({
         method: 'POST',
         url: `/api/projects/${project.id}/collaborators`,

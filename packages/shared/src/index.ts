@@ -161,7 +161,10 @@ export const mediaMetadataSchema = z.object({
 });
 export type MediaMetadata = z.infer<typeof mediaMetadataSchema>;
 
-export const projectCollaboratorRoleSchema = z.enum(['owner', 'collaborator', 'editor', 'viewer']);
+export const projectRoleSchema = z.enum(['owner', 'collaborator', 'editor', 'viewer']);
+export type ProjectRole = z.infer<typeof projectRoleSchema>;
+
+export const projectCollaboratorRoleSchema = z.enum(['collaborator', 'editor', 'viewer']);
 export type ProjectCollaboratorRole = z.infer<typeof projectCollaboratorRoleSchema>;
 
 export const projectCollaboratorSchema = z.object({

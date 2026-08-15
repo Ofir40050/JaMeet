@@ -5,6 +5,7 @@ import type {
   Project,
   ProjectCollaborator,
   ProjectCollaboratorRole,
+  ProjectRole,
   ProjectSessionItem,
   ProjectActivityItem,
   ProjectActivityType,
@@ -26,7 +27,7 @@ export class ProjectStore {
   private dataFilePath: string;
 
   constructor(storageDir?: string) {
-    const baseDir = storageDir ?? process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
+    const baseDir = storageDir ?? path.join(process.cwd(), 'data');
     if (!fs.existsSync(baseDir)) {
       try { fs.mkdirSync(baseDir, { recursive: true }); } catch { /* ignore */ }
     }
@@ -46,7 +47,7 @@ export class ProjectStore {
           }
           if (Array.isArray(p.collaborators)) {
             for (const c of p.collaborators) {
-              if (!c.role) {
+              if (!c.role || (c.role as string) === 'owner') {
                 c.role = 'collaborator';
               }
             }
@@ -146,18 +147,22 @@ export class ProjectStore {
     return project.ownerId === userId || project.collaborators.some((c) => c.userId === userId);
   }
 
-  getUserRole(projectId: string, userId: string): ProjectCollaboratorRole | null {
+  getUserRole(projectId: string, userId: string): ProjectRole | null {
     const project = this.projects.get(projectId);
     if (!project) return null;
     if (project.ownerId === userId) return 'owner';
     const collab = project.collaborators.find((c) => c.userId === userId);
-    if (collab) return collab.role || 'collaborator';
+    if (collab) {
+      if ((collab.role as string) === 'owner') return 'collaborator';
+      return collab.role || 'collaborator';
+    }
     return null;
   }
 
   isOwner(projectId: string, userId: string): boolean {
-    const role = this.getUserRole(projectId, userId);
-    return role === 'owner';
+    const project = this.projects.get(projectId);
+    if (!project) return false;
+    return project.ownerId === userId;
   }
 
   canModifyWorkspace(projectId: string, userId: string): boolean {
@@ -654,6 +659,11 @@ export class ProjectStore {
 
     // Only the project owner can add collaborators, assign roles, or grant owner authority
     if (!this.isOwner(projectId, userId)) {
+      return null;
+    }
+
+    // Do not allow assigning the owner role to collaborators
+    if ((role as string) === 'owner') {
       return null;
     }
 
