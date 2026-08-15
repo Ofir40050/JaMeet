@@ -136,7 +136,9 @@ export class UserStore {
     if (!fs.existsSync(baseDir)) {
       try { fs.mkdirSync(baseDir, { recursive: true }); } catch { /* ignore */ }
     }
-    this.dataFilePath = path.join(baseDir, 'musiczoom-accounts.json');
+    const legacyPath = path.join(baseDir, 'musiczoom-accounts.json');
+    const primaryPath = path.join(baseDir, 'jameet-accounts.json');
+    this.dataFilePath = !fs.existsSync(primaryPath) && fs.existsSync(legacyPath) ? legacyPath : primaryPath;
     this.loadFromDisk();
   }
 

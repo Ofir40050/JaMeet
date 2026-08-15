@@ -40,7 +40,7 @@ describe('ProjectStore & Workspace', () => {
   };
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'musiczoom-project-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-project-test-'));
     projectStore = new ProjectStore(tmpDir);
   });
 
@@ -484,7 +484,7 @@ describe('ProjectStore & Workspace', () => {
     const prevContent = project.workspace.notes.content;
 
     // Break the data file path
-    (projectStore as any).dataFilePath = path.join(blockerFile, 'sub', 'musiczoom-projects.json');
+    (projectStore as any).dataFilePath = path.join(blockerFile, 'sub', 'jameet-projects.json');
 
     expect(() => {
       projectStore.updateWorkspace(project.id, mockOwner, {

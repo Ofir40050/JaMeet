@@ -6,8 +6,8 @@ import CoreVideo
 import Darwin
 
 // ========================================================
-// MusicZoom Native ScreenCaptureKit Display Capture Engine
-// Excludes the exact MusicZoom application at capture level
+// JaMeet Native ScreenCaptureKit Display Capture Engine
+// Excludes the exact JaMeet application at capture level
 // ========================================================
 
 struct DisplayInfo: Codable {
@@ -189,7 +189,7 @@ func captureDisplay(targetDisplayId: UInt32?, targetAppPid: Int32?, targetBundle
             exit(1)
         }
 
-        // 2. Identify the exact running MusicZoom application instance and its owned windows
+        // 2. Identify the exact running JaMeet application instance and its owned windows
         var excludedApplications: [SCRunningApplication] = []
         if let targetPid = targetAppPid {
             for app in content.applications {
@@ -220,7 +220,7 @@ func captureDisplay(targetDisplayId: UInt32?, targetAppPid: Int32?, targetBundle
             }
         }
 
-        // 3. Build the SCContentFilter strictly excluding the exact MusicZoom application
+        // 3. Build the SCContentFilter strictly excluding the exact JaMeet application
         let filter: SCContentFilter
         if !excludedApplications.isEmpty {
             filter = SCContentFilter(
@@ -271,14 +271,14 @@ func captureDisplay(targetDisplayId: UInt32?, targetAppPid: Int32?, targetBundle
         globalActiveStream = stream
 
         do {
-            let queue = DispatchQueue(label: "com.musiczoom.screencapture.queue", qos: .userInteractive)
+            let queue = DispatchQueue(label: "com.jameet.screencapture.queue", qos: .userInteractive)
             try stream.addStreamOutput(streamHandler, type: .screen, sampleHandlerQueue: queue)
             stream.startCapture { startError in
                 if let startError = startError {
                     fputs("Failed to start SCStream capture: \(startError.localizedDescription)\n", stderr)
                     exit(1)
                 }
-                fputs("READY: ScreenCaptureKit capture active for display \(targetDisplay.displayID) (\(targetW)x\(targetH) @ \(fps)fps, excluding exact MusicZoom PID \(targetAppPid ?? 0))\n", stderr)
+                fputs("READY: ScreenCaptureKit capture active for display \(targetDisplay.displayID) (\(targetW)x\(targetH) @ \(fps)fps, excluding exact JaMeet PID \(targetAppPid ?? 0))\n", stderr)
             }
         } catch {
             fputs("Failed to initialize SCStream: \(error.localizedDescription)\n", stderr)
@@ -343,7 +343,7 @@ if args.contains("list") || args.contains("list-displays") {
     )
 } else {
     print("Usage:")
-    print("  musiczoom-screen-capture list-displays")
-    print("  musiczoom-screen-capture capture-display [--display <id>] --app-pid <pid> [--fps <15|30>] [--width <w>] [--height <h>]")
+    print("  jameet-screen-capture list-displays")
+    print("  jameet-screen-capture capture-display [--display <id>] --app-pid <pid> [--fps <15|30>] [--width <w>] [--height <h>]")
     exit(0)
 }

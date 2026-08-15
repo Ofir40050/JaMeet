@@ -13,16 +13,16 @@ if (process.platform === 'darwin') {
       cmd: 'clang -O2 -framework CoreAudio -framework CoreFoundation src/main/set-rate.c -o bin/set-rate'
     },
     {
-      name: 'musiczoom-hardware-input',
-      cmd: 'clang -O2 -framework CoreAudio -framework AudioToolbox -framework CoreFoundation src/main/musiczoom-hardware-input.c -o bin/musiczoom-hardware-input'
+      name: 'jameet-hardware-input',
+      cmd: 'clang -O2 -framework CoreAudio -framework AudioToolbox -framework CoreFoundation src/main/jameet-hardware-input.c -o bin/jameet-hardware-input'
     },
     {
-      name: 'musiczoom-app-audio-tap',
-      cmd: 'swiftc -O src/main/musiczoom-app-audio-tap.swift -o bin/musiczoom-app-audio-tap'
+      name: 'jameet-app-audio-tap',
+      cmd: 'swiftc -O src/main/jameet-app-audio-tap.swift -o bin/jameet-app-audio-tap'
     },
     {
-      name: 'musiczoom-screen-capture',
-      cmd: 'swiftc -O src/main/musiczoom-screen-capture.swift -o bin/musiczoom-screen-capture'
+      name: 'jameet-screen-capture',
+      cmd: 'swiftc -O src/main/jameet-screen-capture.swift -o bin/jameet-screen-capture'
     }
   ];
 

@@ -31,7 +31,9 @@ export class ProjectStore {
     if (!fs.existsSync(baseDir)) {
       try { fs.mkdirSync(baseDir, { recursive: true }); } catch { /* ignore */ }
     }
-    this.dataFilePath = path.join(baseDir, 'musiczoom-projects.json');
+    const legacyPath = path.join(baseDir, 'musiczoom-projects.json');
+    const primaryPath = path.join(baseDir, 'jameet-projects.json');
+    this.dataFilePath = !fs.existsSync(primaryPath) && fs.existsSync(legacyPath) ? legacyPath : primaryPath;
     this.loadFromDisk();
   }
 

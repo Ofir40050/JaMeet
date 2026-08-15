@@ -362,7 +362,7 @@ class CoreAudioProcessTapRunner {
 
             let aggregateDesc: [String: Any] = [
                 kAudioAggregateDeviceNameKey: "JaMeet Process Tap (\(appName))",
-                kAudioAggregateDeviceUIDKey: "com.musiczoom.apptap.\(UUID().uuidString)",
+                kAudioAggregateDeviceUIDKey: "com.jameet.apptap.\(UUID().uuidString)",
                 kAudioAggregateDeviceMainSubDeviceKey: defaultUID,
                 kAudioAggregateDeviceSubDeviceListKey: [defaultUID],
                 kAudioAggregateDeviceTapListKey: [
@@ -640,7 +640,7 @@ class CoreAudioDeviceOutputTapRunner {
         if #available(macOS 14.2, *) {
             let excluded = getExcludedAudioObjectIDs()
             let excludedNumbers = excluded.map { NSNumber(value: $0) }
-            fputs("INFO: Multichannel Device Output Tap on \(deviceUID) [Channels L:\(leftChannel + 1) R:\(rightChannel + 1)] excluding \(excluded.count) MusicZoom objects.\n", stderr)
+            fputs("INFO: Multichannel Device Output Tap on \(deviceUID) [Channels L:\(leftChannel + 1) R:\(rightChannel + 1)] excluding \(excluded.count) JaMeet objects.\n", stderr)
 
             let desc = CATapDescription(__excludingProcesses: excludedNumbers, andDeviceUID: deviceUID, withStream: 0)
             var createdTapID: AudioObjectID = kAudioObjectUnknown
@@ -678,7 +678,7 @@ class CoreAudioDeviceOutputTapRunner {
 
             let aggregateDesc: [String: Any] = [
                 kAudioAggregateDeviceNameKey: "JaMeet Device Output Tap",
-                kAudioAggregateDeviceUIDKey: "com.musiczoom.devicetap.\(UUID().uuidString)",
+                kAudioAggregateDeviceUIDKey: "com.jameet.devicetap.\(UUID().uuidString)",
                 kAudioAggregateDeviceMainSubDeviceKey: deviceUID,
                 kAudioAggregateDeviceSubDeviceListKey: [deviceUID],
                 kAudioAggregateDeviceTapListKey: [
@@ -871,19 +871,19 @@ func getProcessAudioObjectID(pid: pid_t) -> AudioObjectID? {
     return nil
 }
 
-func getAllMusicZoomAndSelfProcessPIDs() -> Set<pid_t> {
-    var musicZoomPIDs = Set<pid_t>()
+func getAllJaMeetAndSelfProcessPIDs() -> Set<pid_t> {
+    var jaMeetPIDs = Set<pid_t>()
     let myPid = ProcessInfo.processInfo.processIdentifier
     let parentPid = getppid()
-    musicZoomPIDs.insert(myPid)
-    musicZoomPIDs.insert(parentPid)
+    jaMeetPIDs.insert(myPid)
+    jaMeetPIDs.insert(parentPid)
 
     let workspace = NSWorkspace.shared
     for app in workspace.runningApplications {
         let name = (app.localizedName ?? "").lowercased()
         let bundle = (app.bundleIdentifier ?? "").lowercased()
         if name.contains("jameet") || bundle.contains("jameet") || name.contains("musiczoom") || bundle.contains("musiczoom") {
-            musicZoomPIDs.insert(app.processIdentifier)
+            jaMeetPIDs.insert(app.processIdentifier)
         }
     }
 
@@ -896,7 +896,7 @@ func getAllMusicZoomAndSelfProcessPIDs() -> Set<pid_t> {
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
     proc.waitUntilExit()
 
-    guard let output = String(data: data, encoding: .utf8) else { return musicZoomPIDs }
+    guard let output = String(data: data, encoding: .utf8) else { return jaMeetPIDs }
 
     var parentToChildren: [pid_t: [pid_t]] = [:]
     var identifiedRoots = Set<pid_t>()
@@ -918,14 +918,14 @@ func getAllMusicZoomAndSelfProcessPIDs() -> Set<pid_t> {
         }
     }
 
-    var toExplore = Array(identifiedRoots.union(musicZoomPIDs))
+    var toExplore = Array(identifiedRoots.union(jaMeetPIDs))
     var visited = Set<pid_t>()
 
     while !toExplore.isEmpty {
         let current = toExplore.removeLast()
         if visited.contains(current) { continue }
         visited.insert(current)
-        musicZoomPIDs.insert(current)
+        jaMeetPIDs.insert(current)
 
         if let children = parentToChildren[current] {
             for child in children {
@@ -936,11 +936,11 @@ func getAllMusicZoomAndSelfProcessPIDs() -> Set<pid_t> {
         }
     }
 
-    return musicZoomPIDs
+    return jaMeetPIDs
 }
 
 func getExcludedAudioObjectIDs() -> [AudioObjectID] {
-    let targetPIDs = getAllMusicZoomAndSelfProcessPIDs()
+    let targetPIDs = getAllJaMeetAndSelfProcessPIDs()
     var address = AudioObjectPropertyAddress(
         mSelector: kAudioHardwarePropertyProcessObjectList,
         mScope: kAudioObjectPropertyScopeGlobal,
@@ -1001,7 +1001,7 @@ class CoreAudioGlobalTapRunner {
             }
 
             let excluded = getExcludedAudioObjectIDs()
-            fputs("INFO: CoreAudio Global Tap excluding \(excluded.count) MusicZoom/Electron process audio objects to prevent feedback.\n", stderr)
+            fputs("INFO: CoreAudio Global Tap excluding \(excluded.count) JaMeet/Electron process audio objects to prevent feedback.\n", stderr)
 
             let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: excluded)
             var createdTapID: AudioObjectID = kAudioObjectUnknown
@@ -1039,7 +1039,7 @@ class CoreAudioGlobalTapRunner {
 
             let aggregateDesc: [String: Any] = [
                 kAudioAggregateDeviceNameKey: "JaMeet Global Tap",
-                kAudioAggregateDeviceUIDKey: "com.musiczoom.gtap.\(UUID().uuidString)",
+                kAudioAggregateDeviceUIDKey: "com.jameet.gtap.\(UUID().uuidString)",
                 kAudioAggregateDeviceMainSubDeviceKey: defaultUID,
                 kAudioAggregateDeviceSubDeviceListKey: [defaultUID],
                 kAudioAggregateDeviceTapListKey: [
@@ -1083,7 +1083,7 @@ class CoreAudioGlobalTapRunner {
                 return false
             }
 
-            fputs("READY: CoreAudio Global Tap active on \(defaultUID) at \(sampleRate) Hz Stereo Float32 (Excluding MusicZoom)\n", stderr)
+            fputs("READY: CoreAudio Global Tap active on \(defaultUID) at \(sampleRate) Hz Stereo Float32 (Excluding JaMeet)\n", stderr)
             fflush(stderr)
             return true
         }
@@ -1215,7 +1215,7 @@ class ScreenCaptureKitAudioTapRunner: NSObject, SCStreamOutput, SCStreamDelegate
         config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
 
         let newStream = SCStream(filter: filter, configuration: config, delegate: self)
-        try newStream.addStreamOutput(self, type: .audio, sampleHandlerQueue: DispatchQueue(label: "musiczoom.tap.audio", qos: .userInteractive))
+        try newStream.addStreamOutput(self, type: .audio, sampleHandlerQueue: DispatchQueue(label: "jameet.tap.audio", qos: .userInteractive))
         try await newStream.startCapture()
         self.stream = newStream
         fputs("READY: ScreenCaptureKit Audio Tap active for \(app.applicationName) (PID \(targetPID)) at 48000 Hz Stereo Float32\n", stderr)
@@ -1397,6 +1397,6 @@ if args[1] == "capture" && args.count >= 2 {
     }
     dispatchMain()
 } else {
-    print("Usage: musiczoom-app-audio-tap list | capture [app <pid> | device <uid> [channelRoute] | global]")
+    print("Usage: jameet-app-audio-tap list | capture [app <pid> | device <uid> [channelRoute] | global]")
     exit(1)
 }

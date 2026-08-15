@@ -375,14 +375,14 @@ else {
       const { spawn, execSync } = await import('child_process');
       const { join } = await import('path');
       const { existsSync, chmodSync } = await import('fs');
-      const binPath = getNativeBinaryPath('musiczoom-screen-capture');
-      const srcPath = join(__dirname, '../../src/main/musiczoom-screen-capture.swift');
+      const binPath = getNativeBinaryPath('jameet-screen-capture');
+      const srcPath = join(__dirname, '../../src/main/jameet-screen-capture.swift');
 
       if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
         try {
           execSync(`mkdir -p "${join(__dirname, '../../bin')}" && swiftc -O "${srcPath}" -o "${binPath}"`);
         } catch (e) {
-          console.error('Failed to compile musiczoom-screen-capture:', e);
+          console.error('Failed to compile jameet-screen-capture:', e);
           return false;
         }
       }
@@ -781,17 +781,17 @@ else {
         const { execFile, execSync } = await import('child_process');
         const { join } = await import('path');
         const { existsSync, chmodSync } = await import('fs');
-        const binPath = getNativeBinaryPath('musiczoom-app-audio-tap');
-        const srcPath = join(__dirname, '../../src/main/musiczoom-app-audio-tap.swift');
+        const binPath = getNativeBinaryPath('jameet-app-audio-tap');
+        const srcPath = join(__dirname, '../../src/main/jameet-app-audio-tap.swift');
         if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
           try {
             execSync(`mkdir -p "${join(__dirname, '../../bin')}" && swiftc -O "${srcPath}" -o "${binPath}"`);
           } catch (e) {
-            console.error('Failed to compile musiczoom-app-audio-tap:', e);
+            console.error('Failed to compile jameet-app-audio-tap:', e);
           }
         }
         if (!existsSync(binPath)) {
-          console.error(`musiczoom-app-audio-tap binary not found: ${binPath}`);
+          console.error(`jameet-app-audio-tap binary not found: ${binPath}`);
           return [];
         }
         try { chmodSync(binPath, 0o755); } catch { }
@@ -824,17 +824,17 @@ else {
         const { spawn, execSync } = await import('child_process');
         const { join } = await import('path');
         const { existsSync, chmodSync } = await import('fs');
-        const binPath = getNativeBinaryPath('musiczoom-app-audio-tap');
-        const srcPath = join(__dirname, '../../src/main/musiczoom-app-audio-tap.swift');
+        const binPath = getNativeBinaryPath('jameet-app-audio-tap');
+        const srcPath = join(__dirname, '../../src/main/jameet-app-audio-tap.swift');
         if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
           try {
             execSync(`mkdir -p "${join(__dirname, '../../bin')}" && swiftc -O "${srcPath}" -o "${binPath}"`);
           } catch (e) {
-            console.error('Failed to compile musiczoom-app-audio-tap:', e);
+            console.error('Failed to compile jameet-app-audio-tap:', e);
           }
         }
         if (!existsSync(binPath)) {
-          console.error(`musiczoom-app-audio-tap binary not found: ${binPath}`);
+          console.error(`jameet-app-audio-tap binary not found: ${binPath}`);
           return false;
         }
         try { chmodSync(binPath, 0o755); } catch { }
@@ -913,17 +913,17 @@ else {
         const { spawn, execSync } = await import('child_process');
         const { join } = await import('path');
         const { existsSync, chmodSync } = await import('fs');
-        const binPath = getNativeBinaryPath('musiczoom-hardware-input');
-        const srcPath = join(__dirname, '../../src/main/musiczoom-hardware-input.c');
+        const binPath = getNativeBinaryPath('jameet-hardware-input');
+        const srcPath = join(__dirname, '../../src/main/jameet-hardware-input.c');
         if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
           try {
             execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio -framework AudioToolbox -framework CoreFoundation "${srcPath}" -o "${binPath}"`);
           } catch (e) {
-            console.error('Failed to compile musiczoom-hardware-input:', e);
+            console.error('Failed to compile jameet-hardware-input:', e);
           }
         }
         if (!existsSync(binPath)) {
-          console.error(`musiczoom-hardware-input binary not found: ${binPath}`);
+          console.error(`jameet-hardware-input binary not found: ${binPath}`);
           return false;
         }
         try { chmodSync(binPath, 0o755); } catch { }

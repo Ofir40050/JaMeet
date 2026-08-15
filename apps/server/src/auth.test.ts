@@ -321,7 +321,7 @@ describe('UserStore & Password Hashing', () => {
     // Make the data file unwritable by creating a directory with the tmp file name or making target directory read-only
     const dataFilePath = (writableStore as any).dataFilePath;
     // Replace dataFilePath with an invalid path that cannot be written
-    (writableStore as any).dataFilePath = path.join(blockerFile, 'sub', 'musiczoom-accounts.json');
+    (writableStore as any).dataFilePath = path.join(blockerFile, 'sub', 'jameet-accounts.json');
 
     // 2. updateProfile should throw and revert profile fields
     const prevDisplayName = reg.user.displayName;
@@ -504,7 +504,7 @@ describe('UserStore & Password Hashing', () => {
     const validDataFilePath = (store as any).dataFilePath;
 
     // Temporarily point dataFilePath to an unwritable path to simulate persistence failure
-    (store as any).dataFilePath = path.join(blockerFile, 'sub', 'musiczoom-accounts.json');
+    (store as any).dataFilePath = path.join(blockerFile, 'sub', 'jameet-accounts.json');
 
     // Attempt registration which fails at persistence
     await expect(store.register({

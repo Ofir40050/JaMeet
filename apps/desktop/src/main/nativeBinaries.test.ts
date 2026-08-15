@@ -6,13 +6,13 @@ import { existsSync } from 'node:fs';
 describe('Native Binary Path Resolution', () => {
   it('resolves packaged production paths to process.resourcesPath/bin', () => {
     const mockResourcesPath = '/Applications/JaMeet.app/Contents/Resources';
-    const resolved = getNativeBinaryPath('musiczoom-screen-capture', {
+    const resolved = getNativeBinaryPath('jameet-screen-capture', {
       isPackaged: true,
       resourcesPath: mockResourcesPath,
       platform: 'darwin'
     });
 
-    expect(resolved).toBe(join(mockResourcesPath, 'bin', 'musiczoom-screen-capture'));
+    expect(resolved).toBe(join(mockResourcesPath, 'bin', 'jameet-screen-capture'));
   });
 
   it('resolves packaged Windows production paths with .exe extension', () => {
@@ -27,13 +27,13 @@ describe('Native Binary Path Resolution', () => {
   });
 
   it('resolves development paths relative to workspace bin directory', () => {
-    const resolved = getNativeBinaryPath('musiczoom-screen-capture', {
+    const resolved = getNativeBinaryPath('jameet-screen-capture', {
       isPackaged: false,
       baseDir: __dirname,
       platform: 'darwin'
     });
 
-    expect(resolved).toBe(join(__dirname, '../../bin', 'musiczoom-screen-capture'));
+    expect(resolved).toBe(join(__dirname, '../../bin', 'jameet-screen-capture'));
   });
 
 
@@ -42,9 +42,9 @@ describe('Native Binary Path Resolution', () => {
       const binDir = join(__dirname, '../../bin');
       const expectedHelpers = [
         'set-rate',
-        'musiczoom-hardware-input',
-        'musiczoom-app-audio-tap',
-        'musiczoom-screen-capture'
+        'jameet-hardware-input',
+        'jameet-app-audio-tap',
+        'jameet-screen-capture'
       ];
 
       for (const helper of expectedHelpers) {
