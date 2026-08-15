@@ -23,6 +23,10 @@ if (process.platform === 'darwin') {
     {
       name: 'jameet-screen-capture',
       cmd: 'swiftc -O src/main/jameet-screen-capture.swift -o bin/jameet-screen-capture'
+    },
+    {
+      name: 'JaMeetRemote.driver',
+      cmd: 'bash src/main/driver-macos/build-driver.sh bin'
     }
   ];
 

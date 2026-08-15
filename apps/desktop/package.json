@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "package:mac": "npm run build && electron-builder --mac --publish never",
+    "package:mac:pkg": "npm run build && node scripts/build-macos-pkg.cjs",
     "package:mac:arm64": "npm run build && electron-builder --mac dmg --arm64 --publish never",
     "package:win": "npm run build && electron-builder --win --x64 --publish never",
     "package:win:x64": "npm run build && electron-builder --win --x64 --publish never",
