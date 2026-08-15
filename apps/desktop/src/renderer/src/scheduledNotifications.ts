@@ -99,7 +99,6 @@ export class ScheduledNotificationManager {
       const keysArray = Array.from(this.notifiedKeys).slice(-500);
       const json = JSON.stringify(keysArray);
       localStorage.setItem(PRIMARY_STORAGE_KEY, json);
-      localStorage.setItem(LEGACY_STORAGE_KEY, json);
     } catch {
       // Ignore storage write errors
     }

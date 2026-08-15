@@ -30,7 +30,6 @@ export class AuthManager {
     try {
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem('jameet_guest_name', this.currentGuestName);
-        localStorage.setItem('musiczoom_guest_name', this.currentGuestName);
       }
     } catch {
       // ignore

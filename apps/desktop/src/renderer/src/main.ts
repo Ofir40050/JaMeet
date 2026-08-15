@@ -52,7 +52,6 @@ scheduledNotifications.onSessionClick((sessionId) => {
 });
 const participantId = sessionStorage.getItem('jameet-participant') ?? sessionStorage.getItem('musiczoom-participant') ?? crypto.randomUUID();
 sessionStorage.setItem('jameet-participant', participantId);
-sessionStorage.setItem('musiczoom-participant', participantId);
 
 const auth = new AuthManager(signalingUrl);
 let myIdentity: ParticipantIdentity | null = null;
@@ -208,7 +207,6 @@ function readPreferences(): Preferences {
 function savePreferences(): void {
   const json = JSON.stringify(prefs);
   localStorage.setItem('jameet-preferences', json);
-  localStorage.setItem('musiczoom-preferences', json);
 }
 function showView(id: string): void {
   for (const view of views) $(view)?.classList.toggle('hidden', view !== id);
@@ -6435,7 +6433,6 @@ document.querySelectorAll<HTMLButtonElement>('.drawer-tab-btn').forEach((btn) =>
     $('drawer-panel-tasks')?.classList.toggle('hidden', tab !== 'tasks');
     try {
       localStorage.setItem('jameet-session-workspace-tab', tab);
-      localStorage.setItem('musiczoom-session-workspace-tab', tab);
     } catch {
       // ignore
     }
@@ -6476,7 +6473,6 @@ window.addEventListener('mouseup', () => {
     try {
       const w = Math.round(currentWidth).toString();
       localStorage.setItem('jameet-session-workspace-width', w);
-      localStorage.setItem('musiczoom-session-workspace-width', w);
     } catch {
       // ignore
     }

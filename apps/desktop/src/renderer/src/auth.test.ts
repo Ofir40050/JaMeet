@@ -1,10 +1,27 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { AuthManager } from './auth';
 
+class MockLocalStorage {
+  private store = new Map<string, string>();
+  getItem(key: string): string | null {
+    return this.store.get(key) ?? null;
+  }
+  setItem(key: string, value: string): void {
+    this.store.set(key, String(value));
+  }
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+  clear(): void {
+    this.store.clear();
+  }
+}
+
 describe('AuthManager', () => {
   let auth: AuthManager;
 
   beforeEach(() => {
+    (globalThis as any).localStorage = new MockLocalStorage();
     auth = new AuthManager('http://localhost:3000');
     vi.restoreAllMocks();
   });
@@ -213,5 +230,21 @@ describe('AuthManager', () => {
 
     expect(auth.getToken()).toBe('post_pwd_token_456');
     expect(auth.getUser()?.username).toBe('dan');
+  });
+
+  it('persists guest name only under canonical jameet_guest_name in localStorage', () => {
+    localStorage.clear();
+    auth.setGuestName('Canonical Artist');
+    expect(localStorage.getItem('jameet_guest_name')).toBe('Canonical Artist');
+    expect(localStorage.getItem('musiczoom_guest_name')).toBeNull();
+  });
+
+  it('loads guest name from legacy musiczoom_guest_name fallback when jameet_guest_name is absent', async () => {
+    localStorage.clear();
+    localStorage.setItem('musiczoom_guest_name', 'Legacy Musician');
+    const legacyAuth = new AuthManager('http://localhost:3000');
+    await legacyAuth.init();
+    expect(legacyAuth.getGuestName()).toBe('Legacy Musician');
+    expect(legacyAuth.getEffectiveDisplayName()).toBe('Legacy Musician');
   });
 });

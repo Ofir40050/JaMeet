@@ -8,7 +8,7 @@ export interface NativeScreenFrame {
   timestamp: number;
 }
 
-export interface JameetDesktopApi {
+export interface JaMeetDesktopApi {
   getInitialDeepLink(): Promise<string | null>;
   onDeepLink(listener: (url: string) => void): () => void;
   copyText(value: string): Promise<void>;
@@ -52,10 +52,12 @@ export interface JameetDesktopApi {
   [key: string]: any;
 }
 
+export type JameetDesktopApi = JaMeetDesktopApi;
+
 declare global {
   interface Window {
-    jameet: JameetDesktopApi;
-    musiczoom: JameetDesktopApi;
+    jameet: JaMeetDesktopApi;
+    musiczoom: JaMeetDesktopApi;
   }
 
   interface HTMLMediaElement {

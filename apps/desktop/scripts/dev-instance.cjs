@@ -15,7 +15,6 @@ try {
 const env = {
   ...process.env,
   JAMEET_INSTANCE: instanceId,
-  MUSICZOOM_INSTANCE: instanceId,
   ELECTRON_RENDERER_URL: process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/'
 };
 
