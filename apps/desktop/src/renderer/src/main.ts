@@ -3531,21 +3531,14 @@ function switchAuthViewTab(tab: 'login' | 'register'): void {
 }
 
 function openAuthDialog(tab: 'login' | 'register' = 'login'): void {
-  const dialog = $<HTMLDialogElement>('auth-dialog');
-  if (!dialog) return;
   const user = auth.getUser();
   if (user) {
     updateAuthUi(user, auth.getGuestName());
+    const dialog = $<HTMLDialogElement>('auth-dialog');
+    dialog?.showModal();
   } else {
-    $('auth-tabs')?.classList.remove('hidden');
-    $('panel-auth-profile')?.classList.add('hidden');
-    if (tab === 'register') {
-      $('tab-auth-register')?.click();
-    } else {
-      $('tab-auth-login')?.click();
-    }
+    openAuthView(tab);
   }
-  dialog.showModal();
 }
 
 // Navigation & Hero button listeners
@@ -3650,23 +3643,6 @@ $('btn-view-submit-register')?.addEventListener('click', async () => {
   });
 });
 
-['login-identifier', 'login-password'].forEach((id) => {
-  $<HTMLInputElement>(id)?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      $('btn-submit-login')?.click();
-    }
-  });
-});
-
-['reg-display-name', 'reg-username', 'reg-email', 'reg-password'].forEach((id) => {
-  $<HTMLInputElement>(id)?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      $('btn-submit-register')?.click();
-    }
-  });
-});
 $<HTMLInputElement>('guest-name-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-confirm-guest-join')?.click(); });
 $<HTMLInputElement>('guest-name-input')?.addEventListener('input', (e) => {
   const val = (e.currentTarget as HTMLInputElement).value.trim();
@@ -3680,97 +3656,15 @@ $<HTMLInputElement>('guest-name-input')?.addEventListener('input', (e) => {
   }
 });
 
-// Dialog modal tabs and forms
-$('tab-auth-login')?.addEventListener('click', () => {
-  $('tab-auth-login')?.classList.add('active');
-  $('tab-auth-register')?.classList.remove('active');
-  $('panel-auth-login')?.classList.remove('hidden');
-  $('panel-auth-register')?.classList.add('hidden');
-  $('login-error')?.classList.add('hidden');
-});
-
-$('tab-auth-register')?.addEventListener('click', () => {
-  $('tab-auth-register')?.classList.add('active');
-  $('tab-auth-login')?.classList.remove('active');
-  $('panel-auth-register')?.classList.remove('hidden');
-  $('panel-auth-login')?.classList.add('hidden');
-  $('reg-error')?.classList.add('hidden');
-});
-
-$('link-to-register')?.addEventListener('click', (e) => { e.preventDefault(); $('tab-auth-register')?.click(); });
-$('link-to-login')?.addEventListener('click', (e) => { e.preventDefault(); $('tab-auth-login')?.click(); });
+// Guest modal sign in redirect
 $('link-guest-to-login')?.addEventListener('click', (e) => {
   e.preventDefault();
   $<HTMLDialogElement>('guest-join-dialog')?.close();
-  openAuthDialog('login');
+  openAuthView('login');
 });
 $('btn-guest-modal-signin')?.addEventListener('click', () => {
   $<HTMLDialogElement>('guest-join-dialog')?.close();
-  openAuthDialog('login');
-});
-
-$('btn-submit-login')?.addEventListener('click', async () => {
-  const submitBtn = $<HTMLButtonElement>('btn-submit-login');
-  const identifier = $<HTMLInputElement>('login-identifier')?.value.trim();
-  const password = $<HTMLInputElement>('login-password')?.value;
-  const errEl = $('login-error');
-  if (!identifier || !password) {
-    if (errEl) { errEl.textContent = 'Please enter your username/email and password.'; errEl.classList.remove('hidden'); }
-    return;
-  }
-  const originalHtml = submitBtn ? submitBtn.innerHTML : '<span>Sign In to JaMeet</span>';
-  try {
-    if (errEl) errEl.classList.add('hidden');
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span>Signing In…</span>';
-    }
-    await auth.login({ usernameOrEmail: identifier, password });
-    $<HTMLDialogElement>('auth-dialog')?.close();
-  } catch (err: unknown) {
-    if (errEl) {
-      errEl.textContent = err instanceof Error ? err.message : 'Login failed.';
-      errEl.classList.remove('hidden');
-    }
-  } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = originalHtml;
-    }
-  }
-});
-
-$('btn-submit-register')?.addEventListener('click', async () => {
-  const submitBtn = $<HTMLButtonElement>('btn-submit-register');
-  const displayName = $<HTMLInputElement>('reg-display-name')?.value.trim();
-  const username = $<HTMLInputElement>('reg-username')?.value.trim();
-  const email = $<HTMLInputElement>('reg-email')?.value.trim();
-  const password = $<HTMLInputElement>('reg-password')?.value;
-  const errEl = $('reg-error');
-  if (!displayName || !username || !email || !password) {
-    if (errEl) { errEl.textContent = 'Please fill out all registration fields.'; errEl.classList.remove('hidden'); }
-    return;
-  }
-  const originalHtml = submitBtn ? submitBtn.innerHTML : '<span>Create Account & Sign In</span>';
-  try {
-    if (errEl) errEl.classList.add('hidden');
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span>Creating Account…</span>';
-    }
-    await auth.register({ displayName, username, email, password });
-    $<HTMLDialogElement>('auth-dialog')?.close();
-  } catch (err: unknown) {
-    if (errEl) {
-      errEl.textContent = err instanceof Error ? err.message : 'Registration failed.';
-      errEl.classList.remove('hidden');
-    }
-  } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = originalHtml;
-    }
-  }
+  openAuthView('login');
 });
 
 $('btn-auth-logout')?.addEventListener('click', async () => {
