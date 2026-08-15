@@ -44,5 +44,6 @@ JaMeetTransport* JaMeetTransport_CreateMemory(void) {
     }
 
     memset(t->segment, 0, sizeof(JaMeetSharedSegment));
+    JaMeetSegment_FormatFirstTime(t->segment, 0, 0);
     return t;
 }

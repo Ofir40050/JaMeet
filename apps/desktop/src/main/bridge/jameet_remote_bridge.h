@@ -40,7 +40,7 @@ bool JaMeetSegment_ValidateGeometry(const JaMeetSharedSegment* segment);
 
 /**
  * Format a newly allocated or created shared memory segment for the first time.
- * Must only be called when creating a brand-new segment.
+ * Must only be called when creating a brand-new segment by an explicit owner.
  */
 void JaMeetSegment_FormatFirstTime(JaMeetSharedSegment* segment, uint64_t initialEpoch, uint32_t pid);
 
@@ -49,18 +49,24 @@ void JaMeetSegment_FormatFirstTime(JaMeetSharedSegment* segment, uint64_t initia
 /* ========================================================================= */
 
 /**
- * Attach a producer to an existing or newly created shared segment.
+ * Attach a producer to an existing valid shared segment.
  * 
  * Safety Guarantee:
- * - If the segment is already valid and formatted, this DOES NOT memset or reconstruct the segment.
+ * - If the segment is valid and formatted, this DOES NOT memset or reconstruct the segment.
  *   It atomically updates producerPid and transitions to newEpoch, allowing existing mapped
  *   consumers to safely remain mapped without seeing memory wiped out from under them.
- * - If the segment is unformatted, it formats the segment cleanly.
+ * - If the segment has invalid geometry or is unformatted, it REJECTS attachment and returns false
+ *   without reformatting or overwriting the segment.
  */
 bool JaMeetProducer_Attach(JaMeetProducer* producer, JaMeetSharedSegment* segment, uint64_t newEpoch, uint32_t pid);
 
 /**
- * Legacy wrapper: formats and attaches to a segment.
+ * Format and attach to a brand-new shared segment owned by the caller.
+ */
+bool JaMeetProducer_InitNew(JaMeetProducer* producer, JaMeetSharedSegment* segment, uint64_t initialEpoch, uint32_t pid);
+
+/**
+ * Legacy wrapper: initializes a new segment and attaches to it.
  */
 void JaMeetProducer_Init(JaMeetProducer* producer, JaMeetSharedSegment* segment, uint64_t initialEpoch, uint32_t pid);
 
@@ -68,8 +74,9 @@ void JaMeetProducer_Init(JaMeetProducer* producer, JaMeetSharedSegment* segment,
  * Write interleaved stereo float audio frames to the shared bridge.
  * 
  * Guarantees:
+ * - Seqlock in-progress odd/even publication guard with sequential consistency barrier on entry.
+ * - Preserves partial slot prefixes across consecutive non-128 batch writes.
  * - Sanitizes partial slot remainders so stale PCM from previous generations can never leak.
- * - Lock-free seqlock publication per 128-frame slot.
  * 
  * @param producer Initialized producer instance.
  * @param interleavedStereoPcm Pointer to interleaved Float32 PCM (L/R pairs).
@@ -101,32 +108,29 @@ void JaMeetProducer_ResetGeneration(JaMeetProducer* producer, uint64_t newEpoch)
 /* ========================================================================= */
 
 /**
- * Initialize an independent consumer instance.
- * Must be called before reading from any shared segment.
+ * Initialize consumer context.
  */
 void JaMeetConsumer_Init(JaMeetConsumer* consumer);
 
 /**
- * Reset consumer synchronization state and read cursor.
+ * Reset consumer synchronization state.
  */
 void JaMeetConsumer_Reset(JaMeetConsumer* consumer);
 
 /**
  * Read interleaved stereo float audio frames from the shared bridge.
  * 
- * Real-Time Safety Guarantees:
- * - Zero allocations (malloc/free/new/delete).
- * - Zero mutexes or blocking synchronization.
- * - Zero filesystem or system calls.
- * - If inactive, underflowed, or torn read occurs, the affected frames are safely
- *   filled with 0.0f (digital silence) without waiting.
+ * Real-Time Guarantees:
+ * - Strictly non-blocking and wait-free (suitable for real-time audio callbacks).
+ * - Verified by Seqlock pre-read and post-read odd/even guards.
+ * - Returns clean digital silence (0.0f) if an in-progress write or torn block is detected.
  * 
- * @param consumer Independent consumer state tracker.
- * @param segment Read-only pointer to mapped shared segment.
- * @param outInterleavedStereoPcm Destination buffer for stereo Float32 PCM.
- * @param frameCount Number of stereo frames requested by the audio callback.
+ * @param consumer Consumer context instance.
+ * @param segment Shared memory segment pointer.
+ * @param outInterleavedStereoPcm Output buffer to receive Float32 PCM (L/R pairs).
+ * @param frameCount Number of stereo frames requested.
  * @param currentTimestampMs Current monotonic time in milliseconds.
- * @return Number of frames returned (equal to frameCount).
+ * @return Number of frames read.
  */
 uint32_t JaMeetConsumer_ReadFrames(
     JaMeetConsumer* consumer,
@@ -137,7 +141,7 @@ uint32_t JaMeetConsumer_ReadFrames(
 );
 
 /**
- * Check if the producer is alive, voice is active, and heartbeat is fresh.
+ * Check if the producer is alive and actively streaming voice audio.
  */
 bool JaMeetConsumer_IsVoiceActive(
     const JaMeetConsumer* consumer,

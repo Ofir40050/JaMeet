@@ -30,6 +30,9 @@ static inline uint64_t jameet_atomic_load_u64_acquire(const uint64_t* ptr) {
 static inline void jameet_atomic_store_u64_release(uint64_t* ptr, uint64_t val) {
     __atomic_store_n(ptr, val, __ATOMIC_RELEASE);
 }
+static inline void jameet_atomic_store_u64_seq_cst(uint64_t* ptr, uint64_t val) {
+    __atomic_store_n(ptr, val, __ATOMIC_SEQ_CST);
+}
 static inline uint64_t jameet_atomic_load_u64_relaxed(const uint64_t* ptr) {
     return __atomic_load_n(ptr, __ATOMIC_RELAXED);
 }
@@ -53,33 +56,42 @@ static inline void jameet_atomic_store_u32_relaxed(uint32_t* ptr, uint32_t val) 
 #elif defined(_MSC_VER)
 #include <windows.h>
 #include <intrin.h>
+
 static inline uint64_t jameet_atomic_load_u64_acquire(const uint64_t* ptr) {
-    uint64_t val = (uint64_t)InterlockedCompareExchange64((volatile LONG64*)ptr, 0, 0);
+    uint64_t val = (uint64_t)_InterlockedCompareExchange64((volatile LONG64*)ptr, 0, 0);
     _ReadWriteBarrier();
     return val;
 }
 static inline void jameet_atomic_store_u64_release(uint64_t* ptr, uint64_t val) {
     _ReadWriteBarrier();
-    InterlockedExchange64((volatile LONG64*)ptr, (LONG64)val);
+    _InterlockedExchange64((volatile LONG64*)ptr, (LONG64)val);
+}
+static inline void jameet_atomic_store_u64_seq_cst(uint64_t* ptr, uint64_t val) {
+    _ReadWriteBarrier();
+    _InterlockedExchange64((volatile LONG64*)ptr, (LONG64)val);
+    _ReadWriteBarrier();
 }
 static inline uint64_t jameet_atomic_load_u64_relaxed(const uint64_t* ptr) {
-    return *ptr;
+    return (uint64_t)_InterlockedCompareExchange64((volatile LONG64*)ptr, 0, 0);
+}
+static inline void jameet_atomic_store_u64_relaxed(uint64_t* ptr, uint64_t val) {
+    _InterlockedExchange64((volatile LONG64*)ptr, (LONG64)val);
 }
 
 static inline uint32_t jameet_atomic_load_u32_acquire(const uint32_t* ptr) {
-    uint32_t val = (uint32_t)InterlockedCompareExchange((volatile LONG*)ptr, 0, 0);
+    uint32_t val = (uint32_t)_InterlockedCompareExchange((volatile LONG*)ptr, 0, 0);
     _ReadWriteBarrier();
     return val;
 }
 static inline void jameet_atomic_store_u32_release(uint32_t* ptr, uint32_t val) {
     _ReadWriteBarrier();
-    InterlockedExchange((volatile LONG*)ptr, (LONG)val);
+    _InterlockedExchange((volatile LONG*)ptr, (LONG)val);
 }
 static inline uint32_t jameet_atomic_load_u32_relaxed(const uint32_t* ptr) {
-    return *ptr;
+    return (uint32_t)_InterlockedCompareExchange((volatile LONG*)ptr, 0, 0);
 }
 static inline void jameet_atomic_store_u32_relaxed(uint32_t* ptr, uint32_t val) {
-    *ptr = val;
+    _InterlockedExchange((volatile LONG*)ptr, (LONG)val);
 }
 #endif
 
@@ -140,19 +152,22 @@ bool JaMeetProducer_Attach(JaMeetProducer* producer, JaMeetSharedSegment* segmen
     if (!producer || !segment) return false;
 
     if (!JaMeetSegment_ValidateGeometry(segment)) {
-        /* Format uninitialized segment */
-        JaMeetSegment_FormatFirstTime(segment, newEpoch, pid);
-    } else {
-        /* 
-         * Reattaching to existing formatted segment:
-         * DO NOT memset or zero active memory.
-         * Atomically publish new epoch, reset sequence, and update pid.
+        /*
+         * Do NOT reformat or overwrite an unformatted or incompatible segment.
+         * Only callers explicitly owning genuinely new segments may format them.
          */
-        jameet_atomic_store_u32_release(&segment->header.producerPid, pid);
-        jameet_atomic_store_u32_release(&segment->header.isVoiceActive, 0);
-        jameet_atomic_store_u64_release(&segment->header.writeSequence, 0);
-        jameet_atomic_store_u64_release(&segment->header.producerGeneration, newEpoch);
+        return false;
     }
+
+    /* 
+     * Reattaching to existing formatted segment:
+     * DO NOT memset or zero active memory.
+     * Atomically publish new epoch, reset sequence, and update pid.
+     */
+    jameet_atomic_store_u32_release(&segment->header.producerPid, pid);
+    jameet_atomic_store_u32_release(&segment->header.isVoiceActive, 0);
+    jameet_atomic_store_u64_release(&segment->header.writeSequence, 0);
+    jameet_atomic_store_u64_release(&segment->header.producerGeneration, newEpoch);
 
     producer->segment = segment;
     producer->currentEpoch = newEpoch;
@@ -162,8 +177,14 @@ bool JaMeetProducer_Attach(JaMeetProducer* producer, JaMeetSharedSegment* segmen
     return true;
 }
 
+bool JaMeetProducer_InitNew(JaMeetProducer* producer, JaMeetSharedSegment* segment, uint64_t initialEpoch, uint32_t pid) {
+    if (!producer || !segment) return false;
+    JaMeetSegment_FormatFirstTime(segment, initialEpoch, pid);
+    return JaMeetProducer_Attach(producer, segment, initialEpoch, pid);
+}
+
 void JaMeetProducer_Init(JaMeetProducer* producer, JaMeetSharedSegment* segment, uint64_t initialEpoch, uint32_t pid) {
-    JaMeetProducer_Attach(producer, segment, initialEpoch, pid);
+    JaMeetProducer_InitNew(producer, segment, initialEpoch, pid);
 }
 
 /* ========================================================================= */
@@ -200,11 +221,12 @@ uint32_t JaMeetProducer_WriteFrames(
 
         /*
          * 1. In-Progress Publication Guard:
-         * Atomically publish an ODD sequence value before mutating metadata or PCM.
+         * Atomically publish an ODD sequence value with SEQUENTIALLY CONSISTENT barrier
+         * before any subsequent metadata or PCM stores can become visible.
          */
         uint64_t curSeq = jameet_atomic_load_u64_relaxed(&slot->publishSequence);
         uint64_t oddSeq = (curSeq & 1ULL) ? curSeq : (curSeq + 1ULL);
-        jameet_atomic_store_u64_release(&slot->publishSequence, oddSeq);
+        jameet_atomic_store_u64_seq_cst(&slot->publishSequence, oddSeq);
 
         /*
          * 2. Update Slot Metadata:
@@ -243,7 +265,7 @@ uint32_t JaMeetProducer_WriteFrames(
 
         /*
          * 5. Commit Publication Guard:
-         * Atomically publish the next EVEN sequence value with release semantics.
+         * Atomically publish the next EVEN sequence value with RELEASE semantics.
          */
         jameet_atomic_store_u64_release(&slot->publishSequence, oddSeq + 1ULL);
 

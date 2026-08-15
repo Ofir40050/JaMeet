@@ -342,6 +342,14 @@ static void test_producer_reattachment_without_memset(void) {
     JaMeetConsumer_ReadFrames(&consumer, segment, readBuf, 128, 1002);
     assert(readBuf[0] == 6.0f);
 
+    /* Verify that JaMeetProducer_Attach on an invalid/unformatted segment is rejected without formatting */
+    JaMeetSharedSegment invalidSeg;
+    memset(&invalidSeg, 0, sizeof(invalidSeg));
+    JaMeetProducer producer3;
+    bool attachInvalid = JaMeetProducer_Attach(&producer3, &invalidSeg, 700ULL, 9999);
+    assert(attachInvalid == false);
+    assert(invalidSeg.header.magic == 0); /* Remained completely untouched */
+
     JaMeetTransport_Close(transport, false);
     TEST_PASS();
 }
