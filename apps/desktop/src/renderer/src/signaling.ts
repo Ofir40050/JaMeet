@@ -5,13 +5,19 @@ type Listener = (...args: any[]) => void;
 
 export class SignalingClient {
   private socket: Socket;
-  private resume?: { code: string; participantId: string; media: MediaMetadata };
+  private resume?: { code: string; participantId: string; media: MediaMetadata; authToken?: string; guestDisplayName?: string; reconnectToken?: string };
   private activeProjectWorkspace?: { projectId: string; authToken?: string };
 
   constructor(url: string) {
     this.socket = io(url, { autoConnect: false, reconnection: true, reconnectionDelayMax: 4000 });
     this.socket.on('connect', () => {
-      if (this.resume) this.emitWithAck('meeting:join', this.resume).catch(() => undefined);
+      if (this.resume) {
+        this.emitWithAck('meeting:join', this.resume).then((res) => {
+          if (res?.ok && res.reconnectToken && this.resume) {
+            this.resume.reconnectToken = res.reconnectToken;
+          }
+        }).catch(() => undefined);
+      }
       if (this.activeProjectWorkspace) {
         this.socket.emit('project:workspace:join', this.activeProjectWorkspace, (_err: Error | null, res: any) => {
           if (res?.ok && res.workspace && this.activeProjectWorkspace) {
@@ -59,16 +65,16 @@ export class SignalingClient {
 
   async create(participantId: string, media: MediaMetadata, authToken?: string, guestDisplayName?: string, projectId?: string, waitingRoomEnabled?: boolean): Promise<MeetingAck> {
     const ack = await this.emitWithAck('meeting:create', { participantId, media, authToken, guestDisplayName, projectId, waitingRoomEnabled });
-    if (ack.ok) this.resume = { code: ack.code, participantId, media };
+    if (ack.ok) this.resume = { code: ack.code, participantId, media, authToken, guestDisplayName, reconnectToken: ack.reconnectToken };
     return ack;
   }
   async join(code: string, participantId: string, media: MediaMetadata, authToken?: string, guestDisplayName?: string): Promise<MeetingAck> {
     const ack = await this.emitWithAck('meeting:join', { code, participantId, media, authToken, guestDisplayName });
-    if (ack.ok && !ack.waiting) this.resume = { code: ack.code, participantId, media };
+    if (ack.ok) this.resume = { code: ack.code, participantId, media, authToken, guestDisplayName, reconnectToken: ack.reconnectToken };
     return ack;
   }
-  setResume(code: string, participantId: string, media: MediaMetadata): void {
-    this.resume = { code, participantId, media };
+  setResume(code: string, participantId: string, media: MediaMetadata, authToken?: string, guestDisplayName?: string, reconnectToken?: string): void {
+    this.resume = { code, participantId, media, authToken, guestDisplayName, reconnectToken };
   }
   updateResumeMedia(media: MediaMetadata): void { if (this.resume) this.resume.media = media; }
   sendDescription(code: string, description: RTCSessionDescriptionInit): void { this.socket.emit('signal:description', { code, description }); }

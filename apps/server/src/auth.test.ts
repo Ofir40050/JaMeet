@@ -221,4 +221,116 @@ describe('UserStore & Password Hashing', () => {
     expect(deleted).toBe(true);
     expect(store2.listScheduledSessions(reg.user.id).length).toBe(0);
   });
+
+  it('retains session history predictably per user without other users evicting it', async () => {
+    const store1 = new UserStore(testDir);
+    const userA = await store1.register({
+      username: 'artist_a',
+      email: 'a@music.com',
+      password: 'Password123!',
+      displayName: 'Artist A'
+    });
+    const userB = await store1.register({
+      username: 'artist_b',
+      email: 'b@music.com',
+      password: 'Password123!',
+      displayName: 'Artist B'
+    });
+
+    // User A records 5 sessions with distinct chronological timestamps
+    for (let i = 1; i <= 5; i++) {
+      const rec = store1.recordSessionStart(`SES_A_${i}`, `CODEA${i}`, userA.user.id, 'host', null);
+      rec.startedAt = 1000000 + i * 1000;
+      store1.recordSessionClose(`SES_A_${i}`);
+    }
+
+    const historyAInitial = store1.getSessionHistory(userA.user.id);
+    expect(historyAInitial.length).toBe(5);
+
+    // User B records 70 sessions (exceeding MAX_SESSIONS_PER_USER = 50)
+    for (let i = 1; i <= 70; i++) {
+      const rec = store1.recordSessionStart(`SES_B_${i}`, `CODEB${i}`, userB.user.id, 'host', null);
+      rec.startedAt = 2000000 + i * 1000;
+      store1.recordSessionClose(`SES_B_${i}`);
+    }
+
+    // Verify User A's session history is still completely intact in memory
+    const historyAAfterB = store1.getSessionHistory(userA.user.id);
+    expect(historyAAfterB.length).toBe(5);
+    expect(historyAAfterB.map((s) => s.sessionId)).toEqual([
+      'SES_A_5', 'SES_A_4', 'SES_A_3', 'SES_A_2', 'SES_A_1'
+    ]);
+
+    // Verify User B's sessions are capped at 50
+    const historyB = store1.getSessionHistory(userB.user.id);
+    expect(historyB.length).toBe(50);
+    // User B's newest sessions should be retained (70 down to 21)
+    expect(historyB[0]?.sessionId).toBe('SES_B_70');
+    expect(historyB[49]?.sessionId).toBe('SES_B_21');
+
+    // Reload from disk into a fresh UserStore instance
+    const store2 = new UserStore(testDir);
+    const persistedA = store2.getSessionHistory(userA.user.id);
+    expect(persistedA.length).toBe(5);
+    expect(persistedA.map((s) => s.sessionId)).toEqual([
+      'SES_A_5', 'SES_A_4', 'SES_A_3', 'SES_A_2', 'SES_A_1'
+    ]);
+
+    const persistedB = store2.getSessionHistory(userB.user.id);
+    expect(persistedB.length).toBe(50);
+    expect(persistedB[0]?.sessionId).toBe('SES_B_70');
+    expect(persistedB[49]?.sessionId).toBe('SES_B_21');
+  });
+
+  it('fails and rolls back in-memory state when persistence write fails', async () => {
+    // Point store to a path where data file cannot be created (e.g., inside an existing regular file)
+    const blockerFile = path.join(testDir, 'blocker');
+    fs.mkdirSync(testDir, { recursive: true });
+    fs.writeFileSync(blockerFile, 'file blocking directory creation');
+    const unwritableDir = path.join(blockerFile, 'sub');
+
+    const store = new UserStore(unwritableDir);
+
+    // 1. register should throw on persistence failure and not retain user in memory
+    await expect(store.register({
+      username: 'fail_user',
+      email: 'fail@example.com',
+      password: 'Password123!',
+      displayName: 'Fail User'
+    })).rejects.toThrow();
+
+    expect(store.findByUsernameOrEmail('fail_user')).toBeNull();
+    expect(store.findByUsernameOrEmail('fail@example.com')).toBeNull();
+
+    // Now test with a writable store where we later break write permissions or mock write failure
+    const writableStore = new UserStore(testDir);
+    const reg = await writableStore.register({
+      username: 'valid_user',
+      email: 'valid@example.com',
+      password: 'Password123!',
+      displayName: 'Valid User'
+    });
+
+    // Make the data file unwritable by creating a directory with the tmp file name or making target directory read-only
+    const dataFilePath = (writableStore as any).dataFilePath;
+    // Replace dataFilePath with an invalid path that cannot be written
+    (writableStore as any).dataFilePath = path.join(blockerFile, 'sub', 'musiczoom-accounts.json');
+
+    // 2. updateProfile should throw and revert profile fields
+    const prevDisplayName = reg.user.displayName;
+    await expect(writableStore.updateProfile(reg.user.id, {
+      displayName: 'Hacked Name'
+    })).rejects.toThrow();
+    const profileAfterFail = writableStore.findByUsernameOrEmail('valid_user');
+    expect(profileAfterFail?.displayName).toBe(prevDisplayName);
+
+    // 3. createScheduledSession should throw and not retain session
+    await expect(async () => {
+      writableStore.createScheduledSession(reg.user.id, 'Ghost Session', new Date().toISOString());
+    }).rejects.toThrow();
+    expect(writableStore.listScheduledSessions(reg.user.id).length).toBe(0);
+  });
 });
+
+
+

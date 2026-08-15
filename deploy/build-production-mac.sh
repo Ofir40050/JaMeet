@@ -20,5 +20,11 @@ if ! grep -R --fixed-strings "$url" apps/desktop/out/renderer/assets >/dev/null;
   exit 1
 fi
 
+if [ ! -f "apps/desktop/bin/musiczoom-screen-capture" ]; then
+  echo "Native ScreenCaptureKit helper binary was not compiled into apps/desktop/bin/" >&2
+  exit 1
+fi
+
 echo "Production Apple Silicon DMG created in apps/desktop/release/."
 echo "Baked signaling origin: $url"
+

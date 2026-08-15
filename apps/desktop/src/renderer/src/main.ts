@@ -3891,7 +3891,9 @@ signaling.on('waiting:update', (waitingList: WaitingParticipantItem[]) => {
 
 signaling.on('waiting:admitted', async (ack: MeetingAck) => {
   if (!ack.ok) return;
-  signaling.setResume(ack.code, participantId, metadata());
+  const token = auth.getToken() || undefined;
+  const guestName = auth.getGuestName() || undefined;
+  signaling.setResume(ack.code, participantId, metadata(), token, guestName, ack.reconnectToken);
   await initializeActiveCall(ack);
 });
 

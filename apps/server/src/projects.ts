@@ -26,7 +26,7 @@ export class ProjectStore {
   private dataFilePath: string;
 
   constructor(storageDir?: string) {
-    const baseDir = storageDir ?? path.join(process.cwd(), 'data');
+    const baseDir = storageDir ?? process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
     if (!fs.existsSync(baseDir)) {
       try { fs.mkdirSync(baseDir, { recursive: true }); } catch { /* ignore */ }
     }
@@ -43,6 +43,13 @@ export class ProjectStore {
         for (const p of data.projects) {
           if (!Array.isArray(p.activities)) {
             p.activities = [];
+          }
+          if (Array.isArray(p.collaborators)) {
+            for (const c of p.collaborators) {
+              if (!c.role) {
+                c.role = 'collaborator';
+              }
+            }
           }
           if (!p.workspace) {
             p.workspace = {
@@ -68,17 +75,46 @@ export class ProjectStore {
   }
 
   private saveToDisk(): void {
+    const schema: ProjectDatabaseSchema = {
+      version: 1,
+      projects: Array.from(this.projects.values())
+    };
+    const dir = path.dirname(this.dataFilePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const tmpPath = `${this.dataFilePath}.${crypto.randomUUID()}.tmp`;
     try {
-      const schema: ProjectDatabaseSchema = {
-        version: 1,
-        projects: Array.from(this.projects.values())
-      };
-      const tmpPath = `${this.dataFilePath}.tmp`;
       fs.writeFileSync(tmpPath, JSON.stringify(schema, null, 2), 'utf-8');
       fs.renameSync(tmpPath, this.dataFilePath);
     } catch (err) {
+      try {
+        if (fs.existsSync(tmpPath)) {
+          fs.unlinkSync(tmpPath);
+        }
+      } catch {
+        // ignore tmp cleanup error
+      }
       console.error('Failed to persist project database:', err);
+      throw err;
     }
+  }
+
+  createSnapshot(): string {
+    return JSON.stringify({
+      projects: Array.from(this.projects.values())
+    });
+  }
+
+  restoreSnapshot(snapshotJson: string): void {
+    const data = JSON.parse(snapshotJson) as ProjectDatabaseSchema;
+    this.projects.clear();
+    if (Array.isArray(data.projects)) {
+      for (const p of data.projects) {
+        this.projects.set(p.id, p);
+      }
+    }
+    this.saveToDisk();
   }
 
   listProjects(userId: string, includeArchived = false): Project[] {
@@ -108,6 +144,30 @@ export class ProjectStore {
     const project = this.projects.get(projectId);
     if (!project) return false;
     return project.ownerId === userId || project.collaborators.some((c) => c.userId === userId);
+  }
+
+  getUserRole(projectId: string, userId: string): ProjectCollaboratorRole | null {
+    const project = this.projects.get(projectId);
+    if (!project) return null;
+    if (project.ownerId === userId) return 'owner';
+    const collab = project.collaborators.find((c) => c.userId === userId);
+    if (collab) return collab.role || 'collaborator';
+    return null;
+  }
+
+  isOwner(projectId: string, userId: string): boolean {
+    const role = this.getUserRole(projectId, userId);
+    return role === 'owner';
+  }
+
+  canModifyWorkspace(projectId: string, userId: string): boolean {
+    const role = this.getUserRole(projectId, userId);
+    return role === 'owner' || role === 'editor' || role === 'collaborator';
+  }
+
+  canModifyProject(projectId: string, userId: string): boolean {
+    const role = this.getUserRole(projectId, userId);
+    return role === 'owner' || role === 'editor' || role === 'collaborator';
   }
 
   createProject(
@@ -174,9 +234,16 @@ export class ProjectStore {
       owner,
       'project_created',
       `${owner.displayName} created project "${project.name}"`,
-      project.name
+      project.name,
+      undefined,
+      false
     );
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.projects.delete(id);
+      throw err;
+    }
     return project;
   }
 
@@ -186,7 +253,8 @@ export class ProjectStore {
     type: ProjectActivityType,
     summary: string,
     title?: string,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
+    persist = true
   ): ProjectActivityItem | null {
     const project = this.projects.get(projectId);
     if (!project) return null;
@@ -194,6 +262,7 @@ export class ProjectStore {
       project.activities = [];
     }
 
+    const snapshot = persist ? (JSON.parse(JSON.stringify(project)) as Project) : null;
     const now = Date.now();
     const userId = user.id || 'usr_unknown';
     const userDisplayName = user.displayName || user.username || 'Collaborator';
@@ -210,7 +279,14 @@ export class ProjectStore {
         if (metadata) top.metadata = { ...(top.metadata || {}), ...metadata };
         project.updatedAt = now;
         project.lastActivityAt = now;
-        this.saveToDisk();
+        if (persist) {
+          try {
+            this.saveToDisk();
+          } catch (err) {
+            if (snapshot) this.projects.set(projectId, snapshot);
+            throw err;
+          }
+        }
         return top;
       }
     }
@@ -235,7 +311,14 @@ export class ProjectStore {
     }
     project.updatedAt = now;
     project.lastActivityAt = now;
-    this.saveToDisk();
+    if (persist) {
+      try {
+        this.saveToDisk();
+      } catch (err) {
+        if (snapshot) this.projects.set(projectId, snapshot);
+        throw err;
+      }
+    }
     return item;
   }
 
@@ -247,6 +330,11 @@ export class ProjectStore {
     const project = this.getProject(projectId, user.id);
     if (!project) return null;
 
+    if (!this.canModifyWorkspace(projectId, user.id)) {
+      return null;
+    }
+
+    const snapshot = JSON.parse(JSON.stringify(project)) as Project;
     const now = Date.now();
     if (!project.workspace) {
       project.workspace = {
@@ -304,7 +392,9 @@ export class ProjectStore {
           user,
           'lyrics_doc_created',
           `${user.displayName} created lyrics draft "${doc.title}"`,
-          doc.title
+          doc.title,
+          undefined,
+          false
         );
       } else {
         const oldTitle = doc.title;
@@ -317,7 +407,9 @@ export class ProjectStore {
               user,
               'lyrics_doc_renamed',
               `${user.displayName} renamed lyrics draft to "${doc.title}"`,
-              doc.title
+              doc.title,
+              undefined,
+              false
             );
           }
         }
@@ -329,7 +421,9 @@ export class ProjectStore {
               user,
               'lyrics_edited',
               `${user.displayName} edited ${doc.title}`,
-              doc.title
+              doc.title,
+              undefined,
+              false
             );
           }
         }
@@ -366,7 +460,9 @@ export class ProjectStore {
           user,
           'notes_bpm_changed',
           `${user.displayName} set tempo to ${updates.notes.bpm} BPM`,
-          `${updates.notes.bpm} BPM`
+          `${updates.notes.bpm} BPM`,
+          undefined,
+          false
         );
       }
       if (updates.notes.key !== undefined && updates.notes.key !== oldKey && updates.notes.key.trim()) {
@@ -375,7 +471,9 @@ export class ProjectStore {
           user,
           'notes_key_changed',
           `${user.displayName} changed key to ${updates.notes.key}`,
-          updates.notes.key
+          updates.notes.key,
+          undefined,
+          false
         );
       }
       if (updates.notes.content !== undefined && updates.notes.content !== oldContent && updates.notes.content.trim()) {
@@ -384,7 +482,9 @@ export class ProjectStore {
           user,
           'notes_edited',
           `${user.displayName} updated Project Notes`,
-          'Project Notes'
+          'Project Notes',
+          undefined,
+          false
         );
       }
     }
@@ -397,7 +497,9 @@ export class ProjectStore {
           user,
           'structure_changed',
           `${user.displayName} updated Song Structure arrangement`,
-          'Song Structure'
+          'Song Structure',
+          undefined,
+          false
         );
       }
       project.workspace.structure.updatedAt = now;
@@ -418,7 +520,9 @@ export class ProjectStore {
             user,
             'task_created',
             `${user.displayName} created task "${t.title}"`,
-            t.title
+            t.title,
+            undefined,
+            false
           );
         } else {
           const oldT = oldTasks.find((ot) => ot.id === t.id);
@@ -429,7 +533,9 @@ export class ProjectStore {
                 user,
                 'task_completed',
                 `${user.displayName} completed "${t.title}"`,
-                t.title
+                t.title,
+                undefined,
+                false
               );
             } else if (oldT.status === 'done' && t.status !== 'done') {
               this.recordActivity(
@@ -437,7 +543,9 @@ export class ProjectStore {
                 user,
                 'task_reopened',
                 `${user.displayName} reopened "${t.title}"`,
-                t.title
+                t.title,
+                undefined,
+                false
               );
             } else if (oldT.assigneeId !== t.assigneeId && t.assigneeName) {
               this.recordActivity(
@@ -445,7 +553,9 @@ export class ProjectStore {
                 user,
                 'task_assigned',
                 `${user.displayName} assigned "${t.title}" to ${t.assigneeName}`,
-                t.title
+                t.title,
+                undefined,
+                false
               );
             }
           }
@@ -461,7 +571,9 @@ export class ProjectStore {
             user,
             'task_deleted',
             `${user.displayName} deleted task "${ot.title}"`,
-            ot.title
+            ot.title,
+            undefined,
+            false
           );
         }
       }
@@ -474,7 +586,12 @@ export class ProjectStore {
 
     project.updatedAt = now;
     project.lastActivityAt = now;
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.projects.set(projectId, snapshot);
+      throw err;
+    }
     return project;
   }
 
@@ -482,6 +599,11 @@ export class ProjectStore {
     const project = this.getProject(projectId, userId);
     if (!project) return null;
 
+    if (!this.canModifyProject(projectId, userId)) {
+      return null;
+    }
+
+    const snapshot = JSON.parse(JSON.stringify(project)) as Project;
     const now = Date.now();
     if (data.name !== undefined && data.name.trim().length > 0) {
       project.name = data.name.trim();
@@ -495,7 +617,12 @@ export class ProjectStore {
     project.updatedAt = now;
 
     this.projects.set(projectId, project);
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.projects.set(projectId, snapshot);
+      throw err;
+    }
     return project;
   }
 
@@ -503,10 +630,16 @@ export class ProjectStore {
     const project = this.projects.get(projectId);
     if (!project) return false;
     // Only the project owner can delete
-    if (project.ownerId !== userId) return false;
+    if (!this.isOwner(projectId, userId)) return false;
 
+    const snapshot = JSON.parse(JSON.stringify(project)) as Project;
     this.projects.delete(projectId);
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.projects.set(projectId, snapshot);
+      throw err;
+    }
     return true;
   }
 
@@ -519,10 +652,16 @@ export class ProjectStore {
     const project = this.getProject(projectId, userId);
     if (!project) return null;
 
+    // Only the project owner can add collaborators, assign roles, or grant owner authority
+    if (!this.isOwner(projectId, userId)) {
+      return null;
+    }
+
     if (collaborator.id === project.ownerId) {
       return project;
     }
 
+    const snapshot = JSON.parse(JSON.stringify(project)) as Project;
     const existingIdx = project.collaborators.findIndex((c) => c.userId === collaborator.id);
     const now = Date.now();
 
@@ -543,13 +682,20 @@ export class ProjectStore {
         { id: userId, displayName: project.ownerDisplayName },
         'collaborator_added',
         `${project.ownerDisplayName} added ${collaborator.displayName} to the project`,
-        collaborator.displayName
+        collaborator.displayName,
+        undefined,
+        false
       );
     }
 
     project.updatedAt = now;
     this.projects.set(projectId, project);
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.projects.set(projectId, snapshot);
+      throw err;
+    }
     return project;
   }
 
@@ -558,24 +704,35 @@ export class ProjectStore {
     if (!project) return null;
 
     // Only owner or the collaborator themselves can remove
-    if (project.ownerId !== userId && userId !== targetUserId) {
+    const isOwner = this.isOwner(projectId, userId);
+    if (!isOwner && userId !== targetUserId) {
       return null;
     }
 
+    const snapshot = JSON.parse(JSON.stringify(project)) as Project;
     const target = project.collaborators.find((c) => c.userId === targetUserId);
     project.collaborators = project.collaborators.filter((c) => c.userId !== targetUserId);
     project.updatedAt = Date.now();
     if (target) {
       this.recordActivity(
         projectId,
-        { id: userId, displayName: project.ownerDisplayName },
+        { id: userId, displayName: isOwner ? project.ownerDisplayName : target.displayName },
         'collaborator_removed',
-        `${project.ownerDisplayName} removed ${target.displayName} from the project`,
-        target.displayName
+        isOwner
+          ? `${project.ownerDisplayName} removed ${target.displayName} from the project`
+          : `${target.displayName} left the project`,
+        target.displayName,
+        undefined,
+        false
       );
     }
     this.projects.set(projectId, project);
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.projects.set(projectId, snapshot);
+      throw err;
+    }
     return project;
   }
 
@@ -587,6 +744,7 @@ export class ProjectStore {
     const project = this.projects.get(projectId);
     if (!project) return;
 
+    const snapshot = JSON.parse(JSON.stringify(project)) as Project;
     const now = Date.now();
     project.lastActivityAt = now;
     project.updatedAt = now;
@@ -610,12 +768,19 @@ export class ProjectStore {
           collaboratorIdentity || { id: session.collaborator.id, displayName: session.collaborator.displayName },
           'session_completed',
           `Session completed with ${session.collaborator.displayName}`,
-          session.code
+          session.code,
+          undefined,
+          false
         );
       }
     }
 
     this.projects.set(projectId, project);
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.projects.set(projectId, snapshot);
+      throw err;
+    }
   }
 }

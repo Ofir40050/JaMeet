@@ -28,6 +28,9 @@ case "$SIGNALING_DOMAIN" in http://*|https://*|*/*) echo "SIGNALING_DOMAIN must 
 case "$TURN_HOST" in http://*|https://*|*/*) echo "TURN_HOST must be a hostname without a scheme or path" >&2; exit 1 ;; esac
 if [ "${#TURN_SHARED_SECRET}" -lt 32 ]; then echo "TURN_SHARED_SECRET must be at least 32 characters" >&2; exit 1; fi
 if [ "${NODE_ENV:-}" != "production" ]; then echo "NODE_ENV must be production" >&2; exit 1; fi
-if [ "${ALLOWED_ORIGINS:-}" != "musiczoom-app://bundle" ]; then echo "ALLOWED_ORIGINS must include musiczoom-app://bundle" >&2; exit 1; fi
+case "${ALLOWED_ORIGINS:-}" in
+  *jameet-app://bundle*) ;;
+  *) echo "ALLOWED_ORIGINS must include jameet-app://bundle" >&2; exit 1 ;;
+esac
 
 echo "Production environment is structurally valid."

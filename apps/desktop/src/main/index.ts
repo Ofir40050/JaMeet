@@ -2,6 +2,7 @@ import { app, BrowserWindow, clipboard, desktopCapturer, ipcMain, net, protocol,
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join, normalize, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { getNativeBinaryPath } from './binaryUtils';
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'jameet-app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
@@ -369,11 +370,11 @@ else {
 
       const { spawn, execSync } = await import('child_process');
       const { join } = await import('path');
-      const { existsSync } = await import('fs');
-      const binPath = join(__dirname, '../../bin/musiczoom-screen-capture');
+      const { existsSync, chmodSync } = await import('fs');
+      const binPath = getNativeBinaryPath('musiczoom-screen-capture');
       const srcPath = join(__dirname, '../../src/main/musiczoom-screen-capture.swift');
 
-      if (!existsSync(binPath) && existsSync(srcPath)) {
+      if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
         try {
           execSync(`mkdir -p "${join(__dirname, '../../bin')}" && swiftc -O "${srcPath}" -o "${binPath}"`);
         } catch (e) {
@@ -381,6 +382,12 @@ else {
           return false;
         }
       }
+
+      if (!existsSync(binPath)) {
+        console.error(`Native ScreenCaptureKit helper binary not found: ${binPath}`);
+        return false;
+      }
+      try { chmodSync(binPath, 0o755); } catch { }
 
       const args = ['capture-display', '--app-pid', String(process.pid), '--bundle-id', 'com.jameet.app'];
       if (displayId !== undefined && displayId !== null) {
@@ -563,16 +570,21 @@ else {
       if (process.platform === 'darwin' && sampleRate > 0) {
         const { execFile, execSync } = await import('child_process');
         const { join } = await import('path');
-        const { existsSync } = await import('fs');
-        const binPath = join(__dirname, '../../bin/set-rate');
+        const { existsSync, chmodSync } = await import('fs');
+        const binPath = getNativeBinaryPath('set-rate');
         const srcPath = join(__dirname, '../../src/main/set-rate.c');
-        if (!existsSync(binPath) && existsSync(srcPath)) {
+        if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
           try {
             execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio "${srcPath}" -o "${binPath}"`);
           } catch (e) {
             console.error('Failed to compile set-rate:', e);
           }
         }
+        if (!existsSync(binPath)) {
+          console.error(`set-rate binary not found: ${binPath}`);
+          return false;
+        }
+        try { chmodSync(binPath, 0o755); } catch { }
         return new Promise<boolean>((resolve) => {
           execFile(binPath, [String(sampleRate), deviceName ?? ''], (error, stdout) => {
             if (error) {
@@ -591,16 +603,21 @@ else {
       if (process.platform === 'darwin' && typeof volume === 'number') {
         const { execFile, execSync } = await import('child_process');
         const { join } = await import('path');
-        const { existsSync } = await import('fs');
-        const binPath = join(__dirname, '../../bin/set-rate');
+        const { existsSync, chmodSync } = await import('fs');
+        const binPath = getNativeBinaryPath('set-rate');
         const srcPath = join(__dirname, '../../src/main/set-rate.c');
-        if (!existsSync(binPath) && existsSync(srcPath)) {
+        if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
           try {
             execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio -framework CoreFoundation "${srcPath}" -o "${binPath}"`);
           } catch (e) {
             console.error('Failed to compile set-rate:', e);
           }
         }
+        if (!existsSync(binPath)) {
+          console.error(`set-rate binary not found: ${binPath}`);
+          return false;
+        }
+        try { chmodSync(binPath, 0o755); } catch { }
         return new Promise<boolean>((resolve) => {
           execFile(binPath, ['volume', String(volume)], (error) => {
             resolve(!error);
@@ -613,16 +630,21 @@ else {
       if (process.platform === 'darwin') {
         const { execFile, execSync } = await import('child_process');
         const { join } = await import('path');
-        const { existsSync } = await import('fs');
-        const binPath = join(__dirname, '../../bin/set-rate');
+        const { existsSync, chmodSync } = await import('fs');
+        const binPath = getNativeBinaryPath('set-rate');
         const srcPath = join(__dirname, '../../src/main/set-rate.c');
-        if (!existsSync(binPath) && existsSync(srcPath)) {
+        if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
           try {
             execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio -framework CoreFoundation "${srcPath}" -o "${binPath}"`);
           } catch (e) {
             console.error('Failed to compile set-rate:', e);
           }
         }
+        if (!existsSync(binPath)) {
+          console.error(`set-rate binary not found: ${binPath}`);
+          return [];
+        }
+        try { chmodSync(binPath, 0o755); } catch { }
         return new Promise<unknown[]>((resolve) => {
           execFile(binPath, ['devices'], (error, stdout) => {
             if (error) {
@@ -645,16 +667,21 @@ else {
       if (process.platform === 'darwin') {
         const { execFile, execSync } = await import('child_process');
         const { join } = await import('path');
-        const { existsSync } = await import('fs');
-        const binPath = join(__dirname, '../../bin/musiczoom-app-audio-tap');
+        const { existsSync, chmodSync } = await import('fs');
+        const binPath = getNativeBinaryPath('musiczoom-app-audio-tap');
         const srcPath = join(__dirname, '../../src/main/musiczoom-app-audio-tap.swift');
-        if (!existsSync(binPath) && existsSync(srcPath)) {
+        if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
           try {
             execSync(`mkdir -p "${join(__dirname, '../../bin')}" && swiftc -O "${srcPath}" -o "${binPath}"`);
           } catch (e) {
             console.error('Failed to compile musiczoom-app-audio-tap:', e);
           }
         }
+        if (!existsSync(binPath)) {
+          console.error(`musiczoom-app-audio-tap binary not found: ${binPath}`);
+          return [];
+        }
+        try { chmodSync(binPath, 0o755); } catch { }
         return new Promise<unknown[]>((resolve) => {
           execFile(binPath, ['list'], (error, stdout) => {
             if (error) {
@@ -683,16 +710,21 @@ else {
         }
         const { spawn, execSync } = await import('child_process');
         const { join } = await import('path');
-        const { existsSync } = await import('fs');
-        const binPath = join(__dirname, '../../bin/musiczoom-app-audio-tap');
+        const { existsSync, chmodSync } = await import('fs');
+        const binPath = getNativeBinaryPath('musiczoom-app-audio-tap');
         const srcPath = join(__dirname, '../../src/main/musiczoom-app-audio-tap.swift');
-        if (!existsSync(binPath) && existsSync(srcPath)) {
+        if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
           try {
             execSync(`mkdir -p "${join(__dirname, '../../bin')}" && swiftc -O "${srcPath}" -o "${binPath}"`);
           } catch (e) {
             console.error('Failed to compile musiczoom-app-audio-tap:', e);
           }
         }
+        if (!existsSync(binPath)) {
+          console.error(`musiczoom-app-audio-tap binary not found: ${binPath}`);
+          return false;
+        }
+        try { chmodSync(binPath, 0o755); } catch { }
 
         const args = ['capture'];
         if (targetStr === 'global' || targetStr === 'system') {
@@ -767,21 +799,27 @@ else {
 
         const { spawn, execSync } = await import('child_process');
         const { join } = await import('path');
-        const { existsSync } = await import('fs');
-        const binPath = join(__dirname, '../../bin/musiczoom-hardware-input');
+        const { existsSync, chmodSync } = await import('fs');
+        const binPath = getNativeBinaryPath('musiczoom-hardware-input');
         const srcPath = join(__dirname, '../../src/main/musiczoom-hardware-input.c');
-        if (!existsSync(binPath) && existsSync(srcPath)) {
+        if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
           try {
             execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio -framework AudioToolbox -framework CoreFoundation "${srcPath}" -o "${binPath}"`);
           } catch (e) {
             console.error('Failed to compile musiczoom-hardware-input:', e);
           }
         }
+        if (!existsSync(binPath)) {
+          console.error(`musiczoom-hardware-input binary not found: ${binPath}`);
+          return false;
+        }
+        try { chmodSync(binPath, 0o755); } catch { }
 
         try {
           const child = spawn(binPath, [targetArg], { stdio: ['ignore', 'pipe', 'pipe'] });
           activeHardwareAudioProcess = child;
           activeHardwareDeviceId = targetArg;
+
 
           child.stdout.on('data', (chunk: Buffer) => {
             if (mainWindow && !mainWindow.isDestroyed()) {

@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { Server } from 'socket.io';
 import {
   createMeetingSchema, joinMeetingSchema, mediaUpdateSchema, meetingActionSchema,
-  signalCandidateSchema, signalDescriptionSchema, registerRequestSchema, loginRequestSchema,
+  signalCandidateSchema, signalDescriptionSchema, signalRenegotiateSchema, registerRequestSchema, loginRequestSchema,
   guestAuthRequestSchema, updateProfileRequestSchema, createProjectRequestSchema, updateProjectRequestSchema,
   updateProjectWorkspaceRequestSchema, addCollaboratorRequestSchema, sendChatMessageSchema,
   admitParticipantSchema, lockMeetingSchema, removeParticipantSchema, createScheduledSessionSchema,
@@ -16,7 +17,7 @@ import {
   type SessionSummaryEvent, type ProjectActivityItem
 } from '@musiczoom/shared';
 import type { ServerConfig } from './config.js';
-import { RoomStore } from './rooms.js';
+import { RoomStore, type Room } from './rooms.js';
 import { UserStore } from './auth.js';
 import { ProjectStore } from './projects.js';
 import { createIceServers } from './turn.js';
@@ -75,16 +76,20 @@ function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSumm
 export async function createApp(config: ServerConfig) {
   const app = Fastify({ logger: config.NODE_ENV !== 'test', bodyLimit: 2_097_152 });
   const origins = config.ALLOWED_ORIGINS.split(',').map((value) => value.trim());
+  const isOriginAllowed = (origin?: string): boolean => {
+    if (!origin) return true;
+    return (
+      origins.includes(origin) ||
+      origin.startsWith('http://localhost:') ||
+      origin.startsWith('http://127.0.0.1:') ||
+      origin.startsWith('jameet-app://') ||
+      origin.startsWith('musiczoom-app://')
+    );
+  };
+
   await app.register(cors, {
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      const isAllowed =
-        origins.includes(origin) ||
-        origin.startsWith('http://localhost:') ||
-        origin.startsWith('http://127.0.0.1:') ||
-        origin.startsWith('jameet-app://') ||
-        origin.startsWith('musiczoom-app://');
-      cb(null, isAllowed);
+      cb(null, isOriginAllowed(origin));
     },
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With'],
@@ -92,8 +97,9 @@ export async function createApp(config: ServerConfig) {
   });
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
   
-  const userStore = new UserStore();
-  const projectStore = new ProjectStore();
+  const dataDir = config.DATA_DIR ?? path.join(process.cwd(), 'data');
+  const userStore = new UserStore(dataDir);
+  const projectStore = new ProjectStore(dataDir);
   const rooms = new RoomStore(config.DISCONNECT_GRACE_MS, config.EMPTY_ROOM_TTL_MS);
 
   app.get('/healthz', async () => ({ ok: true }));
@@ -110,7 +116,8 @@ export async function createApp(config: ServerConfig) {
       return reply.code(201).send({ ok: true, token: result.token, user: result.user });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Registration failed.';
-      return reply.code(409).send({ ok: false, message: msg });
+      const isConflict = msg.includes('already taken') || msg.includes('already exists');
+      return reply.code(isConflict ? 409 : 500).send({ ok: false, message: msg });
     }
   });
 
@@ -124,7 +131,8 @@ export async function createApp(config: ServerConfig) {
       return reply.send({ ok: true, token: result.token, user: result.user });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Invalid credentials.';
-      return reply.code(401).send({ ok: false, message: msg });
+      const isAuthFail = msg.includes('Invalid username or password');
+      return reply.code(isAuthFail ? 401 : 500).send({ ok: false, message: msg });
     }
   });
 
@@ -155,7 +163,8 @@ export async function createApp(config: ServerConfig) {
       return reply.send({ ok: true, user: updatedUser });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to update profile.';
-      return reply.code(400).send({ ok: false, message: msg });
+      const isClientErr = msg.includes('password') || msg.includes('User not found');
+      return reply.code(isClientErr ? 400 : 500).send({ ok: false, message: msg });
     }
   });
 
@@ -208,8 +217,13 @@ export async function createApp(config: ServerConfig) {
     if (!parsed.success) {
       return reply.code(400).send({ ok: false, message: 'Invalid scheduled session data.' });
     }
-    const session = userStore.createScheduledSession(user.id, parsed.data.title, parsed.data.scheduledAt);
-    return reply.code(201).send({ ok: true, session });
+    try {
+      const session = userStore.createScheduledSession(user.id, parsed.data.title, parsed.data.scheduledAt);
+      return reply.code(201).send({ ok: true, session });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to create scheduled session.';
+      return reply.code(500).send({ ok: false, message: msg });
+    }
   });
 
   app.patch<{ Params: { id: string } }>('/api/sessions/scheduled/:id', async (request, reply) => {
@@ -223,11 +237,16 @@ export async function createApp(config: ServerConfig) {
     if (!parsed.success) {
       return reply.code(400).send({ ok: false, message: 'Invalid update data.' });
     }
-    const session = userStore.updateScheduledSession(user.id, request.params.id, parsed.data);
-    if (!session) {
-      return reply.code(404).send({ ok: false, message: 'Scheduled session not found.' });
+    try {
+      const session = userStore.updateScheduledSession(user.id, request.params.id, parsed.data);
+      if (!session) {
+        return reply.code(404).send({ ok: false, message: 'Scheduled session not found.' });
+      }
+      return reply.send({ ok: true, session });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update scheduled session.';
+      return reply.code(500).send({ ok: false, message: msg });
     }
-    return reply.send({ ok: true, session });
   });
 
   app.delete<{ Params: { id: string } }>('/api/sessions/scheduled/:id', async (request, reply) => {
@@ -237,11 +256,16 @@ export async function createApp(config: ServerConfig) {
     if (!user) {
       return reply.code(401).send({ ok: false, message: 'Unauthorized or session expired.' });
     }
-    const deleted = userStore.deleteScheduledSession(user.id, request.params.id);
-    if (!deleted) {
-      return reply.code(404).send({ ok: false, message: 'Scheduled session not found.' });
+    try {
+      const deleted = userStore.deleteScheduledSession(user.id, request.params.id);
+      if (!deleted) {
+        return reply.code(404).send({ ok: false, message: 'Scheduled session not found.' });
+      }
+      return reply.send({ ok: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete scheduled session.';
+      return reply.code(500).send({ ok: false, message: msg });
     }
-    return reply.send({ ok: true });
   });
 
   app.post('/api/auth/guest', async (request, reply) => {
@@ -287,8 +311,13 @@ export async function createApp(config: ServerConfig) {
       }
     }
 
-    const project = projectStore.createProject(user, parsed.data, initialCollaborators);
-    return reply.code(201).send({ ok: true, project });
+    try {
+      const project = projectStore.createProject(user, parsed.data, initialCollaborators);
+      return reply.code(201).send({ ok: true, project });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to create project.';
+      return reply.code(500).send({ ok: false, message: msg });
+    }
   });
 
   app.get<{ Params: { id: string } }>('/api/projects/:id', async (request, reply) => {
@@ -312,15 +341,27 @@ export async function createApp(config: ServerConfig) {
     if (!user) {
       return reply.code(401).send({ ok: false, message: 'Unauthorized.' });
     }
+    const project = projectStore.getProject(request.params.id, user.id);
+    if (!project) {
+      return reply.code(404).send({ ok: false, message: 'Project not found.' });
+    }
+    if (!projectStore.canModifyProject(request.params.id, user.id)) {
+      return reply.code(403).send({ ok: false, message: 'Viewers are not permitted to modify project settings.' });
+    }
     const parsed = updateProjectRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ ok: false, message: 'Invalid update parameters.' });
     }
-    const updated = projectStore.updateProject(request.params.id, user.id, parsed.data);
-    if (!updated) {
-      return reply.code(404).send({ ok: false, message: 'Project not found or unauthorized.' });
+    try {
+      const updated = projectStore.updateProject(request.params.id, user.id, parsed.data);
+      if (!updated) {
+        return reply.code(403).send({ ok: false, message: 'Project not found or unauthorized.' });
+      }
+      return reply.send({ ok: true, project: updated });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update project.';
+      return reply.code(500).send({ ok: false, message: msg });
     }
-    return reply.send({ ok: true, project: updated });
   };
 
   app.patch<{ Params: { id: string } }>('/api/projects/:id', handleProjectUpdate);
@@ -333,11 +374,23 @@ export async function createApp(config: ServerConfig) {
     if (!user) {
       return reply.code(401).send({ ok: false, message: 'Unauthorized.' });
     }
-    const deleted = projectStore.deleteProject(request.params.id, user.id);
-    if (!deleted) {
+    const project = projectStore.getProject(request.params.id, user.id);
+    if (!project) {
+      return reply.code(404).send({ ok: false, message: 'Project not found.' });
+    }
+    if (!projectStore.isOwner(request.params.id, user.id)) {
       return reply.code(403).send({ ok: false, message: 'Only the project owner can delete this project.' });
     }
-    return reply.send({ ok: true });
+    try {
+      const deleted = projectStore.deleteProject(request.params.id, user.id);
+      if (!deleted) {
+        return reply.code(403).send({ ok: false, message: 'Only the project owner can delete this project.' });
+      }
+      return reply.send({ ok: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete project.';
+      return reply.code(500).send({ ok: false, message: msg });
+    }
   });
 
   app.post<{ Params: { id: string } }>('/api/projects/:id/collaborators', async (request, reply) => {
@@ -347,6 +400,13 @@ export async function createApp(config: ServerConfig) {
     if (!user) {
       return reply.code(401).send({ ok: false, message: 'Unauthorized.' });
     }
+    const project = projectStore.getProject(request.params.id, user.id);
+    if (!project) {
+      return reply.code(404).send({ ok: false, message: 'Project not found.' });
+    }
+    if (!projectStore.isOwner(request.params.id, user.id)) {
+      return reply.code(403).send({ ok: false, message: 'Only the project owner can add collaborators or assign roles.' });
+    }
     const parsed = addCollaboratorRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ ok: false, message: 'Please enter a username or email.' });
@@ -355,15 +415,20 @@ export async function createApp(config: ServerConfig) {
     if (!targetUser) {
       return reply.code(404).send({ ok: false, message: `No registered JaMeet user found matching "${parsed.data.usernameOrEmail}".` });
     }
-    const updated = projectStore.addCollaborator(request.params.id, user.id, targetUser, parsed.data.role);
-    if (!updated) {
-      return reply.code(404).send({ ok: false, message: 'Project not found or unauthorized.' });
+    try {
+      const updated = projectStore.addCollaborator(request.params.id, user.id, targetUser, parsed.data.role);
+      if (!updated) {
+        return reply.code(403).send({ ok: false, message: 'Unauthorized to add collaborator or assign role.' });
+      }
+      io.to(`project:${request.params.id}`).emit('project:activity:new', {
+        projectId: request.params.id,
+        activities: updated.activities
+      });
+      return reply.send({ ok: true, project: updated });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to add collaborator.';
+      return reply.code(500).send({ ok: false, message: msg });
     }
-    io.to(`project:${request.params.id}`).emit('project:activity:new', {
-      projectId: request.params.id,
-      activities: updated.activities
-    });
-    return reply.send({ ok: true, project: updated });
   });
 
   app.delete<{ Params: { id: string; userId: string } }>('/api/projects/:id/collaborators/:userId', async (request, reply) => {
@@ -373,15 +438,27 @@ export async function createApp(config: ServerConfig) {
     if (!user) {
       return reply.code(401).send({ ok: false, message: 'Unauthorized.' });
     }
-    const updated = projectStore.removeCollaborator(request.params.id, user.id, request.params.userId);
-    if (!updated) {
-      return reply.code(403).send({ ok: false, message: 'Unauthorized to remove collaborator.' });
+    const project = projectStore.getProject(request.params.id, user.id);
+    if (!project) {
+      return reply.code(404).send({ ok: false, message: 'Project not found.' });
     }
-    io.to(`project:${request.params.id}`).emit('project:activity:new', {
-      projectId: request.params.id,
-      activities: updated.activities
-    });
-    return reply.send({ ok: true, project: updated });
+    if (!projectStore.isOwner(request.params.id, user.id) && user.id !== request.params.userId) {
+      return reply.code(403).send({ ok: false, message: 'Only the project owner can remove other collaborators.' });
+    }
+    try {
+      const updated = projectStore.removeCollaborator(request.params.id, user.id, request.params.userId);
+      if (!updated) {
+        return reply.code(403).send({ ok: false, message: 'Unauthorized to remove collaborator.' });
+      }
+      io.to(`project:${request.params.id}`).emit('project:activity:new', {
+        projectId: request.params.id,
+        activities: updated.activities
+      });
+      return reply.send({ ok: true, project: updated });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to remove collaborator.';
+      return reply.code(500).send({ ok: false, message: msg });
+    }
   });
 
   const handleWorkspaceUpdate = async (request: Fastify.FastifyRequest<{ Params: { id: string } }>, reply: Fastify.FastifyReply) => {
@@ -391,30 +468,50 @@ export async function createApp(config: ServerConfig) {
     if (!user) {
       return reply.code(401).send({ ok: false, message: 'Unauthorized.' });
     }
+    const project = projectStore.getProject(request.params.id, user.id);
+    if (!project) {
+      return reply.code(404).send({ ok: false, message: 'Project not found.' });
+    }
+    if (!projectStore.canModifyWorkspace(request.params.id, user.id)) {
+      return reply.code(403).send({ ok: false, message: 'Viewers are not permitted to modify workspace content.' });
+    }
     const parsed = updateProjectWorkspaceRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ ok: false, message: 'Invalid workspace update payload.' });
     }
-    const updated = projectStore.updateWorkspace(request.params.id, user, parsed.data);
-    if (!updated) {
-      return reply.code(404).send({ ok: false, message: 'Project not found or unauthorized.' });
+    try {
+      const updated = projectStore.updateWorkspace(request.params.id, user, parsed.data);
+      if (!updated) {
+        return reply.code(403).send({ ok: false, message: 'Unauthorized to modify workspace.' });
+      }
+      // Broadcast real-time update to socket room
+      io.to(`project:${request.params.id}`).emit('project:workspace:synced', {
+        projectId: request.params.id,
+        workspace: updated.workspace,
+        activities: updated.activities,
+        updatedBy: user.id,
+        updatedByName: user.displayName
+      });
+      return reply.send({ ok: true, project: updated, workspace: updated.workspace });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update workspace.';
+      return reply.code(500).send({ ok: false, message: msg });
     }
-    // Broadcast real-time update to socket room
-    io.to(`project:${request.params.id}`).emit('project:workspace:synced', {
-      projectId: request.params.id,
-      workspace: updated.workspace,
-      activities: updated.activities,
-      updatedBy: user.id,
-      updatedByName: user.displayName
-    });
-    return reply.send({ ok: true, project: updated, workspace: updated.workspace });
   };
 
   app.put<{ Params: { id: string } }>('/api/projects/:id/workspace', handleWorkspaceUpdate);
   app.patch<{ Params: { id: string } }>('/api/projects/:id/workspace', handleWorkspaceUpdate);
 
   const io = new Server(app.server, {
-    cors: { origin: origins }, maxHttpBufferSize: 16_384, transports: ['websocket', 'polling']
+    cors: {
+      origin: (origin, cb) => {
+        cb(null, isOriginAllowed(origin));
+      },
+      methods: ['GET', 'POST'],
+      credentials: true
+    },
+    maxHttpBufferSize: 16_384,
+    transports: ['websocket', 'polling']
   });
 
   function failure(code: MeetingErrorCode, message: string): MeetingAck {
@@ -443,14 +540,29 @@ export async function createApp(config: ServerConfig) {
       }
     });
 
-    socket.on('project:workspace:update', (raw: { projectId: string; authToken?: string; updates: UpdateProjectWorkspaceRequest }, ack?: (res: { ok: boolean; workspace?: ProjectWorkspace; message?: string }) => void) => {
+    socket.on('project:workspace:update', (raw: { projectId: string; authToken?: string; updates: unknown }, ack?: (res: { ok: boolean; workspace?: ProjectWorkspace; message?: string }) => void) => {
       if (!raw?.projectId || !raw?.updates) { ack?.({ ok: false, message: 'Invalid payload' }); return; }
       const user = userStore.verifyToken(raw.authToken);
       if (!user || !projectStore.hasAccess(raw.projectId, user.id)) {
         ack?.({ ok: false, message: 'Unauthorized' });
         return;
       }
-    const updated = projectStore.updateWorkspace(raw.projectId, user, raw.updates);
+      if (!projectStore.canModifyWorkspace(raw.projectId, user.id)) {
+        ack?.({ ok: false, message: 'Viewers are not permitted to modify workspace content' });
+        return;
+      }
+      const parsed = updateProjectWorkspaceRequestSchema.safeParse(raw.updates);
+      if (!parsed.success) {
+        ack?.({ ok: false, message: 'Invalid workspace update payload.' });
+        return;
+      }
+      let updated;
+      try {
+        updated = projectStore.updateWorkspace(raw.projectId, user, parsed.data);
+      } catch (err: unknown) {
+        ack?.({ ok: false, message: 'Failed to persist workspace update' });
+        return;
+      }
       if (!updated) {
         ack?.({ ok: false, message: 'Failed to update workspace' });
         return;
@@ -489,47 +601,78 @@ export async function createApp(config: ServerConfig) {
       if (socketData.code) return ack(failure('BAD_REQUEST', 'Already in a session'));
       
       const identity = userStore.getTrustedIdentity(parsed.data.authToken, parsed.data.guestDisplayName, true);
-      if (!identity.isGuest && identity.id) {
-        userStore.incrementHostedCount(identity.id);
-      }
+      const userSnapshot = userStore.createSnapshot();
+      const projectSnapshot = projectStore.createSnapshot();
+      let createdRoom: Room | undefined;
 
-      // Verify Project access if projectId provided by Host
-      let verifiedProjectId: string | undefined = undefined;
-      if (parsed.data.projectId && !identity.isGuest && identity.id) {
-        if (projectStore.hasAccess(parsed.data.projectId, identity.id)) {
-          verifiedProjectId = parsed.data.projectId;
+      try {
+        if (!identity.isGuest && identity.id) {
+          userStore.incrementHostedCount(identity.id);
         }
-      }
 
-      const room = rooms.create(parsed.data.participantId, socket.id, parsed.data.media, identity, verifiedProjectId, parsed.data.waitingRoomEnabled);
-      if (!identity.isGuest && identity.id) {
-        userStore.recordSessionStart(room.sessionId, room.code, identity.id, 'host', null);
-      }
+        // Verify Project access if projectId provided by Host
+        let verifiedProjectId: string | undefined = undefined;
+        if (parsed.data.projectId && !identity.isGuest && identity.id) {
+          if (projectStore.hasAccess(parsed.data.projectId, identity.id)) {
+            verifiedProjectId = parsed.data.projectId;
+          }
+        }
 
-      if (room.projectId) {
-        projectStore.recordProjectSession(room.projectId, {
-          id: `${identity.id}_${room.code}`,
-          code: room.code,
-          startedAt: Date.now(),
+        const reconnectToken = randomUUID();
+        createdRoom = rooms.create(parsed.data.participantId, socket.id, parsed.data.media, identity, verifiedProjectId, parsed.data.waitingRoomEnabled, reconnectToken);
+        if (!identity.isGuest && identity.id) {
+          userStore.recordSessionStart(createdRoom.sessionId, createdRoom.code, identity.id, 'host', null);
+        }
+
+        if (createdRoom.projectId) {
+          projectStore.recordProjectSession(createdRoom.projectId, {
+            id: `${identity.id}_${createdRoom.code}`,
+            code: createdRoom.code,
+            startedAt: Date.now(),
+            role: 'host',
+            collaborator: null
+          }, null);
+        }
+
+        Object.assign(socketData, { code: createdRoom.code, participantId: parsed.data.participantId, identity, isWaiting: false });
+        void socket.join(createdRoom.code);
+
+        ack({
+          ok: true,
+          code: createdRoom.code,
           role: 'host',
-          collaborator: null
-        }, null);
+          locked: false,
+          iceServers: createIceServers(config, parsed.data.participantId),
+          peerPresent: false,
+          identity,
+          hostIdentity: identity,
+          projectId: createdRoom.projectId || undefined,
+          reconnectToken
+        });
+      } catch (err: unknown) {
+        let rollbackError: unknown;
+        try {
+          userStore.restoreSnapshot(userSnapshot);
+          projectStore.restoreSnapshot(projectSnapshot);
+        } catch (rErr: unknown) {
+          rollbackError = rErr;
+          console.error('Critical: Failed to persist compensating rollback for session creation:', { originalError: err, rollbackError: rErr });
+        }
+
+        if (!rollbackError) {
+          console.error('Failed to initialize session persistence:', err);
+        }
+
+        if (createdRoom) {
+          rooms.close(createdRoom.code);
+        }
+        delete socketData.code;
+        delete socketData.participantId;
+        delete socketData.identity;
+        delete socketData.isWaiting;
+
+        return ack(failure('SERVER_ERROR', 'Failed to initialize session'));
       }
-
-      Object.assign(socketData, { code: room.code, participantId: parsed.data.participantId, identity, isWaiting: false });
-      void socket.join(room.code);
-
-      ack({
-        ok: true,
-        code: room.code,
-        role: 'host',
-        locked: false,
-        iceServers: createIceServers(config, parsed.data.participantId),
-        peerPresent: false,
-        identity,
-        hostIdentity: identity,
-        projectId: room.projectId || undefined
-      });
     });
 
     socket.on('meeting:join', (raw, ack: (value: MeetingAck) => void) => {
@@ -537,18 +680,20 @@ export async function createApp(config: ServerConfig) {
       if (!parsed.success) return ack(failure('BAD_REQUEST', 'Invalid session code or participant'));
       
       const identity = userStore.getTrustedIdentity(parsed.data.authToken, parsed.data.guestDisplayName, false);
-      const joined = rooms.join(parsed.data.code, parsed.data.participantId, socket.id, parsed.data.media, identity);
+      const joined = rooms.join(parsed.data.code, parsed.data.participantId, socket.id, parsed.data.media, identity, parsed.data.reconnectToken);
       if (!joined.ok) {
-        const message = joined.reason === 'ROOM_LOCKED'
-          ? 'This session is currently locked by the host.'
-          : joined.reason === 'ROOM_FULL'
-            ? 'This session already has two people'
-            : 'Session not found';
+        const message = joined.reason === 'UNAUTHORIZED'
+          ? 'Unauthorized reconnect attempt'
+          : joined.reason === 'ROOM_LOCKED'
+            ? 'This session is currently locked by the host.'
+            : joined.reason === 'ROOM_FULL'
+              ? 'This session already has two people'
+              : 'Session not found';
         return ack(failure(joined.reason, message));
       }
 
       if (joined.waiting) {
-        Object.assign(socketData, { code: parsed.data.code, participantId: parsed.data.participantId, identity, isWaiting: true });
+        Object.assign(socketData, { code: parsed.data.code, participantId: joined.participant.id, identity: joined.participant.identity, isWaiting: true });
         // Isolated from active room until host admits
 
         const hostParticipant = Array.from(joined.room.participants.values()).find((p) => p.role === 'host');
@@ -569,62 +714,96 @@ export async function createApp(config: ServerConfig) {
           locked: Boolean(joined.room.isLocked),
           iceServers: [],
           peerPresent: false,
-          identity,
-          hostIdentity: joined.room.hostIdentity
-        });
-      }
-
-      Object.assign(socketData, { code: parsed.data.code, participantId: parsed.data.participantId, identity, isWaiting: false });
-      void socket.join(parsed.data.code);
-      
-      const peer = rooms.peer(joined.room, parsed.data.participantId);
-      if (peer) {
-        userStore.recordCollaboratorJoined(joined.room.sessionId, parsed.data.code, joined.room.hostIdentity, identity);
-        if (joined.room.projectId) {
-          projectStore.recordProjectSession(joined.room.projectId, {
-            id: `${joined.room.hostIdentity.id}_${parsed.data.code}`,
-            code: parsed.data.code,
-            startedAt: Date.now(),
-            role: 'host',
-            collaborator: {
-              id: identity.isGuest ? undefined : identity.id,
-              displayName: identity.displayName,
-              username: identity.username,
-              isGuest: identity.isGuest,
-              avatarColor: identity.avatarColor
-            }
-          }, identity);
-        }
-      } else if (!identity.isGuest && identity.id) {
-        userStore.recordSessionStart(joined.room.sessionId, parsed.data.code, identity.id, 'participant', joined.room.hostIdentity);
-      }
-
-      ack({
-        ok: true,
-        code: parsed.data.code,
-        role: joined.participant.role,
-        locked: Boolean(joined.room.isLocked),
-        iceServers: createIceServers(config, parsed.data.participantId),
-        peerPresent: Boolean(peer?.socketId),
-        peerMedia: peer?.media,
-        peerParticipantId: peer?.id,
-        identity,
-        hostIdentity: joined.room.hostIdentity,
-        peerIdentity: peer?.identity,
-        projectId: joined.room.projectId || undefined
-      });
-
-      if (peer?.socketId) {
-        io.to(peer.socketId).emit('peer:ready', {
-          media: joined.participant.media,
           identity: joined.participant.identity,
-          participantId: joined.participant.id,
-          reconnected: joined.reconnected
+          hostIdentity: joined.room.hostIdentity,
+          reconnectToken: joined.participant.reconnectToken
         });
-        io.to(peer.socketId).emit('peer:joined', {
-          peerMedia: joined.participant.media,
-          identity
+      }
+
+      const userSnapshot = userStore.createSnapshot();
+      const projectSnapshot = projectStore.createSnapshot();
+
+      try {
+        const peer = rooms.peer(joined.room, parsed.data.participantId);
+        if (peer) {
+          if (!joined.reconnected) {
+            userStore.recordCollaboratorJoined(joined.room.sessionId, parsed.data.code, joined.room.hostIdentity, joined.participant.identity);
+            if (joined.room.projectId) {
+              projectStore.recordProjectSession(joined.room.projectId, {
+                id: `${joined.room.hostIdentity.id}_${parsed.data.code}`,
+                code: parsed.data.code,
+                startedAt: Date.now(),
+                role: 'host',
+                collaborator: {
+                  id: joined.participant.identity.isGuest ? undefined : joined.participant.identity.id,
+                  displayName: joined.participant.identity.displayName,
+                  username: joined.participant.identity.username,
+                  isGuest: joined.participant.identity.isGuest,
+                  avatarColor: joined.participant.identity.avatarColor
+                }
+              }, joined.participant.identity);
+            }
+          }
+        } else if (!joined.participant.identity.isGuest && joined.participant.identity.id && !joined.reconnected) {
+          userStore.recordSessionStart(joined.room.sessionId, parsed.data.code, joined.participant.identity.id, 'participant', joined.room.hostIdentity);
+        }
+
+        Object.assign(socketData, { code: parsed.data.code, participantId: joined.participant.id, identity: joined.participant.identity, isWaiting: false });
+        void socket.join(parsed.data.code);
+
+        ack({
+          ok: true,
+          code: parsed.data.code,
+          role: joined.participant.role,
+          locked: Boolean(joined.room.isLocked),
+          iceServers: createIceServers(config, parsed.data.participantId),
+          peerPresent: Boolean(peer?.socketId),
+          peerMedia: peer?.media,
+          peerParticipantId: peer?.id,
+          identity: joined.participant.identity,
+          hostIdentity: joined.room.hostIdentity,
+          peerIdentity: peer?.identity,
+          projectId: joined.room.projectId || undefined,
+          reconnectToken: joined.participant.reconnectToken
         });
+
+        if (peer?.socketId) {
+          io.to(peer.socketId).emit('peer:ready', {
+            media: joined.participant.media,
+            identity: joined.participant.identity,
+            participantId: joined.participant.id,
+            reconnected: joined.reconnected
+          });
+          io.to(peer.socketId).emit('peer:joined', {
+            peerMedia: joined.participant.media,
+            identity: joined.participant.identity
+          });
+        }
+      } catch (err: unknown) {
+        let rollbackError: unknown;
+        try {
+          userStore.restoreSnapshot(userSnapshot);
+          projectStore.restoreSnapshot(projectSnapshot);
+        } catch (rErr: unknown) {
+          rollbackError = rErr;
+          console.error('Critical: Failed to persist compensating rollback for session join:', { originalError: err, rollbackError: rErr });
+        }
+
+        if (!rollbackError) {
+          console.error('Failed to record session join persistence:', err);
+        }
+
+        if (!joined.reconnected) {
+          joined.room.participants.delete(parsed.data.participantId);
+          joined.room.allJoinedParticipants.delete(parsed.data.participantId);
+        }
+        delete socketData.code;
+        delete socketData.participantId;
+        delete socketData.identity;
+        delete socketData.isWaiting;
+        void socket.leave(parsed.data.code);
+
+        return ack(failure('SERVER_ERROR', 'Failed to join session'));
       }
     });
 
@@ -655,67 +834,92 @@ export async function createApp(config: ServerConfig) {
         return;
       }
 
-      userStore.recordCollaboratorJoined(admitted.room.sessionId, admitted.room.code, admitted.room.hostIdentity, admitted.participant.identity);
-      if (admitted.room.projectId) {
-        projectStore.recordProjectSession(admitted.room.projectId, {
-          id: `${admitted.room.hostIdentity.id}_${admitted.room.code}`,
-          code: admitted.room.code,
-          startedAt: Date.now(),
-          role: 'host',
-          collaborator: {
-            id: admitted.participant.identity.isGuest ? undefined : admitted.participant.identity.id,
-            displayName: admitted.participant.identity.displayName,
-            username: admitted.participant.identity.username,
-            isGuest: admitted.participant.identity.isGuest,
-            avatarColor: admitted.participant.identity.avatarColor
-          }
-        }, admitted.participant.identity);
-      }
+      const userSnapshot = userStore.createSnapshot();
+      const projectSnapshot = projectStore.createSnapshot();
 
-      if (admitted.participant.socketId) {
-        const admittedSocket = io.sockets.sockets.get(admitted.participant.socketId) || io.of('/').sockets.get(admitted.participant.socketId);
-        if (admittedSocket) {
-          (admittedSocket.data as SocketData).isWaiting = false;
-          void admittedSocket.join(admitted.room.code);
+      try {
+        userStore.recordCollaboratorJoined(admitted.room.sessionId, admitted.room.code, admitted.room.hostIdentity, admitted.participant.identity);
+        if (admitted.room.projectId) {
+          projectStore.recordProjectSession(admitted.room.projectId, {
+            id: `${admitted.room.hostIdentity.id}_${admitted.room.code}`,
+            code: admitted.room.code,
+            startedAt: Date.now(),
+            role: 'host',
+            collaborator: {
+              id: admitted.participant.identity.isGuest ? undefined : admitted.participant.identity.id,
+              displayName: admitted.participant.identity.displayName,
+              username: admitted.participant.identity.username,
+              isGuest: admitted.participant.identity.isGuest,
+              avatarColor: admitted.participant.identity.avatarColor
+            }
+          }, admitted.participant.identity);
         }
 
-        io.to(admitted.participant.socketId).emit('waiting:admitted', {
-          ok: true,
-          code: admitted.room.code,
-          role: 'guest',
-          waiting: false,
-          locked: Boolean(admitted.room.isLocked),
-          iceServers: createIceServers(config, admitted.participant.id),
-          peerPresent: true,
-          peerMedia: hostParticipant.media,
-          peerParticipantId: hostParticipant.id,
-          identity: admitted.participant.identity,
-          hostIdentity: admitted.room.hostIdentity,
-          peerIdentity: hostParticipant.identity,
-          projectId: admitted.room.projectId || undefined
-        });
-      }
+        if (admitted.participant.socketId) {
+          const admittedSocket = io.sockets.sockets.get(admitted.participant.socketId) || io.of('/').sockets.get(admitted.participant.socketId);
+          if (admittedSocket) {
+            (admittedSocket.data as SocketData).isWaiting = false;
+            void admittedSocket.join(admitted.room.code);
+          }
 
-      if (hostParticipant.socketId) {
-        io.to(hostParticipant.socketId).emit('peer:ready', {
-          media: admitted.participant.media,
-          identity: admitted.participant.identity,
-          participantId: admitted.participant.id,
-          reconnected: false
-        });
-        io.to(hostParticipant.socketId).emit('peer:joined', {
-          peerMedia: admitted.participant.media,
-          identity: admitted.participant.identity
-        });
-        const updatedWaitingList = Array.from(admitted.room.waitingParticipants.values()).map((p) => ({
-          participantId: p.id,
-          identity: p.identity,
-          joinedAt: Date.now()
-        }));
-        io.to(hostParticipant.socketId).emit('waiting:update', updatedWaitingList);
-      }
+          io.to(admitted.participant.socketId).emit('waiting:admitted', {
+            ok: true,
+            code: admitted.room.code,
+            role: 'guest',
+            waiting: false,
+            locked: Boolean(admitted.room.isLocked),
+            iceServers: createIceServers(config, admitted.participant.id),
+            peerPresent: true,
+            peerMedia: hostParticipant.media,
+            peerParticipantId: hostParticipant.id,
+            identity: admitted.participant.identity,
+            hostIdentity: admitted.room.hostIdentity,
+            peerIdentity: hostParticipant.identity,
+            projectId: admitted.room.projectId || undefined,
+            reconnectToken: admitted.participant.reconnectToken
+          });
+        }
 
-      ack?.({ ok: true });
+        if (hostParticipant.socketId) {
+          io.to(hostParticipant.socketId).emit('peer:ready', {
+            media: admitted.participant.media,
+            identity: admitted.participant.identity,
+            participantId: admitted.participant.id,
+            reconnected: false
+          });
+          io.to(hostParticipant.socketId).emit('peer:joined', {
+            peerMedia: admitted.participant.media,
+            identity: admitted.participant.identity
+          });
+          const updatedWaitingList = Array.from(admitted.room.waitingParticipants.values()).map((p) => ({
+            participantId: p.id,
+            identity: p.identity,
+            joinedAt: Date.now()
+          }));
+          io.to(hostParticipant.socketId).emit('waiting:update', updatedWaitingList);
+        }
+
+        ack?.({ ok: true });
+      } catch (err: unknown) {
+        let rollbackError: unknown;
+        try {
+          userStore.restoreSnapshot(userSnapshot);
+          projectStore.restoreSnapshot(projectSnapshot);
+        } catch (rErr: unknown) {
+          rollbackError = rErr;
+          console.error('Critical: Failed to persist compensating rollback for session admission:', { originalError: err, rollbackError: rErr });
+        }
+
+        if (!rollbackError) {
+          console.error('Failed to persist session admission:', err);
+        }
+
+        admitted.room.participants.delete(parsed.data.participantId);
+        admitted.room.allJoinedParticipants.delete(parsed.data.participantId);
+        admitted.room.waitingParticipants.set(parsed.data.participantId, waiting);
+
+        ack?.({ ok: false, message: 'Failed to admit participant' });
+      }
     };
 
     socket.on('meeting:admit', handleAdmit);
@@ -825,6 +1029,16 @@ export async function createApp(config: ServerConfig) {
       if (peer?.socketId) io.to(peer.socketId).emit('signal:candidate', parsed.data.candidate);
     });
 
+    socket.on('signal:renegotiate', (raw) => {
+      const parsed = signalRenegotiateSchema.safeParse(raw);
+      if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
+      const room = rooms.rooms.get(parsed.data.code);
+      const participant = room?.participants.get(socketData.participantId);
+      if (!room || !participant) return;
+      const peer = rooms.peer(room, participant.id);
+      if (peer?.socketId) io.to(peer.socketId).emit('signal:renegotiate');
+    });
+
     socket.on('meeting:action', (raw) => {
       const parsed = meetingActionSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
@@ -875,18 +1089,35 @@ export async function createApp(config: ServerConfig) {
       const { code, participantId, isWaiting } = socketData;
       if (!code || !participantId) return;
       if (isWaiting) {
-        rooms.removeWaiting(code, participantId);
-        const room = rooms.rooms.get(code);
-        if (room) {
-          const hostParticipant = Array.from(room.participants.values()).find((p) => p.role === 'host');
-          if (hostParticipant?.socketId) {
-            const updatedWaitingList = Array.from(room.waitingParticipants.values()).map((p) => ({
-              participantId: p.id,
-              identity: p.identity,
-              joinedAt: Date.now()
-            }));
-            io.to(hostParticipant.socketId).emit('waiting:update', updatedWaitingList);
+        if (explicit) {
+          rooms.removeWaiting(code, participantId);
+          const room = rooms.rooms.get(code);
+          if (room) {
+            const hostParticipant = Array.from(room.participants.values()).find((p) => p.role === 'host');
+            if (hostParticipant?.socketId) {
+              const updatedWaitingList = Array.from(room.waitingParticipants.values()).map((p) => ({
+                participantId: p.id,
+                identity: p.identity,
+                joinedAt: Date.now()
+              }));
+              io.to(hostParticipant.socketId).emit('waiting:update', updatedWaitingList);
+            }
           }
+        } else {
+          rooms.disconnectWaiting(code, participantId, () => {
+            const room = rooms.rooms.get(code);
+            if (room) {
+              const hostParticipant = Array.from(room.participants.values()).find((p) => p.role === 'host');
+              if (hostParticipant?.socketId) {
+                const updatedWaitingList = Array.from(room.waitingParticipants.values()).map((p) => ({
+                  participantId: p.id,
+                  identity: p.identity,
+                  joinedAt: Date.now()
+                }));
+                io.to(hostParticipant.socketId).emit('waiting:update', updatedWaitingList);
+              }
+            }
+          });
         }
         delete socketData.code;
         delete socketData.participantId;
@@ -901,15 +1132,19 @@ export async function createApp(config: ServerConfig) {
           const project = roomBefore.projectId && roomBefore.hostIdentity.id
             ? projectStore.getProject(roomBefore.projectId, roomBefore.hostIdentity.id)
             : null;
-          userStore.recordSessionClose(roomBefore.sessionId, {
-            code: roomBefore.code,
-            startedAt: roomBefore.startedAt,
-            allJoinedParticipants: roomBefore.allJoinedParticipants,
-            chatMessagesCount: roomBefore.chatMessagesCount || 0,
-            events: roomBefore.events || [],
-            projectId: roomBefore.projectId,
-            projectName: project?.name
-          });
+          try {
+            userStore.recordSessionClose(roomBefore.sessionId, {
+              code: roomBefore.code,
+              startedAt: roomBefore.startedAt,
+              allJoinedParticipants: roomBefore.allJoinedParticipants,
+              chatMessagesCount: roomBefore.chatMessagesCount || 0,
+              events: roomBefore.events || [],
+              projectId: roomBefore.projectId,
+              projectName: project?.name
+            });
+          } catch (err: unknown) {
+            console.error('Failed to record session close on explicit leave:', err);
+          }
         }
         if (result?.peer?.socketId) io.to(result.peer.socketId).emit(result.role === 'host' ? 'meeting:ended' : 'peer:left');
         delete socketData.code;
@@ -925,15 +1160,19 @@ export async function createApp(config: ServerConfig) {
             const project = room.projectId && room.hostIdentity.id
               ? projectStore.getProject(room.projectId, room.hostIdentity.id)
               : null;
-            userStore.recordSessionClose(room.sessionId, {
-              code: room.code,
-              startedAt: room.startedAt,
-              allJoinedParticipants: room.allJoinedParticipants,
-              chatMessagesCount: room.chatMessagesCount || 0,
-              events: room.events || [],
-              projectId: room.projectId,
-              projectName: project?.name
-            });
+            try {
+              userStore.recordSessionClose(room.sessionId, {
+                code: room.code,
+                startedAt: room.startedAt,
+                allJoinedParticipants: room.allJoinedParticipants,
+                chatMessagesCount: room.chatMessagesCount || 0,
+                events: room.events || [],
+                projectId: room.projectId,
+                projectName: project?.name
+              });
+            } catch (err: unknown) {
+              console.error('Failed to record session close on disconnect expiry:', err);
+            }
           }
           if (expiredPeer?.socketId) io.to(expiredPeer.socketId).emit(role === 'host' ? 'meeting:ended' : 'peer:left');
         });

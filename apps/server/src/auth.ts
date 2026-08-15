@@ -76,6 +76,8 @@ export interface DatabaseSchema {
   version: number;
 }
 
+export const MAX_SESSIONS_PER_USER = 50;
+
 const AVATAR_COLORS = [
   '#06b6d4', // Cyan
   '#3b82f6', // Blue
@@ -127,7 +129,7 @@ export class UserStore {
   private dataFilePath: string;
 
   constructor(storageDir?: string) {
-    const baseDir = storageDir ?? path.join(process.cwd(), 'data');
+    const baseDir = storageDir ?? process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
     if (!fs.existsSync(baseDir)) {
       try { fs.mkdirSync(baseDir, { recursive: true }); } catch { /* ignore */ }
     }
@@ -159,6 +161,7 @@ export class UserStore {
         for (const s of data.sessions) {
           this.sessions.set(s.id, s);
         }
+        this.sessions = this.getPrunedSessions();
       }
       if (Array.isArray(data.scheduledSessions)) {
         for (const s of data.scheduledSessions) {
@@ -170,21 +173,101 @@ export class UserStore {
     }
   }
 
+  private getPrunedSessions(): Map<string, StoredSessionRecord> {
+    const userSessions = new Map<string, StoredSessionRecord[]>();
+    for (const record of this.sessions.values()) {
+      const uId = record.userId || 'unknown';
+      let list = userSessions.get(uId);
+      if (!list) {
+        list = [];
+        userSessions.set(uId, list);
+      }
+      list.push(record);
+    }
+
+    const retained = new Map<string, StoredSessionRecord>();
+    for (const list of userSessions.values()) {
+      list.sort((a, b) => (b.startedAt - a.startedAt) || b.id.localeCompare(a.id, undefined, { numeric: true }));
+      const kept = list.slice(0, MAX_SESSIONS_PER_USER);
+      for (const record of kept) {
+        retained.set(record.id, record);
+      }
+    }
+    return retained;
+  }
+
   private saveToDisk(): void {
+    const retainedSessions = this.getPrunedSessions();
+    const schema: DatabaseSchema = {
+      version: 1,
+      users: Array.from(this.users.values()),
+      tokens: Array.from(this.tokens.values()).filter((t) => t.expiresAt > Date.now()),
+      sessions: Array.from(retainedSessions.values()).sort((a, b) => (b.startedAt - a.startedAt) || b.id.localeCompare(a.id, undefined, { numeric: true })),
+      scheduledSessions: Array.from(this.scheduledSessions.values())
+    };
+    const dir = path.dirname(this.dataFilePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const tmpPath = `${this.dataFilePath}.${crypto.randomUUID()}.tmp`;
     try {
-      const schema: DatabaseSchema = {
-        version: 1,
-        users: Array.from(this.users.values()),
-        tokens: Array.from(this.tokens.values()).filter((t) => t.expiresAt > Date.now()),
-        sessions: Array.from(this.sessions.values()).slice(-200), // keep last 200 sessions
-        scheduledSessions: Array.from(this.scheduledSessions.values())
-      };
-      const tmpPath = `${this.dataFilePath}.tmp`;
       fs.writeFileSync(tmpPath, JSON.stringify(schema, null, 2), 'utf-8');
       fs.renameSync(tmpPath, this.dataFilePath);
+      this.sessions = retainedSessions;
     } catch (err) {
+      try {
+        if (fs.existsSync(tmpPath)) {
+          fs.unlinkSync(tmpPath);
+        }
+      } catch {
+        // ignore tmp cleanup error
+      }
       console.error('Failed to persist user database:', err);
+      throw err;
     }
+  }
+
+  createSnapshot(): string {
+    return JSON.stringify({
+      users: Array.from(this.users.values()),
+      tokens: Array.from(this.tokens.values()),
+      sessions: Array.from(this.sessions.values()),
+      scheduledSessions: Array.from(this.scheduledSessions.values())
+    });
+  }
+
+  restoreSnapshot(snapshotJson: string): void {
+    const data = JSON.parse(snapshotJson) as DatabaseSchema;
+    this.users.clear();
+    this.usernameIndex.clear();
+    this.emailIndex.clear();
+    this.tokens.clear();
+    this.sessions.clear();
+    this.scheduledSessions.clear();
+
+    if (Array.isArray(data.users)) {
+      for (const u of data.users) {
+        this.users.set(u.id, u);
+        this.usernameIndex.set(u.username.toLowerCase(), u.id);
+        this.emailIndex.set(u.email.toLowerCase(), u.id);
+      }
+    }
+    if (Array.isArray(data.tokens)) {
+      for (const t of data.tokens) {
+        this.tokens.set(t.token, t);
+      }
+    }
+    if (Array.isArray(data.sessions)) {
+      for (const s of data.sessions) {
+        this.sessions.set(s.id, s);
+      }
+    }
+    if (Array.isArray(data.scheduledSessions)) {
+      for (const s of data.scheduledSessions) {
+        this.scheduledSessions.set(s.id, s);
+      }
+    }
+    this.saveToDisk();
   }
 
   private generateToken(userId: string): string {
@@ -197,7 +280,12 @@ export class UserStore {
       expiresAt
     };
     this.tokens.set(token, session);
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.tokens.delete(token);
+      throw err;
+    }
     return token;
   }
 
@@ -232,8 +320,15 @@ export class UserStore {
     this.usernameIndex.set(lowerUsername, id);
     this.emailIndex.set(lowerEmail, id);
 
-    const token = this.generateToken(id);
-    this.saveToDisk();
+    let token: string;
+    try {
+      token = this.generateToken(id);
+    } catch (err) {
+      this.users.delete(id);
+      this.usernameIndex.delete(lowerUsername);
+      this.emailIndex.delete(lowerEmail);
+      throw err;
+    }
 
     return {
       token,
@@ -286,6 +381,11 @@ export class UserStore {
     return this.toProfile(user);
   }
 
+  getStoredUser(userId: string): StoredUser | null {
+    const user = this.users.get(userId);
+    return user ? { ...user } : null;
+  }
+
   createGuestIdentity(guestName?: string): ParticipantIdentity {
     const name = guestName?.trim() || 'Guest Musician';
     return {
@@ -321,9 +421,17 @@ export class UserStore {
   incrementHostedCount(userId: string): void {
     const user = this.users.get(userId);
     if (user) {
+      const prevCount = user.sessionsHostedCount;
+      const prevUpdatedAt = user.updatedAt;
       user.sessionsHostedCount = (user.sessionsHostedCount || 0) + 1;
       user.updatedAt = Date.now();
-      this.saveToDisk();
+      try {
+        this.saveToDisk();
+      } catch (err) {
+        user.sessionsHostedCount = prevCount;
+        user.updatedAt = prevUpdatedAt;
+        throw err;
+      }
     }
   }
 
@@ -361,6 +469,7 @@ export class UserStore {
       existing = this.sessions.get(`${userId}_${code}`);
     }
     if (existing) {
+      const existingSnapshot = JSON.parse(JSON.stringify(existing)) as StoredSessionRecord;
       if (!existing.sessionId) existing.sessionId = sessionId;
       if (collaborator) {
         existing.collaborator = {
@@ -371,7 +480,12 @@ export class UserStore {
           avatarColor: collaborator.avatarColor
         };
       }
-      this.saveToDisk();
+      try {
+        this.saveToDisk();
+      } catch (err) {
+        this.sessions.set(existing.id, existingSnapshot);
+        throw err;
+      }
       return existing;
     }
 
@@ -392,7 +506,12 @@ export class UserStore {
     };
 
     this.sessions.set(recordId, record);
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.sessions.delete(recordId);
+      throw err;
+    }
     return record;
   }
 
@@ -441,10 +560,12 @@ export class UserStore {
       projectName?: string;
     }
   ): void {
+    const snapshots = new Map<string, StoredSessionRecord>();
     const now = Date.now();
     for (const record of this.sessions.values()) {
       const match = record.sessionId === sessionId || (!record.sessionId && record.code === sessionId);
       if (match) {
+        snapshots.set(record.id, JSON.parse(JSON.stringify(record)) as StoredSessionRecord);
         const endedAt = record.endedAt ?? now;
         const durationSeconds = record.durationSeconds ?? Math.max(1, Math.round((endedAt - record.startedAt) / 1000));
         record.endedAt = endedAt;
@@ -477,7 +598,14 @@ export class UserStore {
         }
       }
     }
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      for (const [id, snap] of snapshots) {
+        this.sessions.set(id, snap);
+      }
+      throw err;
+    }
   }
 
   async updateProfile(userId: string, req: UpdateProfileRequest): Promise<UserProfile> {
@@ -485,6 +613,12 @@ export class UserStore {
     if (!user) {
       throw new Error('User not found.');
     }
+
+    const userSnapshot: StoredUser = {
+      ...user,
+      genres: user.genres ? [...user.genres] : undefined,
+      metadata: user.metadata ? { ...user.metadata } : undefined
+    };
 
     if (req.newPassword) {
       if (!req.currentPassword) {
@@ -509,7 +643,12 @@ export class UserStore {
     if (req.socialHandle !== undefined) user.socialHandle = req.socialHandle.trim();
 
     user.updatedAt = Date.now();
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.users.set(userId, userSnapshot);
+      throw err;
+    }
     return this.toProfile(user);
   }
 
@@ -517,7 +656,7 @@ export class UserStore {
     const records = Array.from(this.sessions.values())
       .filter((s) => s.userId === userId)
       .sort((a, b) => b.startedAt - a.startedAt)
-      .slice(0, 20);
+      .slice(0, MAX_SESSIONS_PER_USER);
     return records;
   }
 
@@ -540,26 +679,43 @@ export class UserStore {
       updatedAt: now
     };
     this.scheduledSessions.set(id, item);
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.scheduledSessions.delete(id);
+      throw err;
+    }
     return { ...item };
   }
 
   updateScheduledSession(userId: string, id: string, updates: { title?: string; scheduledAt?: string }): ScheduledSession | null {
     const existing = this.scheduledSessions.get(id);
     if (!existing || existing.userId !== userId) return null;
+    const snap: StoredScheduledSession = { ...existing };
     if (updates.title !== undefined) existing.title = updates.title.trim();
     if (updates.scheduledAt !== undefined) existing.scheduledAt = updates.scheduledAt;
     existing.updatedAt = Date.now();
-    this.saveToDisk();
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.scheduledSessions.set(id, snap);
+      throw err;
+    }
     return { ...existing };
   }
 
   deleteScheduledSession(userId: string, id: string): boolean {
     const existing = this.scheduledSessions.get(id);
     if (!existing || existing.userId !== userId) return false;
-    const deleted = this.scheduledSessions.delete(id);
-    if (deleted) this.saveToDisk();
-    return deleted;
+    const snap: StoredScheduledSession = { ...existing };
+    this.scheduledSessions.delete(id);
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.scheduledSessions.set(id, snap);
+      throw err;
+    }
+    return true;
   }
 
   private toProfile(stored: StoredUser): UserProfile {

@@ -347,5 +347,167 @@ describe('ProjectStore & Workspace', () => {
     expect(reloaded?.activities.length).toBeGreaterThan(4);
     expect(reloaded?.activities[0].type).toBe('task_completed');
   });
+
+  it('strictly enforces role permissions: viewer is read-only, editor/collaborator can edit workspace, owner has admin', () => {
+    const mockEditor: UserProfile = {
+      id: 'user-editor',
+      displayName: 'Audio Editor Alex',
+      username: 'alexeditor',
+      email: 'alex@music.com',
+      avatarColor: '#10b981',
+      isGuest: false,
+      createdAt: Date.now()
+    };
+
+    const mockViewer: UserProfile = {
+      id: 'user-viewer',
+      displayName: 'Observer Olivia',
+      username: 'oliviaviewer',
+      email: 'olivia@music.com',
+      avatarColor: '#6366f1',
+      isGuest: false,
+      createdAt: Date.now()
+    };
+
+    const project = projectStore.createProject(mockOwner, { name: 'Permission Master' });
+
+    // 1. Owner adds collaborator with 'editor' role, and another with 'viewer' role
+    const withEditor = projectStore.addCollaborator(project.id, mockOwner.id, mockEditor, 'editor');
+    expect(withEditor).not.toBeNull();
+    expect(projectStore.getUserRole(project.id, mockEditor.id)).toBe('editor');
+
+    const withViewer = projectStore.addCollaborator(project.id, mockOwner.id, mockViewer, 'viewer');
+    expect(withViewer).not.toBeNull();
+    expect(projectStore.getUserRole(project.id, mockViewer.id)).toBe('viewer');
+
+    // 2. Editor CAN modify workspace content (lyrics, notes, structure, tasks)
+    const editorLyricsUpdate = projectStore.updateWorkspace(project.id, mockEditor, {
+      lyrics: { content: 'Lyrics edited by editor Alex' }
+    });
+    expect(editorLyricsUpdate).not.toBeNull();
+    expect(editorLyricsUpdate?.workspace.lyrics.content).toBe('Lyrics edited by editor Alex');
+
+    // 3. Viewer CANNOT modify workspace content (returns null)
+    const viewerLyricsUpdate = projectStore.updateWorkspace(project.id, mockViewer, {
+      lyrics: { content: 'Malicious overwrite by viewer' }
+    });
+    expect(viewerLyricsUpdate).toBeNull();
+
+    const viewerNotesUpdate = projectStore.updateWorkspace(project.id, mockViewer, {
+      notes: { bpm: '160', content: 'Viewer note' }
+    });
+    expect(viewerNotesUpdate).toBeNull();
+
+    const viewerStructureUpdate = projectStore.updateWorkspace(project.id, mockViewer, {
+      structure: { sections: [{ id: 'sec_v', type: 'intro', name: 'Viewer Intro', updatedAt: Date.now() }] }
+    });
+    expect(viewerStructureUpdate).toBeNull();
+
+    const viewerTaskUpdate = projectStore.updateWorkspace(project.id, mockViewer, {
+      tasks: { tasks: [{ id: 'task_v', title: 'Viewer Task', status: 'todo', createdAt: Date.now(), updatedAt: Date.now() }] }
+    });
+    expect(viewerTaskUpdate).toBeNull();
+
+    // Verify workspace was NOT modified by viewer attempts
+    const afterViewerAttempts = projectStore.getProject(project.id, mockOwner.id);
+    expect(afterViewerAttempts?.workspace.lyrics.content).toBe('Lyrics edited by editor Alex');
+    expect(afterViewerAttempts?.workspace.notes.bpm).toBeUndefined();
+
+    // 4. Viewer CANNOT modify project settings / metadata
+    const viewerProjectUpdate = projectStore.updateProject(project.id, mockViewer.id, {
+      name: 'Hacked Project Name',
+      archived: true
+    });
+    expect(viewerProjectUpdate).toBeNull();
+
+    // 5. Non-owner (editor / viewer / collaborator) CANNOT add collaborators or assign roles
+    const mockNewMember: UserProfile = {
+      id: 'user-new',
+      displayName: 'New Guy',
+      username: 'newguy',
+      email: 'new@music.com',
+      avatarColor: '#f59e0b',
+      isGuest: false,
+      createdAt: Date.now()
+    };
+    const unauthorizedAddByEditor = projectStore.addCollaborator(project.id, mockEditor.id, mockNewMember, 'viewer');
+    expect(unauthorizedAddByEditor).toBeNull();
+
+    const unauthorizedAddByViewer = projectStore.addCollaborator(project.id, mockViewer.id, mockNewMember, 'viewer');
+    expect(unauthorizedAddByViewer).toBeNull();
+
+    // 6. Non-owner CANNOT remove other collaborators
+    const unauthorizedRemoveOther = projectStore.removeCollaborator(project.id, mockEditor.id, mockViewer.id);
+    expect(unauthorizedRemoveOther).toBeNull();
+
+    // 7. Non-owner CAN remove themselves (leave project)
+    const editorLeaves = projectStore.removeCollaborator(project.id, mockEditor.id, mockEditor.id);
+    expect(editorLeaves).not.toBeNull();
+    expect(projectStore.hasAccess(project.id, mockEditor.id)).toBe(false);
+
+    // 8. Non-owner CANNOT delete project
+    const viewerDelete = projectStore.deleteProject(project.id, mockViewer.id);
+    expect(viewerDelete).toBe(false);
+
+    // 9. Owner CAN update collaborator role (e.g. promote viewer to editor)
+    const promoted = projectStore.addCollaborator(project.id, mockOwner.id, mockViewer, 'editor');
+    expect(promoted).not.toBeNull();
+    expect(projectStore.getUserRole(project.id, mockViewer.id)).toBe('editor');
+
+    // Now previously viewer (now editor) CAN update workspace
+    const nowEditorUpdate = projectStore.updateWorkspace(project.id, mockViewer, {
+      notes: { content: 'Olivia is now an editor and can edit notes' }
+    });
+    expect(nowEditorUpdate).not.toBeNull();
+    expect(nowEditorUpdate?.workspace.notes.content).toContain('Olivia is now an editor');
+
+    // 10. Owner CAN delete project
+    const ownerDelete = projectStore.deleteProject(project.id, mockOwner.id);
+    expect(ownerDelete).toBe(true);
+  });
+
+  it('fails and rolls back in-memory state when project persistence write fails', () => {
+    const blockerFile = path.join(tmpDir, 'blocker');
+    fs.writeFileSync(blockerFile, 'blocking file');
+    const unwritableDir = path.join(blockerFile, 'sub');
+
+    const store = new ProjectStore(unwritableDir);
+
+    // 1. createProject should throw on persistence failure and not retain project in memory
+    expect(() => {
+      store.createProject(mockOwner, { name: 'Failing Project' });
+    }).toThrow();
+    expect(store.listProjects(mockOwner.id).length).toBe(0);
+
+    // 2. updateWorkspace should throw and rollback workspace changes if write fails
+    const project = projectStore.createProject(mockOwner, { name: 'Rollback Demo' });
+    const prevContent = project.workspace.notes.content;
+
+    // Break the data file path
+    (projectStore as any).dataFilePath = path.join(blockerFile, 'sub', 'musiczoom-projects.json');
+
+    expect(() => {
+      projectStore.updateWorkspace(project.id, mockOwner, {
+        notes: { content: 'This should not be saved' }
+      });
+    }).toThrow();
+
+    const projAfterFail = projectStore.getProject(project.id, mockOwner.id);
+    expect(projAfterFail?.workspace.notes.content).toBe(prevContent);
+
+    // 3. updateProject should throw and rollback
+    expect(() => {
+      projectStore.updateProject(project.id, mockOwner.id, { name: 'Hacked Project Name' });
+    }).toThrow();
+    expect(projectStore.getProject(project.id, mockOwner.id)?.name).toBe('Rollback Demo');
+
+    // 4. deleteProject should throw and not delete project from memory if write fails
+    expect(() => {
+      projectStore.deleteProject(project.id, mockOwner.id);
+    }).toThrow();
+    expect(projectStore.getProject(project.id, mockOwner.id)).not.toBeNull();
+  });
 });
+
+
 

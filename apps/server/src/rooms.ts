@@ -9,6 +9,7 @@ export type Participant = {
   socketId: string | null;
   media: MediaMetadata;
   identity: ParticipantIdentity;
+  reconnectToken: string;
   timer?: NodeJS.Timeout;
 };
 export type Room = {
@@ -37,10 +38,18 @@ export class RoomStore {
     return result;
   }
 
-  create(participantId: string, socketId: string, media: MediaMetadata, identity: ParticipantIdentity, projectId?: string, waitingRoomEnabled?: boolean): Room {
+  create(
+    participantId: string,
+    socketId: string,
+    media: MediaMetadata,
+    identity: ParticipantIdentity,
+    projectId?: string,
+    waitingRoomEnabled?: boolean,
+    reconnectToken: string = randomUUID()
+  ): Room {
     let code = this.code();
     while (this.rooms.has(code)) code = this.code();
-    const hostParticipant: Participant = { id: participantId, role: 'host', socketId, media, identity };
+    const hostParticipant: Participant = { id: participantId, role: 'host', socketId, media, identity, reconnectToken };
     const room: Room = {
       sessionId: randomUUID(),
       code,
@@ -60,10 +69,17 @@ export class RoomStore {
     return room;
   }
 
-  join(code: string, participantId: string, socketId: string, media: MediaMetadata, identity: ParticipantIdentity):
+  join(
+    code: string,
+    participantId: string,
+    socketId: string,
+    media: MediaMetadata,
+    identity: ParticipantIdentity,
+    reconnectToken?: string
+  ):
     | { ok: true; room: Room; participant: Participant; reconnected: boolean; waiting?: false }
-    | { ok: true; room: Room; participant: Participant; waiting: true }
-    | { ok: false; reason: 'INVALID_CODE' | 'ROOM_FULL' | 'ROOM_LOCKED' } {
+    | { ok: true; room: Room; participant: Participant; waiting: true; reconnected?: boolean }
+    | { ok: false; reason: 'INVALID_CODE' | 'ROOM_FULL' | 'ROOM_LOCKED' | 'UNAUTHORIZED' } {
     const room = this.rooms.get(code);
     if (!room || room.expiresAt < Date.now()) {
       if (room) this.close(code);
@@ -71,27 +87,66 @@ export class RoomStore {
     }
     const existing = room.participants.get(participantId);
     if (existing) {
+      const isTokenValid = Boolean(reconnectToken && existing.reconnectToken === reconnectToken);
+      const isAuthUserValid = Boolean(!existing.identity.isGuest && !identity.isGuest && existing.identity.id === identity.id);
+      if (!isTokenValid && !isAuthUserValid) {
+        return { ok: false, reason: 'UNAUTHORIZED' };
+      }
+
       if (existing.timer) clearTimeout(existing.timer);
       existing.timer = undefined;
       existing.socketId = socketId;
       existing.media = media;
-      existing.identity = identity;
-      room.allJoinedParticipants.set(participantId, identity);
+      if (isAuthUserValid) {
+        existing.identity = { ...identity, isHost: existing.role === 'host' };
+      } else if (existing.identity.isGuest) {
+        if (identity.displayName && identity.displayName !== 'Guest Musician') {
+          existing.identity.displayName = identity.displayName;
+        }
+      }
+      if (existing.role === 'host') {
+        room.hostIdentity = existing.identity;
+      }
+      room.allJoinedParticipants.set(participantId, existing.identity);
       return { ok: true, room, participant: existing, reconnected: true, waiting: false };
+    }
+
+    const existingWaiting = room.waitingParticipants.get(participantId);
+    if (existingWaiting) {
+      const isTokenValid = Boolean(reconnectToken && existingWaiting.reconnectToken === reconnectToken);
+      const isAuthUserValid = Boolean(!existingWaiting.identity.isGuest && !identity.isGuest && existingWaiting.identity.id === identity.id);
+      if (!isTokenValid && !isAuthUserValid) {
+        return { ok: false, reason: 'UNAUTHORIZED' };
+      }
+
+      if (existingWaiting.timer) clearTimeout(existingWaiting.timer);
+      existingWaiting.timer = undefined;
+      existingWaiting.socketId = socketId;
+      existingWaiting.media = media;
+      if (isAuthUserValid) {
+        existingWaiting.identity = { ...identity, isHost: false };
+      } else if (existingWaiting.identity.isGuest) {
+        if (identity.displayName && identity.displayName !== 'Guest Musician') {
+          existingWaiting.identity.displayName = identity.displayName;
+        }
+      }
+      return { ok: true, room, participant: existingWaiting, reconnected: true, waiting: true };
     }
 
     if (room.isLocked) {
       return { ok: false, reason: 'ROOM_LOCKED' };
     }
 
+    const newReconnectToken = randomUUID();
+
     if (room.waitingRoomEnabled) {
-      const waitingParticipant: Participant = { id: participantId, role: 'guest', socketId, media, identity };
+      const waitingParticipant: Participant = { id: participantId, role: 'guest', socketId, media, identity, reconnectToken: newReconnectToken };
       room.waitingParticipants.set(participantId, waitingParticipant);
-      return { ok: true, room, participant: waitingParticipant, waiting: true };
+      return { ok: true, room, participant: waitingParticipant, reconnected: false, waiting: true };
     }
 
     if (room.participants.size >= 2) return { ok: false, reason: 'ROOM_FULL' };
-    const participant: Participant = { id: participantId, role: 'guest', socketId, media, identity };
+    const participant: Participant = { id: participantId, role: 'guest', socketId, media, identity, reconnectToken: newReconnectToken };
     room.participants.set(participantId, participant);
     room.allJoinedParticipants.set(participantId, identity);
     return { ok: true, room, participant, reconnected: false, waiting: false };
@@ -107,6 +162,11 @@ export class RoomStore {
     if (room.participants.size >= 2) return { ok: false, reason: 'ROOM_FULL' };
 
     room.waitingParticipants.delete(participantId);
+    if (waiting.timer) clearTimeout(waiting.timer);
+    waiting.timer = undefined;
+    if (!waiting.reconnectToken) {
+      waiting.reconnectToken = randomUUID();
+    }
     room.participants.set(participantId, waiting);
     room.allJoinedParticipants.set(participantId, waiting.identity);
     return { ok: true, room, participant: waiting };
@@ -125,7 +185,23 @@ export class RoomStore {
   removeWaiting(code: string, participantId: string): boolean {
     const room = this.rooms.get(code);
     if (!room) return false;
+    const waiting = room.waitingParticipants.get(participantId);
+    if (waiting?.timer) clearTimeout(waiting.timer);
     return room.waitingParticipants.delete(participantId);
+  }
+
+  disconnectWaiting(code: string, participantId: string, onExpired?: () => void): void {
+    const room = this.rooms.get(code);
+    const waiting = room?.waitingParticipants.get(participantId);
+    if (!room || !waiting) return;
+    waiting.socketId = null;
+    if (waiting.timer) clearTimeout(waiting.timer);
+    waiting.timer = setTimeout(() => {
+      const current = room.waitingParticipants.get(participantId);
+      if (!current || current.socketId) return;
+      room.waitingParticipants.delete(participantId);
+      onExpired?.();
+    }, this.graceMs);
   }
 
   setLocked(code: string, locked: boolean): { ok: true; room: Room } | { ok: false; reason: 'NOT_FOUND' } {

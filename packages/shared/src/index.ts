@@ -415,6 +415,7 @@ export type CreateMeetingRequest = z.infer<typeof createMeetingSchema>;
 export const joinMeetingSchema = z.object({
   code: meetingCodeSchema,
   participantId: participantIdSchema,
+  reconnectToken: z.string().optional(),
   authToken: z.string().optional(),
   guestDisplayName: z.string().optional(),
   media: mediaMetadataSchema
@@ -434,6 +435,10 @@ export const signalCandidateSchema = z.object({
     usernameFragment: z.string().nullable().optional()
   }).nullable()
 });
+export const signalRenegotiateSchema = z.object({
+  code: meetingCodeSchema
+});
+export type SignalRenegotiateRequest = z.infer<typeof signalRenegotiateSchema>;
 export const meetingActionSchema = z.object({
   code: meetingCodeSchema,
   action: z.unknown().optional()
@@ -460,6 +465,7 @@ export type MeetingAck =
       hostIdentity: ParticipantIdentity;
       peerIdentity?: ParticipantIdentity;
       projectId?: string;
+      reconnectToken?: string;
     }
   | { ok: false; code: MeetingErrorCode; message: string };
 

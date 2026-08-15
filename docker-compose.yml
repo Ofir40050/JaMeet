@@ -8,6 +8,8 @@ services:
     expose: ["3000"]
     read_only: true
     tmpfs: ["/tmp"]
+    volumes:
+      - signaling_data:/app/data
     security_opt: ["no-new-privileges:true"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
@@ -54,5 +56,6 @@ services:
     security_opt: ["no-new-privileges:true"]
 
 volumes:
+  signaling_data:
   caddy_data:
   caddy_config:
