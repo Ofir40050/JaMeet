@@ -1,14 +1,14 @@
 import Foundation
 import AppKit
 
-func getMusicZoomProcessPIDs() -> Set<pid_t> {
-    var musicZoomPIDs = Set<pid_t>()
+func getJaMeetProcessPIDs() -> Set<pid_t> {
+    var jaMeetPIDs = Set<pid_t>()
     
     // 1. Current process and parent chain
     let myPid = ProcessInfo.processInfo.processIdentifier
     let parentPid = getppid()
-    musicZoomPIDs.insert(myPid)
-    musicZoomPIDs.insert(parentPid)
+    jaMeetPIDs.insert(myPid)
+    jaMeetPIDs.insert(parentPid)
     
     // 2. Read full process list with args: `ps -A -o pid,ppid,command`
     let pipe = Pipe()
@@ -20,7 +20,7 @@ func getMusicZoomProcessPIDs() -> Set<pid_t> {
     proc.waitUntilExit()
     
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    guard let output = String(data: data, encoding: .utf8) else { return musicZoomPIDs }
+    guard let output = String(data: data, encoding: .utf8) else { return jaMeetPIDs }
     
     var parentToChildren: [pid_t: [pid_t]] = [:]
     var identifiedRoots = Set<pid_t>()
@@ -45,15 +45,15 @@ func getMusicZoomProcessPIDs() -> Set<pid_t> {
         }
     }
     
-    // 3. Find all descendant child/helper processes of any identified MusicZoom process
-    var toExplore = Array(identifiedRoots.union(musicZoomPIDs))
+    // 3. Find all descendant child/helper processes of any identified JaMeet process
+    var toExplore = Array(identifiedRoots.union(jaMeetPIDs))
     var visited = Set<pid_t>()
     
     while !toExplore.isEmpty {
         let current = toExplore.removeLast()
         if visited.contains(current) { continue }
         visited.insert(current)
-        musicZoomPIDs.insert(current)
+        jaMeetPIDs.insert(current)
         
         if let children = parentToChildren[current] {
             for child in children {
@@ -64,11 +64,11 @@ func getMusicZoomProcessPIDs() -> Set<pid_t> {
         }
     }
     
-    return musicZoomPIDs
+    return jaMeetPIDs
 }
 
-let pids = getMusicZoomProcessPIDs()
-print("Identified exact MusicZoom PIDs:", pids)
+let pids = getJaMeetProcessPIDs()
+print("Identified exact JaMeet PIDs:", pids)
 
 // Verify other apps like Antigravity IDE, Spotify, ChatGPT are NOT in pids
 let workspace = NSWorkspace.shared
