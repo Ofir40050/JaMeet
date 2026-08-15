@@ -53,7 +53,7 @@ JaMeetTransport* JaMeetTransport_OpenPosixShmConfig(const JaMeetTransportConfig*
 
     if (config->createIfMissing && !config->readOnly) {
         /*
-         * First attempt exclusive creation with O_EXCL to detect if the object is genuinely new.
+         * Exclusive creation with O_EXCL to detect if object is genuinely new.
          */
         fd = shm_open(shmName, O_RDWR | O_CREAT | O_EXCL, mode);
         if (fd >= 0) {
@@ -64,7 +64,7 @@ JaMeetTransport* JaMeetTransport_OpenPosixShmConfig(const JaMeetTransportConfig*
                 return NULL;
             }
         } else if (errno == EEXIST) {
-            /* Object already exists: open existing handle without re-truncating or resetting permissions */
+            /* Object already exists: open existing handle without truncating */
             fd = shm_open(shmName, O_RDWR, mode);
             if (fd < 0) {
                 return NULL;
@@ -127,7 +127,7 @@ JaMeetTransport* JaMeetTransport_OpenPosixShmConfig(const JaMeetTransportConfig*
     t->segment = seg;
     t->mappedSize = segmentSize;
     t->fd = fd;
-    t->isOwner = config->createIfMissing && !config->readOnly;
+    t->isOwner = isNewlyCreated; /* Only the genuine creator is considered the owner with unlink rights */
     t->isReadOnly = config->readOnly;
     t->isNewlyCreated = isNewlyCreated;
     strncpy(t->shmName, shmName, sizeof(t->shmName) - 1);
@@ -157,7 +157,8 @@ void JaMeetTransport_Close(JaMeetTransport* transport, bool unlinkShm) {
         if (transport->fd >= 0) {
             close(transport->fd);
         }
-        if (unlinkShm && transport->isOwner && transport->shmName[0] != '\0') {
+        /* Only genuinely new owner object can unlink */
+        if (unlinkShm && transport->isOwner && transport->isNewlyCreated && transport->shmName[0] != '\0') {
             shm_unlink(transport->shmName);
         }
     }
