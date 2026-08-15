@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "description": "Two-person remote music sessions",
-  "author": "MusicZoom",
-  "desktopName": "MusicZoom",
+  "author": "JaMeet",
+  "desktopName": "JaMeet",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -34,9 +34,9 @@
     "vitest": "^4.1.10"
   },
   "build": {
-    "appId": "com.musiczoom.app",
-    "productName": "MusicZoom",
-    "executableName": "MusicZoom",
+    "appId": "com.jameet.app",
+    "productName": "JaMeet",
+    "executableName": "JaMeet",
     "asar": true,
     "files": [
       "out/**/*",
@@ -51,8 +51,9 @@
     ],
     "protocols": [
       {
-        "name": "MusicZoom Session",
+        "name": "JaMeet Session",
         "schemes": [
+          "jameet",
           "musiczoom"
         ]
       }
@@ -70,8 +71,8 @@
       "category": "public.app-category.music",
       "hardenedRuntime": true,
       "extendInfo": {
-        "NSCameraUsageDescription": "MusicZoom uses your camera for remote music sessions.",
-        "NSMicrophoneUsageDescription": "MusicZoom uses your microphone or audio interface for remote music sessions."
+        "NSCameraUsageDescription": "JaMeet uses your camera for remote music sessions.",
+        "NSMicrophoneUsageDescription": "JaMeet uses your microphone or audio interface for remote music sessions."
       }
     },
     "win": {
@@ -99,6 +100,6 @@
     "directories": {
       "output": "release"
     },
-    "artifactName": "MusicZoom-${version}-${os}-${arch}.${ext}"
+    "artifactName": "JaMeet-${version}-${os}-${arch}.${ext}"
   }
 }

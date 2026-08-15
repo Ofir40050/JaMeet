@@ -4,7 +4,7 @@ const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3000),
-  ALLOWED_ORIGINS: z.string().default('musiczoom-app://bundle,http://localhost:5173'),
+  ALLOWED_ORIGINS: z.string().default('jameet-app://bundle,musiczoom-app://bundle,http://localhost:5173'),
   TURN_HOST: z.string().default('localhost'),
   TURN_PORT: z.coerce.number().int().positive().default(3478),
   TURN_TLS_PORT: z.coerce.number().int().positive().default(5349),

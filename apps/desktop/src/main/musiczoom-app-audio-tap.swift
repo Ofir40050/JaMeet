@@ -70,8 +70,10 @@ func listRunningAudioApps() {
         let lowerName = rawName.lowercased()
         let lowerBundle = bundleId.lowercased()
 
-        // Exclude MusicZoom processes, Electron runner, and Finder
-        if lowerName.contains("musiczoom") ||
+        // Exclude JaMeet/MusicZoom processes, Electron runner, and Finder
+        if lowerName.contains("jameet") ||
+           lowerBundle.contains("jameet") ||
+           lowerName.contains("musiczoom") ||
            lowerBundle.contains("musiczoom") ||
            lowerName == "electron" ||
            lowerBundle == "com.github.electron" ||
@@ -880,7 +882,7 @@ func getAllMusicZoomAndSelfProcessPIDs() -> Set<pid_t> {
     for app in workspace.runningApplications {
         let name = (app.localizedName ?? "").lowercased()
         let bundle = (app.bundleIdentifier ?? "").lowercased()
-        if name.contains("musiczoom") || bundle.contains("musiczoom") {
+        if name.contains("jameet") || bundle.contains("jameet") || name.contains("musiczoom") || bundle.contains("musiczoom") {
             musicZoomPIDs.insert(app.processIdentifier)
         }
     }
@@ -911,7 +913,7 @@ func getAllMusicZoomAndSelfProcessPIDs() -> Set<pid_t> {
         let cmd = String(parts[2]).lowercased()
         parentToChildren[ppid, default: []].append(pid)
 
-        if cmd.contains("musiczoom") || cmd.contains("musiczoom-instance") {
+        if cmd.contains("jameet") || cmd.contains("jameet-instance") || cmd.contains("musiczoom") || cmd.contains("musiczoom-instance") {
             identifiedRoots.insert(pid)
         }
     }

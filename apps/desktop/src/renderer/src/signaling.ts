@@ -33,7 +33,7 @@ export class SignalingClient {
   private async connect(): Promise<void> {
     if (this.socket.connected) return;
     await new Promise<void>((resolve, reject) => {
-      const timer = window.setTimeout(() => { cleanup(); reject(new Error('Could not reach the MusicZoom service.')); }, 10_000);
+      const timer = window.setTimeout(() => { cleanup(); reject(new Error('Could not reach the JaMeet service.')); }, 10_000);
       const connected = () => { cleanup(); resolve(); };
       const failed = (error: Error) => { cleanup(); reject(error); };
       const cleanup = () => {

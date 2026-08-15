@@ -4464,7 +4464,7 @@ $('btn-create-project')?.addEventListener('click', async () => {
   }
   const token = auth.getToken();
   if (!token) {
-    setText('new-project-error', 'Please sign in to your MusicZoom account to create projects.');
+    setText('new-project-error', 'Please sign in to your JaMeet account to create projects.');
     return;
   }
   const submitBtn = $<HTMLButtonElement>('btn-create-project');

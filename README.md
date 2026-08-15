@@ -1,11 +1,11 @@
-# MusicZoom
+# JaMeet
 
-MusicZoom is an installable two-person desktop calling application for remote writing, production, vocal, and instrumental sessions. It uses Electron for the desktop client, WebRTC for encrypted media, Socket.IO for signaling, and coturn for calls that cannot connect directly.
+JaMeet is an installable two-person desktop calling application for remote writing, production, vocal, and instrumental sessions. It uses Electron for the desktop client, WebRTC for encrypted media, Socket.IO for signaling, and coturn for calls that cannot connect directly.
 
 ## What works
 
 - Real two-way camera and microphone/audio-interface calls
-- Start or join an ephemeral session with an eight-character code or `musiczoom://` link
+- Start or join an ephemeral session with an eight-character code or `jameet://` link
 - Talk Mode with echo cancellation, noise suppression, and automatic gain control
 - Music Mode with processing disabled where supported, stereo capture preference, and 256 kbps Opus negotiation
 - Independent camera, Voice Input, stereo Music Input, and audio-output selection
@@ -15,7 +15,7 @@ MusicZoom is an installable two-person desktop calling application for remote wr
 - DAW-aware screen sharing with supported system audio while the microphone remains active
 - Two-person room limits, waiting state, reconnection grace period, ICE restart, STUN, and authenticated TURN
 
-MusicZoom does not provide call recording or video export. The short microphone test in Studio Setup is kept only in memory for immediate local playback and is never uploaded or saved.
+JaMeet does not provide call recording or video export. The short microphone test in Studio Setup is kept only in memory for immediate local playback and is never uploaded or saved.
 
 Music Mode is not lossless or sample-accurate and is not a replacement for a dedicated synchronized DAW transport. OS-visible virtual devices such as BlackHole or Loopback work like any other Music Input. System-audio capture depends on the operating system; on macOS, use a virtual device when native screen capture does not provide an audio track.
 

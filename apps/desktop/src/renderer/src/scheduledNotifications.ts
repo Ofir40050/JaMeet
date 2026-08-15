@@ -36,7 +36,7 @@ export function computeDueReminders(
           session,
           type: '5_min',
           key,
-          title: 'MusicZoom Scheduled Session',
+          title: 'JaMeet Scheduled Session',
           body: `"${session.title}" starts in 5 minutes.`
         });
       }
@@ -51,7 +51,7 @@ export function computeDueReminders(
           session,
           type: 'start_now',
           key,
-          title: 'MusicZoom Scheduled Session',
+          title: 'JaMeet Scheduled Session',
           body: `"${session.title}" is starting now.`
         });
       }

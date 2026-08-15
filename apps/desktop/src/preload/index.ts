@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-contextBridge.exposeInMainWorld('musiczoom', {
+const jameetApi = {
   getInitialDeepLink: (): Promise<string | null> => ipcRenderer.invoke('get-initial-deep-link'),
   onDeepLink: (listener: (url: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, url: string) => listener(url);
@@ -103,4 +103,7 @@ contextBridge.exposeInMainWorld('musiczoom', {
     return () => ipcRenderer.removeListener('scheduled-notification-clicked', handler);
   },
   platform: process.platform
-});
+};
+
+contextBridge.exposeInMainWorld('jameet', jameetApi);
+contextBridge.exposeInMainWorld('musiczoom', jameetApi);

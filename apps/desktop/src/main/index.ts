@@ -4,6 +4,7 @@ import { join, normalize, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 protocol.registerSchemesAsPrivileged([
+  { scheme: 'jameet-app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
   { scheme: 'musiczoom-app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
 ]);
 
@@ -34,7 +35,7 @@ function safeSend(win: BrowserWindow | null, channel: string, ...args: unknown[]
 }
 
 function findDeepLink(args: string[]): string | null {
-  return args.find((arg) => /^musiczoom:\/\/join\/[a-z0-9]+/i.test(arg)) ?? null;
+  return args.find((arg) => /^(jameet|musiczoom):\/\/join\/[a-z0-9]+/i.test(arg)) ?? null;
 }
 
 function deliverDeepLink(url: string): void {
@@ -49,18 +50,20 @@ function deliverDeepLink(url: string): void {
 
 function registerDeepLinkHandler(): void {
   if (process.defaultApp && process.argv[1]) {
+    app.setAsDefaultProtocolClient('jameet', process.execPath, [resolve(process.argv[1])]);
     app.setAsDefaultProtocolClient('musiczoom', process.execPath, [resolve(process.argv[1])]);
   } else {
+    app.setAsDefaultProtocolClient('jameet');
     app.setAsDefaultProtocolClient('musiczoom');
   }
 }
 
 const rawInstanceArg = process.argv.find((arg) => arg.startsWith('--instance=') || arg.startsWith('--profile='));
-const instanceId = process.env.MUSICZOOM_INSTANCE || process.env.MUSICZOOM_PROFILE || (rawInstanceArg ? rawInstanceArg.split('=')[1] : '') || '';
+const instanceId = process.env.JAMEET_INSTANCE || process.env.MUSICZOOM_INSTANCE || process.env.JAMEET_PROFILE || process.env.MUSICZOOM_PROFILE || (rawInstanceArg ? rawInstanceArg.split('=')[1] : '') || '';
 
 if (instanceId) {
   try {
-    const customUserData = join(app.getPath('appData'), `MusicZoom-Instance-${instanceId}`);
+    const customUserData = join(app.getPath('appData'), `JaMeet-Instance-${instanceId}`);
     app.setPath('userData', customUserData);
   } catch (err) {
     console.warn('Could not set custom userData path:', err);
@@ -68,7 +71,7 @@ if (instanceId) {
 }
 
 function createWindow(): void {
-  const windowTitle = instanceId ? `MusicZoom [Instance ${instanceId}]` : 'MusicZoom';
+  const windowTitle = instanceId ? `JaMeet [Instance ${instanceId}]` : 'JaMeet';
   mainWindow = new BrowserWindow({
     width: 1120,
     height: 760,
@@ -123,7 +126,7 @@ function createWindow(): void {
   });
 
   if (process.env.ELECTRON_RENDERER_URL) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
-  else void mainWindow.loadURL('musiczoom-app://bundle/index.html');
+  else void mainWindow.loadURL('jameet-app://bundle/index.html');
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -199,7 +202,7 @@ function createOrGetPresenterToolbarWindow(): BrowserWindow {
     url.pathname = '/presenter-toolbar.html';
     void presenterToolbarWindow.loadURL(url.toString());
   } else {
-    void presenterToolbarWindow.loadURL('musiczoom-app://bundle/presenter-toolbar.html');
+    void presenterToolbarWindow.loadURL('jameet-app://bundle/presenter-toolbar.html');
   }
 
   presenterToolbarWindow.on('closed', () => {
@@ -259,7 +262,7 @@ function createOrGetPresenterVideoWindow(): BrowserWindow {
     url.pathname = '/presenter-video.html';
     void presenterVideoWindow.loadURL(url.toString());
   } else {
-    void presenterVideoWindow.loadURL('musiczoom-app://bundle/presenter-video.html');
+    void presenterVideoWindow.loadURL('jameet-app://bundle/presenter-video.html');
   }
 
   presenterVideoWindow.on('closed', () => {
@@ -288,15 +291,17 @@ else {
     pendingDeepLink = findDeepLink(process.argv);
 
     const rendererRoot = normalize(join(__dirname, '../renderer'));
-    protocol.handle('musiczoom-app', (request) => {
+    const handleBundleProtocol = (request: Request) => {
       const requestUrl = new URL(request.url);
       const relative = decodeURIComponent(requestUrl.pathname).replace(/^\/+/, '') || 'index.html';
       const candidate = normalize(join(rendererRoot, relative));
       const target = candidate.startsWith(rendererRoot) && existsSync(candidate) ? candidate : join(rendererRoot, 'index.html');
       return net.fetch(pathToFileURL(target).toString());
-    });
+    };
+    protocol.handle('jameet-app', handleBundleProtocol);
+    protocol.handle('musiczoom-app', handleBundleProtocol);
 
-    const allowedOrigin = (url?: string) => !url || url.startsWith('musiczoom-app://bundle') || url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:');
+    const allowedOrigin = (url?: string) => !url || url.startsWith('jameet-app://bundle') || url.startsWith('musiczoom-app://bundle') || url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:');
     session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin) =>
       allowedOrigin(requestingOrigin) && ['media', 'speaker-selection'].includes(permission));
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) =>
@@ -338,7 +343,7 @@ else {
       const filtered = sources.filter((source) => {
         if (source.id.startsWith('screen:')) return true;
         const name = (source.name || '').toLowerCase();
-        if (name.includes('musiczoom') || name === 'electron' || name.startsWith('presenter') || name.startsWith('floating')) {
+        if (name.includes('jameet') || name.includes('musiczoom') || name === 'electron' || name.startsWith('presenter') || name.startsWith('floating')) {
           return false;
         }
         return true;
@@ -377,7 +382,7 @@ else {
         }
       }
 
-      const args = ['capture-display', '--app-pid', String(process.pid), '--bundle-id', 'com.musiczoom.desktop'];
+      const args = ['capture-display', '--app-pid', String(process.pid), '--bundle-id', 'com.jameet.app'];
       if (displayId !== undefined && displayId !== null) {
         args.push('--display', String(displayId));
       }

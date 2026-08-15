@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' http://localhost:* ws://localhost:* https: wss:; object-src 'none'; base-uri 'none'" />
-    <title>MusicZoom — Studio Audio Collaboration</title>
+    <title>JaMeet — Studio Audio Collaboration</title>
   </head>
   <body>
     <div class="ambient-glow glow-1"></div>
@@ -64,7 +64,7 @@
                 <div class="user-hero-tag-row">
                   <span class="profile-pill">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
-                    <span>MusicZoom Account</span>
+                    <span>JaMeet Account</span>
                   </span>
                   <span class="profile-pill sec-pill">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
@@ -248,7 +248,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></svg>
               </div>
               <h4>No previous sessions yet</h4>
-              <p>Host or join a session above. Completed sessions and collaborators will be saved to your MusicZoom account.</p>
+              <p>Host or join a session above. Completed sessions and collaborators will be saved to your JaMeet account.</p>
             </div>
 
             <div id="recent-sessions-list" class="recent-sessions-list"></div>
@@ -1097,9 +1097,9 @@
           </div>
           <div class="modal-body">
             <div class="field-group">
-              <label for="add-collab-username">MusicZoom Username or Email</label>
-              <input id="add-collab-username" type="text" class="custom-input" placeholder="Enter their MusicZoom username or email" />
-              <span class="field-hint">Only registered MusicZoom users can be added as collaborators.</span>
+              <label for="add-collab-username">JaMeet Username or Email</label>
+              <input id="add-collab-username" type="text" class="custom-input" placeholder="Enter their JaMeet username or email" />
+              <span class="field-hint">Only registered JaMeet users can be added as collaborators.</span>
             </div>
             <p id="add-collab-error" class="message error" role="alert"></p>
           </div>
@@ -1170,7 +1170,7 @@
                   <h2 class="sessions-hero-title">Session History</h2>
                   <span id="all-sessions-total-badge" class="badge-count">0 sessions</span>
                 </div>
-                <p class="sessions-hero-description">All completed studio sessions, recordings, and collaborator jam logs saved to your MusicZoom account.</p>
+                <p class="sessions-hero-description">All completed studio sessions, recordings, and collaborator jam logs saved to your JaMeet account.</p>
               </div>
               <div class="sessions-hero-actions">
                 <button id="btn-start-session-from-history" type="button" class="primary sessions-start-btn">
@@ -1301,7 +1301,7 @@
             <div id="view-panel-register" class="auth-view-panel hidden">
               <div class="auth-panel-heading">
                 <h2>Create Account</h2>
-                <p class="auth-sub">Register a MusicZoom account to host sessions with a persistent display name and handle.</p>
+                <p class="auth-sub">Register a JaMeet account to host sessions with a persistent display name and handle.</p>
               </div>
 
               <div class="auth-form-row-2">
@@ -1373,7 +1373,7 @@
           <div class="topbar-left">
             <div class="brand-badge mini">
               <span class="pulse-indicator"></span>
-              <span class="brand">MusicZoom</span>
+              <span class="brand">JaMeet</span>
             </div>
             <span class="crumb-sep">/</span>
             <span class="crumb">Studio Sound Check</span>
@@ -1542,7 +1542,7 @@
                   <div id="music-system-group" class="app-audio-container hidden">
                     <div class="app-status-bar">
                       <span class="status-dot"></span>
-                      <span class="app-status-text">Ready · Capturing Computer Audio (Excluding MusicZoom Session Playback)</span>
+                      <span class="app-status-text">Ready · Capturing Computer Audio (Excluding JaMeet Session Playback)</span>
                     </div>
                   </div>
                 </div>
@@ -2216,7 +2216,7 @@
                   <div id="call-music-system-group" class="app-audio-container hidden">
                     <div class="app-status-bar">
                       <span class="status-dot"></span>
-                      <span class="app-status-text">Ready · Capturing Computer Audio (Excluding MusicZoom Session Playback)</span>
+                      <span class="app-status-text">Ready · Capturing Computer Audio (Excluding JaMeet Session Playback)</span>
                     </div>
                   </div>
                 </div>
@@ -2688,7 +2688,7 @@
 
             <div class="auth-actions mt-3">
               <button id="btn-submit-login" type="button" class="primary large w-full glow btn-auth-submit">
-                <span>Sign In to MusicZoom</span>
+                <span>Sign In to JaMeet</span>
                 <span class="btn-arrow">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                 </span>
@@ -3004,7 +3004,7 @@
               </span>
               <div>
                 <h2>Join Session</h2>
-                <p class="dialog-subtitle-top">Choose how you would like to connect to this MusicZoom session.</p>
+                <p class="dialog-subtitle-top">Choose how you would like to connect to this JaMeet session.</p>
               </div>
             </div>
             <button value="cancel" class="dialog-close" aria-label="Close">
@@ -3050,7 +3050,7 @@
               <span class="btn-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/></svg>
               </span>
-              <span>Sign In with MusicZoom Account</span>
+              <span>Sign In with JaMeet Account</span>
             </button>
           </div>
         </form>

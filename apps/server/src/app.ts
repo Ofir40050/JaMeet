@@ -82,6 +82,7 @@ export async function createApp(config: ServerConfig) {
         origins.includes(origin) ||
         origin.startsWith('http://localhost:') ||
         origin.startsWith('http://127.0.0.1:') ||
+        origin.startsWith('jameet-app://') ||
         origin.startsWith('musiczoom-app://');
       cb(null, isAllowed);
     },
@@ -352,7 +353,7 @@ export async function createApp(config: ServerConfig) {
     }
     const targetUser = userStore.findByUsernameOrEmail(parsed.data.usernameOrEmail);
     if (!targetUser) {
-      return reply.code(404).send({ ok: false, message: `No registered MusicZoom user found matching "${parsed.data.usernameOrEmail}".` });
+      return reply.code(404).send({ ok: false, message: `No registered JaMeet user found matching "${parsed.data.usernameOrEmail}".` });
     }
     const updated = projectStore.addCollaborator(request.params.id, user.id, targetUser, parsed.data.role);
     if (!updated) {
