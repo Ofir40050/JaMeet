@@ -250,8 +250,6 @@ export class UserStore {
     this.tokens.clear();
     this.sessions.clear();
     this.scheduledSessions.clear();
-    this.pendingUsernames.clear();
-    this.pendingEmails.clear();
 
     if (Array.isArray(data.users)) {
       for (const u of data.users) {

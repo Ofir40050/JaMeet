@@ -495,25 +495,34 @@ describe('UserStore & Password Hashing', () => {
     }
   });
 
-  it('releases temporary reservation when persistence fails, allowing subsequent registrations to succeed', async () => {
+  it('releases temporary reservation when persistence fails, allowing subsequent registrations to succeed on the same UserStore instance', async () => {
     const blockerFile = path.join(testDir, 'blocker');
     fs.mkdirSync(testDir, { recursive: true });
     fs.writeFileSync(blockerFile, 'file blocking directory creation');
-    const unwritableDir = path.join(blockerFile, 'sub');
 
-    const failingStore = new UserStore(unwritableDir);
+    const store = new UserStore(testDir);
+    const validDataFilePath = (store as any).dataFilePath;
 
-    // Attempt registration which will fail at persistence
-    await expect(failingStore.register({
+    // Temporarily point dataFilePath to an unwritable path to simulate persistence failure
+    (store as any).dataFilePath = path.join(blockerFile, 'sub', 'musiczoom-accounts.json');
+
+    // Attempt registration which fails at persistence
+    await expect(store.register({
       username: 'temp_user',
       email: 'temp@music.com',
       password: 'Password123!',
       displayName: 'Temp User'
     })).rejects.toThrow();
 
-    // Now point store to a valid writable path and register the same username and email
-    const writableStore = new UserStore(testDir);
-    const successResult = await writableStore.register({
+    // In-memory indices and reservations must be clean
+    expect(store.findByUsernameOrEmail('temp_user')).toBeNull();
+    expect(store.findByUsernameOrEmail('temp@music.com')).toBeNull();
+
+    // Restore writable dataFilePath on the EXACT SAME UserStore instance
+    (store as any).dataFilePath = validDataFilePath;
+
+    // Registering the same username and email on the same store instance now succeeds
+    const successResult = await store.register({
       username: 'temp_user',
       email: 'temp@music.com',
       password: 'Password123!',
@@ -522,6 +531,35 @@ describe('UserStore & Password Hashing', () => {
 
     expect(successResult.user.username).toBe('temp_user');
     expect(successResult.user.email).toBe('temp@music.com');
+  });
+
+  it('preserves in-flight registration reservations across unrelated restoreSnapshot rollback calls', async () => {
+    const store = new UserStore(testDir);
+    const snapshot = store.createSnapshot();
+
+    // Start registration 1 (which hashes password asynchronously)
+    const regPromise1 = store.register({
+      username: 'inflight_user',
+      email: 'inflight@music.com',
+      password: 'Password123!',
+      displayName: 'In Flight 1'
+    });
+
+    // Unrelated rollback occurs while regPromise1 is in flight
+    store.restoreSnapshot(snapshot);
+
+    // Concurrent conflicting registration arrives after restoreSnapshot but while regPromise1 is still in flight
+    await expect(store.register({
+      username: 'INFLIGHT_USER',
+      email: 'other@music.com',
+      password: 'Password123!',
+      displayName: 'In Flight 2'
+    })).rejects.toThrow(/already taken/i);
+
+    // Initial in-flight registration completes successfully
+    const result1 = await regPromise1;
+    expect(result1.user.username).toBe('inflight_user');
+    expect(store.findByUsernameOrEmail('inflight_user')).not.toBeNull();
   });
 
   it('finalizes a single participant record and prevents subsequent room closure from modifying it', async () => {
