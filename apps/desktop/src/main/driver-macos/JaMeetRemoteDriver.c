@@ -350,6 +350,10 @@ static Boolean STDMETHODCALLTYPE JaMeetDriver_HasProperty(
                 case kAudioObjectPropertyClass:
                 case kAudioObjectPropertyOwner:
                 case kAudioObjectPropertyManufacturer:
+                case kAudioObjectPropertyName:
+                case kAudioObjectPropertyOwnedObjects:
+                case kAudioObjectPropertyControlList:
+                case kAudioObjectPropertyCustomPropertyInfoList:
                 case kAudioPlugInPropertyBundleID:
                 case kAudioPlugInPropertyBoxList:
                 case kAudioPlugInPropertyTranslateUIDToDevice:
@@ -367,9 +371,18 @@ static Boolean STDMETHODCALLTYPE JaMeetDriver_HasProperty(
                 case kAudioObjectPropertyOwner:
                 case kAudioObjectPropertyManufacturer:
                 case kAudioObjectPropertyName:
+                case kAudioObjectPropertyModelName:
+                case kAudioObjectPropertySerialNumber:
+                case kAudioObjectPropertyFirmwareVersion:
+                case kAudioObjectPropertyOwnedObjects:
+                case kAudioObjectPropertyControlList:
+                case kAudioObjectPropertyCustomPropertyInfoList:
+                case kAudioObjectPropertyIdentify:
+                case kAudioObjectPropertyElementName:
                 case kAudioDevicePropertyDeviceUID:
                 case kAudioDevicePropertyModelUID:
                 case kAudioDevicePropertyTransportType:
+                case kAudioDevicePropertyRelatedDevices:
                 case kAudioDevicePropertyDeviceIsAlive:
                 case kAudioDevicePropertyDeviceIsRunning:
                 case kAudioDevicePropertyDeviceCanBeDefaultDevice:
@@ -378,8 +391,6 @@ static Boolean STDMETHODCALLTYPE JaMeetDriver_HasProperty(
                 case kAudioDevicePropertyStreams:
                 case kAudioDevicePropertyNominalSampleRate:
                 case kAudioDevicePropertyAvailableNominalSampleRates:
-                case kAudioDevicePropertyPreferredChannelsForStereo:
-                case kAudioDevicePropertyPreferredChannelLayout:
                 case kAudioDevicePropertyBufferFrameSize:
                 case kAudioDevicePropertyBufferFrameSizeRange:
                 case kAudioDevicePropertyUsesVariableIOBufferFrameSizes:
@@ -389,7 +400,12 @@ static Boolean STDMETHODCALLTYPE JaMeetDriver_HasProperty(
                 case kAudioDevicePropertyClockDomain:
                 case kAudioDevicePropertyClockAlgorithm:
                 case kAudioDevicePropertyClockIsStable:
+                case kAudioDevicePropertyIcon:
+                case kAudioDevicePropertyConfigurationApplication:
                     return true;
+                case kAudioDevicePropertyPreferredChannelsForStereo:
+                case kAudioDevicePropertyPreferredChannelLayout:
+                    return (inAddress->mScope != kAudioObjectPropertyScopeOutput);
                 default:
                     return false;
             }
@@ -399,6 +415,12 @@ static Boolean STDMETHODCALLTYPE JaMeetDriver_HasProperty(
                 case kAudioObjectPropertyBaseClass:
                 case kAudioObjectPropertyClass:
                 case kAudioObjectPropertyOwner:
+                case kAudioObjectPropertyName:
+                case kAudioObjectPropertyManufacturer:
+                case kAudioObjectPropertyOwnedObjects:
+                case kAudioObjectPropertyControlList:
+                case kAudioObjectPropertyCustomPropertyInfoList:
+                case kAudioObjectPropertyElementName:
                 case kAudioStreamPropertyIsActive:
                 case kAudioStreamPropertyDirection:
                 case kAudioStreamPropertyTerminalType:
@@ -451,8 +473,6 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyDataSize(
 ) {
     UNUSED_PARAM(inDriver);
     UNUSED_PARAM(inClientPID);
-    UNUSED_PARAM(inQualifierDataSize);
-    UNUSED_PARAM(inQualifierData);
     if (!inAddress || !outDataSize) return kAudioHardwareIllegalOperationError;
 
     switch (inObjectID) {
@@ -464,16 +484,27 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyDataSize(
                     *outDataSize = sizeof(AudioClassID);
                     return kAudioHardwareNoError;
                 case kAudioObjectPropertyManufacturer:
+                case kAudioObjectPropertyName:
                 case kAudioPlugInPropertyBundleID:
                 case kAudioPlugInPropertyResourceBundle:
                     *outDataSize = sizeof(CFStringRef);
                     return kAudioHardwareNoError;
+                case kAudioObjectPropertyControlList:
+                case kAudioObjectPropertyCustomPropertyInfoList:
                 case kAudioPlugInPropertyBoxList:
                     *outDataSize = 0;
                     return kAudioHardwareNoError;
-                case kAudioPlugInPropertyDeviceList:
+                case kAudioObjectPropertyOwnedObjects:
+                    if (inQualifierDataSize >= sizeof(AudioClassID) && inQualifierData) {
+                        AudioClassID qualifierClass = *((const AudioClassID*)inQualifierData);
+                        if (qualifierClass != kAudioObjectClassID && qualifierClass != kAudioDeviceClassID) {
+                            *outDataSize = 0;
+                            return kAudioHardwareNoError;
+                        }
+                    }
                     *outDataSize = sizeof(AudioObjectID);
                     return kAudioHardwareNoError;
+                case kAudioPlugInPropertyDeviceList:
                 case kAudioPlugInPropertyTranslateUIDToDevice:
                     *outDataSize = sizeof(AudioObjectID);
                     return kAudioHardwareNoError;
@@ -490,9 +521,31 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyDataSize(
                     return kAudioHardwareNoError;
                 case kAudioObjectPropertyManufacturer:
                 case kAudioObjectPropertyName:
+                case kAudioObjectPropertyModelName:
+                case kAudioObjectPropertySerialNumber:
+                case kAudioObjectPropertyFirmwareVersion:
+                case kAudioObjectPropertyElementName:
                 case kAudioDevicePropertyDeviceUID:
                 case kAudioDevicePropertyModelUID:
+                case kAudioDevicePropertyConfigurationApplication:
                     *outDataSize = sizeof(CFStringRef);
+                    return kAudioHardwareNoError;
+                case kAudioDevicePropertyIcon:
+                    *outDataSize = sizeof(CFURLRef);
+                    return kAudioHardwareNoError;
+                case kAudioObjectPropertyControlList:
+                case kAudioObjectPropertyCustomPropertyInfoList:
+                    *outDataSize = 0;
+                    return kAudioHardwareNoError;
+                case kAudioObjectPropertyOwnedObjects:
+                    if (inQualifierDataSize >= sizeof(AudioClassID) && inQualifierData) {
+                        AudioClassID qualifierClass = *((const AudioClassID*)inQualifierData);
+                        if (qualifierClass != kAudioObjectClassID && qualifierClass != kAudioStreamClassID) {
+                            *outDataSize = 0;
+                            return kAudioHardwareNoError;
+                        }
+                    }
+                    *outDataSize = sizeof(AudioObjectID);
                     return kAudioHardwareNoError;
                 case kAudioDevicePropertyTransportType:
                 case kAudioDevicePropertyDeviceIsAlive:
@@ -508,7 +561,11 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyDataSize(
                 case kAudioDevicePropertyClockDomain:
                 case kAudioDevicePropertyClockAlgorithm:
                 case kAudioDevicePropertyClockIsStable:
+                case kAudioObjectPropertyIdentify:
                     *outDataSize = sizeof(UInt32);
+                    return kAudioHardwareNoError;
+                case kAudioDevicePropertyRelatedDevices:
+                    *outDataSize = sizeof(AudioObjectID);
                     return kAudioHardwareNoError;
                 case kAudioDevicePropertyStreams:
                     if (inAddress->mScope == kAudioObjectPropertyScopeInput || inAddress->mScope == kAudioObjectPropertyScopeGlobal) {
@@ -521,16 +578,22 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyDataSize(
                     *outDataSize = sizeof(Float64);
                     return kAudioHardwareNoError;
                 case kAudioDevicePropertyAvailableNominalSampleRates:
+                case kAudioDevicePropertyBufferFrameSizeRange:
                     *outDataSize = sizeof(AudioValueRange);
                     return kAudioHardwareNoError;
                 case kAudioDevicePropertyPreferredChannelsForStereo:
+                    if (inAddress->mScope == kAudioObjectPropertyScopeOutput) {
+                        *outDataSize = 0;
+                        return kAudioHardwareUnknownPropertyError;
+                    }
                     *outDataSize = 2 * sizeof(UInt32);
                     return kAudioHardwareNoError;
                 case kAudioDevicePropertyPreferredChannelLayout:
+                    if (inAddress->mScope == kAudioObjectPropertyScopeOutput) {
+                        *outDataSize = 0;
+                        return kAudioHardwareUnknownPropertyError;
+                    }
                     *outDataSize = sizeof(AudioChannelLayout);
-                    return kAudioHardwareNoError;
-                case kAudioDevicePropertyBufferFrameSizeRange:
-                    *outDataSize = sizeof(AudioValueRange);
                     return kAudioHardwareNoError;
                 default:
                     return kAudioHardwareUnknownPropertyError;
@@ -542,6 +605,16 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyDataSize(
                 case kAudioObjectPropertyClass:
                 case kAudioObjectPropertyOwner:
                     *outDataSize = sizeof(AudioClassID);
+                    return kAudioHardwareNoError;
+                case kAudioObjectPropertyName:
+                case kAudioObjectPropertyManufacturer:
+                case kAudioObjectPropertyElementName:
+                    *outDataSize = sizeof(CFStringRef);
+                    return kAudioHardwareNoError;
+                case kAudioObjectPropertyOwnedObjects:
+                case kAudioObjectPropertyControlList:
+                case kAudioObjectPropertyCustomPropertyInfoList:
+                    *outDataSize = 0;
                     return kAudioHardwareNoError;
                 case kAudioStreamPropertyIsActive:
                 case kAudioStreamPropertyDirection:
@@ -580,8 +653,6 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyData(
 ) {
     UNUSED_PARAM(inDriver);
     UNUSED_PARAM(inClientPID);
-    UNUSED_PARAM(inQualifierDataSize);
-    UNUSED_PARAM(inQualifierData);
     if (!inAddress || !outDataSize || !outData) return kAudioHardwareIllegalOperationError;
 
     switch (inObjectID) {
@@ -599,17 +670,44 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyData(
                     *((AudioObjectID*)outData) = kAudioObjectUnknown;
                     *outDataSize = sizeof(AudioObjectID);
                     return kAudioHardwareNoError;
-                case kAudioObjectPropertyManufacturer:
-                    *((CFStringRef*)outData) = CFSTR(JAMEET_MANUFACTURER_NAME);
+                case kAudioObjectPropertyManufacturer: {
+                    CFStringRef str = CFSTR(JAMEET_MANUFACTURER_NAME);
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
                     *outDataSize = sizeof(CFStringRef);
                     return kAudioHardwareNoError;
-                case kAudioPlugInPropertyBundleID:
-                    *((CFStringRef*)outData) = CFSTR(JAMEET_BUNDLE_ID);
+                }
+                case kAudioObjectPropertyName: {
+                    CFStringRef str = CFSTR(JAMEET_DRIVER_NAME);
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
                     *outDataSize = sizeof(CFStringRef);
                     return kAudioHardwareNoError;
+                }
+                case kAudioObjectPropertyOwnedObjects:
+                    if (inQualifierDataSize >= sizeof(AudioClassID) && inQualifierData) {
+                        AudioClassID qualifierClass = *((const AudioClassID*)inQualifierData);
+                        if (qualifierClass != kAudioObjectClassID && qualifierClass != kAudioDeviceClassID) {
+                            *outDataSize = 0;
+                            return kAudioHardwareNoError;
+                        }
+                    }
+                    if (inDataSize < sizeof(AudioObjectID)) return kAudioHardwareBadPropertySizeError;
+                    *((AudioObjectID*)outData) = kObjectID_Device;
+                    *outDataSize = sizeof(AudioObjectID);
+                    return kAudioHardwareNoError;
+                case kAudioObjectPropertyControlList:
+                case kAudioObjectPropertyCustomPropertyInfoList:
                 case kAudioPlugInPropertyBoxList:
                     *outDataSize = 0;
                     return kAudioHardwareNoError;
+                case kAudioPlugInPropertyBundleID: {
+                    CFStringRef str = CFSTR(JAMEET_BUNDLE_ID);
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
+                    *outDataSize = sizeof(CFStringRef);
+                    return kAudioHardwareNoError;
+                }
                 case kAudioPlugInPropertyDeviceList:
                     if (inDataSize < sizeof(AudioObjectID)) return kAudioHardwareBadPropertySizeError;
                     *((AudioObjectID*)outData) = kObjectID_Device;
@@ -620,7 +718,7 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyData(
                         return kAudioHardwareIllegalOperationError;
                     }
                     CFStringRef inUID = *((CFStringRef*)inQualifierData);
-                    if (CFStringCompare(inUID, CFSTR(JAMEET_DEVICE_UID), 0) == kCFCompareEqualTo) {
+                    if (inUID && CFStringCompare(inUID, CFSTR(JAMEET_DEVICE_UID), 0) == kCFCompareEqualTo) {
                         *((AudioObjectID*)outData) = kObjectID_Device;
                     } else {
                         *((AudioObjectID*)outData) = kAudioObjectUnknown;
@@ -628,10 +726,13 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyData(
                     *outDataSize = sizeof(AudioObjectID);
                     return kAudioHardwareNoError;
                 }
-                case kAudioPlugInPropertyResourceBundle:
-                    *((CFStringRef*)outData) = CFSTR("");
+                case kAudioPlugInPropertyResourceBundle: {
+                    CFStringRef str = CFSTR("");
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
                     *outDataSize = sizeof(CFStringRef);
                     return kAudioHardwareNoError;
+                }
                 default:
                     return kAudioHardwareUnknownPropertyError;
             }
@@ -650,24 +751,97 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyData(
                     *((AudioObjectID*)outData) = kObjectID_PlugIn;
                     *outDataSize = sizeof(AudioObjectID);
                     return kAudioHardwareNoError;
-                case kAudioObjectPropertyManufacturer:
-                    *((CFStringRef*)outData) = CFSTR(JAMEET_MANUFACTURER_NAME);
+                case kAudioObjectPropertyManufacturer: {
+                    CFStringRef str = CFSTR(JAMEET_MANUFACTURER_NAME);
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
                     *outDataSize = sizeof(CFStringRef);
                     return kAudioHardwareNoError;
+                }
                 case kAudioObjectPropertyName:
-                    *((CFStringRef*)outData) = CFSTR(JAMEET_DEVICE_NAME);
+                case kAudioObjectPropertyModelName: {
+                    CFStringRef str = CFSTR(JAMEET_DEVICE_NAME);
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
                     *outDataSize = sizeof(CFStringRef);
                     return kAudioHardwareNoError;
-                case kAudioDevicePropertyDeviceUID:
-                    *((CFStringRef*)outData) = CFSTR(JAMEET_DEVICE_UID);
+                }
+                case kAudioObjectPropertySerialNumber: {
+                    CFStringRef str = CFSTR("JaMeet Remote 1.0");
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
                     *outDataSize = sizeof(CFStringRef);
                     return kAudioHardwareNoError;
-                case kAudioDevicePropertyModelUID:
-                    *((CFStringRef*)outData) = CFSTR(JAMEET_MODEL_UID);
+                }
+                case kAudioObjectPropertyFirmwareVersion: {
+                    CFStringRef str = CFSTR("1.0");
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
                     *outDataSize = sizeof(CFStringRef);
                     return kAudioHardwareNoError;
+                }
+                case kAudioObjectPropertyElementName: {
+                    if (inDataSize < sizeof(CFStringRef)) return kAudioHardwareBadPropertySizeError;
+                    CFStringRef str = NULL;
+                    if (inAddress->mElement == 0 || inAddress->mElement == kAudioObjectPropertyElementMain) {
+                        str = CFSTR("Master");
+                    } else if (inAddress->mElement == 1) {
+                        str = CFSTR("Left");
+                    } else if (inAddress->mElement == 2) {
+                        str = CFSTR("Right");
+                    } else {
+                        return kAudioHardwareUnknownPropertyError;
+                    }
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
+                    *outDataSize = sizeof(CFStringRef);
+                    return kAudioHardwareNoError;
+                }
+                case kAudioObjectPropertyOwnedObjects:
+                    if (inQualifierDataSize >= sizeof(AudioClassID) && inQualifierData) {
+                        AudioClassID qualifierClass = *((const AudioClassID*)inQualifierData);
+                        if (qualifierClass != kAudioObjectClassID && qualifierClass != kAudioStreamClassID) {
+                            *outDataSize = 0;
+                            return kAudioHardwareNoError;
+                        }
+                    }
+                    if (inDataSize < sizeof(AudioObjectID)) return kAudioHardwareBadPropertySizeError;
+                    *((AudioObjectID*)outData) = kObjectID_Stream_Input;
+                    *outDataSize = sizeof(AudioObjectID);
+                    return kAudioHardwareNoError;
+                case kAudioObjectPropertyControlList:
+                case kAudioObjectPropertyCustomPropertyInfoList:
+                    *outDataSize = 0;
+                    return kAudioHardwareNoError;
+                case kAudioObjectPropertyIdentify:
+                    *((UInt32*)outData) = 0;
+                    *outDataSize = sizeof(UInt32);
+                    return kAudioHardwareNoError;
+                case kAudioDevicePropertyDeviceUID: {
+                    CFStringRef str = CFSTR(JAMEET_DEVICE_UID);
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
+                    *outDataSize = sizeof(CFStringRef);
+                    return kAudioHardwareNoError;
+                }
+                case kAudioDevicePropertyModelUID: {
+                    CFStringRef str = CFSTR(JAMEET_MODEL_UID);
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
+                    *outDataSize = sizeof(CFStringRef);
+                    return kAudioHardwareNoError;
+                }
                 case kAudioDevicePropertyTransportType:
                     *((UInt32*)outData) = kAudioDeviceTransportTypeVirtual;
+                    *outDataSize = sizeof(UInt32);
+                    return kAudioHardwareNoError;
+                case kAudioDevicePropertyRelatedDevices:
+                    if (inDataSize < sizeof(AudioObjectID)) return kAudioHardwareBadPropertySizeError;
+                    *((AudioObjectID*)outData) = kObjectID_Device;
+                    *outDataSize = sizeof(AudioObjectID);
+                    return kAudioHardwareNoError;
+                case kAudioDevicePropertyClockDomain:
+                    *((UInt32*)outData) = 0;
                     *outDataSize = sizeof(UInt32);
                     return kAudioHardwareNoError;
                 case kAudioDevicePropertyDeviceIsAlive:
@@ -679,11 +853,11 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyData(
                     *outDataSize = sizeof(UInt32);
                     return kAudioHardwareNoError;
                 case kAudioDevicePropertyDeviceCanBeDefaultDevice:
-                    *((UInt32*)outData) = 1;
+                    *((UInt32*)outData) = (inAddress->mScope == kAudioObjectPropertyScopeOutput) ? 0 : 1;
                     *outDataSize = sizeof(UInt32);
                     return kAudioHardwareNoError;
                 case kAudioDevicePropertyDeviceCanBeDefaultSystemDevice:
-                    *((UInt32*)outData) = 0;
+                    *((UInt32*)outData) = (inAddress->mScope == kAudioObjectPropertyScopeOutput) ? 0 : 1;
                     *outDataSize = sizeof(UInt32);
                     return kAudioHardwareNoError;
                 case kAudioDevicePropertyIsHidden:
@@ -712,6 +886,10 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyData(
                     return kAudioHardwareNoError;
                 }
                 case kAudioDevicePropertyPreferredChannelsForStereo: {
+                    if (inAddress->mScope == kAudioObjectPropertyScopeOutput) {
+                        *outDataSize = 0;
+                        return kAudioHardwareUnknownPropertyError;
+                    }
                     if (inDataSize < 2 * sizeof(UInt32)) return kAudioHardwareBadPropertySizeError;
                     UInt32* ch = (UInt32*)outData;
                     ch[0] = 1;
@@ -720,6 +898,10 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyData(
                     return kAudioHardwareNoError;
                 }
                 case kAudioDevicePropertyPreferredChannelLayout: {
+                    if (inAddress->mScope == kAudioObjectPropertyScopeOutput) {
+                        *outDataSize = 0;
+                        return kAudioHardwareUnknownPropertyError;
+                    }
                     if (inDataSize < sizeof(AudioChannelLayout)) return kAudioHardwareBadPropertySizeError;
                     AudioChannelLayout* layout = (AudioChannelLayout*)outData;
                     layout->mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
@@ -753,10 +935,6 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyData(
                     *((UInt32*)outData) = JAMEET_DRIVER_ZERO_TIMESTAMP_PERIOD;
                     *outDataSize = sizeof(UInt32);
                     return kAudioHardwareNoError;
-                case kAudioDevicePropertyClockDomain:
-                    *((UInt32*)outData) = 0;
-                    *outDataSize = sizeof(UInt32);
-                    return kAudioHardwareNoError;
                 case kAudioDevicePropertyClockAlgorithm:
                     *((UInt32*)outData) = 0;
                     *outDataSize = sizeof(UInt32);
@@ -765,6 +943,18 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyData(
                     *((UInt32*)outData) = 1;
                     *outDataSize = sizeof(UInt32);
                     return kAudioHardwareNoError;
+                case kAudioDevicePropertyIcon:
+                    if (inDataSize < sizeof(CFURLRef)) return kAudioHardwareBadPropertySizeError;
+                    *((CFURLRef*)outData) = NULL;
+                    *outDataSize = sizeof(CFURLRef);
+                    return kAudioHardwareNoError;
+                case kAudioDevicePropertyConfigurationApplication: {
+                    CFStringRef str = CFSTR("");
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
+                    *outDataSize = sizeof(CFStringRef);
+                    return kAudioHardwareNoError;
+                }
                 default:
                     return kAudioHardwareUnknownPropertyError;
             }
@@ -783,6 +973,42 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_GetPropertyData(
                     *((AudioObjectID*)outData) = kObjectID_Device;
                     *outDataSize = sizeof(AudioObjectID);
                     return kAudioHardwareNoError;
+                case kAudioObjectPropertyName: {
+                    CFStringRef str = CFSTR("JaMeet Remote Input Stream");
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
+                    *outDataSize = sizeof(CFStringRef);
+                    return kAudioHardwareNoError;
+                }
+                case kAudioObjectPropertyManufacturer: {
+                    CFStringRef str = CFSTR(JAMEET_MANUFACTURER_NAME);
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
+                    *outDataSize = sizeof(CFStringRef);
+                    return kAudioHardwareNoError;
+                }
+                case kAudioObjectPropertyOwnedObjects:
+                case kAudioObjectPropertyControlList:
+                case kAudioObjectPropertyCustomPropertyInfoList:
+                    *outDataSize = 0;
+                    return kAudioHardwareNoError;
+                case kAudioObjectPropertyElementName: {
+                    if (inDataSize < sizeof(CFStringRef)) return kAudioHardwareBadPropertySizeError;
+                    CFStringRef str = NULL;
+                    if (inAddress->mElement == 0 || inAddress->mElement == kAudioObjectPropertyElementMain) {
+                        str = CFSTR("Master");
+                    } else if (inAddress->mElement == 1) {
+                        str = CFSTR("Left");
+                    } else if (inAddress->mElement == 2) {
+                        str = CFSTR("Right");
+                    } else {
+                        return kAudioHardwareUnknownPropertyError;
+                    }
+                    CFRetain(str);
+                    *((CFStringRef*)outData) = str;
+                    *outDataSize = sizeof(CFStringRef);
+                    return kAudioHardwareNoError;
+                }
                 case kAudioStreamPropertyIsActive:
                     *((UInt32*)outData) = 1;
                     *outDataSize = sizeof(UInt32);

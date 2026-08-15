@@ -296,6 +296,114 @@ static void test_background_discovery_for_running_client(void) {
     TEST_PASS();
 }
 
+/* ========================================================================= */
+/* Test 6: CoreAudio HAL Device & Stream Property Compliance                 */
+/* ========================================================================= */
+static void test_driver_coreaudio_hal_property_compliance(void) {
+    AudioServerPlugInDriverRef driver = (AudioServerPlugInDriverRef)JaMeetRemote_Create(kCFAllocatorDefault, kAudioServerPlugInTypeUUID);
+    assert(driver != NULL);
+    (*driver)->Initialize(driver, dummyHost);
+
+    AudioObjectPropertyAddress addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.mScope = kAudioObjectPropertyScopeGlobal;
+    addr.mElement = kAudioObjectPropertyElementMain;
+
+    /* 1. PlugIn Owned Objects & Device List */
+    addr.mSelector = kAudioObjectPropertyOwnedObjects;
+    UInt32 dataSize = 0;
+    OSStatus status = (*driver)->GetPropertyDataSize(driver, kObjectID_PlugIn, 0, &addr, 0, NULL, &dataSize);
+    assert(status == kAudioHardwareNoError);
+    assert(dataSize == sizeof(AudioObjectID));
+
+    AudioObjectID plugInOwned = 0;
+    status = (*driver)->GetPropertyData(driver, kObjectID_PlugIn, 0, &addr, 0, NULL, dataSize, &dataSize, &plugInOwned);
+    assert(status == kAudioHardwareNoError);
+    assert(plugInOwned == kObjectID_Device);
+
+    /* 2. Device Owned Objects with and without class qualifier */
+    addr.mSelector = kAudioObjectPropertyOwnedObjects;
+    status = (*driver)->GetPropertyDataSize(driver, kObjectID_Device, 0, &addr, 0, NULL, &dataSize);
+    assert(status == kAudioHardwareNoError);
+    assert(dataSize == sizeof(AudioObjectID));
+
+    AudioObjectID devOwned = 0;
+    status = (*driver)->GetPropertyData(driver, kObjectID_Device, 0, &addr, 0, NULL, dataSize, &dataSize, &devOwned);
+    assert(status == kAudioHardwareNoError);
+    assert(devOwned == kObjectID_Stream_Input);
+
+    /* Qualifier: kAudioStreamClassID */
+    AudioClassID streamClass = kAudioStreamClassID;
+    status = (*driver)->GetPropertyDataSize(driver, kObjectID_Device, 0, &addr, sizeof(AudioClassID), &streamClass, &dataSize);
+    assert(status == kAudioHardwareNoError);
+    assert(dataSize == sizeof(AudioObjectID));
+
+    /* Qualifier: kAudioControlClassID (device has 0 controls) */
+    AudioClassID controlClass = kAudioControlClassID;
+    status = (*driver)->GetPropertyDataSize(driver, kObjectID_Device, 0, &addr, sizeof(AudioClassID), &controlClass, &dataSize);
+    assert(status == kAudioHardwareNoError);
+    assert(dataSize == 0);
+
+    /* 3. Device Related Devices & Control List */
+    addr.mSelector = kAudioDevicePropertyRelatedDevices;
+    status = (*driver)->GetPropertyDataSize(driver, kObjectID_Device, 0, &addr, 0, NULL, &dataSize);
+    assert(status == kAudioHardwareNoError);
+    assert(dataSize == sizeof(AudioObjectID));
+
+    addr.mSelector = kAudioObjectPropertyControlList;
+    status = (*driver)->GetPropertyDataSize(driver, kObjectID_Device, 0, &addr, 0, NULL, &dataSize);
+    assert(status == kAudioHardwareNoError);
+    assert(dataSize == 0);
+
+    /* 4. Preferred Channel Layout & Preferred Channels for Stereo Scope Isolation */
+    addr.mSelector = kAudioDevicePropertyPreferredChannelLayout;
+    addr.mScope = kAudioObjectPropertyScopeInput;
+    status = (*driver)->GetPropertyDataSize(driver, kObjectID_Device, 0, &addr, 0, NULL, &dataSize);
+    assert(status == kAudioHardwareNoError);
+    assert(dataSize == sizeof(AudioChannelLayout));
+
+    AudioChannelLayout layout;
+    status = (*driver)->GetPropertyData(driver, kObjectID_Device, 0, &addr, 0, NULL, dataSize, &dataSize, &layout);
+    assert(status == kAudioHardwareNoError);
+    assert(layout.mChannelLayoutTag == kAudioChannelLayoutTag_Stereo);
+
+    /* Output scope on input-only device must not return valid layout */
+    addr.mScope = kAudioObjectPropertyScopeOutput;
+    Boolean hasOutLayout = (*driver)->HasProperty(driver, kObjectID_Device, 0, &addr);
+    assert(hasOutLayout == false);
+    status = (*driver)->GetPropertyDataSize(driver, kObjectID_Device, 0, &addr, 0, NULL, &dataSize);
+    assert(status == kAudioHardwareUnknownPropertyError);
+
+    /* 5. Device Default Capability Scope Checking */
+    addr.mSelector = kAudioDevicePropertyDeviceCanBeDefaultDevice;
+    addr.mScope = kAudioObjectPropertyScopeInput;
+    UInt32 canBeDefault = 0;
+    dataSize = sizeof(UInt32);
+    status = (*driver)->GetPropertyData(driver, kObjectID_Device, 0, &addr, 0, NULL, dataSize, &dataSize, &canBeDefault);
+    assert(status == kAudioHardwareNoError);
+    assert(canBeDefault == 1);
+
+    addr.mScope = kAudioObjectPropertyScopeOutput;
+    status = (*driver)->GetPropertyData(driver, kObjectID_Device, 0, &addr, 0, NULL, dataSize, &dataSize, &canBeDefault);
+    assert(status == kAudioHardwareNoError);
+    assert(canBeDefault == 0);
+
+    /* 6. Channel Element Names */
+    addr.mSelector = kAudioObjectPropertyElementName;
+    addr.mScope = kAudioObjectPropertyScopeGlobal;
+    addr.mElement = 1;
+    CFStringRef leftName = NULL;
+    dataSize = sizeof(CFStringRef);
+    status = (*driver)->GetPropertyData(driver, kObjectID_Device, 0, &addr, 0, NULL, dataSize, &dataSize, &leftName);
+    assert(status == kAudioHardwareNoError);
+    assert(leftName != NULL);
+    assert(CFStringCompare(leftName, CFSTR("Left"), 0) == kCFCompareEqualTo);
+    CFRelease(leftName);
+
+    (*driver)->Release(driver);
+    TEST_PASS();
+}
+
 int main(void) {
     shm_unlink(JAMEET_DEFAULT_SHM_NAME);
     printf("Running macOS JaMeet Remote AudioServerPlugIn Test Suite...\n");
@@ -304,6 +412,7 @@ int main(void) {
     test_driver_period_aligned_clock();
     test_client_bounds_and_independent_cursors();
     test_background_discovery_for_running_client();
+    test_driver_coreaudio_hal_property_compliance();
     shm_unlink(JAMEET_DEFAULT_SHM_NAME);
     printf("All Phase 2 AudioServerPlugIn Tests Passed Successfully!\n");
     return 0;
