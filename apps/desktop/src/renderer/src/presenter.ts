@@ -307,10 +307,12 @@ class PresenterManager {
           this.stoppedListenerUnsubscribe = api.onNativeScreenCaptureStopped(() => {
             if (this.activeCaptureSessionId !== currentSessionId) return;
             const track = this.customTrack;
+            const wasLive = Boolean(track && track.readyState !== 'ended');
             this.cleanupCaptureSession(currentSessionId);
-            if (track && track.readyState === 'live') {
-              track.stop();
-              track.dispatchEvent(new Event('ended'));
+            if (wasLive && track) {
+              try {
+                track.dispatchEvent(new Event('ended'));
+              } catch {}
             }
           });
         }
@@ -396,10 +398,12 @@ class PresenterManager {
       this.stoppedListenerUnsubscribe = fallbackApi.onNativeScreenCaptureStopped(() => {
         if (this.activeCaptureSessionId !== currentSessionId) return;
         const track = this.customTrack;
+        const wasLive = Boolean(track && track.readyState !== 'ended');
         this.cleanupCaptureSession(currentSessionId);
-        if (track && track.readyState === 'live') {
-          track.stop();
-          track.dispatchEvent(new Event('ended'));
+        if (wasLive && track) {
+          try {
+            track.dispatchEvent(new Event('ended'));
+          } catch {}
         }
       });
     }

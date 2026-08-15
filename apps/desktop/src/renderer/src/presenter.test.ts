@@ -236,6 +236,11 @@ describe('PresenterManager', () => {
     const track = await presenter.createScreenCaptureTrack(0);
     const dispatchSpy = vi.spyOn(track, 'dispatchEvent');
 
+    let onendedFired = false;
+    track.onended = () => {
+      onendedFired = true;
+    };
+
     expect(stoppedListeners.length).toBe(1);
     const stoppedCallback = stoppedListeners[0];
 
@@ -246,6 +251,51 @@ describe('PresenterManager', () => {
     expect(frameListeners.length).toBe(0);
     expect(stoppedListeners.length).toBe(0);
     expect(presenter.isNativeCaptureActive()).toBe(false);
+  });
+
+  it('triggers track ended event when backend terminates unexpectedly in WebCodecs mode', async () => {
+    const writeSpy = vi.fn().mockResolvedValue(undefined);
+    const closeSpy = vi.fn().mockResolvedValue(undefined);
+    const dispatchSpy = vi.fn();
+    const trackStopSpy = vi.fn();
+
+    class MockMediaStreamTrackGenerator {
+      kind: string;
+      writable: any;
+      readyState = 'live';
+      stop = trackStopSpy;
+      dispatchEvent = dispatchSpy;
+
+      constructor(init: { kind: string }) {
+        this.kind = init.kind;
+        this.writable = {
+          getWriter: () => ({
+            write: writeSpy,
+            close: closeSpy
+          })
+        };
+      }
+    }
+
+    (window as any).MediaStreamTrackGenerator = MockMediaStreamTrackGenerator;
+    (window as any).VideoFrame = class MockVideoFrame {};
+
+    try {
+      const track = await presenter.createScreenCaptureTrack(0);
+      expect(stoppedListeners.length).toBe(1);
+      const stoppedCallback = stoppedListeners[0];
+
+      // Simulate unexpected native backend termination
+      stoppedCallback?.();
+
+      expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'ended' }));
+      expect(frameListeners.length).toBe(0);
+      expect(stoppedListeners.length).toBe(0);
+      expect(presenter.isNativeCaptureActive()).toBe(false);
+    } finally {
+      delete (window as any).MediaStreamTrackGenerator;
+      delete (window as any).VideoFrame;
+    }
   });
 
   it('uses WebCodecs MediaStreamTrackGenerator with direct BGRX VideoFrames when available', async () => {
