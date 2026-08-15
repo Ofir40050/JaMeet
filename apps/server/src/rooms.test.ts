@@ -173,4 +173,50 @@ describe('room lifecycle', () => {
       expect(joinRes.participant.reconnectToken).toBeDefined();
     }
   });
+
+  it('ignores disconnect and leave events from stale replaced sockets', () => {
+    const store = new RoomStore(30_000, 60_000);
+    const hostUser = { id: 'host-1', displayName: 'Host Dan', isGuest: false, isHost: true, avatarColor: '#06b6d4' };
+    const room = store.create('host-id', 'socket-old-1', media, hostUser);
+
+    // 1. Host reconnects on new socket
+    const reconnectRes = store.join(room.code, 'host-id', 'socket-new-2', media, hostUser);
+    expect(reconnectRes.ok).toBe(true);
+    expect(room.participants.get('host-id')?.socketId).toBe('socket-new-2');
+
+    // 2. Stale old socket fires disconnect -> must NOT clear socketId or start timer
+    const expiredFn = vi.fn();
+    store.disconnect(room.code, 'host-id', expiredFn, 'socket-old-1');
+    expect(room.participants.get('host-id')?.socketId).toBe('socket-new-2');
+    expect(room.participants.get('host-id')?.timer).toBeUndefined();
+
+    // 3. Stale old socket fires leave -> must NOT close room or remove participant
+    const leaveRes = store.leave(room.code, 'host-id', 'socket-old-1');
+    expect(leaveRes).toBeUndefined();
+    expect(store.rooms.has(room.code)).toBe(true);
+    expect(room.participants.get('host-id')?.socketId).toBe('socket-new-2');
+
+    // 4. Stale socket in waiting room
+    const waitingUser = { id: 'wait-1', displayName: 'Waiting Musician', isGuest: true, isHost: false, avatarColor: '#64748b' };
+    const waitRoom = store.create('host-2', 'socket-h2', media, hostUser, undefined, true);
+    const waitJoin = store.join(waitRoom.code, 'waiting-part-1', 'socket-wait-old', media, waitingUser);
+    expect(waitJoin.ok).toBe(true);
+    if (!waitJoin.ok || !waitJoin.waiting) return;
+    const waitToken = waitJoin.participant.reconnectToken;
+
+    // Waiting participant reconnects on new socket
+    const waitReconnect = store.join(waitRoom.code, 'waiting-part-1', 'socket-wait-new', media, waitingUser, waitToken);
+    expect(waitReconnect.ok).toBe(true);
+    expect(waitRoom.waitingParticipants.get('waiting-part-1')?.socketId).toBe('socket-wait-new');
+
+    // Old waiting socket disconnects -> ignored
+    store.disconnectWaiting(waitRoom.code, 'waiting-part-1', undefined, 'socket-wait-old');
+    expect(waitRoom.waitingParticipants.get('waiting-part-1')?.socketId).toBe('socket-wait-new');
+    expect(waitRoom.waitingParticipants.get('waiting-part-1')?.timer).toBeUndefined();
+
+    // Old waiting socket leaves -> ignored
+    const removeRes = store.removeWaiting(waitRoom.code, 'waiting-part-1', 'socket-wait-old');
+    expect(removeRes).toBe(false);
+    expect(waitRoom.waitingParticipants.has('waiting-part-1')).toBe(true);
+  });
 });

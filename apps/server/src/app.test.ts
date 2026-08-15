@@ -1858,6 +1858,91 @@ describe('signaling integration', () => {
       await app.close();
     }
   });
+
+  it('rejects privileged actions and signaling from stale replaced socket and prevents stale disconnect from affecting participant', async () => {
+    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      const hostSocket1 = await connected(url);
+      const guestSocket = await connected(url);
+
+      const hostId = '11111111-1111-4111-8111-111111111111';
+      const guestId = '22222222-2222-4222-8222-222222222222';
+
+      // 1. Host creates meeting
+      const created = await ack(hostSocket1, 'meeting:create', {
+        participantId: hostId,
+        guestDisplayName: 'Host Maestro',
+        media
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      // 2. Guest joins
+      const guestJoined = await ack(guestSocket, 'meeting:join', {
+        code: created.code,
+        participantId: guestId,
+        guestDisplayName: 'Guest Musician',
+        media
+      });
+      expect(guestJoined.ok).toBe(true);
+
+      // 3. Host reconnects on hostSocket2
+      const hostSocket2 = await connected(url);
+      const hostReconnected = await ack(hostSocket2, 'meeting:join', {
+        code: created.code,
+        participantId: hostId,
+        guestDisplayName: 'Host Maestro',
+        reconnectToken: created.reconnectToken,
+        media
+      });
+      expect(hostReconnected.ok).toBe(true);
+
+      // 4. Stale hostSocket1 attempts privileged host action -> rejected
+      const staleLockRes = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        hostSocket1.emit('meeting:lock', { code: created.code, locked: true }, resolve);
+      });
+      expect(staleLockRes.ok).toBe(false);
+      expect(staleLockRes.message).toBe('Only the host can lock or unlock the session');
+
+      // 5. Stale hostSocket1 attempts chat:send -> rejected
+      const staleChatRes = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+        hostSocket1.emit('chat:send', { code: created.code, text: 'Stale message' }, resolve);
+      });
+      expect(staleChatRes.ok).toBe(false);
+      expect(staleChatRes.error).toBe('Unauthorized participant socket');
+
+      // 6. Active hostSocket2 attempts chat:send -> succeeds
+      const activeChatRes = await new Promise<{ ok: boolean; message?: any }>((resolve) => {
+        hostSocket2.emit('chat:send', { code: created.code, text: 'Active message' }, resolve);
+      });
+      expect(activeChatRes.ok).toBe(true);
+
+      // 7. Stale hostSocket1 disconnects -> must NOT trigger peer:disconnected or end session on guestSocket
+      let peerDisconnectedEmitted = false;
+      guestSocket.on('peer:disconnected', () => { peerDisconnectedEmitted = true; });
+      let meetingEndedEmitted = false;
+      guestSocket.on('meeting:ended', () => { meetingEndedEmitted = true; });
+
+      hostSocket1.disconnect();
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(peerDisconnectedEmitted).toBe(false);
+      expect(meetingEndedEmitted).toBe(false);
+
+      // 8. Active hostSocket2 can still successfully send actions
+      const activeLockRes = await new Promise<{ ok: boolean; locked?: boolean }>((resolve) => {
+        hostSocket2.emit('meeting:lock', { code: created.code, locked: true }, resolve);
+      });
+      expect(activeLockRes.ok).toBe(true);
+      expect(activeLockRes.locked).toBe(true);
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
 });
 
 

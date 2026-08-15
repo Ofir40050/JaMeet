@@ -182,23 +182,26 @@ export class RoomStore {
     if (room) room.events.push(event);
   }
 
-  removeWaiting(code: string, participantId: string): boolean {
+  removeWaiting(code: string, participantId: string, socketId?: string): boolean {
     const room = this.rooms.get(code);
     if (!room) return false;
     const waiting = room.waitingParticipants.get(participantId);
-    if (waiting?.timer) clearTimeout(waiting.timer);
+    if (!waiting) return false;
+    if (socketId && waiting.socketId && waiting.socketId !== socketId) return false;
+    if (waiting.timer) clearTimeout(waiting.timer);
     return room.waitingParticipants.delete(participantId);
   }
 
-  disconnectWaiting(code: string, participantId: string, onExpired?: () => void): void {
+  disconnectWaiting(code: string, participantId: string, onExpired?: () => void, socketId?: string): void {
     const room = this.rooms.get(code);
     const waiting = room?.waitingParticipants.get(participantId);
     if (!room || !waiting) return;
+    if (socketId && waiting.socketId && waiting.socketId !== socketId) return;
     waiting.socketId = null;
     if (waiting.timer) clearTimeout(waiting.timer);
     waiting.timer = setTimeout(() => {
       const current = room.waitingParticipants.get(participantId);
-      if (!current || current.socketId) return;
+      if (!current || (socketId ? current.socketId !== null : current.socketId)) return;
       room.waitingParticipants.delete(participantId);
       onExpired?.();
     }, this.graceMs);
@@ -230,15 +233,16 @@ export class RoomStore {
     return [...room.participants.values()].find((participant) => participant.id !== participantId);
   }
 
-  disconnect(code: string, participantId: string, onExpired: (role: MeetingRole, peer?: Participant) => void): void {
+  disconnect(code: string, participantId: string, onExpired: (role: MeetingRole, peer?: Participant) => void, socketId?: string): void {
     const room = this.rooms.get(code);
     const participant = room?.participants.get(participantId);
     if (!room || !participant) return;
+    if (socketId && participant.socketId && participant.socketId !== socketId) return;
     participant.socketId = null;
     if (participant.timer) clearTimeout(participant.timer);
     participant.timer = setTimeout(() => {
       const current = room.participants.get(participantId);
-      if (!current || current.socketId) return;
+      if (!current || (socketId ? current.socketId !== null : current.socketId)) return;
       const peer = this.peer(room, participantId);
       if (current.role === 'host') this.close(code);
       else room.participants.delete(participantId);
@@ -246,10 +250,11 @@ export class RoomStore {
     }, this.graceMs);
   }
 
-  leave(code: string, participantId: string): { role: MeetingRole; peer?: Participant } | undefined {
+  leave(code: string, participantId: string, socketId?: string): { role: MeetingRole; peer?: Participant } | undefined {
     const room = this.rooms.get(code);
     const participant = room?.participants.get(participantId);
     if (!room || !participant) return undefined;
+    if (socketId && participant.socketId && participant.socketId !== socketId) return undefined;
     if (participant.timer) clearTimeout(participant.timer);
     const peer = this.peer(room, participantId);
     if (participant.role === 'host') this.close(code);

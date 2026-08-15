@@ -819,7 +819,7 @@ export async function createApp(config: ServerConfig) {
         return;
       }
       const hostParticipant = room.participants.get(socketData.participantId);
-      if (!hostParticipant || hostParticipant.role !== 'host') {
+      if (!hostParticipant || hostParticipant.role !== 'host' || hostParticipant.socketId !== socket.id) {
         ack?.({ ok: false, message: 'Only host can admit participants' });
         return;
       }
@@ -937,7 +937,7 @@ export async function createApp(config: ServerConfig) {
         return;
       }
       const hostParticipant = room.participants.get(socketData.participantId);
-      if (!hostParticipant || hostParticipant.role !== 'host') {
+      if (!hostParticipant || hostParticipant.role !== 'host' || hostParticipant.socketId !== socket.id) {
         ack?.({ ok: false, message: 'Only the host can lock or unlock the session' });
         return;
       }
@@ -965,7 +965,7 @@ export async function createApp(config: ServerConfig) {
         return;
       }
       const hostParticipant = room.participants.get(socketData.participantId);
-      if (!hostParticipant || hostParticipant.role !== 'host') {
+      if (!hostParticipant || hostParticipant.role !== 'host' || hostParticipant.socketId !== socket.id) {
         ack?.({ ok: false, message: 'Only the host can remove participants' });
         return;
       }
@@ -1014,7 +1014,7 @@ export async function createApp(config: ServerConfig) {
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
       const participant = room?.participants.get(socketData.participantId);
-      if (!room || !participant) return;
+      if (!room || !participant || participant.socketId !== socket.id) return;
       const peer = rooms.peer(room, participant.id);
       if (peer?.socketId) io.to(peer.socketId).emit('signal:description', parsed.data.description);
     });
@@ -1024,7 +1024,7 @@ export async function createApp(config: ServerConfig) {
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
       const participant = room?.participants.get(socketData.participantId);
-      if (!room || !participant) return;
+      if (!room || !participant || participant.socketId !== socket.id) return;
       const peer = rooms.peer(room, participant.id);
       if (peer?.socketId) io.to(peer.socketId).emit('signal:candidate', parsed.data.candidate);
     });
@@ -1034,7 +1034,7 @@ export async function createApp(config: ServerConfig) {
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
       const participant = room?.participants.get(socketData.participantId);
-      if (!room || !participant) return;
+      if (!room || !participant || participant.socketId !== socket.id) return;
       const peer = rooms.peer(room, participant.id);
       if (peer?.socketId) io.to(peer.socketId).emit('signal:renegotiate');
     });
@@ -1044,7 +1044,7 @@ export async function createApp(config: ServerConfig) {
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
       const participant = room?.participants.get(socketData.participantId);
-      if (!room || !participant) return;
+      if (!room || !participant || participant.socketId !== socket.id) return;
       const peer = rooms.peer(room, participant.id);
       if (peer?.socketId) io.to(peer.socketId).emit('meeting:action', parsed.data.action);
     });
@@ -1054,7 +1054,7 @@ export async function createApp(config: ServerConfig) {
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
       const participant = room?.participants.get(socketData.participantId);
-      if (!room || !participant) return;
+      if (!room || !participant || participant.socketId !== socket.id) return;
       participant.media = parsed.data.media;
       const peer = rooms.peer(room, participant.id);
       if (peer?.socketId) io.to(peer.socketId).emit('media:update', parsed.data.media);
@@ -1071,9 +1071,13 @@ export async function createApp(config: ServerConfig) {
         ack?.({ ok: false, error: 'Session not found' });
         return;
       }
-      rooms.incrementChat(parsed.data.code);
       const participant = room.participants.get(socketData.participantId);
-      const senderName = socketData.identity?.displayName || participant?.identity.displayName || 'Musician';
+      if (!participant || participant.socketId !== socket.id) {
+        ack?.({ ok: false, error: 'Unauthorized participant socket' });
+        return;
+      }
+      rooms.incrementChat(parsed.data.code);
+      const senderName = socketData.identity?.displayName || participant.identity.displayName || 'Musician';
       const message: SessionChatMessage = {
         id: randomUUID(),
         senderId: socketData.participantId,
@@ -1089,9 +1093,17 @@ export async function createApp(config: ServerConfig) {
       const { code, participantId, isWaiting } = socketData;
       if (!code || !participantId) return;
       if (isWaiting) {
+        const room = rooms.rooms.get(code);
+        const waiting = room?.waitingParticipants.get(participantId);
+        if (waiting && waiting.socketId && waiting.socketId !== socket.id) {
+          delete socketData.code;
+          delete socketData.participantId;
+          delete socketData.identity;
+          delete socketData.isWaiting;
+          return;
+        }
         if (explicit) {
-          rooms.removeWaiting(code, participantId);
-          const room = rooms.rooms.get(code);
+          rooms.removeWaiting(code, participantId, socket.id);
           if (room) {
             const hostParticipant = Array.from(room.participants.values()).find((p) => p.role === 'host');
             if (hostParticipant?.socketId) {
@@ -1105,11 +1117,11 @@ export async function createApp(config: ServerConfig) {
           }
         } else {
           rooms.disconnectWaiting(code, participantId, () => {
-            const room = rooms.rooms.get(code);
-            if (room) {
-              const hostParticipant = Array.from(room.participants.values()).find((p) => p.role === 'host');
+            const currentRoom = rooms.rooms.get(code);
+            if (currentRoom) {
+              const hostParticipant = Array.from(currentRoom.participants.values()).find((p) => p.role === 'host');
               if (hostParticipant?.socketId) {
-                const updatedWaitingList = Array.from(room.waitingParticipants.values()).map((p) => ({
+                const updatedWaitingList = Array.from(currentRoom.waitingParticipants.values()).map((p) => ({
                   participantId: p.id,
                   identity: p.identity,
                   joinedAt: Date.now()
@@ -1117,7 +1129,7 @@ export async function createApp(config: ServerConfig) {
                 io.to(hostParticipant.socketId).emit('waiting:update', updatedWaitingList);
               }
             }
-          });
+          }, socket.id);
         }
         delete socketData.code;
         delete socketData.participantId;
@@ -1125,9 +1137,19 @@ export async function createApp(config: ServerConfig) {
         delete socketData.isWaiting;
         return;
       }
+
+      const room = rooms.rooms.get(code);
+      const participant = room?.participants.get(participantId);
+      if (participant && participant.socketId && participant.socketId !== socket.id) {
+        delete socketData.code;
+        delete socketData.participantId;
+        delete socketData.identity;
+        return;
+      }
+
       if (explicit) {
         const roomBefore = rooms.rooms.get(code);
-        const result = rooms.leave(code, participantId);
+        const result = rooms.leave(code, participantId, socket.id);
         if (result?.role === 'host' && roomBefore) {
           const project = roomBefore.projectId && roomBefore.hostIdentity.id
             ? projectStore.getProject(roomBefore.projectId, roomBefore.hostIdentity.id)
@@ -1152,7 +1174,6 @@ export async function createApp(config: ServerConfig) {
         delete socketData.identity;
         void socket.leave(code);
       } else {
-        const room = rooms.rooms.get(code);
         const peer = room && rooms.peer(room, participantId);
         if (peer?.socketId) io.to(peer.socketId).emit('peer:disconnected');
         rooms.disconnect(code, participantId, (role, expiredPeer) => {
@@ -1175,7 +1196,10 @@ export async function createApp(config: ServerConfig) {
             }
           }
           if (expiredPeer?.socketId) io.to(expiredPeer.socketId).emit(role === 'host' ? 'meeting:ended' : 'peer:left');
-        });
+        }, socket.id);
+        delete socketData.code;
+        delete socketData.participantId;
+        delete socketData.identity;
       }
     };
     socket.on('meeting:leave', () => leave(true));
