@@ -27,6 +27,7 @@ declare global {
         clearSession(): Promise<boolean>;
       };
       platform: string;
+      [key: string]: any;
     };
     musiczoom: {
       getInitialDeepLink(): Promise<string | null>;
@@ -53,6 +54,7 @@ declare global {
         clearSession(): Promise<boolean>;
       };
       platform: string;
+      [key: string]: any;
     };
   }
 

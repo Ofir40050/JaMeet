@@ -21,6 +21,7 @@ import { presenter } from './presenter';
 import './style.css';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const views = ['home-view', 'project-view', 'all-sessions-view', 'auth-view', 'setup-view', 'waiting-view', 'call-view'] as const;
 const DEFAULT_PROD_SIGNALING_URL = 'https://jameet-jwi8.onrender.com';
 const DEFAULT_DEV_SIGNALING_URL = 'http://localhost:3000';
 const signalingUrl = (
@@ -2180,8 +2181,9 @@ async function setAudioOnly(enabled: boolean): Promise<void> {
     cameraEnabled = true;
     if (!screenTrack) await replaceCamera(prefs.cameraId);
   }
-  $('audio-only-button').textContent = enabled ? 'Enable Video' : 'Audio Only';
-  $('camera-button').classList.toggle('hidden', enabled);
+  const audioBtn = $('audio-only-button');
+  if (audioBtn) audioBtn.textContent = enabled ? 'Enable Video' : 'Audio Only';
+  $('camera-button')?.classList.toggle('hidden', enabled);
   updateCameraButtonState();
   updateLocalPreviews();
   if (inCall) signaling.updateMedia(currentCode, metadata());

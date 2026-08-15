@@ -33,6 +33,7 @@ class PresenterManager {
   private localParticipantCanvas: HTMLCanvasElement | null = null;
   private localParticipantCanvasCtx: CanvasRenderingContext2D | null = null;
   private localVideoEl: HTMLVideoElement | null = null;
+  private remoteVideoEl: HTMLVideoElement | null = null;
   private participantName = 'Musician';
   private localParticipantName = 'You';
   private remoteAudioLevel = -60;
