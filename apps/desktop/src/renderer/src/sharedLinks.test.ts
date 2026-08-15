@@ -26,8 +26,8 @@ describe('Shared Session Links', () => {
 
   it('constructs a clean unauthenticated shareable link format', () => {
     const sessionCode = '7H9K2M4P';
-    const shareLink = `musiczoom://join/${sessionCode}`;
-    expect(shareLink).toBe('musiczoom://join/7H9K2M4P');
+    const shareLink = `jameet://join/${sessionCode}`;
+    expect(shareLink).toBe('jameet://join/7H9K2M4P');
     expect(normalizeMeetingCode(shareLink)).toBe(sessionCode);
     expect(shareLink).not.toContain('token');
     expect(shareLink).not.toContain('auth');

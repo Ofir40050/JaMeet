@@ -14,11 +14,12 @@ try {
 
 const env = {
   ...process.env,
+  JAMEET_INSTANCE: instanceId,
   MUSICZOOM_INSTANCE: instanceId,
   ELECTRON_RENDERER_URL: process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/'
 };
 
-console.log(`[MusicZoom] Starting isolated desktop instance ${instanceId} (Profile: MusicZoom-Instance-${instanceId})...`);
+console.log(`[JaMeet] Starting isolated desktop instance ${instanceId} (Profile: JaMeet-Instance-${instanceId})...`);
 
 const child = spawn(electronPath, [mainPath, `--instance=${instanceId}`], {
   cwd: desktopDir,
@@ -27,6 +28,6 @@ const child = spawn(electronPath, [mainPath, `--instance=${instanceId}`], {
 });
 
 child.on('exit', (code) => {
-  console.log(`[MusicZoom] Instance ${instanceId} exited with code ${code ?? 0}`);
+  console.log(`[JaMeet] Instance ${instanceId} exited with code ${code ?? 0}`);
   process.exit(code ?? 0);
 });

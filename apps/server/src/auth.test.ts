@@ -1,13 +1,18 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { UserStore } from './auth.js';
 
 describe('UserStore & Password Hashing', () => {
-  const testDir = path.join(process.cwd(), 'data', 'test-auth');
+  let testDir: string;
 
   beforeEach(() => {
-    if (fs.existsSync(testDir)) {
+    testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-auth-test-'));
+  });
+
+  afterEach(() => {
+    if (testDir && fs.existsSync(testDir)) {
       fs.rmSync(testDir, { recursive: true, force: true });
     }
   });
@@ -330,7 +335,284 @@ describe('UserStore & Password Hashing', () => {
     }).rejects.toThrow();
     expect(writableStore.listScheduledSessions(reg.user.id).length).toBe(0);
   });
+
+  it('revokes tokens upon explicit revocation and persists revocation across restarts', async () => {
+    const store1 = new UserStore(testDir);
+    const reg = await store1.register({
+      username: 'logout_user',
+      email: 'logout@music.com',
+      password: 'Password123!',
+      displayName: 'Logout User'
+    });
+
+    expect(store1.verifyToken(reg.token)).not.toBeNull();
+
+    const revoked = store1.revokeToken(reg.token);
+    expect(revoked).toBe(true);
+    expect(store1.verifyToken(reg.token)).toBeNull();
+
+    // Revoking non-existent token returns false
+    expect(store1.revokeToken('non-existent-token')).toBe(false);
+
+    // Reinstantiate from disk and verify token is still revoked
+    const store2 = new UserStore(testDir);
+    expect(store2.verifyToken(reg.token)).toBeNull();
+  });
+
+  it('invalidates all prior tokens upon password change and preserves new logins across restarts', async () => {
+    const store1 = new UserStore(testDir);
+    const reg = await store1.register({
+      username: 'pwd_user',
+      email: 'pwd@music.com',
+      password: 'InitialPassword123!',
+      displayName: 'Password User'
+    });
+    const token1 = reg.token;
+
+    // Login a second time to simulate a second device/session
+    const login1 = await store1.login({
+      usernameOrEmail: 'pwd_user',
+      password: 'InitialPassword123!'
+    });
+    const token2 = login1.token;
+
+    expect(store1.verifyToken(token1)).not.toBeNull();
+    expect(store1.verifyToken(token2)).not.toBeNull();
+
+    // Change password
+    await store1.updateProfile(reg.user.id, {
+      currentPassword: 'InitialPassword123!',
+      newPassword: 'BrandNewPassword99!'
+    });
+
+    // All prior tokens must be invalid
+    expect(store1.verifyToken(token1)).toBeNull();
+    expect(store1.verifyToken(token2)).toBeNull();
+
+    // New login succeeds and issues a new valid token
+    const loginAfterPwd = await store1.login({
+      usernameOrEmail: 'pwd_user',
+      password: 'BrandNewPassword99!'
+    });
+    const token3 = loginAfterPwd.token;
+    expect(store1.verifyToken(token3)).not.toBeNull();
+
+    // Restart server and ensure old tokens remain invalid and token3 remains valid
+    const store2 = new UserStore(testDir);
+    expect(store2.verifyToken(token1)).toBeNull();
+    expect(store2.verifyToken(token2)).toBeNull();
+    expect(store2.verifyToken(token3)).not.toBeNull();
+    expect(store2.verifyToken(token3)?.username).toBe('pwd_user');
+  });
+
+  it('guarantees username uniqueness under concurrent registration race conditions (case insensitive)', async () => {
+    const store = new UserStore(testDir);
+
+    const [res1, res2] = await Promise.allSettled([
+      store.register({
+        username: 'Concurrent_Dan',
+        email: 'dan1@music.com',
+        password: 'Password123!',
+        displayName: 'Dan 1'
+      }),
+      store.register({
+        username: 'concurrent_dan',
+        email: 'dan2@music.com',
+        password: 'Password123!',
+        displayName: 'Dan 2'
+      })
+    ]);
+
+    const successes = [res1, res2].filter((r) => r.status === 'fulfilled') as PromiseFulfilledResult<any>[];
+    const failures = [res1, res2].filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+
+    expect(successes.length).toBe(1);
+    expect(failures.length).toBe(1);
+    expect(failures[0].reason.message).toMatch(/already taken/i);
+
+    // Exactly the winning user exists in store
+    const winningUser = store.findByUsernameOrEmail('concurrent_dan');
+    expect(winningUser).not.toBeNull();
+    expect(winningUser?.username.toLowerCase()).toBe('concurrent_dan');
+  });
+
+  it('guarantees email uniqueness under concurrent registration race conditions (case insensitive)', async () => {
+    const store = new UserStore(testDir);
+
+    const [res1, res2] = await Promise.allSettled([
+      store.register({
+        username: 'user_first',
+        email: 'CommonEmail@Music.com',
+        password: 'Password123!',
+        displayName: 'User 1'
+      }),
+      store.register({
+        username: 'user_second',
+        email: 'commonemail@music.com',
+        password: 'Password123!',
+        displayName: 'User 2'
+      })
+    ]);
+
+    const successes = [res1, res2].filter((r) => r.status === 'fulfilled') as PromiseFulfilledResult<any>[];
+    const failures = [res1, res2].filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+
+    expect(successes.length).toBe(1);
+    expect(failures.length).toBe(1);
+    expect(failures[0].reason.message).toMatch(/already exists/i);
+
+    // Exactly the winning user exists in store
+    const winningUser = store.findByUsernameOrEmail('commonemail@music.com');
+    expect(winningUser).not.toBeNull();
+    expect(winningUser?.email.toLowerCase()).toBe('commonemail@music.com');
+  });
+
+  it('allows exactly 1 registration to succeed among N concurrent identical requests', async () => {
+    const store = new UserStore(testDir);
+
+    const promises = Array.from({ length: 6 }).map((_, idx) =>
+      store.register({
+        username: 'race_dan',
+        email: `race_${idx}@music.com`,
+        password: 'Password123!',
+        displayName: `Race Dan ${idx}`
+      })
+    );
+
+    const results = await Promise.allSettled(promises);
+    const successes = results.filter((r) => r.status === 'fulfilled');
+    const failures = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+
+    expect(successes.length).toBe(1);
+    expect(failures.length).toBe(5);
+    for (const fail of failures) {
+      expect(fail.reason.message).toMatch(/already taken/i);
+    }
+  });
+
+  it('releases temporary reservation when persistence fails, allowing subsequent registrations to succeed', async () => {
+    const blockerFile = path.join(testDir, 'blocker');
+    fs.mkdirSync(testDir, { recursive: true });
+    fs.writeFileSync(blockerFile, 'file blocking directory creation');
+    const unwritableDir = path.join(blockerFile, 'sub');
+
+    const failingStore = new UserStore(unwritableDir);
+
+    // Attempt registration which will fail at persistence
+    await expect(failingStore.register({
+      username: 'temp_user',
+      email: 'temp@music.com',
+      password: 'Password123!',
+      displayName: 'Temp User'
+    })).rejects.toThrow();
+
+    // Now point store to a valid writable path and register the same username and email
+    const writableStore = new UserStore(testDir);
+    const successResult = await writableStore.register({
+      username: 'temp_user',
+      email: 'temp@music.com',
+      password: 'Password123!',
+      displayName: 'Temp User'
+    });
+
+    expect(successResult.user.username).toBe('temp_user');
+    expect(successResult.user.email).toBe('temp@music.com');
+  });
+
+  it('finalizes a single participant record and prevents subsequent room closure from modifying it', async () => {
+    const store = new UserStore(testDir);
+    const hostUser = await store.register({
+      username: 'host_early',
+      email: 'host_early@music.com',
+      password: 'Password123!',
+      displayName: 'Host Early'
+    });
+    const guestUser = await store.register({
+      username: 'guest_early',
+      email: 'guest_early@music.com',
+      password: 'Password123!',
+      displayName: 'Guest Early'
+    });
+
+    const hostIdentity = store.getTrustedIdentity(hostUser.token, undefined, true);
+    const guestIdentity = store.getTrustedIdentity(guestUser.token, undefined, false);
+
+    const sessionId = 'SES_FINAL_123';
+    const code = 'EARLY123';
+
+    store.recordSessionStart(sessionId, code, hostUser.user.id, 'host', null);
+    store.recordCollaboratorJoined(sessionId, code, hostIdentity, guestIdentity);
+
+    // Initial event when guest is present
+    const event1 = {
+      id: 'ev_1',
+      timestamp: 1000,
+      category: 'task' as const,
+      action: 'created',
+      description: 'Initial task'
+    };
+
+    // Guest leaves at t=5000
+    store.recordSessionClose(sessionId, {
+      code,
+      startedAt: 0,
+      allJoinedParticipants: new Map([
+        [hostUser.user.id, hostIdentity],
+        [guestUser.user.id, guestIdentity]
+      ]),
+      chatMessagesCount: 2,
+      events: [event1]
+    }, guestUser.user.id);
+
+    const guestHistoryAfterLeave = store.getSessionHistory(guestUser.user.id);
+    expect(guestHistoryAfterLeave.length).toBe(1);
+    expect(guestHistoryAfterLeave[0]?.endedAt).toBeDefined();
+    const guestEndedAt = guestHistoryAfterLeave[0]?.endedAt;
+    const guestDuration = guestHistoryAfterLeave[0]?.durationSeconds;
+    expect(guestHistoryAfterLeave[0]?.summary?.events.length).toBe(1);
+    expect(guestHistoryAfterLeave[0]?.summary?.chatMessagesCount).toBe(2);
+
+    // Host session is still active (not ended yet)
+    const hostHistoryActive = store.getSessionHistory(hostUser.user.id);
+    expect(hostHistoryActive[0]?.endedAt).toBeUndefined();
+
+    // Later room activity occurs at t=10000
+    const event2 = {
+      id: 'ev_2',
+      timestamp: 8000,
+      category: 'note' as const,
+      action: 'created',
+      description: 'Later note after guest left'
+    };
+
+    // Host closes room at t=12000
+    store.recordSessionClose(sessionId, {
+      code,
+      startedAt: 0,
+      allJoinedParticipants: new Map([
+        [hostUser.user.id, hostIdentity],
+        [guestUser.user.id, guestIdentity]
+      ]),
+      chatMessagesCount: 10,
+      events: [event1, event2]
+    });
+
+    // Verify guest history was completely protected
+    const guestHistoryFinal = store.getSessionHistory(guestUser.user.id);
+    expect(guestHistoryFinal[0]?.endedAt).toBe(guestEndedAt);
+    expect(guestHistoryFinal[0]?.durationSeconds).toBe(guestDuration);
+    expect(guestHistoryFinal[0]?.summary?.events.length).toBe(1);
+    expect(guestHistoryFinal[0]?.summary?.events[0]?.id).toBe('ev_1');
+    expect(guestHistoryFinal[0]?.summary?.chatMessagesCount).toBe(2);
+
+    // Verify host history was finalized with full room activity
+    const hostHistoryFinal = store.getSessionHistory(hostUser.user.id);
+    expect(hostHistoryFinal[0]?.endedAt).toBeDefined();
+    expect(hostHistoryFinal[0]?.summary?.events.length).toBe(2);
+    expect(hostHistoryFinal[0]?.summary?.chatMessagesCount).toBe(10);
+  });
 });
+
 
 
 

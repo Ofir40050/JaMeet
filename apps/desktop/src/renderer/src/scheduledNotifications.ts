@@ -1,6 +1,7 @@
 import type { ScheduledSession } from '@musiczoom/shared';
 
-const STORAGE_KEY = 'musiczoom:notified-scheduled-reminders';
+const PRIMARY_STORAGE_KEY = 'jameet:notified-scheduled-reminders';
+const LEGACY_STORAGE_KEY = 'musiczoom:notified-scheduled-reminders';
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 const ONE_MINUTE_MS = 60 * 1000;
 
@@ -74,8 +75,12 @@ export class ScheduledNotificationManager {
   }
 
   private loadNotifiedKeys(): void {
+    if (typeof localStorage === 'undefined') {
+      this.notifiedKeys = new Set();
+      return;
+    }
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(PRIMARY_STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
@@ -88,17 +93,21 @@ export class ScheduledNotificationManager {
   }
 
   private saveNotifiedKeys(): void {
+    if (typeof localStorage === 'undefined') return;
     try {
       // Keep most recent 500 keys to avoid unlimited growth
       const keysArray = Array.from(this.notifiedKeys).slice(-500);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(keysArray));
+      const json = JSON.stringify(keysArray);
+      localStorage.setItem(PRIMARY_STORAGE_KEY, json);
+      localStorage.setItem(LEGACY_STORAGE_KEY, json);
     } catch {
       // Ignore storage write errors
     }
   }
 
   private setupIpcClickListener(): void {
-    const bridge = (window as unknown as { musiczoom?: { onScheduledNotificationClicked?: (cb: (sessionId: string) => void) => () => void } }).musiczoom;
+    if (typeof window === 'undefined') return;
+    const bridge = window.jameet || window.musiczoom;
     if (bridge?.onScheduledNotificationClicked) {
       this.cleanupClickListener = bridge.onScheduledNotificationClicked((sessionId: string) => {
         this.emitClick(sessionId);
@@ -163,7 +172,7 @@ export class ScheduledNotificationManager {
   }
 
   private dispatchNativeNotification(item: ReminderDecision): void {
-    const bridge = (window as unknown as { musiczoom?: { showScheduledNotification?: (p: { title: string; body: string; sessionId: string }) => Promise<boolean> } }).musiczoom;
+    const bridge = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
     if (bridge?.showScheduledNotification) {
       void bridge.showScheduledNotification({
         title: item.title,

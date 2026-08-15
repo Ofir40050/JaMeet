@@ -18,7 +18,10 @@ import { WebRtcSession } from './webrtc';
 import { cameraConstraints, performanceVideoQuality } from './videoQuality';
 import { icons } from './icons';
 import { presenter } from './presenter';
+import { escapeHtml, sanitizeLyricsHtml } from './htmlSecurity';
 import './style.css';
+
+export { escapeHtml, sanitizeLyricsHtml };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const views = ['home-view', 'project-view', 'all-sessions-view', 'auth-view', 'setup-view', 'waiting-view', 'call-view'] as const;
@@ -410,12 +413,12 @@ function renderSessionViewMenu(): void {
     <div class="view-menu-section-header">FOCUS PIN</div>
     <button type="button" class="view-menu-item ${(!isAnySharing && currentCameraViewMode === 'focus' && currentFocusTarget === 'remote') ? 'active' : ''}" data-camera-mode="focus" data-focus-target="remote">
       <span class="menu-item-icon">${icons.pin({ size: 14 })}</span>
-      <span class="menu-item-text">Focus: ${remoteName}</span>
+      <span class="menu-item-text">Focus: ${escapeHtml(remoteName)}</span>
       ${(!isAnySharing && currentCameraViewMode === 'focus' && currentFocusTarget === 'remote') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
     </button>
     <button type="button" class="view-menu-item ${(!isAnySharing && currentCameraViewMode === 'focus' && currentFocusTarget === 'local') ? 'active' : ''}" data-camera-mode="focus" data-focus-target="local">
       <span class="menu-item-icon">${icons.pin({ size: 14 })}</span>
-      <span class="menu-item-text">Focus: ${localName}</span>
+      <span class="menu-item-text">Focus: ${escapeHtml(localName)}</span>
       ${(!isAnySharing && currentCameraViewMode === 'focus' && currentFocusTarget === 'local') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
     </button>
   `;
@@ -728,8 +731,9 @@ function updateAppIconBadge(pid: number | undefined): void {
 }
 
 async function refreshRunningApps(): Promise<void> {
-  if (window.musiczoom?.listAudioApplications) {
-    cachedRunningApps = await window.musiczoom.listAudioApplications().catch(() => []);
+  const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
+  if (desktopApi?.listAudioApplications) {
+    cachedRunningApps = await desktopApi.listAudioApplications().catch(() => []);
   }
 
   for (const id of ['music-app-select', 'call-music-app-select']) {
@@ -1327,8 +1331,9 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
 }
 
 async function enumerateAndPopulate(): Promise<void> {
-  if (window.musiczoom?.getHardwareAudioDevices) {
-    cachedHardwareDevices = await window.musiczoom.getHardwareAudioDevices().catch(() => []);
+  const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
+  if (desktopApi?.getHardwareAudioDevices) {
+    cachedHardwareDevices = await desktopApi.getHardwareAudioDevices().catch(() => []);
   }
   await refreshRunningApps();
 
@@ -1558,9 +1563,10 @@ async function startScreenShare(sourceId: string, optimizeFor: 'detail' | 'motio
   const targetRes = isMotion ? { width: 1280, height: 720 } : { width: 1920, height: 1080 };
 
   let next: MediaStreamTrack | undefined;
+  const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
 
   // 1. For entire display sharing on macOS, use native ScreenCaptureKit capture with SCContentFilter app exclusion
-  if (sourceId.startsWith('screen:') && window.musiczoom?.platform === 'darwin') {
+  if (sourceId.startsWith('screen:') && desktopApi?.platform === 'darwin') {
     try {
       const displayIndex = parseInt(sourceId.split(':')[1], 10) || 0;
       next = await presenter.createScreenCaptureTrack(displayIndex, { fps, width: targetRes.width, height: targetRes.height });
@@ -1571,7 +1577,7 @@ async function startScreenShare(sourceId: string, optimizeFor: 'detail' | 'motio
 
   // 2. Standard getDisplayMedia fallback or window sharing
   if (!next) {
-    const selected = window.musiczoom.selectDisplaySource(sourceId);
+    const selected = desktopApi?.selectDisplaySource ? desktopApi.selectDisplaySource(sourceId) : true;
     if (!selected) throw new Error('The selected screen could not be authorized.');
     
     const fpsConstraint = isMotion ? { ideal: 30, max: 30 } : { ideal: 15, max: 15 };
@@ -1600,7 +1606,12 @@ async function startScreenShare(sourceId: string, optimizeFor: 'detail' | 'motio
 
   next.contentHint = isMotion ? 'motion' : 'detail';
   try { await rtc.replaceVideoTrack(next); }
-  catch (error) { next.stop(); throw error; }
+  catch (error) {
+    next.stop();
+    await presenter.stopNativeCapture();
+    await presenter.exitPresenterMode();
+    throw error;
+  }
   screenTrack = next;
   // NOTE: Keep videoTrack running so local camera remains visible in the camera strip!
   rtc.setVideoTrack(next);
@@ -1704,7 +1715,8 @@ async function showScreenPicker(): Promise<void> {
   const dawPattern = /logic|ableton|cubase|pro tools|studio one|reaper|fl studio|reason|bitwig|garageband/i;
 
   try {
-    const sources = await window.musiczoom.listDisplaySources();
+    const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
+    const sources = desktopApi?.listDisplaySources ? await desktopApi.listDisplaySources() : [];
     if (!sources.length) {
       setMessage('screen-status', 'No screens or windows found. On macOS, make sure Screen Recording permission is allowed in System Settings > Privacy & Security.', true);
       return;
@@ -1735,7 +1747,7 @@ async function showScreenPicker(): Promise<void> {
         </div>
         <div class="source-card-info">
           <span class="source-card-icon">${isDaw ? icons.piano({ size: 16 }) : source.id.startsWith('screen:') ? icons.monitor({ size: 16 }) : icons.appWindow({ size: 16 })}</span>
-          <span class="source-card-name" title="${source.name}">${source.name}</span>
+          <span class="source-card-name" title="${escapeHtml(source.name)}">${escapeHtml(source.name)}</span>
         </div>
       `;
       card.addEventListener('click', () => {
@@ -2081,6 +2093,8 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   const sharing = screenTrack;
   screenTrack = undefined;
   if (sharing) { sharing.onended = null; sharing.stop(); }
+  await presenter.stopNativeCapture();
+  await presenter.exitPresenterMode();
   videoTrack?.stop();
   videoTrack = undefined;
   await musicMeter.stop();
@@ -2652,7 +2666,8 @@ for (const id of ['channel-mode-select', 'call-channel-mode-select']) {
 }
 for (const id of ['open-system-audio', 'call-open-system-audio']) {
   $(id)?.addEventListener('click', () => {
-    void window.musiczoom.openSystemAudioSettings();
+    const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
+    void desktopApi?.openSystemAudioSettings?.();
   });
 }
 for (const id of ['sample-rate-select', 'call-sample-rate-select']) {
@@ -2661,8 +2676,9 @@ for (const id of ['sample-rate-select', 'call-sample-rate-select']) {
     prefs.sampleRate = value || undefined;
     savePreferences();
     try {
-      if (value > 0 && window.musiczoom?.setSystemSampleRate) {
-        await window.musiczoom.setSystemSampleRate(value);
+      const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
+      if (value > 0 && desktopApi?.setSystemSampleRate) {
+        await desktopApi.setSystemSampleRate(value);
       }
       await applyAdvancedAudioSettings();
       const rateLabel = value ? `${value.toLocaleString()} Hz` : 'Device Default';
@@ -2694,8 +2710,9 @@ for (const id of ['input-gain', 'call-input-gain']) {
     }
     savePreferences();
     void audio.applyVoiceGain(val);
-    if (window.musiczoom?.setSystemInputVolume) {
-      void window.musiczoom.setSystemInputVolume(Math.min(1.0, val));
+    const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
+    if (desktopApi?.setSystemInputVolume) {
+      void desktopApi.setSystemInputVolume(Math.min(1.0, val));
     }
   });
 }
@@ -3125,10 +3142,10 @@ function openSessionSummaryDialog(session: SessionHistoryItem): void {
 
       row.innerHTML = `
         <div class="summary-participant-info">
-          <div class="summary-participant-avatar" style="background-color: ${p.avatarColor || '#38bdf8'}">${initials}</div>
+          <div class="summary-participant-avatar" style="background-color: ${p.avatarColor || '#38bdf8'}">${escapeHtml(initials)}</div>
           <div>
-            <span class="summary-participant-name">${p.displayName}</span>
-            ${handle ? `<span class="summary-participant-handle"> (${handle})</span>` : ''}
+            <span class="summary-participant-name">${escapeHtml(p.displayName)}</span>
+            ${handle ? `<span class="summary-participant-handle"> (${escapeHtml(handle)})</span>` : ''}
           </div>
         </div>
         <span class="session-history-role-tag ${roleTagClass}">${roleText}</span>
@@ -3161,7 +3178,7 @@ function openSessionSummaryDialog(session: SessionHistoryItem): void {
         item.innerHTML = `
           <span class="summary-event-pill ${catClass}">${catLabel}</span>
           <div class="summary-event-body">
-            <span class="summary-event-desc">${ev.description}</span>
+            <span class="summary-event-desc">${escapeHtml(ev.description)}</span>
             <span class="summary-event-time">${timeStr}</span>
           </div>
         `;
@@ -3191,14 +3208,14 @@ function createRecentSessionElement(session: SessionHistoryItem): HTMLElement {
 
   item.innerHTML = `
     <div class="session-history-left">
-      <div class="session-history-avatar" style="background-color: ${avatarColor}">${initials}</div>
+      <div class="session-history-avatar" style="background-color: ${avatarColor}">${escapeHtml(initials)}</div>
       <div class="session-history-meta">
         <div class="session-history-collab-row">
-          <span class="session-history-collaborator">${collabName}</span>
-          ${collabHandle ? `<span class="user-hero-sub" style="font-size: 11.5px;">(${collabHandle})</span>` : ''}
+          <span class="session-history-collaborator">${escapeHtml(collabName)}</span>
+          ${collabHandle ? `<span class="user-hero-sub" style="font-size: 11.5px;">(${escapeHtml(collabHandle)})</span>` : ''}
           <span class="session-history-role-tag ${roleClass}">${roleLabel}</span>
         </div>
-        <span class="session-history-time">${timeText}</span>
+        <span class="session-history-time">${escapeHtml(timeText)}</span>
       </div>
     </div>
     <div class="session-history-right">
@@ -4018,6 +4035,8 @@ window.addEventListener('beforeunload', () => {
   const sharing = screenTrack;
   screenTrack = undefined;
   if (sharing) { sharing.onended = null; sharing.stop(); }
+  void presenter.stopNativeCapture();
+  void presenter.exitPresenterMode();
   videoTrack?.stop();
   for (const m of voiceMeters.values()) void m.stop();
   void musicMeter.stop();
@@ -4027,7 +4046,7 @@ async function handleDeepLink(url: string): Promise<void> {
   const callView = $('call-view');
   const waitingView = $('waiting-view');
   if (inCall || callView?.classList.contains('active') || waitingView?.classList.contains('active')) {
-    // If MusicZoom is already in an active session or waiting room,
+    // If JaMeet is already in an active session or waiting room,
     // do not interrupt, leave, replace, or restart the current session.
     return;
   }
@@ -4045,8 +4064,9 @@ async function handleDeepLink(url: string): Promise<void> {
     }
   }
 }
-window.musiczoom.onDeepLink((url) => void handleDeepLink(url));
-void window.musiczoom.getInitialDeepLink().then((url) => { if (url) void handleDeepLink(url); });
+const desktopBridge = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
+desktopBridge?.onDeepLink?.((url) => void handleDeepLink(url));
+void desktopBridge?.getInitialDeepLink?.().then((url) => { if (url) void handleDeepLink(url); });
 
 // Dialog close button and backdrop click listeners
 document.querySelectorAll<HTMLDialogElement>('dialog').forEach((dialog) => {
@@ -4124,7 +4144,7 @@ function renderProjectsGrid(): void {
     const showCollabs = project.collaborators.slice(0, 4);
     for (const c of showCollabs) {
       const ini = c.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-      collabAvatarsHtml += `<div class="project-card-avatar" style="background:${c.avatarColor || '#38bdf8'}" title="${c.displayName} (@${c.username})">${ini}</div>`;
+      collabAvatarsHtml += `<div class="project-card-avatar" style="background:${c.avatarColor || '#38bdf8'}" title="${escapeHtml(c.displayName)} (@${escapeHtml(c.username)})">${escapeHtml(ini)}</div>`;
     }
     if (collabCount > 4) {
       collabAvatarsHtml += `<div class="project-card-avatar project-card-avatar-overflow">+${collabCount - 4}</div>`;
@@ -4140,14 +4160,14 @@ function renderProjectsGrid(): void {
         <div class="project-card-icon">${icons.disc({ size: 22 })}</div>
         <div class="project-card-heading">
           <div class="project-card-title-row">
-            <h4 class="project-card-title">${project.name}</h4>
+            <h4 class="project-card-title">${escapeHtml(project.name)}</h4>
             <span class="project-card-pill ${badgeClass}">${badgeLabel}</span>
           </div>
-          ${project.description ? `<p class="project-card-desc">${project.description}</p>` : ''}
+          ${project.description ? `<p class="project-card-desc">${escapeHtml(project.description)}</p>` : ''}
         </div>
       </div>
       <div class="project-card-meta">
-        <div class="project-card-meta-item"><span class="meta-icon">${icons.clock({ size: 13 })}</span> <span>${lastActivity}</span></div>
+        <div class="project-card-meta-item"><span class="meta-icon">${icons.clock({ size: 13 })}</span> <span>${escapeHtml(lastActivity)}</span></div>
         <div class="project-card-meta-item"><span class="meta-icon">${icons.headphones({ size: 13 })}</span> <span>${sessionCount} session${sessionCount !== 1 ? 's' : ''}</span></div>
         ${collabCount > 0 ? `<div class="project-card-meta-item"><span class="meta-icon">${icons.users({ size: 13 })}</span> <span>${collabCount} member${collabCount !== 1 ? 's' : ''}</span></div>` : ''}
       </div>
@@ -4281,13 +4301,13 @@ function renderProjectCollaborators(): void {
       const item = document.createElement('div');
       item.className = 'collab-item';
       item.innerHTML = `
-        <div class="collab-avatar" style="background:${member.avatarColor}">${ini}</div>
+        <div class="collab-avatar" style="background:${member.avatarColor}">${escapeHtml(ini)}</div>
         <div class="collab-info">
-          <div class="collab-name">${member.displayName}</div>
-          <div class="collab-username">@${member.username}</div>
+          <div class="collab-name">${escapeHtml(member.displayName)}</div>
+          <div class="collab-username">@${escapeHtml(member.username)}</div>
         </div>
         <span class="collab-role-badge ${roleClass}">${roleLabel}</span>
-        ${isOwner && member.role !== 'owner' ? `<button class="collab-remove-btn" data-user-id="${member.userId}" title="Remove member">${icons.x({ size: 14 })}</button>` : ''}
+        ${isOwner && member.role !== 'owner' ? `<button class="collab-remove-btn" data-user-id="${escapeHtml(member.userId)}" title="Remove member">${icons.x({ size: 14 })}</button>` : ''}
       `;
       const removeBtn = item.querySelector<HTMLButtonElement>('.collab-remove-btn');
       if (removeBtn) {
@@ -4353,21 +4373,21 @@ function createSessionItemEl(session: ProjectSessionItem): HTMLElement {
 
   item.innerHTML = `
     <div class="project-session-left">
-      <div class="session-avatar-mini" style="background:${collabAvatarBg}">${initials}</div>
+      <div class="session-avatar-mini" style="background:${collabAvatarBg}">${escapeHtml(initials)}</div>
       <div class="project-session-details">
         <div class="project-session-collab-row">
-          <span class="project-session-collab">${collabText}</span>
+          <span class="project-session-collab">${escapeHtml(collabText)}</span>
           <span class="session-role-pill ${roleClass}">${roleLabel}</span>
         </div>
         <div class="project-session-sub-row">
-          <span class="project-session-code">${session.code}</span>
+          <span class="project-session-code">${escapeHtml(session.code)}</span>
           <span class="meta-dot">·</span>
-          <span class="project-session-time">${timeText}</span>
+          <span class="project-session-time">${escapeHtml(timeText)}</span>
         </div>
       </div>
     </div>
     <div class="project-session-right">
-      <span class="project-session-duration"><span class="meta-icon">${icons.clock({ size: 13 })}</span> <span>${durationText}</span></span>
+      <span class="project-session-duration"><span class="meta-icon">${icons.clock({ size: 13 })}</span> <span>${escapeHtml(durationText)}</span></span>
     </div>
   `;
   return item;
@@ -4654,16 +4674,6 @@ let sessionWorkspaceOpen = false;
 // Snapshot of last confirmed server state for 3-way merging
 let lastSyncedLyrics = '';
 let lastSyncedNotes = '';
-
-function escapeHtml(str: string): string {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
 
 /**
  * Applies text update to a textarea (e.g. Notes) while preserving active cursor position
@@ -4956,8 +4966,8 @@ function switchActiveLyricsDoc(docId: string): void {
   const projectEditor = $('project-lyrics-editor');
   const sessionEditor = $('session-lyrics-editor');
 
-  if (projectEditor) projectEditor.innerHTML = doc.content || '';
-  if (sessionEditor) sessionEditor.innerHTML = doc.content || '';
+  if (projectEditor) projectEditor.innerHTML = sanitizeLyricsHtml(doc.content || '');
+  if (sessionEditor) sessionEditor.innerHTML = sanitizeLyricsHtml(doc.content || '');
 
   lastSyncedLyrics = doc.content || '';
   updateLyricsStatsFromHtml(doc.content || '');
@@ -5195,10 +5205,10 @@ function syncWorkspaceInputsFromProject(force = false): void {
   const projectEditor = $('project-lyrics-editor');
   const sessionEditor = $('session-lyrics-editor');
   if (projectEditor && (force || document.activeElement !== projectEditor)) {
-    projectEditor.innerHTML = lyricsHtml;
+    projectEditor.innerHTML = sanitizeLyricsHtml(lyricsHtml);
   }
   if (sessionEditor && (force || document.activeElement !== sessionEditor)) {
-    sessionEditor.innerHTML = lyricsHtml;
+    sessionEditor.innerHTML = sanitizeLyricsHtml(lyricsHtml);
   }
   updateLyricsStatsFromHtml(lyricsHtml);
 
@@ -5231,7 +5241,7 @@ function handleLyricsEditorInput(source: 'project' | 'session'): void {
   const sourceEl = source === 'project' ? projectEditor : sessionEditor;
   const targetEl = source === 'project' ? sessionEditor : projectEditor;
 
-  const newHtml = sourceEl?.innerHTML || '';
+  const newHtml = sanitizeLyricsHtml(sourceEl?.innerHTML || '');
   if (targetEl && document.activeElement !== targetEl) {
     targetEl.innerHTML = newHtml;
   }
@@ -5472,7 +5482,7 @@ $('btn-doc-replace-one')?.addEventListener('click', () => {
 
   const activeDoc = getActiveLyricsDoc();
   if (activeDoc.content.includes(findVal)) {
-    activeDoc.content = activeDoc.content.replace(findVal, replaceVal);
+    activeDoc.content = sanitizeLyricsHtml(activeDoc.content.replace(findVal, replaceVal));
     const editor = $('project-lyrics-editor');
     if (editor) editor.innerHTML = activeDoc.content;
     handleLyricsEditorInput('project');
@@ -5486,7 +5496,7 @@ $('btn-doc-replace-all')?.addEventListener('click', () => {
 
   const activeDoc = getActiveLyricsDoc();
   const re = new RegExp(escapeRegex(findVal), 'g');
-  activeDoc.content = activeDoc.content.replace(re, replaceVal);
+  activeDoc.content = sanitizeLyricsHtml(activeDoc.content.replace(re, replaceVal));
   const editor = $('project-lyrics-editor');
   if (editor) editor.innerHTML = activeDoc.content;
   handleLyricsEditorInput('project');
@@ -6267,10 +6277,10 @@ signaling.on('project:workspace:synced', (data: { projectId: string; workspace: 
   const isEditingSession = document.activeElement === sessionEditor;
 
   if (!isEditingProject && projectEditor) {
-    projectEditor.innerHTML = incomingLyrics;
+    projectEditor.innerHTML = sanitizeLyricsHtml(incomingLyrics);
   }
   if (!isEditingSession && sessionEditor) {
-    sessionEditor.innerHTML = incomingLyrics;
+    sessionEditor.innerHTML = sanitizeLyricsHtml(incomingLyrics);
   }
   updateLyricsStatsFromHtml(incomingLyrics);
   setLyricsStatus('saved');

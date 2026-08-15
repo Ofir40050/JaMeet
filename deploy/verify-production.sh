@@ -27,4 +27,4 @@ docker compose ps --status running
 docker compose logs --tail=30 signaling caddy coturn
 
 echo "DNS, HTTPS, the Socket.IO endpoint, and containers are healthy."
-echo "Complete the TURN relay proof from a MusicZoom build with VITE_ICE_TRANSPORT_POLICY=relay."
+echo "Complete the TURN relay proof from a JaMeet build with VITE_ICE_TRANSPORT_POLICY=relay."

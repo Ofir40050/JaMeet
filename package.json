@@ -19,7 +19,7 @@
     "package:mac": "npm run package:mac -w @musiczoom/desktop",
     "package:mac:production": "sh deploy/build-production-mac.sh",
     "package:win": "npm run package:win -w @musiczoom/desktop",
-    "package:win:production": "sh deploy/build-production-win.sh",
+    "package:win:production": "node deploy/build-production-win.cjs",
     "package:linux": "npm run package:linux -w @musiczoom/desktop"
   },
   "engines": {

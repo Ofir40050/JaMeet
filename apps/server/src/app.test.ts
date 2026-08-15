@@ -2017,7 +2017,944 @@ describe('signaling integration', () => {
       await app.close();
     }
   });
+
+  it('revokes session token upon logout so it can no longer authenticate REST or Socket.IO requests', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-logout-test-'));
+    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret', DATA_DIR: tmpDataDir }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      // 1. Register a user and create a project
+      const regRes = await fetch(`${url}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'logout_tester',
+          email: 'logout_tester@music.com',
+          password: 'Password123!',
+          displayName: 'Logout Tester'
+        })
+      });
+      const regData = (await regRes.json()) as { ok: boolean; token: string; user: { id: string } };
+      expect(regRes.status).toBe(201);
+      const token = regData.token;
+
+      const projRes = await fetch(`${url}/api/projects`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ name: 'Logout Test Track' })
+      });
+      const projData = (await projRes.json()) as { ok: boolean; project: { id: string } };
+      expect(projRes.status).toBe(201);
+      const projectId = projData.project.id;
+
+      // 2. Verify token works on REST /api/auth/me
+      const meBefore = await fetch(`${url}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      expect(meBefore.status).toBe(200);
+
+      // 3. Verify token works on Socket.IO project:workspace:join
+      const testSocket = await connected(url);
+      const joinBefore = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        testSocket.emit('project:workspace:join', { projectId, authToken: token }, resolve);
+      });
+      expect(joinBefore.ok).toBe(true);
+
+      // 4. Logout via POST /api/auth/logout
+      const logoutRes = await fetch(`${url}/api/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      expect(logoutRes.status).toBe(200);
+      const logoutData = (await logoutRes.json()) as { ok: boolean };
+      expect(logoutData.ok).toBe(true);
+
+      // 5. Verify token is rejected on REST /api/auth/me
+      const meAfter = await fetch(`${url}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      expect(meAfter.status).toBe(401);
+
+      // 6. Verify token is rejected on REST /api/projects
+      const projAfter = await fetch(`${url}/api/projects`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      expect(projAfter.status).toBe(401);
+
+      // 7. Verify token is rejected on Socket.IO project:workspace:join
+      const joinAfter = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        testSocket.emit('project:workspace:join', { projectId, authToken: token }, resolve);
+      });
+      expect(joinAfter.ok).toBe(false);
+      expect(joinAfter.message).toBe('Unauthorized');
+
+      // 8. Verify token is rejected on Socket.IO project:workspace:update
+      const updateAfter = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        testSocket.emit('project:workspace:update', {
+          projectId,
+          authToken: token,
+          updates: { notes: { content: 'Hacked note' } }
+        }, resolve);
+      });
+      expect(updateAfter.ok).toBe(false);
+      expect(updateAfter.message).toBe('Unauthorized');
+
+      testSocket.disconnect();
+    } finally {
+      io.close();
+      await app.close();
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('invalidates all tokens issued prior to password change across REST and Socket.IO while allowing new logins', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-pwd-revoc-test-'));
+    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret', DATA_DIR: tmpDataDir }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      // 1. Register a user (token 1)
+      const regRes = await fetch(`${url}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'pwd_revocation_user',
+          email: 'pwd_revocation@music.com',
+          password: 'OriginalPassword123!',
+          displayName: 'Pwd User'
+        })
+      });
+      const regData = (await regRes.json()) as { ok: boolean; token: string; user: { id: string } };
+      expect(regRes.status).toBe(201);
+      const token1 = regData.token;
+
+      // 2. Create project
+      const projRes = await fetch(`${url}/api/projects`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token1}`
+        },
+        body: JSON.stringify({ name: 'Password Revocation Project' })
+      });
+      const projData = (await projRes.json()) as { ok: boolean; project: { id: string } };
+      expect(projRes.status).toBe(201);
+      const projectId = projData.project.id;
+
+      // 3. Login from another session (token 2)
+      const loginRes = await fetch(`${url}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          usernameOrEmail: 'pwd_revocation_user',
+          password: 'OriginalPassword123!'
+        })
+      });
+      const loginData = (await loginRes.json()) as { ok: boolean; token: string };
+      expect(loginRes.status).toBe(200);
+      const token2 = loginData.token;
+
+      // 4. Change password using token 1
+      const updatePwdRes = await fetch(`${url}/api/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token1}`
+        },
+        body: JSON.stringify({
+          currentPassword: 'OriginalPassword123!',
+          newPassword: 'BrandNewSecurePassword99!'
+        })
+      });
+      expect(updatePwdRes.status).toBe(200);
+
+      // 5. Verify both token1 and token2 are rejected on REST
+      const meToken1 = await fetch(`${url}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token1}` }
+      });
+      expect(meToken1.status).toBe(401);
+
+      const meToken2 = await fetch(`${url}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token2}` }
+      });
+      expect(meToken2.status).toBe(401);
+
+      const projToken1 = await fetch(`${url}/api/projects`, {
+        headers: { Authorization: `Bearer ${token1}` }
+      });
+      expect(projToken1.status).toBe(401);
+
+      // 6. Verify both token1 and token2 are rejected on Socket.IO
+      const socket = await connected(url);
+      const joinToken1 = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        socket.emit('project:workspace:join', { projectId, authToken: token1 }, resolve);
+      });
+      expect(joinToken1.ok).toBe(false);
+      expect(joinToken1.message).toBe('Unauthorized');
+
+      const joinToken2 = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        socket.emit('project:workspace:join', { projectId, authToken: token2 }, resolve);
+      });
+      expect(joinToken2.ok).toBe(false);
+      expect(joinToken2.message).toBe('Unauthorized');
+
+      // 7. Login with new password (token 3)
+      const loginAfterRes = await fetch(`${url}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          usernameOrEmail: 'pwd_revocation_user',
+          password: 'BrandNewSecurePassword99!'
+        })
+      });
+      expect(loginAfterRes.status).toBe(200);
+      const loginAfterData = (await loginAfterRes.json()) as { ok: boolean; token: string };
+      const token3 = loginAfterData.token;
+
+      // 8. Verify token3 works on REST and Socket.IO
+      const meToken3 = await fetch(`${url}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token3}` }
+      });
+      expect(meToken3.status).toBe(200);
+
+      const joinToken3 = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        socket.emit('project:workspace:join', { projectId, authToken: token3 }, resolve);
+      });
+      expect(joinToken3.ok).toBe(true);
+
+      socket.disconnect();
+    } finally {
+      io.close();
+      await app.close();
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('guarantees exactly one registration succeeds with 201 and conflicting requests fail with 409 concurrently', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-race-reg-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        TURN_SHARED_SECRET: 'a-secure-test-secret',
+        DATA_DIR: tmpDataDir
+      });
+      const { app, io } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const addr = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${addr.port}`;
+
+      try {
+        const [res1, res2] = await Promise.all([
+          fetch(`${url}/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: 'ConcurrentHTTPUser',
+              email: 'http1@music.com',
+              password: 'Password123!',
+              displayName: 'User 1'
+            })
+          }),
+          fetch(`${url}/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: 'concurrenthttpuser',
+              email: 'http2@music.com',
+              password: 'Password123!',
+              displayName: 'User 2'
+            })
+          })
+        ]);
+
+        const statuses = [res1.status, res2.status].sort();
+        expect(statuses).toEqual([201, 409]);
+
+        const body1 = (await res1.json()) as any;
+        const body2 = (await res2.json()) as any;
+        const bodies = [body1, body2];
+        const successBody = bodies.find((b) => b.ok === true);
+        const conflictBody = bodies.find((b) => b.ok === false);
+
+        expect(successBody).toBeDefined();
+        expect(successBody.token).toBeDefined();
+        expect(conflictBody).toBeDefined();
+        expect(conflictBody.message).toMatch(/already taken/i);
+      } finally {
+        io.close();
+        await app.close();
+      }
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('enforces chat rate limiting without corrupting room state or affecting other participants', async () => {
+    const { app, io, rooms } = await createApp(
+      loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }),
+      { chat: { capacity: 3, refillRate: 1 } }
+    );
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      const host = await connected(url);
+      const guest = await connected(url);
+      const created = await ack(host, 'meeting:create', { participantId: '11111111-1111-4111-8111-111111111111', media });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      await ack(guest, 'meeting:join', { code: created.code, participantId: '22222222-2222-4222-8222-222222222222', media });
+
+      const guestReceivedMessages: string[] = [];
+      guest.on('chat:message', (msg: { text: string }) => {
+        guestReceivedMessages.push(msg.text);
+      });
+
+      // 1. Send 3 messages within burst capacity
+      for (let i = 1; i <= 3; i++) {
+        const chatAck = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+          host.emit('chat:send', { code: created.code, text: `Message ${i}` }, resolve);
+        });
+        expect(chatAck.ok).toBe(true);
+      }
+
+      // 2. 4th message exceeds capacity and is rejected
+      const blockedAck = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+        host.emit('chat:send', { code: created.code, text: 'Spam message 4' }, resolve);
+      });
+      expect(blockedAck.ok).toBe(false);
+      expect(blockedAck.error).toBe('Too many messages. Please slow down.');
+
+      // Wait a brief tick for events to settle
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      // Guest only received the 3 allowed messages
+      expect(guestReceivedMessages).toEqual(['Message 1', 'Message 2', 'Message 3']);
+
+      // Room chat message count is exactly 3 (uncorrupted)
+      const room = rooms.rooms.get(created.code);
+      expect(room?.chatMessagesCount).toBe(3);
+
+      // 3. Guest can still send messages normally (per-socket rate limiter isolation)
+      const hostReceivedMessages: string[] = [];
+      host.on('chat:message', (msg: { text: string }) => {
+        hostReceivedMessages.push(msg.text);
+      });
+
+      const guestAck = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+        guest.emit('chat:send', { code: created.code, text: 'Guest message 1' }, resolve);
+      });
+      expect(guestAck.ok).toBe(true);
+
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(hostReceivedMessages).toEqual(['Guest message 1']);
+      expect(room?.chatMessagesCount).toBe(4);
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+
+  it('enforces workspace mutation rate limiting and prevents flood attacks', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-ws-abuse-'));
+    const { app, io } = await createApp(
+      loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret', DATA_DIR: tmpDataDir }),
+      { workspace: { capacity: 2, refillRate: 1 } }
+    );
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      // 1. Register user and create project
+      const regRes = await fetch(`${url}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'ws_tester',
+          email: 'ws_tester@music.com',
+          password: 'Password123!',
+          displayName: 'WS Tester'
+        })
+      });
+      const regData = (await regRes.json()) as { ok: boolean; token: string; user: { id: string } };
+      const token = regData.token;
+
+      const projRes = await fetch(`${url}/api/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: 'Abuse Test Track' })
+      });
+      const projData = (await projRes.json()) as { ok: boolean; project: { id: string } };
+      const projectId = projData.project.id;
+
+      const socket = await connected(url);
+      await new Promise<{ ok: boolean }>((resolve) => {
+        socket.emit('project:workspace:join', { projectId, authToken: token }, resolve);
+      });
+
+      // 2. First 2 updates succeed
+      const up1 = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        socket.emit('project:workspace:update', {
+          projectId,
+          authToken: token,
+          updates: { notes: { content: 'Note 1' } }
+        }, resolve);
+      });
+      expect(up1.ok).toBe(true);
+
+      const up2 = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        socket.emit('project:workspace:update', {
+          projectId,
+          authToken: token,
+          updates: { notes: { content: 'Note 2' } }
+        }, resolve);
+      });
+      expect(up2.ok).toBe(true);
+
+      // 3. 3rd immediate update is throttled
+      const up3 = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        socket.emit('project:workspace:update', {
+          projectId,
+          authToken: token,
+          updates: { notes: { content: 'Spam Note 3' } }
+        }, resolve);
+      });
+      expect(up3.ok).toBe(false);
+      expect(up3.message).toBe('Too many requests. Please slow down.');
+
+      // 4. Verify project on disk reflects Note 2, not Spam Note 3
+      const projCheck = await fetch(`${url}/api/projects`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const projCheckData = (await projCheck.json()) as { ok: boolean; projects: Array<{ id: string; workspace: { notes: { content: string } } }> };
+      const proj = projCheckData.projects.find((p) => p.id === projectId);
+      expect(proj?.workspace.notes.content).toBe('Note 2');
+
+      socket.disconnect();
+    } finally {
+      io.close();
+      await app.close();
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('allows realistic bursts of WebRTC ICE candidates and legitimate media updates while dropping excessive spam', async () => {
+    const { app, io } = await createApp(
+      loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }),
+      { ice: { capacity: 20, refillRate: 5 }, media: { capacity: 5, refillRate: 2 } }
+    );
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      const host = await connected(url);
+      const guest = await connected(url);
+      const created = await ack(host, 'meeting:create', { participantId: '11111111-1111-4111-8111-111111111111', media });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      await ack(guest, 'meeting:join', { code: created.code, participantId: '22222222-2222-4222-8222-222222222222', media });
+
+      const guestReceivedCandidates: any[] = [];
+      guest.on('signal:candidate', (cand) => {
+        guestReceivedCandidates.push(cand);
+      });
+
+      // 1. Send burst of 15 ICE candidates (within 20 capacity)
+      for (let i = 0; i < 15; i++) {
+        host.emit('signal:candidate', {
+          code: created.code,
+          candidate: { candidate: `candidate:1 1 UDP 2130706431 192.168.1.${i} 50000 typ host` }
+        });
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(guestReceivedCandidates.length).toBe(15);
+
+      // 2. Spam 20 more ICE candidates immediately (should exceed remaining 5 tokens and drop extras safely)
+      for (let i = 15; i < 35; i++) {
+        host.emit('signal:candidate', {
+          code: created.code,
+          candidate: { candidate: `candidate:1 1 UDP 2130706431 192.168.1.${i} 50000 typ host` }
+        });
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Total received capped around 20 (exact bucket capacity + any minimal fractional refill)
+      expect(guestReceivedCandidates.length).toBeGreaterThanOrEqual(20);
+      expect(guestReceivedCandidates.length).toBeLessThan(25);
+
+      // 3. Test media updates: rapid legitimate toggling (3 updates) succeeds
+      const guestReceivedMedia: any[] = [];
+      guest.on('media:update', (m) => {
+        guestReceivedMedia.push(m);
+      });
+
+      for (let i = 1; i <= 3; i++) {
+        host.emit('media:update', {
+          code: created.code,
+          media: {
+            audioSources: [{ id: 'primary', purpose: 'primary' as const, mode: 'talk' as const, enabled: i % 2 === 0, channels: 2 }],
+            cameraEnabled: true
+          }
+        });
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(guestReceivedMedia.length).toBe(3);
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+
+  it('enforces rate limiting on session actions and lifecycle controls', async () => {
+    const { app, io } = await createApp(
+      loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }),
+      { session: { capacity: 2, refillRate: 1 } }
+    );
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      const socket = await connected(url);
+
+      // 1. First session create succeeds
+      const created = await ack(socket, 'meeting:create', { participantId: '11111111-1111-4111-8111-111111111111', media });
+      expect(created.ok).toBe(true);
+
+      // 2. Second session control succeeds
+      const lockRes1 = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        socket.emit('meeting:lock', { code: created.ok ? created.code : 'TEST1234', locked: true }, resolve);
+      });
+      expect(lockRes1.ok).toBe(true);
+
+      // 3. Third immediate session control is throttled
+      const lockRes2 = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        socket.emit('meeting:lock', { code: created.ok ? created.code : 'TEST1234', locked: false }, resolve);
+      });
+      expect(lockRes2.ok).toBe(false);
+      expect(lockRes2.message).toBe('Too many requests. Please slow down.');
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+
+  it('finalizes participant session history upon explicit leave and protects it from later room activity', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-explicit-leave-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        TURN_SHARED_SECRET: 'a-secure-test-secret',
+        DATA_DIR: tmpDataDir
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const addr = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${addr.port}`;
+
+      try {
+        const hostReg = await userStore.register({
+          username: 'host_dan',
+          email: 'host_dan@example.com',
+          password: 'Password123!',
+          displayName: 'Dan Host'
+        });
+        const guestReg = await userStore.register({
+          username: 'guest_sarah',
+          email: 'guest_sarah@example.com',
+          password: 'Password123!',
+          displayName: 'Sarah Guest'
+        });
+        const project = projectStore.createProject(hostReg.user, { name: 'EP Production' });
+
+        const hostSocket = await connected(url);
+        const guestSocket = await connected(url);
+        const hostId = '11111111-1111-4111-8111-111111111111';
+        const guestId = '22222222-2222-4222-8222-222222222222';
+
+        const created = await ack(hostSocket, 'meeting:create', {
+          participantId: hostId,
+          authToken: hostReg.token,
+          projectId: project.id,
+          media
+        });
+        expect(created.ok).toBe(true);
+        if (!created.ok) return;
+
+        const joined = await ack(guestSocket, 'meeting:join', {
+          code: created.code,
+          participantId: guestId,
+          authToken: guestReg.token,
+          media
+        });
+        expect(joined.ok).toBe(true);
+
+        // Send 1 chat message while guest is present
+        await new Promise((resolve) => hostSocket.emit('chat:send', { code: created.code, text: 'Welcome Sarah' }, resolve));
+
+        // Mutate workspace while guest is present (generates session summary event)
+        await new Promise((resolve) => {
+          hostSocket.emit('project:workspace:update', {
+            projectId: project.id,
+            authToken: hostReg.token,
+            updates: {
+              tasks: {
+                tasks: [{ id: 'task_1', title: 'Record Vocals', status: 'done', priority: 'high', assignedTo: guestReg.user.id, createdAt: Date.now(), updatedAt: Date.now() }]
+              }
+            }
+          }, resolve);
+        });
+
+        // Guest explicitly leaves
+        const hostPeerLeft = new Promise<void>((resolve) => hostSocket.once('peer:left', () => resolve()));
+        guestSocket.emit('meeting:leave');
+        await hostPeerLeft;
+
+        // Verify guest's session history record is finalized immediately
+        const guestHistoryAfterLeave = userStore.getSessionHistory(guestReg.user.id);
+        expect(guestHistoryAfterLeave.length).toBe(1);
+        expect(guestHistoryAfterLeave[0]?.endedAt).toBeDefined();
+        const guestEndedAt = guestHistoryAfterLeave[0]?.endedAt;
+        const guestDuration = guestHistoryAfterLeave[0]?.durationSeconds;
+        expect(guestHistoryAfterLeave[0]?.summary?.events.length).toBe(1);
+        expect(guestHistoryAfterLeave[0]?.summary?.chatMessagesCount).toBe(1);
+
+        // Host is still in the room and continues working
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => hostSocket.emit('chat:send', { code: created.code, text: 'Continuing solo' }, resolve));
+        await new Promise((resolve) => hostSocket.emit('chat:send', { code: created.code, text: 'Wrapping up' }, resolve));
+
+        await new Promise((resolve) => {
+          hostSocket.emit('project:workspace:update', {
+            projectId: project.id,
+            authToken: hostReg.token,
+            updates: {
+              tasks: {
+                tasks: [
+                  { id: 'task_1', title: 'Record Vocals', status: 'done', priority: 'high', assignedTo: guestReg.user.id, createdAt: Date.now(), updatedAt: Date.now() },
+                  { id: 'task_2', title: 'Mix Track', status: 'in_progress', priority: 'medium', createdAt: Date.now(), updatedAt: Date.now() }
+                ]
+              }
+            }
+          }, resolve);
+        });
+
+        // Host closes the meeting
+        hostSocket.emit('meeting:leave');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Verify guest's session history was completely untouched by later host activity
+        const guestHistoryFinal = userStore.getSessionHistory(guestReg.user.id);
+        expect(guestHistoryFinal[0]?.endedAt).toBe(guestEndedAt);
+        expect(guestHistoryFinal[0]?.durationSeconds).toBe(guestDuration);
+        expect(guestHistoryFinal[0]?.summary?.events.length).toBe(1);
+        expect(guestHistoryFinal[0]?.summary?.events[0]?.description).toContain('Record Vocals');
+        expect(guestHistoryFinal[0]?.summary?.chatMessagesCount).toBe(1);
+
+        // Verify host's session history contains all events and chat messages
+        const hostHistoryFinal = userStore.getSessionHistory(hostReg.user.id);
+        expect(hostHistoryFinal[0]?.endedAt).toBeDefined();
+        expect(hostHistoryFinal[0]?.summary?.events.length).toBe(2);
+        expect(hostHistoryFinal[0]?.summary?.chatMessagesCount).toBe(3);
+      } finally {
+        io.close();
+        await app.close();
+      }
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('finalizes participant session history upon host removal and protects it from later room activity', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-remove-part-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        TURN_SHARED_SECRET: 'a-secure-test-secret',
+        DATA_DIR: tmpDataDir
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const addr = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${addr.port}`;
+
+      try {
+        const hostReg = await userStore.register({
+          username: 'host_kick',
+          email: 'host_kick@example.com',
+          password: 'Password123!',
+          displayName: 'Host Kick'
+        });
+        const guestReg = await userStore.register({
+          username: 'guest_kicked',
+          email: 'guest_kicked@example.com',
+          password: 'Password123!',
+          displayName: 'Guest Kicked'
+        });
+        const project = projectStore.createProject(hostReg.user, { name: 'Kicked Test EP' });
+
+        const hostSocket = await connected(url);
+        const guestSocket = await connected(url);
+        const hostId = '11111111-1111-4111-8111-111111111111';
+        const guestId = '22222222-2222-4222-8222-222222222222';
+
+        const created = await ack(hostSocket, 'meeting:create', {
+          participantId: hostId,
+          authToken: hostReg.token,
+          projectId: project.id,
+          media
+        });
+        expect(created.ok).toBe(true);
+        if (!created.ok) return;
+
+        const joined = await ack(guestSocket, 'meeting:join', {
+          code: created.code,
+          participantId: guestId,
+          authToken: guestReg.token,
+          media
+        });
+        expect(joined.ok).toBe(true);
+
+        await new Promise((resolve) => hostSocket.emit('chat:send', { code: created.code, text: 'Message before kick' }, resolve));
+
+        const guestRemovedPromise = new Promise<{ code: string; message: string }>((resolve) => guestSocket.once('meeting:removed', resolve));
+        const removeRes = await new Promise<{ ok: boolean }>((resolve) => {
+          hostSocket.emit('meeting:removeParticipant', { code: created.code, participantId: guestId }, resolve);
+        });
+        expect(removeRes.ok).toBe(true);
+        await guestRemovedPromise;
+
+        // Verify guest session is finalized immediately
+        const guestHistory = userStore.getSessionHistory(guestReg.user.id);
+        expect(guestHistory.length).toBe(1);
+        expect(guestHistory[0]?.endedAt).toBeDefined();
+        const guestEndedAt = guestHistory[0]?.endedAt;
+        expect(guestHistory[0]?.summary?.chatMessagesCount).toBe(1);
+
+        // Host performs more actions later
+        await new Promise((resolve) => hostSocket.emit('chat:send', { code: created.code, text: 'After kick message' }, resolve));
+        hostSocket.emit('meeting:leave');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Verify guest record is unchanged
+        const guestHistoryFinal = userStore.getSessionHistory(guestReg.user.id);
+        expect(guestHistoryFinal[0]?.endedAt).toBe(guestEndedAt);
+        expect(guestHistoryFinal[0]?.summary?.chatMessagesCount).toBe(1);
+      } finally {
+        io.close();
+        await app.close();
+      }
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('finalizes participant session history when disconnect grace period expires without extending on later host activity', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-disc-expire-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        TURN_SHARED_SECRET: 'a-secure-test-secret',
+        DISCONNECT_GRACE_MS: 1000,
+        DATA_DIR: tmpDataDir
+      });
+      const { app, io, userStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const addr = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${addr.port}`;
+
+      try {
+        const hostReg = await userStore.register({
+          username: 'host_disc_exp',
+          email: 'host_disc_exp@example.com',
+          password: 'Password123!',
+          displayName: 'Host Disc Exp'
+        });
+        const guestReg = await userStore.register({
+          username: 'guest_disc_exp',
+          email: 'guest_disc_exp@example.com',
+          password: 'Password123!',
+          displayName: 'Guest Disc Exp'
+        });
+
+        const hostSocket = await connected(url);
+        const guestSocket = await connected(url);
+        const hostId = '11111111-1111-4111-8111-111111111111';
+        const guestId = '22222222-2222-4222-8222-222222222222';
+
+        const created = await ack(hostSocket, 'meeting:create', {
+          participantId: hostId,
+          authToken: hostReg.token,
+          media
+        });
+        expect(created.ok).toBe(true);
+        if (!created.ok) return;
+
+        await ack(guestSocket, 'meeting:join', {
+          code: created.code,
+          participantId: guestId,
+          authToken: guestReg.token,
+          media
+        });
+
+        await new Promise((resolve) => hostSocket.emit('chat:send', { code: created.code, text: 'Hello before disconnect' }, resolve));
+
+        // Guest disconnects
+        const hostPeerLeft = new Promise<void>((resolve) => hostSocket.once('peer:left', () => resolve()));
+        guestSocket.disconnect();
+        await hostPeerLeft;
+
+        // Verify guest record finalized upon expiry
+        const guestHistory = userStore.getSessionHistory(guestReg.user.id);
+        expect(guestHistory.length).toBe(1);
+        expect(guestHistory[0]?.endedAt).toBeDefined();
+        const guestEndedAt = guestHistory[0]?.endedAt;
+        expect(guestHistory[0]?.summary?.chatMessagesCount).toBe(1);
+
+        // Host sends more chat and closes
+        await new Promise((resolve) => hostSocket.emit('chat:send', { code: created.code, text: 'Later host chat' }, resolve));
+        hostSocket.emit('meeting:leave');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Verify guest history not altered
+        const guestHistoryFinal = userStore.getSessionHistory(guestReg.user.id);
+        expect(guestHistoryFinal[0]?.endedAt).toBe(guestEndedAt);
+        expect(guestHistoryFinal[0]?.summary?.chatMessagesCount).toBe(1);
+      } finally {
+        io.close();
+        await app.close();
+      }
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('preserves active participant session history across temporary socket disconnect and reconnect within grace period', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-reconnect-grace-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        TURN_SHARED_SECRET: 'a-secure-test-secret',
+        DISCONNECT_GRACE_MS: 1000,
+        DATA_DIR: tmpDataDir
+      });
+      const { app, io, userStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const addr = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${addr.port}`;
+
+      try {
+        const hostReg = await userStore.register({
+          username: 'host_reconn',
+          email: 'host_reconn@example.com',
+          password: 'Password123!',
+          displayName: 'Host Reconn'
+        });
+        const guestReg = await userStore.register({
+          username: 'guest_reconn',
+          email: 'guest_reconn@example.com',
+          password: 'Password123!',
+          displayName: 'Guest Reconn'
+        });
+
+        const hostSocket = await connected(url);
+        const guestSocket1 = await connected(url);
+        const hostId = '11111111-1111-4111-8111-111111111111';
+        const guestId = '22222222-2222-4222-8222-222222222222';
+
+        const created = await ack(hostSocket, 'meeting:create', {
+          participantId: hostId,
+          authToken: hostReg.token,
+          media
+        });
+        expect(created.ok).toBe(true);
+        if (!created.ok) return;
+
+        const joined1 = await ack(guestSocket1, 'meeting:join', {
+          code: created.code,
+          participantId: guestId,
+          authToken: guestReg.token,
+          media
+        });
+        expect(joined1.ok).toBe(true);
+        const reconnectToken = joined1.ok ? joined1.reconnectToken : undefined;
+
+        // Guest disconnects temporarily
+        const hostPeerDiscPromise = new Promise<void>((resolve) => hostSocket.once('peer:disconnected', () => resolve()));
+        guestSocket1.disconnect();
+        await hostPeerDiscPromise;
+
+        // Check that session is NOT prematurely finalized during grace period
+        const guestHistoryDuringGrace = userStore.getSessionHistory(guestReg.user.id);
+        expect(guestHistoryDuringGrace.length).toBe(1);
+        expect(guestHistoryDuringGrace[0]?.endedAt).toBeUndefined();
+
+        // Guest reconnects with new socket before grace period expires
+        const guestSocket2 = await connected(url);
+        const hostPeerReadyPromise = new Promise<void>((resolve) => hostSocket.once('peer:ready', () => resolve()));
+        const joined2 = await ack(guestSocket2, 'meeting:join', {
+          code: created.code,
+          participantId: guestId,
+          authToken: guestReg.token,
+          reconnectToken,
+          media
+        });
+        expect(joined2.ok).toBe(true);
+        await hostPeerReadyPromise;
+
+        // Still not ended
+        const guestHistoryAfterReconn = userStore.getSessionHistory(guestReg.user.id);
+        expect(guestHistoryAfterReconn[0]?.endedAt).toBeUndefined();
+
+        // Send chat and host closes
+        await new Promise((resolve) => guestSocket2.emit('chat:send', { code: created.code, text: 'Back online!' }, resolve));
+        hostSocket.emit('meeting:leave');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Both sessions are finalized properly upon host session close
+        const guestHistoryFinal = userStore.getSessionHistory(guestReg.user.id);
+        expect(guestHistoryFinal[0]?.endedAt).toBeDefined();
+        expect(guestHistoryFinal[0]?.summary?.chatMessagesCount).toBe(1);
+
+        const hostHistoryFinal = userStore.getSessionHistory(hostReg.user.id);
+        expect(hostHistoryFinal[0]?.endedAt).toBeDefined();
+        expect(hostHistoryFinal[0]?.summary?.chatMessagesCount).toBe(1);
+      } finally {
+        io.close();
+        await app.close();
+      }
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
+
+
 
 
 

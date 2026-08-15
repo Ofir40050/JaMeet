@@ -118,7 +118,7 @@ Unsigned packages are suitable for development. Public macOS distribution should
 
 ## Verification
 
-Run `npm test`, `npm run typecheck`, and `npm run build`. For the required public-network acceptance test, install MusicZoom on two physical computers on different internet connections and verify video, two-way audio, all device controls, both audio modes, disconnect/reconnect behavior, and guest/host leave behavior.
+Run `npm test`, `npm run typecheck`, and `npm run build`. For the required public-network acceptance test, install JaMeet on two physical computers on different internet connections and verify video, two-way audio, all device controls, both audio modes, disconnect/reconnect behavior, and guest/host leave behavior.
 
 Build once with `VITE_ICE_TRANSPORT_POLICY=relay` and verify the call still connects; this proves coturn is functional. Then block UDP 3478 on one client and confirm TURN/TCP fallback.
 
@@ -126,7 +126,7 @@ Build once with `VITE_ICE_TRANSPORT_POLICY=relay` and verify the call still conn
 
 - **Devices have blank names:** grant camera/microphone permission, then reopen Studio Setup.
 - **Professional interface is absent:** confirm the device is visible and selected in the OS audio control panel and not exclusively locked by another application.
-- **Music Mode still reports mono or processing:** Chromium can only request capabilities the OS driver exposes. MusicZoom reports the effective track settings rather than claiming stereo or disabled processing.
+- **Music Mode still reports mono or processing:** Chromium can only request capabilities the OS driver exposes. JaMeet reports the effective track settings rather than claiming stereo or disabled processing.
 - **No remote audio:** select the desired output again. On some systems, non-default output routing requires a fresh permission grant.
 - **Calls work on one network but not across networks:** check coturn logs, public-IP configuration, UDP/TCP 3478, and the full UDP relay range.
 - **TURN/TLS fails:** verify the certificate hostname, mounted paths, TCP 5349, and `TURN_TLS_ENABLED` on both signaling and coturn.

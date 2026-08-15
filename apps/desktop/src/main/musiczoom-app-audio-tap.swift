@@ -361,7 +361,7 @@ class CoreAudioProcessTapRunner {
             }
 
             let aggregateDesc: [String: Any] = [
-                kAudioAggregateDeviceNameKey: "MusicZoom Process Tap (\(appName))",
+                kAudioAggregateDeviceNameKey: "JaMeet Process Tap (\(appName))",
                 kAudioAggregateDeviceUIDKey: "com.musiczoom.apptap.\(UUID().uuidString)",
                 kAudioAggregateDeviceMainSubDeviceKey: defaultUID,
                 kAudioAggregateDeviceSubDeviceListKey: [defaultUID],
@@ -677,7 +677,7 @@ class CoreAudioDeviceOutputTapRunner {
             }
 
             let aggregateDesc: [String: Any] = [
-                kAudioAggregateDeviceNameKey: "MusicZoom Device Output Tap",
+                kAudioAggregateDeviceNameKey: "JaMeet Device Output Tap",
                 kAudioAggregateDeviceUIDKey: "com.musiczoom.devicetap.\(UUID().uuidString)",
                 kAudioAggregateDeviceMainSubDeviceKey: deviceUID,
                 kAudioAggregateDeviceSubDeviceListKey: [deviceUID],
@@ -1038,7 +1038,7 @@ class CoreAudioGlobalTapRunner {
             }
 
             let aggregateDesc: [String: Any] = [
-                kAudioAggregateDeviceNameKey: "MusicZoom Global Tap",
+                kAudioAggregateDeviceNameKey: "JaMeet Global Tap",
                 kAudioAggregateDeviceUIDKey: "com.musiczoom.gtap.\(UUID().uuidString)",
                 kAudioAggregateDeviceMainSubDeviceKey: defaultUID,
                 kAudioAggregateDeviceSubDeviceListKey: [defaultUID],

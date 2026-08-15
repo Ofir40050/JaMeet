@@ -21,8 +21,9 @@ import { RoomStore, type Room } from './rooms.js';
 import { UserStore } from './auth.js';
 import { ProjectStore } from './projects.js';
 import { createIceServers } from './turn.js';
+import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from './rate-limiter.js';
 
-type SocketData = { code?: string; participantId?: string; identity?: ParticipantIdentity; isWaiting?: boolean };
+type SocketData = { code?: string; participantId?: string; identity?: ParticipantIdentity; isWaiting?: boolean; limiter?: SocketRateLimiter };
 
 function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSummaryEvent | null {
   let category: 'task' | 'note' | 'lyrics' | 'structure' | null = null;
@@ -73,7 +74,7 @@ function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSumm
   };
 }
 
-export async function createApp(config: ServerConfig) {
+export async function createApp(config: ServerConfig, customSocketLimits?: Partial<Record<RateLimitCategory, RateLimitConfig>>) {
   const app = Fastify({ logger: config.NODE_ENV !== 'test', bodyLimit: 2_097_152 });
   const origins = config.ALLOWED_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean);
   const isOriginAllowed = (origin?: string): boolean => {
@@ -137,6 +138,20 @@ export async function createApp(config: ServerConfig) {
       const isAuthFail = msg.includes('Invalid username or password');
       return reply.code(isAuthFail ? 401 : 500).send({ ok: false, message: msg });
     }
+  });
+
+  app.post('/api/auth/logout', async (request, reply) => {
+    const authHeader = request.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    if (token) {
+      try {
+        userStore.revokeToken(token);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Failed to revoke session token.';
+        return reply.code(500).send({ ok: false, message: msg });
+      }
+    }
+    return reply.send({ ok: true, message: 'Logged out successfully.' });
   });
 
   app.get('/api/auth/me', async (request, reply) => {
@@ -522,10 +537,13 @@ export async function createApp(config: ServerConfig) {
   }
 
   io.on('connection', (socket) => {
+    const limiter = new SocketRateLimiter(customSocketLimits);
     const socketData = socket.data as SocketData;
+    socketData.limiter = limiter;
 
     // Project Workspace Real-Time Collaborative Sync
     socket.on('project:workspace:join', (raw: { projectId: string; authToken?: string }, ack?: (res: { ok: boolean; workspace?: ProjectWorkspace; message?: string }) => void) => {
+      if (!limiter.consume('session')) { ack?.({ ok: false, message: 'Too many requests. Please slow down.' }); return; }
       if (!raw?.projectId) { ack?.({ ok: false, message: 'Invalid projectId' }); return; }
       const user = userStore.verifyToken(raw.authToken);
       if (!user || !projectStore.hasAccess(raw.projectId, user.id)) {
@@ -538,12 +556,14 @@ export async function createApp(config: ServerConfig) {
     });
 
     socket.on('project:workspace:leave', (raw: { projectId: string }) => {
+      if (!limiter.consume('session')) return;
       if (raw?.projectId) {
         void socket.leave(`project:${raw.projectId}`);
       }
     });
 
     socket.on('project:workspace:update', (raw: { projectId: string; authToken?: string; updates: unknown }, ack?: (res: { ok: boolean; workspace?: ProjectWorkspace; message?: string }) => void) => {
+      if (!limiter.consume('workspace')) { ack?.({ ok: false, message: 'Too many requests. Please slow down.' }); return; }
       if (!raw?.projectId || !raw?.updates) { ack?.({ ok: false, message: 'Invalid payload' }); return; }
       const user = userStore.verifyToken(raw.authToken);
       if (!user || !projectStore.hasAccess(raw.projectId, user.id)) {
@@ -599,6 +619,7 @@ export async function createApp(config: ServerConfig) {
     });
 
     socket.on('meeting:create', (raw, ack: (value: MeetingAck) => void) => {
+      if (!limiter.consume('session')) return ack(failure('BAD_REQUEST', 'Too many requests. Please slow down.'));
       const parsed = createMeetingSchema.safeParse(raw);
       if (!parsed.success) return ack(failure('BAD_REQUEST', 'Invalid session request'));
       if (socketData.code) return ack(failure('BAD_REQUEST', 'Already in a session'));
@@ -679,6 +700,7 @@ export async function createApp(config: ServerConfig) {
     });
 
     socket.on('meeting:join', (raw, ack: (value: MeetingAck) => void) => {
+      if (!limiter.consume('session')) return ack(failure('BAD_REQUEST', 'Too many requests. Please slow down.'));
       const parsed = joinMeetingSchema.safeParse(raw);
       if (!parsed.success) return ack(failure('BAD_REQUEST', 'Invalid session code or participant'));
       
@@ -811,6 +833,10 @@ export async function createApp(config: ServerConfig) {
     });
 
     const handleAdmit = (raw: unknown, ack?: (res: { ok: boolean; message?: string }) => void) => {
+      if (!limiter.consume('session')) {
+        ack?.({ ok: false, message: 'Too many requests. Please slow down.' });
+        return;
+      }
       const parsed = admitParticipantSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId) {
         ack?.({ ok: false, message: 'Invalid admit request' });
@@ -929,6 +955,10 @@ export async function createApp(config: ServerConfig) {
     socket.on('waiting:admit', handleAdmit);
 
     socket.on('meeting:lock', (raw, ack?: (res: { ok: boolean; locked?: boolean; message?: string }) => void) => {
+      if (!limiter.consume('session')) {
+        ack?.({ ok: false, message: 'Too many requests. Please slow down.' });
+        return;
+      }
       const parsed = lockMeetingSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId) {
         ack?.({ ok: false, message: 'Invalid lock request' });
@@ -957,6 +987,10 @@ export async function createApp(config: ServerConfig) {
     });
 
     socket.on('meeting:removeParticipant', (raw, ack?: (res: { ok: boolean; message?: string }) => void) => {
+      if (!limiter.consume('session')) {
+        ack?.({ ok: false, message: 'Too many requests. Please slow down.' });
+        return;
+      }
       const parsed = removeParticipantSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId) {
         ack?.({ ok: false, message: 'Invalid remove participant request' });
@@ -990,6 +1024,25 @@ export async function createApp(config: ServerConfig) {
         return;
       }
 
+      if (!removed.removed.identity.isGuest && removed.removed.identity.id) {
+        const project = room.projectId && room.hostIdentity.id
+          ? projectStore.getProject(room.projectId, room.hostIdentity.id)
+          : null;
+        try {
+          userStore.recordSessionClose(room.sessionId, {
+            code: room.code,
+            startedAt: room.startedAt,
+            allJoinedParticipants: room.allJoinedParticipants,
+            chatMessagesCount: room.chatMessagesCount || 0,
+            events: room.events || [],
+            projectId: room.projectId,
+            projectName: project?.name
+          }, removed.removed.identity.id);
+        } catch (err: unknown) {
+          console.error('Failed to record session close on participant removal:', err);
+        }
+      }
+
       if (removed.removed.socketId) {
         const removedSocket = io.sockets.sockets.get(removed.removed.socketId) || io.of('/').sockets.get(removed.removed.socketId);
         if (removedSocket) {
@@ -1013,6 +1066,7 @@ export async function createApp(config: ServerConfig) {
     });
 
     socket.on('signal:description', (raw) => {
+      if (!limiter.consume('signaling')) return;
       const parsed = signalDescriptionSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
@@ -1023,6 +1077,7 @@ export async function createApp(config: ServerConfig) {
     });
 
     socket.on('signal:candidate', (raw) => {
+      if (!limiter.consume('ice')) return;
       const parsed = signalCandidateSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
@@ -1033,6 +1088,7 @@ export async function createApp(config: ServerConfig) {
     });
 
     socket.on('signal:renegotiate', (raw) => {
+      if (!limiter.consume('signaling')) return;
       const parsed = signalRenegotiateSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
@@ -1043,6 +1099,7 @@ export async function createApp(config: ServerConfig) {
     });
 
     socket.on('meeting:action', (raw) => {
+      if (!limiter.consume('action')) return;
       const parsed = meetingActionSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
@@ -1053,6 +1110,7 @@ export async function createApp(config: ServerConfig) {
     });
 
     socket.on('media:update', (raw) => {
+      if (!limiter.consume('media')) return;
       const parsed = mediaUpdateSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
@@ -1064,6 +1122,10 @@ export async function createApp(config: ServerConfig) {
     });
 
     socket.on('chat:send', (raw, ack?: (res: { ok: boolean; message?: SessionChatMessage; error?: string }) => void) => {
+      if (!limiter.consume('chat')) {
+        ack?.({ ok: false, error: 'Too many messages. Please slow down.' });
+        return;
+      }
       const parsed = sendChatMessageSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) {
         ack?.({ ok: false, error: 'Invalid chat message payload or session state' });
@@ -1153,22 +1215,38 @@ export async function createApp(config: ServerConfig) {
       if (explicit) {
         const roomBefore = rooms.rooms.get(code);
         const result = rooms.leave(code, participantId, socket.id);
-        if (result?.role === 'host' && roomBefore) {
+        if (roomBefore) {
           const project = roomBefore.projectId && roomBefore.hostIdentity.id
             ? projectStore.getProject(roomBefore.projectId, roomBefore.hostIdentity.id)
             : null;
-          try {
-            userStore.recordSessionClose(roomBefore.sessionId, {
-              code: roomBefore.code,
-              startedAt: roomBefore.startedAt,
-              allJoinedParticipants: roomBefore.allJoinedParticipants,
-              chatMessagesCount: roomBefore.chatMessagesCount || 0,
-              events: roomBefore.events || [],
-              projectId: roomBefore.projectId,
-              projectName: project?.name
-            });
-          } catch (err: unknown) {
-            console.error('Failed to record session close on explicit leave:', err);
+          if (result?.role === 'host') {
+            try {
+              userStore.recordSessionClose(roomBefore.sessionId, {
+                code: roomBefore.code,
+                startedAt: roomBefore.startedAt,
+                allJoinedParticipants: roomBefore.allJoinedParticipants,
+                chatMessagesCount: roomBefore.chatMessagesCount || 0,
+                events: roomBefore.events || [],
+                projectId: roomBefore.projectId,
+                projectName: project?.name
+              });
+            } catch (err: unknown) {
+              console.error('Failed to record session close on explicit leave:', err);
+            }
+          } else if (result?.participant && !result.participant.identity.isGuest && result.participant.identity.id) {
+            try {
+              userStore.recordSessionClose(roomBefore.sessionId, {
+                code: roomBefore.code,
+                startedAt: roomBefore.startedAt,
+                allJoinedParticipants: roomBefore.allJoinedParticipants,
+                chatMessagesCount: roomBefore.chatMessagesCount || 0,
+                events: roomBefore.events || [],
+                projectId: roomBefore.projectId,
+                projectName: project?.name
+              }, result.participant.identity.id);
+            } catch (err: unknown) {
+              console.error('Failed to record participant session close on explicit leave:', err);
+            }
           }
         }
         if (result?.peer?.socketId) io.to(result.peer.socketId).emit(result.role === 'host' ? 'meeting:ended' : 'peer:left');
@@ -1179,23 +1257,40 @@ export async function createApp(config: ServerConfig) {
       } else {
         const peer = room && rooms.peer(room, participantId);
         if (peer?.socketId) io.to(peer.socketId).emit('peer:disconnected');
-        rooms.disconnect(code, participantId, (role, expiredPeer) => {
-          if (role === 'host' && room) {
-            const project = room.projectId && room.hostIdentity.id
-              ? projectStore.getProject(room.projectId, room.hostIdentity.id)
+        rooms.disconnect(code, participantId, (role, expiredPeer, expiredParticipant) => {
+          const currentRoom = rooms.rooms.get(code) || room;
+          if (currentRoom) {
+            const project = currentRoom.projectId && currentRoom.hostIdentity.id
+              ? projectStore.getProject(currentRoom.projectId, currentRoom.hostIdentity.id)
               : null;
-            try {
-              userStore.recordSessionClose(room.sessionId, {
-                code: room.code,
-                startedAt: room.startedAt,
-                allJoinedParticipants: room.allJoinedParticipants,
-                chatMessagesCount: room.chatMessagesCount || 0,
-                events: room.events || [],
-                projectId: room.projectId,
-                projectName: project?.name
-              });
-            } catch (err: unknown) {
-              console.error('Failed to record session close on disconnect expiry:', err);
+            if (role === 'host') {
+              try {
+                userStore.recordSessionClose(currentRoom.sessionId, {
+                  code: currentRoom.code,
+                  startedAt: currentRoom.startedAt,
+                  allJoinedParticipants: currentRoom.allJoinedParticipants,
+                  chatMessagesCount: currentRoom.chatMessagesCount || 0,
+                  events: currentRoom.events || [],
+                  projectId: currentRoom.projectId,
+                  projectName: project?.name
+                });
+              } catch (err: unknown) {
+                console.error('Failed to record session close on disconnect expiry:', err);
+              }
+            } else if (expiredParticipant && !expiredParticipant.identity.isGuest && expiredParticipant.identity.id) {
+              try {
+                userStore.recordSessionClose(currentRoom.sessionId, {
+                  code: currentRoom.code,
+                  startedAt: currentRoom.startedAt,
+                  allJoinedParticipants: currentRoom.allJoinedParticipants,
+                  chatMessagesCount: currentRoom.chatMessagesCount || 0,
+                  events: currentRoom.events || [],
+                  projectId: currentRoom.projectId,
+                  projectName: project?.name
+                }, expiredParticipant.identity.id);
+              } catch (err: unknown) {
+                console.error('Failed to record participant session close on disconnect expiry:', err);
+              }
             }
           }
           if (expiredPeer?.socketId) io.to(expiredPeer.socketId).emit(role === 'host' ? 'meeting:ended' : 'peer:left');

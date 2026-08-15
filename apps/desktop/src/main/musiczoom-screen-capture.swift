@@ -3,6 +3,7 @@ import AppKit
 import ScreenCaptureKit
 import CoreMedia
 import CoreVideo
+import Darwin
 
 // ========================================================
 // MusicZoom Native ScreenCaptureKit Display Capture Engine
@@ -22,7 +23,6 @@ class CaptureStreamHandler: NSObject, SCStreamOutput, SCStreamDelegate {
     private let targetFps: Int
     private var lastEmittedTime: Double = 0
     private let minInterval: Double
-    private let outHandle = FileHandle.standardOutput
 
     init(fps: Int) {
         self.targetFps = fps
@@ -80,11 +80,38 @@ class CaptureStreamHandler: NSObject, SCStreamOutput, SCStreamDelegate {
         withUnsafeBytes(of: uPayload.littleEndian) { header.replaceSubrange(16..<20, with: $0) }
         withUnsafeBytes(of: uTimestamp.littleEndian) { header.replaceSubrange(20..<24, with: $0) }
 
-        let headerData = Data(header)
-        let pixelData = Data(bytes: baseAddress, count: totalBytes)
-
-        try? outHandle.write(contentsOf: headerData)
-        try? outHandle.write(contentsOf: pixelData)
+        // Direct zero-copy scatter-gather write to standard output
+        header.withUnsafeMutableBytes { headerPtr in
+            guard let headerBase = headerPtr.baseAddress else { return }
+            var iov = [
+                iovec(iov_base: headerBase, iov_len: headerPtr.count),
+                iovec(iov_base: baseAddress, iov_len: totalBytes)
+            ]
+            var remaining = headerPtr.count + totalBytes
+            while remaining > 0 {
+                let written = writev(STDOUT_FILENO, &iov, Int32(iov.count))
+                if written < 0 {
+                    if errno == EINTR { continue }
+                    if errno == EPIPE || errno == EBADF {
+                        exit(0)
+                    }
+                    break
+                }
+                if written == 0 { break }
+                var n = written
+                remaining -= n
+                while n > 0 && !iov.isEmpty {
+                    if n >= iov[0].iov_len {
+                        n -= iov[0].iov_len
+                        iov.removeFirst()
+                    } else {
+                        iov[0].iov_base = iov[0].iov_base.advanced(by: n)
+                        iov[0].iov_len -= n
+                        n = 0
+                    }
+                }
+            }
+        }
 
         lastEmittedTime = now
     }
@@ -220,10 +247,20 @@ func captureDisplay(targetDisplayId: UInt32?, targetAppPid: Int32?, targetBundle
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.queueDepth = 3
 
-        let captureWidth = maxWidth ?? min(1920, targetDisplay.width)
-        let captureHeight = maxHeight ?? min(1080, targetDisplay.height)
-        config.width = captureWidth
-        config.height = captureHeight
+        let dispW = targetDisplay.width
+        let dispH = targetDisplay.height
+        let maxW = maxWidth ?? 1920
+        let maxH = maxHeight ?? 1080
+
+        let scale = min(1.0, min(Double(maxW) / Double(dispW), Double(maxH) / Double(dispH)))
+        var targetW = max(2, Int((Double(dispW) * scale).rounded()))
+        var targetH = max(2, Int((Double(dispH) * scale).rounded()))
+        if targetW % 2 != 0 { targetW -= 1 }
+        if targetH % 2 != 0 { targetH -= 1 }
+
+        config.width = targetW
+        config.height = targetH
+        config.scalesToFit = true
 
         let frameInterval = CMTime(value: 1, timescale: Int32(fps))
         config.minimumFrameInterval = frameInterval
@@ -241,7 +278,7 @@ func captureDisplay(targetDisplayId: UInt32?, targetAppPid: Int32?, targetBundle
                     fputs("Failed to start SCStream capture: \(startError.localizedDescription)\n", stderr)
                     exit(1)
                 }
-                fputs("READY: ScreenCaptureKit capture active for display \(targetDisplay.displayID) (excluding exact MusicZoom PID \(targetAppPid ?? 0))\n", stderr)
+                fputs("READY: ScreenCaptureKit capture active for display \(targetDisplay.displayID) (\(targetW)x\(targetH) @ \(fps)fps, excluding exact MusicZoom PID \(targetAppPid ?? 0))\n", stderr)
             }
         } catch {
             fputs("Failed to initialize SCStream: \(error.localizedDescription)\n", stderr)
@@ -254,6 +291,7 @@ func captureDisplay(targetDisplayId: UInt32?, targetAppPid: Int32?, targetBundle
 // ========================================================
 // CLI Entry Point
 // ========================================================
+signal(SIGPIPE, SIG_IGN)
 let args = CommandLine.arguments
 
 if args.contains("list") || args.contains("list-displays") {

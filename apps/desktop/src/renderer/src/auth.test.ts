@@ -85,6 +85,12 @@ describe('AuthManager', () => {
     await auth.logout();
     expect(auth.getUser()).toBeNull();
     expect(auth.getToken()).toBeNull();
+    expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/api/auth/logout', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer jwt_token_123'
+      }
+    });
   });
 
   it('fetches recent sessions for authenticated user', async () => {

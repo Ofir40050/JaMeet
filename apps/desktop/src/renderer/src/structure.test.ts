@@ -62,7 +62,7 @@ function reorderSection(sections: SongSectionItem[], id: string, direction: 'up'
   const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
   if (targetIdx < 0 || targetIdx >= next.length) return next;
   const [moved] = next.splice(idx, 1);
-  next.splice(targetIdx, 0, moved);
+  if (moved) next.splice(targetIdx, 0, moved);
   return next;
 }
 
@@ -78,6 +78,7 @@ function reorderSectionToPosition(
   if (sourceIdx === -1 || targetIdx === -1 || sourceIdx === targetIdx) return next;
 
   const [moved] = next.splice(sourceIdx, 1);
+  if (!moved) return next;
   const newTargetIdx = next.findIndex((s) => s.id === targetId);
   const insertIndex = position === 'before' ? newTargetIdx : newTargetIdx + 1;
   next.splice(insertIndex, 0, moved);
@@ -89,6 +90,7 @@ function duplicateSection(sections: SongSectionItem[], id: string): SongSectionI
   const idx = next.findIndex((s) => s.id === id);
   if (idx === -1) return next;
   const source = next[idx];
+  if (!source) return next;
   const copy: SongSectionItem = {
     id: `sec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     type: source.type,
@@ -192,18 +194,18 @@ describe('Song Structure Workspace Logic', () => {
       { id: 's5', type: 'outro', name: 'Outro', bars: 12, updatedAt: 0 }
     ];
 
-    expect(COMMON_BAR_PRESETS.includes(sections[0].bars!)).toBe(true);
-    expect(COMMON_BAR_PRESETS.includes(sections[1].bars!)).toBe(true);
-    expect(COMMON_BAR_PRESETS.includes(sections[2].bars!)).toBe(true);
-    expect(COMMON_BAR_PRESETS.includes(sections[3].bars!)).toBe(true);
-    expect(COMMON_BAR_PRESETS.includes(sections[4].bars!)).toBe(true);
+    expect(COMMON_BAR_PRESETS.includes(sections[0]!.bars!)).toBe(true);
+    expect(COMMON_BAR_PRESETS.includes(sections[1]!.bars!)).toBe(true);
+    expect(COMMON_BAR_PRESETS.includes(sections[2]!.bars!)).toBe(true);
+    expect(COMMON_BAR_PRESETS.includes(sections[3]!.bars!)).toBe(true);
+    expect(COMMON_BAR_PRESETS.includes(sections[4]!.bars!)).toBe(true);
 
     let metrics = calculateStructureMetrics(sections);
     expect(metrics.totalBars).toBe(4 + 16 + 24 + 32 + 12); // 88 bars
 
     // Custom bar length test (e.g. 6 or 10 bars)
-    sections[1].bars = 10;
-    expect(COMMON_BAR_PRESETS.includes(sections[1].bars!)).toBe(false);
+    sections[1]!.bars = 10;
+    expect(COMMON_BAR_PRESETS.includes(sections[1]!.bars!)).toBe(false);
 
     metrics = calculateStructureMetrics(sections);
     expect(metrics.totalBars).toBe(4 + 10 + 24 + 32 + 12); // 82 bars

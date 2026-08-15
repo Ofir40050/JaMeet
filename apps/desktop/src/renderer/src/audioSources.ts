@@ -12,6 +12,11 @@ export type AudioSourceConfig = {
   effective: EffectiveAudioSettings;
 };
 
+function getDesktopApi(): any {
+  if (typeof window === 'undefined') return undefined;
+  return (window as any).jameet || (window as any).musiczoom;
+}
+
 type VoiceMicChannel = {
   rawTrack?: MediaStreamTrack;
   isolatedTrack: MediaStreamTrack;
@@ -78,9 +83,10 @@ export class LocalAudioSourceManager {
 
   private setupHardwareAudioCapture(): void {
     if (this.hardwareAudioCleanup) return;
-    if (!window.musiczoom?.onHardwareAudioChunk) return;
+    const api = getDesktopApi();
+    if (!api?.onHardwareAudioChunk) return;
 
-    this.hardwareAudioCleanup = window.musiczoom.onHardwareAudioChunk((chunk: Uint8Array) => {
+    this.hardwareAudioCleanup = api.onHardwareAudioChunk((chunk: Uint8Array) => {
       if (!this.audioContext || this.audioContext.state === 'closed') return;
       const ctx = this.audioContext;
 
@@ -171,7 +177,8 @@ export class LocalAudioSourceManager {
     if (this.voiceMics.size === 0 && this.hardwareAudioCleanup) {
       this.hardwareAudioCleanup();
       this.hardwareAudioCleanup = undefined;
-      void window.musiczoom?.stopHardwareAudioCapture();
+      const api = getDesktopApi();
+      void api?.stopHardwareAudioCapture?.();
     }
   }
 
@@ -392,11 +399,12 @@ export class LocalAudioSourceManager {
 
     processor.connect(targetNode);
 
-    if (window.musiczoom?.startAppAudioCapture) {
-      void window.musiczoom.startAppAudioCapture(targetCapture, channelRoute);
+    const api = getDesktopApi();
+    if (api?.startAppAudioCapture) {
+      void api.startAppAudioCapture(targetCapture, channelRoute);
     }
 
-    const unsubscribeChunk = window.musiczoom?.onAppAudioChunk?.((chunk: Uint8Array) => {
+    const unsubscribeChunk = api?.onAppAudioChunk?.((chunk: Uint8Array) => {
       if (!ctx || ctx.state === 'closed') return;
       lastPacketTime = performance.now();
       const byteLen = chunk.byteLength;
@@ -450,7 +458,7 @@ export class LocalAudioSourceManager {
       }
     });
 
-    const unsubscribeStopped = window.musiczoom?.onAppAudioStopped?.(() => {
+    const unsubscribeStopped = api?.onAppAudioStopped?.(() => {
       availableSamples = 0;
       readPos = writePos;
     });
@@ -463,8 +471,9 @@ export class LocalAudioSourceManager {
       if (unsubscribeChunk) unsubscribeChunk();
       if (unsubscribeStopped) unsubscribeStopped();
       try { processor.disconnect(); } catch {}
-      if (window.musiczoom?.stopAppAudioCapture) {
-        void window.musiczoom.stopAppAudioCapture();
+      const cleanupApi = getDesktopApi();
+      if (cleanupApi?.stopAppAudioCapture) {
+        void cleanupApi.stopAppAudioCapture();
       }
     };
   }
@@ -803,15 +812,16 @@ export class LocalAudioSourceManager {
   }
 
   dispose(): void {
+    const api = getDesktopApi();
     if (this.hardwareAudioCleanup) {
       this.hardwareAudioCleanup();
       this.hardwareAudioCleanup = undefined;
-      void window.musiczoom?.stopHardwareAudioCapture();
+      void api?.stopHardwareAudioCapture?.();
     }
     if (this.appAudioCleanup) {
       this.appAudioCleanup();
       this.appAudioCleanup = undefined;
-      void window.musiczoom?.stopAppAudioCapture();
+      void api?.stopAppAudioCapture?.();
     }
     for (const mic of this.voiceMics.values()) {
       mic.rawTrack?.stop();

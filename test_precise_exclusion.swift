@@ -38,8 +38,8 @@ func getMusicZoomProcessPIDs() -> Set<pid_t> {
         
         parentToChildren[ppid, default: []].append(pid)
         
-        // Match ONLY if command/arguments explicitly reference MusicZoom or its repo workspace
-        if cmd.contains("musiczoom") || cmd.contains("musiczoom-instance") {
+        // Match if command/arguments reference JaMeet or legacy MusicZoom
+        if cmd.contains("jameet") || cmd.contains("jameet-instance") || cmd.contains("musiczoom") || cmd.contains("musiczoom-instance") {
             identifiedRoots.insert(pid)
             identifiedRoots.insert(ppid)
         }

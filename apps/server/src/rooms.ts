@@ -233,7 +233,7 @@ export class RoomStore {
     return [...room.participants.values()].find((participant) => participant.id !== participantId);
   }
 
-  disconnect(code: string, participantId: string, onExpired: (role: MeetingRole, peer?: Participant) => void, socketId?: string): void {
+  disconnect(code: string, participantId: string, onExpired: (role: MeetingRole, peer?: Participant, expiredParticipant?: Participant) => void, socketId?: string): void {
     const room = this.rooms.get(code);
     const participant = room?.participants.get(participantId);
     if (!room || !participant) return;
@@ -246,11 +246,11 @@ export class RoomStore {
       const peer = this.peer(room, participantId);
       if (current.role === 'host') this.close(code);
       else room.participants.delete(participantId);
-      onExpired(current.role, peer);
+      onExpired(current.role, peer, current);
     }, this.graceMs);
   }
 
-  leave(code: string, participantId: string, socketId?: string): { role: MeetingRole; peer?: Participant } | undefined {
+  leave(code: string, participantId: string, socketId?: string): { role: MeetingRole; peer?: Participant; participant?: Participant } | undefined {
     const room = this.rooms.get(code);
     const participant = room?.participants.get(participantId);
     if (!room || !participant) return undefined;
@@ -259,7 +259,7 @@ export class RoomStore {
     const peer = this.peer(room, participantId);
     if (participant.role === 'host') this.close(code);
     else room.participants.delete(participantId);
-    return { role: participant.role, peer };
+    return { role: participant.role, peer, participant };
   }
 
   close(code: string): void {

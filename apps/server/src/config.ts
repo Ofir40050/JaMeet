@@ -13,7 +13,7 @@ const schema = z.object({
   TURN_REALM: z.string().default('jameet.local'),
   TURN_SHARED_SECRET: z.string().min(16).default('development-secret-change-me'),
   TURN_CREDENTIAL_TTL_SECONDS: z.coerce.number().int().min(60).default(3600),
-  DISCONNECT_GRACE_MS: z.coerce.number().int().min(1000).default(30000),
+  DISCONNECT_GRACE_MS: z.coerce.number().int().min(0).default(30000),
   EMPTY_ROOM_TTL_MS: z.coerce.number().int().min(60000).default(28800000)
 });
 

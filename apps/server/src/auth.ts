@@ -30,6 +30,7 @@ export interface StoredUser {
   createdAt: number;
   updatedAt: number;
   sessionsHostedCount: number;
+  passwordChangedAt?: number;
   metadata?: Record<string, unknown>;
 }
 
@@ -126,6 +127,8 @@ export class UserStore {
   private tokens = new Map<string, StoredSessionToken>(); // token -> session
   private sessions = new Map<string, StoredSessionRecord>(); // record id -> record
   private scheduledSessions = new Map<string, StoredScheduledSession>(); // scheduled id -> record
+  private pendingUsernames = new Set<string>(); // lower(username) currently registering
+  private pendingEmails = new Set<string>(); // lower(email) currently registering
   private dataFilePath: string;
 
   constructor(storageDir?: string) {
@@ -153,7 +156,10 @@ export class UserStore {
         const now = Date.now();
         for (const t of data.tokens) {
           if (t.expiresAt > now) {
-            this.tokens.set(t.token, t);
+            const user = this.users.get(t.userId);
+            if (!user?.passwordChangedAt || t.createdAt >= user.passwordChangedAt) {
+              this.tokens.set(t.token, t);
+            }
           }
         }
       }
@@ -244,6 +250,8 @@ export class UserStore {
     this.tokens.clear();
     this.sessions.clear();
     this.scheduledSessions.clear();
+    this.pendingUsernames.clear();
+    this.pendingEmails.clear();
 
     if (Array.isArray(data.users)) {
       for (const u of data.users) {
@@ -270,6 +278,39 @@ export class UserStore {
     this.saveToDisk();
   }
 
+  revokeToken(token?: string): boolean {
+    if (!token) return false;
+    const session = this.tokens.get(token);
+    if (!session) return false;
+    this.tokens.delete(token);
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      this.tokens.set(token, session);
+      throw err;
+    }
+    return true;
+  }
+
+  revokeUserTokens(userId: string): void {
+    const snapshots = new Map<string, StoredSessionToken>();
+    for (const [tok, session] of this.tokens.entries()) {
+      if (session.userId === userId) {
+        snapshots.set(tok, session);
+        this.tokens.delete(tok);
+      }
+    }
+    if (snapshots.size === 0) return;
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      for (const [tok, session] of snapshots) {
+        this.tokens.set(tok, session);
+      }
+      throw err;
+    }
+  }
+
   private generateToken(userId: string): string {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -293,47 +334,55 @@ export class UserStore {
     const lowerUsername = req.username.toLowerCase();
     const lowerEmail = req.email.toLowerCase();
 
-    if (this.usernameIndex.has(lowerUsername)) {
+    if (this.usernameIndex.has(lowerUsername) || this.pendingUsernames.has(lowerUsername)) {
       throw new Error('This username is already taken.');
     }
-    if (this.emailIndex.has(lowerEmail)) {
+    if (this.emailIndex.has(lowerEmail) || this.pendingEmails.has(lowerEmail)) {
       throw new Error('An account with this email already exists.');
     }
 
-    const passwordHash = await hashPassword(req.password);
-    const id = crypto.randomUUID();
-    const now = Date.now();
+    this.pendingUsernames.add(lowerUsername);
+    this.pendingEmails.add(lowerEmail);
 
-    const storedUser: StoredUser = {
-      id,
-      username: req.username,
-      email: req.email,
-      displayName: req.displayName,
-      passwordHash,
-      avatarColor: randomAvatarColor(),
-      createdAt: now,
-      updatedAt: now,
-      sessionsHostedCount: 0
-    };
-
-    this.users.set(id, storedUser);
-    this.usernameIndex.set(lowerUsername, id);
-    this.emailIndex.set(lowerEmail, id);
-
-    let token: string;
     try {
-      token = this.generateToken(id);
-    } catch (err) {
-      this.users.delete(id);
-      this.usernameIndex.delete(lowerUsername);
-      this.emailIndex.delete(lowerEmail);
-      throw err;
-    }
+      const passwordHash = await hashPassword(req.password);
+      const id = crypto.randomUUID();
+      const now = Date.now();
 
-    return {
-      token,
-      user: this.toProfile(storedUser)
-    };
+      const storedUser: StoredUser = {
+        id,
+        username: req.username,
+        email: req.email,
+        displayName: req.displayName,
+        passwordHash,
+        avatarColor: randomAvatarColor(),
+        createdAt: now,
+        updatedAt: now,
+        sessionsHostedCount: 0
+      };
+
+      this.users.set(id, storedUser);
+      this.usernameIndex.set(lowerUsername, id);
+      this.emailIndex.set(lowerEmail, id);
+
+      let token: string;
+      try {
+        token = this.generateToken(id);
+      } catch (err) {
+        this.users.delete(id);
+        this.usernameIndex.delete(lowerUsername);
+        this.emailIndex.delete(lowerEmail);
+        throw err;
+      }
+
+      return {
+        token,
+        user: this.toProfile(storedUser)
+      };
+    } finally {
+      this.pendingUsernames.delete(lowerUsername);
+      this.pendingEmails.delete(lowerEmail);
+    }
   }
 
   async login(req: LoginRequest): Promise<{ token: string; user: UserProfile }> {
@@ -369,6 +418,10 @@ export class UserStore {
     }
     const user = this.users.get(session.userId);
     if (!user) return null;
+    if (user.passwordChangedAt && session.createdAt < user.passwordChangedAt) {
+      this.tokens.delete(token);
+      return null;
+    }
     return this.toProfile(user);
   }
 
@@ -558,16 +611,22 @@ export class UserStore {
       events: SessionSummaryEvent[];
       projectId?: string;
       projectName?: string;
-    }
+    },
+    userId?: string
   ): void {
     const snapshots = new Map<string, StoredSessionRecord>();
     const now = Date.now();
     for (const record of this.sessions.values()) {
-      const match = record.sessionId === sessionId || (!record.sessionId && record.code === sessionId);
+      const match =
+        (record.sessionId === sessionId || (!record.sessionId && record.code === sessionId)) &&
+        (!userId || record.userId === userId);
       if (match) {
+        if (record.endedAt !== undefined) {
+          continue;
+        }
         snapshots.set(record.id, JSON.parse(JSON.stringify(record)) as StoredSessionRecord);
-        const endedAt = record.endedAt ?? now;
-        const durationSeconds = record.durationSeconds ?? Math.max(1, Math.round((endedAt - record.startedAt) / 1000));
+        const endedAt = now;
+        const durationSeconds = Math.max(1, Math.round((endedAt - record.startedAt) / 1000));
         record.endedAt = endedAt;
         record.durationSeconds = durationSeconds;
 
@@ -581,6 +640,10 @@ export class UserStore {
             isGuest: Boolean(p.isGuest),
             avatarColor: p.avatarColor
           }));
+          const filteredEvents = (roomData.events || [])
+            .filter((e) => !e.timestamp || e.timestamp <= endedAt)
+            .map((e) => ({ ...e }));
+
           record.summary = {
             id: record.id,
             sessionId: record.sessionId || sessionId,
@@ -592,7 +655,7 @@ export class UserStore {
             participants: participantsList,
             projectId: roomData.projectId,
             projectName: roomData.projectName,
-            events: roomData.events || [],
+            events: filteredEvents,
             chatMessagesCount: roomData.chatMessagesCount || 0
           };
         }
@@ -619,6 +682,7 @@ export class UserStore {
       genres: user.genres ? [...user.genres] : undefined,
       metadata: user.metadata ? { ...user.metadata } : undefined
     };
+    const tokensSnapshot = new Map(this.tokens);
 
     if (req.newPassword) {
       if (!req.currentPassword) {
@@ -629,6 +693,12 @@ export class UserStore {
         throw new Error('Incorrect current password.');
       }
       user.passwordHash = await hashPassword(req.newPassword);
+      user.passwordChangedAt = Date.now();
+      for (const [tok, session] of this.tokens.entries()) {
+        if (session.userId === userId) {
+          this.tokens.delete(tok);
+        }
+      }
     }
 
     if (req.displayName !== undefined) user.displayName = req.displayName.trim();
@@ -647,6 +717,7 @@ export class UserStore {
       this.saveToDisk();
     } catch (err) {
       this.users.set(userId, userSnapshot);
+      this.tokens = tokensSnapshot;
       throw err;
     }
     return this.toProfile(user);

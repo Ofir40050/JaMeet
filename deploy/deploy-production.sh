@@ -34,4 +34,4 @@ until curl --fail --silent --show-error "https://${SIGNALING_DOMAIN}/healthz" >/
 done
 
 docker compose ps
-echo "MusicZoom signaling is healthy at https://${SIGNALING_DOMAIN}"
+echo "JaMeet signaling is healthy at https://${SIGNALING_DOMAIN}"

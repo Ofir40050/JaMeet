@@ -113,21 +113,21 @@ describe('Project Tasks Workspace Engine', () => {
     const sourceIdx = tasks.findIndex((t) => t.id === 'task_d');
     const [moved] = tasks.splice(sourceIdx, 1);
     const targetIdx = tasks.findIndex((t) => t.id === 'task_b');
-    tasks.splice(targetIdx, 0, moved);
+    if (moved) tasks.splice(targetIdx, 0, moved);
 
     expect(tasks.map((t) => t.id)).toEqual(['task_a', 'task_d', 'task_b', 'task_c']);
   });
 
   it('merges simultaneous edits from collaborators by individual task timestamps', () => {
     const localTasks: ProjectTaskItem[] = [
-      { id: '1', title: 'Record vocals (edited locally)', status: 'in_progress', updatedAt: 200 },
-      { id: '2', title: 'Layer guitars', status: 'todo', updatedAt: 100 }
+      { id: '1', title: 'Record vocals (edited locally)', status: 'in_progress', createdAt: 100, updatedAt: 200 },
+      { id: '2', title: 'Layer guitars', status: 'todo', createdAt: 100, updatedAt: 100 }
     ];
 
     const incomingTasks: ProjectTaskItem[] = [
-      { id: '1', title: 'Record vocals', status: 'todo', updatedAt: 150 },
-      { id: '2', title: 'Layer guitars (edited remotely)', status: 'done', updatedAt: 300 },
-      { id: '3', title: 'New remote task', status: 'todo', updatedAt: 250 }
+      { id: '1', title: 'Record vocals', status: 'todo', createdAt: 100, updatedAt: 150 },
+      { id: '2', title: 'Layer guitars (edited remotely)', status: 'done', createdAt: 100, updatedAt: 300 },
+      { id: '3', title: 'New remote task', status: 'todo', createdAt: 100, updatedAt: 250 }
     ];
 
     const map = new Map<string, ProjectTaskItem>();
@@ -153,10 +153,10 @@ describe('Project Tasks Workspace Engine', () => {
     }
 
     expect(merged.length).toBe(3);
-    expect(merged[0].title).toBe('Record vocals (edited locally)');
-    expect(merged[0].status).toBe('in_progress');
-    expect(merged[1].title).toBe('Layer guitars (edited remotely)');
-    expect(merged[1].status).toBe('done');
-    expect(merged[2].title).toBe('New remote task');
+    expect(merged[0]?.title).toBe('Record vocals (edited locally)');
+    expect(merged[0]?.status).toBe('in_progress');
+    expect(merged[1]?.title).toBe('Layer guitars (edited remotely)');
+    expect(merged[1]?.status).toBe('done');
+    expect(merged[2]?.title).toBe('New remote task');
   });
 });

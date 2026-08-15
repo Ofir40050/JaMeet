@@ -1,5 +1,5 @@
 // ========================================================
-// MusicZoom Presenter Mode Coordinator & Native Frame Bridge
+// JaMeet Presenter Mode Coordinator & Native Frame Bridge
 // ========================================================
 
 export interface PresenterState {
@@ -11,6 +11,19 @@ export interface PresenterState {
 }
 
 export type PresenterActionHandler = (action: string, data?: unknown) => void;
+
+export interface NativeScreenFrame {
+  width: number;
+  height: number;
+  bytesPerRow: number;
+  data: Uint8Array;
+  timestamp: number;
+}
+
+function getDesktopApi(): any {
+  if (typeof window === 'undefined') return undefined;
+  return (window as any).jameet || (window as any).musiczoom;
+}
 
 class PresenterManager {
   private active = false;
@@ -27,6 +40,7 @@ class PresenterManager {
   private canvasCtx: CanvasRenderingContext2D | null = null;
   private generator: any = null;
   private writer: any = null;
+  private customTrack: MediaStreamTrack | null = null;
   private remoteVideoStreaming = false;
   private participantCanvas: HTMLCanvasElement | null = null;
   private participantCanvasCtx: CanvasRenderingContext2D | null = null;
@@ -39,12 +53,23 @@ class PresenterManager {
   private remoteAudioLevel = -60;
   private localAudioLevel = -60;
 
+  private activeCaptureSessionId = 0;
+  private frameListenerUnsubscribe: (() => void) | null = null;
+  private stoppedListenerUnsubscribe: (() => void) | null = null;
+
   constructor() {
-    if (typeof window !== 'undefined' && window.musiczoom?.onPresenterAction) {
-      window.musiczoom.onPresenterAction((action, data) => {
+    const api = getDesktopApi();
+    if (api?.onPresenterAction) {
+      api.onPresenterAction((action: string, data?: unknown) => {
         if (this.actionHandler) {
           this.actionHandler(action, data);
         }
+      });
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => {
+        void this.stopNativeCapture();
       });
     }
   }
@@ -78,9 +103,18 @@ class PresenterManager {
 
   public updateState(partial: Partial<PresenterState>): void {
     this.state = { ...this.state, ...partial };
-    if (this.active && window.musiczoom?.updatePresenterState) {
-      window.musiczoom.updatePresenterState(this.state);
+    const api = getDesktopApi();
+    if (this.active && api?.updatePresenterState) {
+      api.updatePresenterState(this.state);
     }
+  }
+
+  public isNativeCaptureActive(): boolean {
+    return Boolean(this.frameListenerUnsubscribe || this.customTrack);
+  }
+
+  public getActiveCaptureSessionId(): number {
+    return this.activeCaptureSessionId;
   }
 
   public startFloatingVideoFeed(): void {
@@ -127,7 +161,8 @@ class PresenterManager {
         } catch {}
       }
 
-      window.musiczoom?.sendPresenterVideoFrame?.({
+      const api = getDesktopApi();
+      api?.sendPresenterVideoFrame?.({
         hasVideo: hasRemote,
         dataUrl: remoteDataUrl,
         participantName: this.participantName,
@@ -156,15 +191,169 @@ class PresenterManager {
     this.remoteVideoStreaming = false;
   }
 
+  private cleanupCaptureSession(sessionId?: number): void {
+    if (sessionId !== undefined && sessionId !== this.activeCaptureSessionId) {
+      return;
+    }
+    this.activeCaptureSessionId++;
+
+    if (this.frameListenerUnsubscribe) {
+      try {
+        this.frameListenerUnsubscribe();
+      } catch {}
+      this.frameListenerUnsubscribe = null;
+    }
+
+    if (this.stoppedListenerUnsubscribe) {
+      try {
+        this.stoppedListenerUnsubscribe();
+      } catch {}
+      this.stoppedListenerUnsubscribe = null;
+    }
+
+    if (this.writer) {
+      try {
+        void this.writer.close();
+      } catch {}
+      this.writer = null;
+    }
+
+    if (this.generator) {
+      try {
+        this.generator.stop?.();
+      } catch {}
+      this.generator = null;
+    }
+
+    if (this.customTrack) {
+      try {
+        this.customTrack.stop();
+      } catch {}
+      this.customTrack = null;
+    }
+
+    this.canvas = null;
+    this.canvasCtx = null;
+  }
+
   /**
    * Initializes native ScreenCaptureKit capture stream on macOS.
-   * Uses high-performance Canvas captureStream fed by native SCContentFilter frames.
+   * Uses high-performance WebCodecs MediaStreamTrackGenerator with raw BGRX frames,
+   * with optimized desynchronized Canvas captureStream fallback.
    */
   public async createScreenCaptureTrack(displayId?: number, options?: { fps?: number; width?: number; height?: number }): Promise<MediaStreamTrack> {
+    // 1. Clean up any previous session/listeners/canvas/track
+    this.cleanupCaptureSession();
+
+    const currentSessionId = ++this.activeCaptureSessionId;
     const fps = options?.fps || 15;
     const targetWidth = options?.width || 1920;
     const targetHeight = options?.height || 1080;
 
+    const hasWebCodecs = typeof (window as any).MediaStreamTrackGenerator !== 'undefined' && typeof (window as any).VideoFrame !== 'undefined';
+
+    if (hasWebCodecs) {
+      try {
+        const generator = new (window as any).MediaStreamTrackGenerator({ kind: 'video' });
+        const writer = generator.writable.getWriter();
+        this.generator = generator;
+        this.writer = writer;
+
+        let isProcessing = false;
+        let latestPendingFrame: NativeScreenFrame | null = null;
+
+        const pumpFrame = async (frame: NativeScreenFrame) => {
+          if (this.activeCaptureSessionId !== currentSessionId || !this.writer) return;
+
+          if (isProcessing) {
+            // Keep only latest pending frame to eliminate backlog and lag
+            latestPendingFrame = frame;
+            return;
+          }
+
+          isProcessing = true;
+          try {
+            const VideoFrameClass = (window as any).VideoFrame;
+            const vf = new VideoFrameClass(frame.data, {
+              format: 'BGRX',
+              codedWidth: frame.width,
+              codedHeight: frame.height,
+              timestamp: (frame.timestamp || performance.now()) * 1000,
+              layout: [{ offset: 0, stride: frame.bytesPerRow }]
+            });
+            await this.writer.write(vf);
+            vf.close();
+          } catch (err) {
+            // Handle writer close or frame write interruption
+          } finally {
+            isProcessing = false;
+            if (latestPendingFrame && this.activeCaptureSessionId === currentSessionId && this.writer) {
+              const next = latestPendingFrame;
+              latestPendingFrame = null;
+              void pumpFrame(next);
+            }
+          }
+        };
+
+        const api = getDesktopApi();
+        if (api?.onNativeScreenCaptureFrame) {
+          this.frameListenerUnsubscribe = api.onNativeScreenCaptureFrame((frame: NativeScreenFrame) => {
+            if (this.activeCaptureSessionId !== currentSessionId) return;
+            void pumpFrame(frame);
+          });
+        }
+
+        if (api?.onNativeScreenCaptureStopped) {
+          this.stoppedListenerUnsubscribe = api.onNativeScreenCaptureStopped(() => {
+            if (this.activeCaptureSessionId !== currentSessionId) return;
+            const track = this.customTrack;
+            this.cleanupCaptureSession(currentSessionId);
+            if (track && track.readyState === 'live') {
+              track.stop();
+              track.dispatchEvent(new Event('ended'));
+            }
+          });
+        }
+
+        let started = false;
+        try {
+          if (api?.startNativeScreenCapture) {
+            started = await api.startNativeScreenCapture(displayId, { fps, width: targetWidth, height: targetHeight });
+          }
+        } catch (err) {
+          this.cleanupCaptureSession(currentSessionId);
+          if (api?.stopNativeScreenCapture) {
+            try { await api.stopNativeScreenCapture(); } catch {}
+          }
+          throw err;
+        }
+
+        if (!started || this.activeCaptureSessionId !== currentSessionId) {
+          this.cleanupCaptureSession(currentSessionId);
+          if (api?.stopNativeScreenCapture) {
+            try { await api.stopNativeScreenCapture(); } catch {}
+          }
+          throw new Error('Native ScreenCaptureKit failed to start.');
+        }
+
+        this.customTrack = generator;
+
+        const originalStop = generator.stop.bind(generator);
+        generator.stop = () => {
+          originalStop();
+          if (this.activeCaptureSessionId === currentSessionId) {
+            void this.stopNativeCapture();
+          }
+        };
+
+        return generator;
+      } catch (e) {
+        console.warn('WebCodecs MediaStreamTrackGenerator failed, falling back to Canvas:', e);
+        this.cleanupCaptureSession(currentSessionId);
+      }
+    }
+
+    // High-performance Canvas Fallback (if WebCodecs generator is not available)
     const canvas = document.createElement('canvas');
     canvas.width = targetWidth;
     canvas.height = targetHeight;
@@ -175,68 +364,108 @@ class PresenterManager {
     let imgData: ImageData | null = null;
     let u32: Uint32Array | null = null;
 
-    window.musiczoom.onNativeScreenCaptureFrame((frame) => {
-      if (!this.canvasCtx || !this.canvas) return;
+    const fallbackApi = getDesktopApi();
+    if (fallbackApi?.onNativeScreenCaptureFrame) {
+      this.frameListenerUnsubscribe = fallbackApi.onNativeScreenCaptureFrame((frame: NativeScreenFrame) => {
+        // Only deliver frames to the renderer if this session is currently active
+        if (this.activeCaptureSessionId !== currentSessionId || !this.canvasCtx || !this.canvas) {
+          return;
+        }
 
-      if (this.canvas.width !== frame.width || this.canvas.height !== frame.height) {
-        this.canvas.width = frame.width;
-        this.canvas.height = frame.height;
-        imgData = this.canvasCtx.createImageData(frame.width, frame.height);
-        u32 = new Uint32Array(imgData.data.buffer);
-      } else if (!imgData || !u32) {
-        imgData = this.canvasCtx.createImageData(frame.width, frame.height);
-        u32 = new Uint32Array(imgData.data.buffer);
+        if (this.canvas.width !== frame.width || this.canvas.height !== frame.height || !imgData || !u32) {
+          this.canvas.width = frame.width;
+          this.canvas.height = frame.height;
+          imgData = this.canvasCtx.createImageData(frame.width, frame.height);
+          u32 = new Uint32Array(imgData.data.buffer);
+        }
+
+        // High-performance 32-bit pixel conversion (BGRA to RGBA)
+        const src32 = new Uint32Array(frame.data.buffer, frame.data.byteOffset, Math.floor(frame.data.byteLength / 4));
+        const totalPixels = Math.min(frame.width * frame.height, src32.length, u32.length);
+
+        for (let p = 0; p < totalPixels; p++) {
+          const val = src32[p] ?? 0;
+          u32[p] = (val & 0x0000FF00) | 0xFF000000 | ((val & 0x00FF0000) >> 16) | ((val & 0x000000FF) << 16);
+        }
+
+        this.canvasCtx.putImageData(imgData, 0, 0);
+      });
+    }
+
+    if (fallbackApi?.onNativeScreenCaptureStopped) {
+      this.stoppedListenerUnsubscribe = fallbackApi.onNativeScreenCaptureStopped(() => {
+        if (this.activeCaptureSessionId !== currentSessionId) return;
+        const track = this.customTrack;
+        this.cleanupCaptureSession(currentSessionId);
+        if (track && track.readyState === 'live') {
+          track.stop();
+          track.dispatchEvent(new Event('ended'));
+        }
+      });
+    }
+
+    let started = false;
+    try {
+      if (fallbackApi?.startNativeScreenCapture) {
+        started = await fallbackApi.startNativeScreenCapture(displayId, { fps, width: targetWidth, height: targetHeight });
       }
-
-      // High-performance 32-bit pixel conversion (BGRA to RGBA)
-      const src32 = new Uint32Array(frame.data.buffer, frame.data.byteOffset, Math.floor(frame.data.byteLength / 4));
-      const totalPixels = Math.min(frame.width * frame.height, src32.length, u32.length);
-
-      for (let p = 0; p < totalPixels; p++) {
-        const val = src32[p];
-        const b = val & 0xFF;
-        const g = (val >> 8) & 0xFF;
-        const r = (val >> 16) & 0xFF;
-        const a = 0xFF;
-        u32[p] = (a << 24) | (b << 16) | (g << 8) | r;
+    } catch (err) {
+      this.cleanupCaptureSession(currentSessionId);
+      if (fallbackApi?.stopNativeScreenCapture) {
+        try { await fallbackApi.stopNativeScreenCapture(); } catch {}
       }
+      throw err;
+    }
 
-      this.canvasCtx.putImageData(imgData, 0, 0);
-    });
-
-    const started = await window.musiczoom.startNativeScreenCapture(displayId, { fps, width: targetWidth, height: targetHeight });
-    if (!started) {
+    if (!started || this.activeCaptureSessionId !== currentSessionId) {
+      this.cleanupCaptureSession(currentSessionId);
+      if (fallbackApi?.stopNativeScreenCapture) {
+        try { await fallbackApi.stopNativeScreenCapture(); } catch {}
+      }
       throw new Error('Native ScreenCaptureKit failed to start.');
     }
 
-    const stream = canvas.captureStream(fps);
-    const track = stream.getVideoTracks()[0];
+    let track: MediaStreamTrack | undefined;
+    try {
+      const stream = canvas.captureStream(fps);
+      track = stream.getVideoTracks()[0];
+    } catch (err) {
+      this.cleanupCaptureSession(currentSessionId);
+      if (fallbackApi?.stopNativeScreenCapture) {
+        try { await fallbackApi.stopNativeScreenCapture(); } catch {}
+      }
+      throw err;
+    }
+
     if (!track) {
+      this.cleanupCaptureSession(currentSessionId);
+      if (fallbackApi?.stopNativeScreenCapture) {
+        try { await fallbackApi.stopNativeScreenCapture(); } catch {}
+      }
       throw new Error('Canvas captureStream did not produce a video track.');
     }
 
     this.customTrack = track;
+
+    const originalStop = track.stop.bind(track);
+    track.stop = () => {
+      originalStop();
+      if (this.activeCaptureSessionId === currentSessionId) {
+        void this.stopNativeCapture();
+      }
+    };
+
     return track;
   }
 
   public async stopNativeCapture(): Promise<void> {
-    if (window.musiczoom?.stopNativeScreenCapture) {
-      await window.musiczoom.stopNativeScreenCapture();
+    this.cleanupCaptureSession();
+    const api = getDesktopApi();
+    if (api?.stopNativeScreenCapture) {
+      try {
+        await api.stopNativeScreenCapture();
+      } catch {}
     }
-    if (this.writer) {
-      try { await this.writer.close(); } catch {}
-      this.writer = null;
-    }
-    if (this.generator) {
-      this.generator.stop?.();
-      this.generator = null;
-    }
-    if (this.customTrack) {
-      this.customTrack.stop();
-      this.customTrack = null;
-    }
-    this.canvas = null;
-    this.canvasCtx = null;
   }
 
   public async enterPresenterMode(initialState?: Partial<PresenterState>): Promise<void> {
@@ -245,8 +474,9 @@ class PresenterManager {
       this.state = { ...this.state, ...initialState };
     }
 
-    if (window.musiczoom?.enterPresenterMode) {
-      await window.musiczoom.enterPresenterMode(this.state);
+    const api = getDesktopApi();
+    if (api?.enterPresenterMode) {
+      await api.enterPresenterMode(this.state);
     }
     this.startFloatingVideoFeed();
   }
@@ -257,14 +487,16 @@ class PresenterManager {
     if (document.pictureInPictureElement) {
       try { await document.exitPictureInPicture(); } catch {}
     }
-    if (window.musiczoom?.exitPresenterMode) {
-      await window.musiczoom.exitPresenterMode();
+    const api = getDesktopApi();
+    if (api?.exitPresenterMode) {
+      await api.exitPresenterMode();
     }
   }
 
   public async showMainWindow(): Promise<void> {
-    if (window.musiczoom?.showMainWindow) {
-      await window.musiczoom.showMainWindow();
+    const api = getDesktopApi();
+    if (api?.showMainWindow) {
+      await api.showMainWindow();
     }
   }
 

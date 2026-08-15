@@ -3,7 +3,7 @@ services:
     build: .
     restart: unless-stopped
     env_file:
-      - path: ${MUSICZOOM_ENV_FILE:-.env}
+      - path: ${JAMEET_ENV_FILE:-${MUSICZOOM_ENV_FILE:-.env}}
         required: true
     expose: ["3000"]
     read_only: true

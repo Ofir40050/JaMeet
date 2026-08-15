@@ -15,11 +15,26 @@ let presenterVideoWindow: BrowserWindow | null = null;
 let savedMainWindowBounds: Electron.Rectangle | null = null;
 let isPresenterModeActive = false;
 let activeNativeScreenCaptureProcess: any = null;
+let activeNativeScreenCaptureSessionId = 0;
 let activeAudioTapProcess: any = null;
 let activeHardwareAudioProcess: any = null;
 let activeHardwareDeviceId: string | undefined = undefined;
 let pendingDeepLink: string | null = null;
 let pendingDisplaySource: { id: string; expiresAt: number } | null = null;
+
+function stopActiveNativeScreenCapture(): void {
+  activeNativeScreenCaptureSessionId++;
+  if (activeNativeScreenCaptureProcess) {
+    const proc = activeNativeScreenCaptureProcess;
+    activeNativeScreenCaptureProcess = null;
+    try {
+      proc.stdout?.removeAllListeners();
+      proc.stderr?.removeAllListeners();
+      proc.removeAllListeners();
+      proc.kill('SIGTERM');
+    } catch { }
+  }
+}
 
 function safeSend(win: BrowserWindow | null, channel: string, ...args: unknown[]): boolean {
   if (!win || win.isDestroyed()) return false;
@@ -105,10 +120,7 @@ function createWindow(): void {
       try { activeHardwareAudioProcess.kill('SIGTERM'); } catch { }
       activeHardwareAudioProcess = null;
     }
-    if (activeNativeScreenCaptureProcess) {
-      try { activeNativeScreenCaptureProcess.kill('SIGTERM'); } catch { }
-      activeNativeScreenCaptureProcess = null;
-    }
+    stopActiveNativeScreenCapture();
   });
 
   mainWindow.webContents.on('render-process-gone', () => {
@@ -120,10 +132,7 @@ function createWindow(): void {
       try { activeHardwareAudioProcess.kill('SIGTERM'); } catch { }
       activeHardwareAudioProcess = null;
     }
-    if (activeNativeScreenCaptureProcess) {
-      try { activeNativeScreenCaptureProcess.kill('SIGTERM'); } catch { }
-      activeNativeScreenCaptureProcess = null;
-    }
+    stopActiveNativeScreenCapture();
   });
 
   if (process.env.ELECTRON_RENDERER_URL) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -139,10 +148,7 @@ function createWindow(): void {
       try { activeHardwareAudioProcess.kill('SIGTERM'); } catch { }
       activeHardwareAudioProcess = null;
     }
-    if (activeNativeScreenCaptureProcess) {
-      try { activeNativeScreenCaptureProcess.kill('SIGTERM'); } catch { }
-      activeNativeScreenCaptureProcess = null;
-    }
+    stopActiveNativeScreenCapture();
     if (presenterToolbarWindow && !presenterToolbarWindow.isDestroyed()) {
       presenterToolbarWindow.close();
       presenterToolbarWindow = null;
@@ -363,10 +369,8 @@ else {
     // Native ScreenCaptureKit Screen Capture (macOS)
     ipcMain.handle('start-native-screen-capture', async (_event, displayId?: number, options?: { fps?: number; width?: number; height?: number }) => {
       if (process.platform !== 'darwin') return false;
-      if (activeNativeScreenCaptureProcess) {
-        try { activeNativeScreenCaptureProcess.kill('SIGTERM'); } catch { }
-        activeNativeScreenCaptureProcess = null;
-      }
+      stopActiveNativeScreenCapture();
+      const currentSessionId = ++activeNativeScreenCaptureSessionId;
 
       const { spawn, execSync } = await import('child_process');
       const { join } = await import('path');
@@ -402,46 +406,145 @@ else {
         const child = spawn(binPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         activeNativeScreenCaptureProcess = child;
 
-        let accum = Buffer.alloc(0);
+        let chunks: Buffer[] = [];
+        let totalBuffered = 0;
+
+        function readByte(offset: number): number {
+          let cur = 0;
+          for (let i = 0; i < chunks.length; i++) {
+            const c = chunks[i];
+            if (offset < cur + c.length) {
+              return c[offset - cur];
+            }
+            cur += c.length;
+          }
+          return 0;
+        }
+
+        function readUInt32(offset: number): number {
+          let cur = 0;
+          for (let i = 0; i < chunks.length; i++) {
+            const c = chunks[i];
+            if (offset < cur + c.length) {
+              const local = offset - cur;
+              if (local + 4 <= c.length) {
+                return c.readUInt32LE(local);
+              }
+              const b = Buffer.allocUnsafe(4);
+              for (let j = 0; j < 4; j++) {
+                b[j] = readByte(offset + j);
+              }
+              return b.readUInt32LE(0);
+            }
+            cur += c.length;
+          }
+          return 0;
+        }
+
+        function consumeBytes(count: number): Buffer {
+          if (count <= 0) return Buffer.alloc(0);
+          if (chunks.length === 1 && chunks[0].length === count) {
+            const buf = chunks[0];
+            chunks = [];
+            totalBuffered = 0;
+            return buf;
+          }
+          if (chunks.length === 1 && chunks[0].length > count) {
+            const buf = chunks[0].subarray(0, count);
+            chunks[0] = chunks[0].subarray(count);
+            totalBuffered -= count;
+            return buf;
+          }
+          const result = Buffer.allocUnsafe(count);
+          let copied = 0;
+          while (copied < count && chunks.length > 0) {
+            const head = chunks[0];
+            const needed = count - copied;
+            if (head.length <= needed) {
+              head.copy(result, copied);
+              copied += head.length;
+              chunks.shift();
+            } else {
+              head.copy(result, copied, 0, needed);
+              chunks[0] = head.subarray(needed);
+              copied += needed;
+            }
+          }
+          totalBuffered -= count;
+          return result;
+        }
 
         child.stdout.on('data', (chunk: Buffer) => {
-          accum = Buffer.concat([accum, chunk]);
+          if (currentSessionId !== activeNativeScreenCaptureSessionId || activeNativeScreenCaptureProcess !== child) {
+            return;
+          }
+          chunks.push(chunk);
+          totalBuffered += chunk.length;
 
-          while (accum.length >= 24) {
+          let latestFrame: {
+            width: number;
+            height: number;
+            bytesPerRow: number;
+            data: Buffer;
+            timestamp: number;
+          } | null = null;
+
+          while (totalBuffered >= 24) {
+            if (currentSessionId !== activeNativeScreenCaptureSessionId || activeNativeScreenCaptureProcess !== child) {
+              chunks = [];
+              totalBuffered = 0;
+              break;
+            }
+
             // Check Magic 'MZFR'
-            if (accum[0] !== 0x4D || accum[1] !== 0x5A || accum[2] !== 0x46 || accum[3] !== 0x52) {
-              const nextMagicIndex = accum.indexOf(Buffer.from([0x4D, 0x5A, 0x46, 0x52]), 1);
-              if (nextMagicIndex !== -1) {
-                accum = accum.subarray(nextMagicIndex);
+            const m0 = readByte(0);
+            const m1 = readByte(1);
+            const m2 = readByte(2);
+            const m3 = readByte(3);
+            if (m0 !== 0x4D || m1 !== 0x5A || m2 !== 0x46 || m3 !== 0x52) {
+              let found = -1;
+              for (let o = 1; o <= totalBuffered - 4; o++) {
+                if (readByte(o) === 0x4D && readByte(o + 1) === 0x5A && readByte(o + 2) === 0x46 && readByte(o + 3) === 0x52) {
+                  found = o;
+                  break;
+                }
+              }
+              if (found !== -1) {
+                consumeBytes(found);
               } else {
-                accum = Buffer.alloc(0);
+                if (totalBuffered > 3) {
+                  consumeBytes(totalBuffered - 3);
+                }
                 break;
               }
               continue;
             }
 
-            const width = accum.readUInt32LE(4);
-            const height = accum.readUInt32LE(8);
-            const bytesPerRow = accum.readUInt32LE(12);
-            const payloadLength = accum.readUInt32LE(16);
-            const timestamp = accum.readUInt32LE(20);
+            const width = readUInt32(4);
+            const height = readUInt32(8);
+            const bytesPerRow = readUInt32(12);
+            const payloadLength = readUInt32(16);
+            const timestamp = readUInt32(20);
 
-            if (accum.length < 24 + payloadLength) {
+            const totalFrameSize = 24 + payloadLength;
+            if (totalBuffered < totalFrameSize) {
               break;
             }
 
-            const frameData = accum.subarray(24, 24 + payloadLength);
-            accum = accum.subarray(24 + payloadLength);
+            const frameRaw = consumeBytes(totalFrameSize);
+            const frameData = frameRaw.subarray(24);
 
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              safeSend(mainWindow, 'native-screen-capture-frame', {
-                width,
-                height,
-                bytesPerRow,
-                data: frameData,
-                timestamp
-              });
-            }
+            latestFrame = {
+              width,
+              height,
+              bytesPerRow,
+              data: frameData,
+              timestamp
+            };
+          }
+
+          if (latestFrame && mainWindow && !mainWindow.isDestroyed() && currentSessionId === activeNativeScreenCaptureSessionId && activeNativeScreenCaptureProcess === child) {
+            safeSend(mainWindow, 'native-screen-capture-frame', latestFrame);
           }
         });
 
@@ -450,26 +553,36 @@ else {
         });
 
         child.on('close', () => {
-          if (activeNativeScreenCaptureProcess === child) {
+          if (currentSessionId === activeNativeScreenCaptureSessionId && activeNativeScreenCaptureProcess === child) {
             activeNativeScreenCaptureProcess = null;
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              safeSend(mainWindow, 'native-screen-capture-stopped');
+            }
           }
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            safeSend(mainWindow, 'native-screen-capture-stopped');
+        });
+
+        child.on('error', (err) => {
+          console.error('[NativeScreenCapture] Child process error:', err);
+          if (currentSessionId === activeNativeScreenCaptureSessionId && activeNativeScreenCaptureProcess === child) {
+            activeNativeScreenCaptureProcess = null;
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              safeSend(mainWindow, 'native-screen-capture-stopped');
+            }
           }
         });
 
         return true;
       } catch (err) {
         console.error('Failed to spawn native screen capture:', err);
+        if (currentSessionId === activeNativeScreenCaptureSessionId && activeNativeScreenCaptureProcess === child) {
+          activeNativeScreenCaptureProcess = null;
+        }
         return false;
       }
     });
 
     ipcMain.handle('stop-native-screen-capture', async () => {
-      if (activeNativeScreenCaptureProcess) {
-        try { activeNativeScreenCaptureProcess.kill('SIGTERM'); } catch { }
-        activeNativeScreenCaptureProcess = null;
-      }
+      stopActiveNativeScreenCapture();
       return true;
     });
 
@@ -946,5 +1059,9 @@ else {
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
 }
+
+app.on('before-quit', () => {
+  stopActiveNativeScreenCapture();
+});
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

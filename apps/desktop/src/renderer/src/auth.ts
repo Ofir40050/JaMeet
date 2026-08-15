@@ -230,9 +230,22 @@ export class AuthManager {
   }
 
   async logout(): Promise<void> {
+    const token = this.currentToken;
     this.currentToken = null;
     this.currentUser = null;
     await this.clearPersistedSession();
+    if (token) {
+      try {
+        await fetch(`${this.serverUrl}/api/auth/logout`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+      } catch {
+        // ignore network failure on logout
+      }
+    }
     this.notify();
   }
 
