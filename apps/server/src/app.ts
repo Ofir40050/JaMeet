@@ -75,9 +75,12 @@ function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSumm
 
 export async function createApp(config: ServerConfig) {
   const app = Fastify({ logger: config.NODE_ENV !== 'test', bodyLimit: 2_097_152 });
-  const origins = config.ALLOWED_ORIGINS.split(',').map((value) => value.trim());
+  const origins = config.ALLOWED_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean);
   const isOriginAllowed = (origin?: string): boolean => {
     if (!origin) return true;
+    if (config.NODE_ENV === 'production') {
+      return origins.includes(origin);
+    }
     return (
       origins.includes(origin) ||
       origin.startsWith('http://localhost:') ||

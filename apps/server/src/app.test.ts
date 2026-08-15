@@ -332,6 +332,71 @@ describe('signaling integration', () => {
     }
   });
 
+  it('strictly enforces ALLOWED_ORIGINS as authoritative in production mode', async () => {
+    const { app, io } = await createApp(loadConfig({
+      NODE_ENV: 'production',
+      ALLOWED_ORIGINS: 'jameet-app://bundle,musiczoom-app://bundle,http://localhost:5173',
+      TURN_SHARED_SECRET: 'a-secure-test-secret-at-least-32-chars!'
+    }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      // 1. Configured origins are allowed
+      const jameetRes = await app.inject({
+        method: 'GET',
+        url: '/healthz',
+        headers: { origin: 'jameet-app://bundle' }
+      });
+      expect(jameetRes.statusCode).toBe(200);
+      expect(jameetRes.headers['access-control-allow-origin']).toBe('jameet-app://bundle');
+
+      const legacyRes = await app.inject({
+        method: 'GET',
+        url: '/healthz',
+        headers: { origin: 'musiczoom-app://bundle' }
+      });
+      expect(legacyRes.statusCode).toBe(200);
+      expect(legacyRes.headers['access-control-allow-origin']).toBe('musiczoom-app://bundle');
+
+      const localhostRes = await app.inject({
+        method: 'GET',
+        url: '/healthz',
+        headers: { origin: 'http://localhost:5173' }
+      });
+      expect(localhostRes.statusCode).toBe(200);
+      expect(localhostRes.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+
+      // 2. Unconfigured origins are rejected (even if they start with localhost or jameet-app://)
+      const unconfiguredLocalhostRes = await app.inject({
+        method: 'GET',
+        url: '/healthz',
+        headers: { origin: 'http://localhost:3000' }
+      });
+      expect(unconfiguredLocalhostRes.statusCode).toBe(200);
+      expect(unconfiguredLocalhostRes.headers['access-control-allow-origin']).toBeUndefined();
+
+      const unconfiguredAppRes = await app.inject({
+        method: 'GET',
+        url: '/healthz',
+        headers: { origin: 'jameet-app://malicious' }
+      });
+      expect(unconfiguredAppRes.statusCode).toBe(200);
+      expect(unconfiguredAppRes.headers['access-control-allow-origin']).toBeUndefined();
+
+      const evilRes = await app.inject({
+        method: 'GET',
+        url: '/healthz',
+        headers: { origin: 'https://evil.com' }
+      });
+      expect(evilRes.statusCode).toBe(200);
+      expect(evilRes.headers['access-control-allow-origin']).toBeUndefined();
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+
   it('validates Socket.IO workspace updates against shared schema, rejects invalid payloads cleanly, and syncs valid updates', async () => {
     const { app, io, userStore, projectStore } = await createApp(loadConfig({
       NODE_ENV: 'test',
