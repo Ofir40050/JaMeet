@@ -3523,6 +3523,11 @@ function switchAuthViewTab(tab: 'login' | 'register'): void {
   setText('auth-view-crumb', isLogin ? 'Sign In' : 'Create Account');
   $('view-login-error')?.classList.add('hidden');
   $('view-reg-error')?.classList.add('hidden');
+  if (isLogin) {
+    setTimeout(() => $<HTMLInputElement>('view-login-identifier')?.focus(), 50);
+  } else {
+    setTimeout(() => $<HTMLInputElement>('view-reg-display-name')?.focus(), 50);
+  }
 }
 
 function openAuthDialog(tab: 'login' | 'register' = 'login'): void {
@@ -3563,6 +3568,7 @@ $('btn-view-login-as-guest')?.addEventListener('click', () => showView('home-vie
 $('btn-view-reg-as-guest')?.addEventListener('click', () => showView('home-view'));
 
 $('btn-view-submit-login')?.addEventListener('click', async () => {
+  const submitBtn = $<HTMLButtonElement>('btn-view-submit-login');
   const identifier = $<HTMLInputElement>('view-login-identifier')?.value.trim();
   const password = $<HTMLInputElement>('view-login-password')?.value;
   const errEl = $('view-login-error');
@@ -3570,9 +3576,13 @@ $('btn-view-submit-login')?.addEventListener('click', async () => {
     if (errEl) { errEl.textContent = 'Please enter your username/email and password.'; errEl.classList.remove('hidden'); }
     return;
   }
+  const originalHtml = submitBtn ? submitBtn.innerHTML : '<span>Sign In</span>';
   try {
     if (errEl) errEl.classList.add('hidden');
-    $('btn-view-submit-login')?.setAttribute('disabled', 'true');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>Signing In…</span>';
+    }
     await auth.login({ usernameOrEmail: identifier, password });
     showView('home-view');
   } catch (err: unknown) {
@@ -3581,11 +3591,15 @@ $('btn-view-submit-login')?.addEventListener('click', async () => {
       errEl.classList.remove('hidden');
     }
   } finally {
-    $('btn-view-submit-login')?.removeAttribute('disabled');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalHtml;
+    }
   }
 });
 
 $('btn-view-submit-register')?.addEventListener('click', async () => {
+  const submitBtn = $<HTMLButtonElement>('btn-view-submit-register');
   const displayName = $<HTMLInputElement>('view-reg-display-name')?.value.trim();
   const username = $<HTMLInputElement>('view-reg-username')?.value.trim();
   const email = $<HTMLInputElement>('view-reg-email')?.value.trim();
@@ -3595,9 +3609,13 @@ $('btn-view-submit-register')?.addEventListener('click', async () => {
     if (errEl) { errEl.textContent = 'Please fill out all registration fields.'; errEl.classList.remove('hidden'); }
     return;
   }
+  const originalHtml = submitBtn ? submitBtn.innerHTML : '<span>Create Account</span>';
   try {
     if (errEl) errEl.classList.add('hidden');
-    $('btn-view-submit-register')?.setAttribute('disabled', 'true');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>Creating Account…</span>';
+    }
     await auth.register({ displayName, username, email, password });
     showView('home-view');
   } catch (err: unknown) {
@@ -3606,14 +3624,49 @@ $('btn-view-submit-register')?.addEventListener('click', async () => {
       errEl.classList.remove('hidden');
     }
   } finally {
-    $('btn-view-submit-register')?.removeAttribute('disabled');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalHtml;
+    }
   }
 });
 
-$<HTMLInputElement>('view-login-password')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-view-submit-login')?.click(); });
-$<HTMLInputElement>('view-reg-password')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-view-submit-register')?.click(); });
-$<HTMLInputElement>('login-password')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-submit-login')?.click(); });
-$<HTMLInputElement>('reg-password')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-submit-register')?.click(); });
+// Bind Enter key submissions on all inputs
+['view-login-identifier', 'view-login-password'].forEach((id) => {
+  $<HTMLInputElement>(id)?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $('btn-view-submit-login')?.click();
+    }
+  });
+});
+
+['view-reg-display-name', 'view-reg-username', 'view-reg-email', 'view-reg-password'].forEach((id) => {
+  $<HTMLInputElement>(id)?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $('btn-view-submit-register')?.click();
+    }
+  });
+});
+
+['login-identifier', 'login-password'].forEach((id) => {
+  $<HTMLInputElement>(id)?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $('btn-submit-login')?.click();
+    }
+  });
+});
+
+['reg-display-name', 'reg-username', 'reg-email', 'reg-password'].forEach((id) => {
+  $<HTMLInputElement>(id)?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $('btn-submit-register')?.click();
+    }
+  });
+});
 $<HTMLInputElement>('guest-name-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-confirm-guest-join')?.click(); });
 $<HTMLInputElement>('guest-name-input')?.addEventListener('input', (e) => {
   const val = (e.currentTarget as HTMLInputElement).value.trim();
@@ -3657,6 +3710,7 @@ $('btn-guest-modal-signin')?.addEventListener('click', () => {
 });
 
 $('btn-submit-login')?.addEventListener('click', async () => {
+  const submitBtn = $<HTMLButtonElement>('btn-submit-login');
   const identifier = $<HTMLInputElement>('login-identifier')?.value.trim();
   const password = $<HTMLInputElement>('login-password')?.value;
   const errEl = $('login-error');
@@ -3664,9 +3718,13 @@ $('btn-submit-login')?.addEventListener('click', async () => {
     if (errEl) { errEl.textContent = 'Please enter your username/email and password.'; errEl.classList.remove('hidden'); }
     return;
   }
+  const originalHtml = submitBtn ? submitBtn.innerHTML : '<span>Sign In to JaMeet</span>';
   try {
     if (errEl) errEl.classList.add('hidden');
-    $('btn-submit-login')?.setAttribute('disabled', 'true');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>Signing In…</span>';
+    }
     await auth.login({ usernameOrEmail: identifier, password });
     $<HTMLDialogElement>('auth-dialog')?.close();
   } catch (err: unknown) {
@@ -3675,11 +3733,15 @@ $('btn-submit-login')?.addEventListener('click', async () => {
       errEl.classList.remove('hidden');
     }
   } finally {
-    $('btn-submit-login')?.removeAttribute('disabled');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalHtml;
+    }
   }
 });
 
 $('btn-submit-register')?.addEventListener('click', async () => {
+  const submitBtn = $<HTMLButtonElement>('btn-submit-register');
   const displayName = $<HTMLInputElement>('reg-display-name')?.value.trim();
   const username = $<HTMLInputElement>('reg-username')?.value.trim();
   const email = $<HTMLInputElement>('reg-email')?.value.trim();
@@ -3689,9 +3751,13 @@ $('btn-submit-register')?.addEventListener('click', async () => {
     if (errEl) { errEl.textContent = 'Please fill out all registration fields.'; errEl.classList.remove('hidden'); }
     return;
   }
+  const originalHtml = submitBtn ? submitBtn.innerHTML : '<span>Create Account & Sign In</span>';
   try {
     if (errEl) errEl.classList.add('hidden');
-    $('btn-submit-register')?.setAttribute('disabled', 'true');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>Creating Account…</span>';
+    }
     await auth.register({ displayName, username, email, password });
     $<HTMLDialogElement>('auth-dialog')?.close();
   } catch (err: unknown) {
@@ -3700,7 +3766,10 @@ $('btn-submit-register')?.addEventListener('click', async () => {
       errEl.classList.remove('hidden');
     }
   } finally {
-    $('btn-submit-register')?.removeAttribute('disabled');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalHtml;
+    }
   }
 });
 
