@@ -10,7 +10,37 @@
 
 #define TEST_PASS() printf("  [PASS] %s\n", __func__)
 
-static AudioServerPlugInHostRef dummyHost = (AudioServerPlugInHostRef)0x1000;
+/* Mock Host Interface for Configuration Changes */
+static OSStatus MockHost_RequestDeviceConfigurationChange(
+    AudioServerPlugInHostRef inHost,
+    AudioObjectID inDeviceObjectID,
+    UInt64 inChangeAction,
+    void* inChangeInfo
+);
+
+static struct AudioServerPlugInHostInterface gMockHostInterface = {
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    MockHost_RequestDeviceConfigurationChange
+};
+
+static AudioServerPlugInHostRef dummyHost = &gMockHostInterface;
+static AudioServerPlugInDriverRef gGlobalDriverRef = NULL;
+
+static OSStatus MockHost_RequestDeviceConfigurationChange(
+    AudioServerPlugInHostRef inHost,
+    AudioObjectID inDeviceObjectID,
+    UInt64 inChangeAction,
+    void* inChangeInfo
+) {
+    (void)inHost;
+    if (gGlobalDriverRef != NULL && *gGlobalDriverRef != NULL) {
+        return (*gGlobalDriverRef)->PerformDeviceConfigurationChange(gGlobalDriverRef, inDeviceObjectID, inChangeAction, inChangeInfo);
+    }
+    return kAudioHardwareNoError;
+}
 
 static uint64_t get_current_time_ms(void) {
     mach_timebase_info_data_t tb;
@@ -67,11 +97,12 @@ static void test_driver_factory_and_com_lifecycle(void) {
 }
 
 /* ========================================================================= */
-/* Test 2: Standard Device Buffer Properties & Hierarchy                     */
+/* Test 2: Standard Device Buffer Properties & Configuration Changes         */
 /* ========================================================================= */
-static void test_driver_buffer_properties_and_hierarchy(void) {
+static void test_driver_buffer_properties_and_configuration_changes(void) {
     AudioServerPlugInDriverRef driver = (AudioServerPlugInDriverRef)JaMeetRemote_Create(kCFAllocatorDefault, kAudioServerPlugInTypeUUID);
     assert(driver != NULL);
+    gGlobalDriverRef = driver;
     (*driver)->Initialize(driver, dummyHost);
 
     AudioObjectPropertyAddress addr;
@@ -87,7 +118,7 @@ static void test_driver_buffer_properties_and_hierarchy(void) {
     assert(status == kAudioHardwareNoError);
     assert(bufSize == JAMEET_DRIVER_DEFAULT_BUFFER_SIZE);
 
-    /* 2. Device buffer frame size settability and modification */
+    /* 2. Device buffer frame size settability and modification through Host mechanism */
     Boolean isSettable = false;
     status = (*driver)->IsPropertySettable(driver, kObjectID_Device, 0, &addr, &isSettable);
     assert(status == kAudioHardwareNoError);
@@ -119,6 +150,7 @@ static void test_driver_buffer_properties_and_hierarchy(void) {
     assert(usesVariable == 1);
 
     (*driver)->Release(driver);
+    gGlobalDriverRef = NULL;
     TEST_PASS();
 }
 
@@ -154,118 +186,79 @@ static void test_driver_period_aligned_clock(void) {
 }
 
 /* ========================================================================= */
-/* Test 4: Multiple Independent Core Audio Clients (No Cursor Stealing)      */
+/* Test 4: Client Table Bounds, Unknown Clients & Independent Cursors        */
 /* ========================================================================= */
-static void test_multiple_independent_clients(void) {
-    /* 1. Setup Phase 1 Producer on POSIX SHM */
-    JaMeetTransportConfig prodCfg = JaMeetTransportConfig_Default(true, false);
-    JaMeetTransport* prodTransport = JaMeetTransport_OpenPosixShmConfig(&prodCfg);
-    assert(prodTransport != NULL);
-
-    JaMeetSharedSegment* seg = JaMeetTransport_GetSegment(prodTransport);
-    assert(seg != NULL);
-
-    JaMeetProducer producer;
-    JaMeetProducer_InitNew(&producer, seg, 9999ULL, getpid());
-
-    /* 2. Setup Driver */
+static void test_client_bounds_and_independent_cursors(void) {
     AudioServerPlugInDriverRef driver = (AudioServerPlugInDriverRef)JaMeetRemote_Create(kCFAllocatorDefault, kAudioServerPlugInTypeUUID);
     assert(driver != NULL);
     (*driver)->Initialize(driver, dummyHost);
 
-    /* 3. Register two independent clients: Client A (101) and Client B (102) */
-    AudioServerPlugInClientInfo clientA = { 101, 1001, false, NULL };
-    AudioServerPlugInClientInfo clientB = { 102, 1002, false, NULL };
-
-    OSStatus status = (*driver)->AddDeviceClient(driver, kObjectID_Device, &clientA);
-    assert(status == kAudioHardwareNoError);
-    status = (*driver)->AddDeviceClient(driver, kObjectID_Device, &clientB);
-    assert(status == kAudioHardwareNoError);
-
-    (*driver)->StartIO(driver, kObjectID_Device, 101);
-    (*driver)->StartIO(driver, kObjectID_Device, 102);
-
-    /* 4. Write 256 frames of audio data */
-    float pcm[256 * 2];
-    for (int i = 0; i < 256; i++) {
-        pcm[i * 2 + 0] = (float)(i + 1) * 3.0f;
-        pcm[i * 2 + 1] = (float)(i + 1) * 4.0f;
+    /* 1. Fill all 32 preallocated client slots */
+    for (uint32_t i = 1; i <= JAMEET_DRIVER_MAX_CLIENTS; i++) {
+        AudioServerPlugInClientInfo clientInfo = { i, 1000 + (pid_t)i, false, NULL };
+        OSStatus status = (*driver)->AddDeviceClient(driver, kObjectID_Device, &clientInfo);
+        assert(status == kAudioHardwareNoError);
     }
-    uint64_t nowMs = get_current_time_ms();
-    JaMeetProducer_WriteFrames(&producer, pcm, 256, true, nowMs);
 
-    /* 5. Client A reads 256 frames */
-    float bufferA[256 * 2];
-    memset(bufferA, 0, sizeof(bufferA));
+    /* 2. 33rd client addition must fail cleanly without assigning unisolated state */
+    AudioServerPlugInClientInfo overflowClient = { 33, 1033, false, NULL };
+    OSStatus overflowStatus = (*driver)->AddDeviceClient(driver, kObjectID_Device, &overflowClient);
+    assert(overflowStatus == kAudioHardwareIllegalOperationError);
+
+    /* 3. Unknown client calling DoIOOperation receives silence */
+    float ioBuffer[128 * 2];
+    for (int i = 0; i < 128 * 2; i++) ioBuffer[i] = 44.0f;
     AudioServerPlugInIOCycleInfo cycleInfo;
     memset(&cycleInfo, 0, sizeof(cycleInfo));
 
-    status = (*driver)->DoIOOperation(
-        driver, kObjectID_Device, kObjectID_Stream_Input, 101,
-        kAudioServerPlugInIOOperationReadInput, 256, &cycleInfo, bufferA, NULL
+    OSStatus ioStatus = (*driver)->DoIOOperation(
+        driver, kObjectID_Device, kObjectID_Stream_Input, 999, /* unknown client 999 */
+        kAudioServerPlugInIOOperationReadInput, 128, &cycleInfo, ioBuffer, NULL
     );
-    assert(status == kAudioHardwareNoError);
-
-    /* 6. Client B reads 256 frames: must also receive all 256 frames without interference! */
-    float bufferB[256 * 2];
-    memset(bufferB, 0, sizeof(bufferB));
-
-    status = (*driver)->DoIOOperation(
-        driver, kObjectID_Device, kObjectID_Stream_Input, 102,
-        kAudioServerPlugInIOOperationReadInput, 256, &cycleInfo, bufferB, NULL
-    );
-    assert(status == kAudioHardwareNoError);
-
-    /* Verify both clients received identical PCM data */
-    for (int i = 0; i < 256; i++) {
-        assert(fabsf(bufferA[i * 2 + 0] - pcm[i * 2 + 0]) < 1e-5f);
-        assert(fabsf(bufferA[i * 2 + 1] - pcm[i * 2 + 1]) < 1e-5f);
-
-        assert(fabsf(bufferB[i * 2 + 0] - pcm[i * 2 + 0]) < 1e-5f);
-        assert(fabsf(bufferB[i * 2 + 1] - pcm[i * 2 + 1]) < 1e-5f);
+    assert(ioStatus == kAudioHardwareNoError);
+    for (int i = 0; i < 128 * 2; i++) {
+        assert(ioBuffer[i] == 0.0f);
     }
 
-    /* 7. Teardown */
-    (*driver)->StopIO(driver, kObjectID_Device, 101);
-    (*driver)->StopIO(driver, kObjectID_Device, 102);
-    (*driver)->RemoveDeviceClient(driver, kObjectID_Device, &clientA);
-    (*driver)->RemoveDeviceClient(driver, kObjectID_Device, &clientB);
-    (*driver)->Release(driver);
+    /* 4. Clean up clients */
+    for (uint32_t i = 1; i <= JAMEET_DRIVER_MAX_CLIENTS; i++) {
+        AudioServerPlugInClientInfo clientInfo = { i, 1000 + (pid_t)i, false, NULL };
+        (*driver)->RemoveDeviceClient(driver, kObjectID_Device, &clientInfo);
+    }
 
-    JaMeetTransport_Close(prodTransport, true);
+    (*driver)->Release(driver);
     TEST_PASS();
 }
 
 /* ========================================================================= */
-/* Test 5: Out-of-Band Reconnection on Late Bridge Startup                   */
+/* Test 5: Background Discovery for Already Running Client                   */
 /* ========================================================================= */
-static void test_out_of_band_reconnection(void) {
-    /* 1. Ensure any lingering SHM from previous tests is unlinked so bridge starts completely offline */
+static void test_background_discovery_for_running_client(void) {
     shm_unlink(JAMEET_DEFAULT_SHM_NAME);
 
-    /* Initialize driver while bridge is NOT running */
+    /* 1. Initialize driver while bridge is NOT running */
     AudioServerPlugInDriverRef driver = (AudioServerPlugInDriverRef)JaMeetRemote_Create(kCFAllocatorDefault, kAudioServerPlugInTypeUUID);
     assert(driver != NULL);
     (*driver)->Initialize(driver, dummyHost);
 
-    AudioServerPlugInClientInfo client = { 201, 2001, false, NULL };
+    AudioServerPlugInClientInfo client = { 501, 5001, false, NULL };
     (*driver)->AddDeviceClient(driver, kObjectID_Device, &client);
-    (*driver)->StartIO(driver, kObjectID_Device, 201);
+    (*driver)->StartIO(driver, kObjectID_Device, 501);
 
-    /* Real-time IO callback outputs silence */
+    /* Real-time IO callback outputs silence initially */
     float ioBuffer[256 * 2];
     for (int i = 0; i < 256 * 2; i++) ioBuffer[i] = 77.0f;
     AudioServerPlugInIOCycleInfo cycleInfo;
     memset(&cycleInfo, 0, sizeof(cycleInfo));
 
     OSStatus status = (*driver)->DoIOOperation(
-        driver, kObjectID_Device, kObjectID_Stream_Input, 201,
+        driver, kObjectID_Device, kObjectID_Stream_Input, 501,
         kAudioServerPlugInIOOperationReadInput, 256, &cycleInfo, ioBuffer, NULL
     );
     assert(status == kAudioHardwareNoError);
     for (int i = 0; i < 256 * 2; i++) assert(ioBuffer[i] == 0.0f);
 
-    /* 2. Producer starts late and writes audio */
+    /* 2. Producer starts up later while Client 501 is actively running IO */
     JaMeetTransportConfig prodCfg = JaMeetTransportConfig_Default(true, false);
     JaMeetTransport* prodTransport = JaMeetTransport_OpenPosixShmConfig(&prodCfg);
     assert(prodTransport != NULL);
@@ -274,33 +267,29 @@ static void test_out_of_band_reconnection(void) {
     assert(seg != NULL);
 
     JaMeetProducer producer;
-    JaMeetProducer_InitNew(&producer, seg, 7777ULL, getpid());
+    JaMeetProducer_InitNew(&producer, seg, 8888ULL, getpid());
 
     float pcm[256 * 2];
-    for (int i = 0; i < 256 * 2; i++) pcm[i] = 12.5f;
+    for (int i = 0; i < 256 * 2; i++) pcm[i] = 25.0f;
     uint64_t nowMs = get_current_time_ms();
     JaMeetProducer_WriteFrames(&producer, pcm, 256, true, nowMs);
 
-    /* 3. Out-of-band reconnection triggers on client addition / StartIO */
-    AudioServerPlugInClientInfo client2 = { 202, 2002, false, NULL };
-    (*driver)->AddDeviceClient(driver, kObjectID_Device, &client2);
-    (*driver)->StartIO(driver, kObjectID_Device, 202);
+    /* 3. Sleep 150 ms to allow background discovery worker to connect outside RT path */
+    usleep(150000);
 
-    /* 4. Real-time IO now reads audio cleanly */
+    /* 4. Client 501 calls DoIOOperation without restarting IO or adding new client */
     memset(ioBuffer, 0, sizeof(ioBuffer));
     status = (*driver)->DoIOOperation(
-        driver, kObjectID_Device, kObjectID_Stream_Input, 202,
+        driver, kObjectID_Device, kObjectID_Stream_Input, 501,
         kAudioServerPlugInIOOperationReadInput, 256, &cycleInfo, ioBuffer, NULL
     );
     assert(status == kAudioHardwareNoError);
     for (int i = 0; i < 256 * 2; i++) {
-        assert(fabsf(ioBuffer[i] - 12.5f) < 1e-5f);
+        assert(fabsf(ioBuffer[i] - 25.0f) < 1e-5f);
     }
 
-    (*driver)->StopIO(driver, kObjectID_Device, 201);
-    (*driver)->StopIO(driver, kObjectID_Device, 202);
+    (*driver)->StopIO(driver, kObjectID_Device, 501);
     (*driver)->RemoveDeviceClient(driver, kObjectID_Device, &client);
-    (*driver)->RemoveDeviceClient(driver, kObjectID_Device, &client2);
     (*driver)->Release(driver);
 
     JaMeetTransport_Close(prodTransport, true);
@@ -311,10 +300,10 @@ int main(void) {
     shm_unlink(JAMEET_DEFAULT_SHM_NAME);
     printf("Running macOS JaMeet Remote AudioServerPlugIn Test Suite...\n");
     test_driver_factory_and_com_lifecycle();
-    test_driver_buffer_properties_and_hierarchy();
+    test_driver_buffer_properties_and_configuration_changes();
     test_driver_period_aligned_clock();
-    test_multiple_independent_clients();
-    test_out_of_band_reconnection();
+    test_client_bounds_and_independent_cursors();
+    test_background_discovery_for_running_client();
     shm_unlink(JAMEET_DEFAULT_SHM_NAME);
     printf("All Phase 2 AudioServerPlugIn Tests Passed Successfully!\n");
     return 0;

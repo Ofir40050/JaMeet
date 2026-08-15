@@ -4,8 +4,15 @@
 #include <stdatomic.h>
 #include <string.h>
 #include <stdlib.h>
+#include <pthread.h>
+#include <time.h>
 
 #define UNUSED_PARAM(x) ((void)(x))
+
+/* Action constants for Device Configuration Changes */
+enum {
+    kChangeAction_SetBufferFrameSize = 1
+};
 
 /* ========================================================================= */
 /* Client State Management (Bounded, Preallocated Client Table)              */
@@ -18,7 +25,6 @@ typedef struct JaMeetClientSlot {
 } JaMeetClientSlot;
 
 static JaMeetClientSlot gClientSlots[JAMEET_DRIVER_MAX_CLIENTS];
-static JaMeetConsumer gFallbackConsumer;
 
 /* ========================================================================= */
 /* Global Plug-In & Clock State                                              */
@@ -39,13 +45,19 @@ static uint64_t gClockSeed = 1;
 static _Atomic uint32_t gIOState = 0; /* 0 = stopped, >0 = running client count */
 static _Atomic uint32_t gBufferFrameSize = JAMEET_DRIVER_DEFAULT_BUFFER_SIZE;
 
+/* Out-of-band Discovery Thread State */
+static pthread_t gDiscoveryThread;
+static _Atomic bool gDiscoveryRunning = false;
+static pthread_mutex_t gDiscoveryMutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t gDiscoveryCond = PTHREAD_COND_INITIALIZER;
+
 /* Forward declarations */
 static void JaMeetDriver_DetachBridge(void);
 static ULONG STDMETHODCALLTYPE JaMeetDriver_AddRef(void* inDriver);
 static ULONG STDMETHODCALLTYPE JaMeetDriver_Release(void* inDriver);
 
 /* ========================================================================= */
-/* Out-of-band Shared Memory Lifecycle                                       */
+/* Out-of-band Shared Memory Lifecycle & Background Discovery                */
 /* ========================================================================= */
 
 static void JaMeetDriver_TryAttachBridge(void) {
@@ -72,6 +84,32 @@ static void JaMeetDriver_DetachBridge(void) {
         JaMeetTransport_Close(gActiveTransport, false);
         gActiveTransport = NULL;
     }
+}
+
+static void* JaMeetDriver_DiscoveryWorker(void* arg) {
+    UNUSED_PARAM(arg);
+
+    while (atomic_load_explicit(&gDiscoveryRunning, memory_order_relaxed)) {
+        if (atomic_load_explicit(&gSharedSegment, memory_order_relaxed) == NULL) {
+            JaMeetDriver_TryAttachBridge();
+        }
+
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_nsec += 100 * 1000 * 1000; /* 100 ms polling interval */
+        if (ts.tv_nsec >= 1000000000) {
+            ts.tv_sec += 1;
+            ts.tv_nsec -= 1000000000;
+        }
+
+        pthread_mutex_lock(&gDiscoveryMutex);
+        if (atomic_load_explicit(&gDiscoveryRunning, memory_order_relaxed)) {
+            pthread_cond_timedwait(&gDiscoveryCond, &gDiscoveryMutex, &ts);
+        }
+        pthread_mutex_unlock(&gDiscoveryMutex);
+    }
+
+    return NULL;
 }
 
 /* ========================================================================= */
@@ -110,6 +148,14 @@ static ULONG STDMETHODCALLTYPE JaMeetDriver_Release(void* inDriver) {
     if (gRefCount > 0) {
         --gRefCount;
         if (gRefCount == 0) {
+            /* Stop background discovery worker */
+            if (atomic_load_explicit(&gDiscoveryRunning, memory_order_relaxed)) {
+                atomic_store_explicit(&gDiscoveryRunning, false, memory_order_relaxed);
+                pthread_mutex_lock(&gDiscoveryMutex);
+                pthread_cond_broadcast(&gDiscoveryCond);
+                pthread_mutex_unlock(&gDiscoveryMutex);
+                pthread_join(gDiscoveryThread, NULL);
+            }
             JaMeetDriver_DetachBridge();
         }
     }
@@ -135,8 +181,7 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_Initialize(
 
     gClockSeed = 1;
 
-    /* Initialize fallback and preallocated client slots */
-    JaMeetConsumer_Init(&gFallbackConsumer);
+    /* Initialize preallocated client slots */
     for (uint32_t i = 0; i < JAMEET_DRIVER_MAX_CLIENTS; i++) {
         atomic_store_explicit(&gClientSlots[i].clientID, 0, memory_order_relaxed);
         gClientSlots[i].processID = 0;
@@ -146,6 +191,12 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_Initialize(
     /* Out-of-band attempt to connect to bridge (clean prior state first) */
     JaMeetDriver_DetachBridge();
     JaMeetDriver_TryAttachBridge();
+
+    /* Launch background discovery worker if not running */
+    if (!atomic_load_explicit(&gDiscoveryRunning, memory_order_relaxed)) {
+        atomic_store_explicit(&gDiscoveryRunning, true, memory_order_relaxed);
+        pthread_create(&gDiscoveryThread, NULL, JaMeetDriver_DiscoveryWorker, NULL);
+    }
 
     return kAudioHardwareNoError;
 }
@@ -179,33 +230,39 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_AddDeviceClient(
 ) {
     UNUSED_PARAM(inDriver);
     UNUSED_PARAM(inDeviceObjectID);
-    if (!inClientInfo) return kAudioHardwareIllegalOperationError;
+    if (!inClientInfo || inClientInfo->mClientID == 0) {
+        return kAudioHardwareIllegalOperationError;
+    }
 
     /* Recheck bridge connectivity outside real-time path */
     JaMeetDriver_TryAttachBridge();
 
-    /* Find existing or allocate new client slot */
+    /* 1. Check if client already exists */
     for (uint32_t i = 0; i < JAMEET_DRIVER_MAX_CLIENTS; i++) {
         uint32_t currentID = atomic_load_explicit(&gClientSlots[i].clientID, memory_order_relaxed);
         if (currentID == inClientInfo->mClientID) {
-            /* Client already registered; reset its consumer cursor */
             JaMeetConsumer_Init(&gClientSlots[i].consumer);
             gClientSlots[i].processID = inClientInfo->mProcessID;
             return kAudioHardwareNoError;
         }
     }
 
-    /* Allocate free slot */
+    /* 2. Allocate free slot: ensure slot state is fully initialized BEFORE publishing clientID */
     for (uint32_t i = 0; i < JAMEET_DRIVER_MAX_CLIENTS; i++) {
-        uint32_t expected = 0;
-        if (atomic_compare_exchange_strong_explicit(&gClientSlots[i].clientID, &expected, inClientInfo->mClientID, memory_order_release, memory_order_relaxed)) {
-            gClientSlots[i].processID = inClientInfo->mProcessID;
+        uint32_t currentID = atomic_load_explicit(&gClientSlots[i].clientID, memory_order_relaxed);
+        if (currentID == 0) {
             JaMeetConsumer_Init(&gClientSlots[i].consumer);
-            return kAudioHardwareNoError;
+            gClientSlots[i].processID = inClientInfo->mProcessID;
+
+            uint32_t expected = 0;
+            if (atomic_compare_exchange_strong_explicit(&gClientSlots[i].clientID, &expected, inClientInfo->mClientID, memory_order_release, memory_order_relaxed)) {
+                return kAudioHardwareNoError;
+            }
         }
     }
 
-    return kAudioHardwareNoError;
+    /* Bounded table is full: fail cleanly without assigning unisolated state */
+    return kAudioHardwareIllegalOperationError;
 }
 
 static OSStatus STDMETHODCALLTYPE JaMeetDriver_RemoveDeviceClient(
@@ -215,14 +272,16 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_RemoveDeviceClient(
 ) {
     UNUSED_PARAM(inDriver);
     UNUSED_PARAM(inDeviceObjectID);
-    if (!inClientInfo) return kAudioHardwareIllegalOperationError;
+    if (!inClientInfo || inClientInfo->mClientID == 0) {
+        return kAudioHardwareIllegalOperationError;
+    }
 
     for (uint32_t i = 0; i < JAMEET_DRIVER_MAX_CLIENTS; i++) {
         uint32_t currentID = atomic_load_explicit(&gClientSlots[i].clientID, memory_order_relaxed);
         if (currentID == inClientInfo->mClientID) {
             atomic_store_explicit(&gClientSlots[i].clientID, 0, memory_order_release);
             gClientSlots[i].processID = 0;
-            break;
+            return kAudioHardwareNoError;
         }
     }
 
@@ -236,9 +295,24 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_PerformDeviceConfigurationChange(
     void* inChangeInfo
 ) {
     UNUSED_PARAM(inDriver);
-    UNUSED_PARAM(inDeviceObjectID);
-    UNUSED_PARAM(inChangeAction);
     UNUSED_PARAM(inChangeInfo);
+
+    if (inDeviceObjectID == kObjectID_Device && inChangeAction == kChangeAction_SetBufferFrameSize) {
+        uint32_t requestedSize = (uint32_t)(uintptr_t)inChangeInfo;
+        if (requestedSize >= JAMEET_DRIVER_MIN_BUFFER_SIZE && requestedSize <= JAMEET_DRIVER_MAX_BUFFER_SIZE) {
+            atomic_store_explicit(&gBufferFrameSize, requestedSize, memory_order_relaxed);
+            if (gHost != NULL && gHost->PropertiesChanged != NULL) {
+                AudioObjectPropertyAddress addr = {
+                    kAudioDevicePropertyBufferFrameSize,
+                    kAudioObjectPropertyScopeGlobal,
+                    kAudioObjectPropertyElementMain
+                };
+                gHost->PropertiesChanged(gHost, kObjectID_Device, 1, &addr);
+            }
+            return kAudioHardwareNoError;
+        }
+    }
+
     return kAudioHardwareNoError;
 }
 
@@ -789,11 +863,23 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_SetPropertyData(
     if (inObjectID == kObjectID_Device) {
         if (inAddress->mSelector == kAudioDevicePropertyBufferFrameSize) {
             if (inDataSize < sizeof(UInt32)) return kAudioHardwareBadPropertySizeError;
-            UInt32 newSize = *((const UInt32*)inData);
-            if (newSize < JAMEET_DRIVER_MIN_BUFFER_SIZE) newSize = JAMEET_DRIVER_MIN_BUFFER_SIZE;
-            if (newSize > JAMEET_DRIVER_MAX_BUFFER_SIZE) newSize = JAMEET_DRIVER_MAX_BUFFER_SIZE;
-            atomic_store_explicit(&gBufferFrameSize, newSize, memory_order_relaxed);
-            return kAudioHardwareNoError;
+            UInt32 requestedSize = *((const UInt32*)inData);
+            if (requestedSize < JAMEET_DRIVER_MIN_BUFFER_SIZE || requestedSize > JAMEET_DRIVER_MAX_BUFFER_SIZE) {
+                return kAudioHardwareIllegalOperationError;
+            }
+
+            /* Use standard host configuration change mechanism when host interface is available */
+            if (gHost != NULL && gHost->RequestDeviceConfigurationChange != NULL) {
+                return gHost->RequestDeviceConfigurationChange(
+                    gHost,
+                    kObjectID_Device,
+                    kChangeAction_SetBufferFrameSize,
+                    (void*)(uintptr_t)requestedSize
+                );
+            } else {
+                atomic_store_explicit(&gBufferFrameSize, requestedSize, memory_order_relaxed);
+                return kAudioHardwareNoError;
+            }
         }
     }
 
@@ -949,20 +1035,26 @@ static OSStatus STDMETHODCALLTYPE JaMeetDriver_DoIOOperation(
     /*
      * Real-Time IO Path Guarantees:
      * - Strictly non-blocking, zero locks, zero memory allocations, zero filesystem access.
-     * - Dispatches to per-client consumer cursor to prevent client cursor interference.
-     * - Returns clean digital silence (0.0f) if bridge is unavailable, disconnected, or inactive.
+     * - Dispatches exclusively to the caller's registered consumer cursor.
+     * - Unknown clients receive clean digital silence (0.0f) rather than sharing a consumer.
+     * - When bridge is unavailable, disconnected, or inactive: returns clean digital silence (0.0f).
      */
+    JaMeetConsumer* consumer = NULL;
+    for (uint32_t i = 0; i < JAMEET_DRIVER_MAX_CLIENTS; i++) {
+        if (atomic_load_explicit(&gClientSlots[i].clientID, memory_order_acquire) == inClientID) {
+            consumer = &gClientSlots[i].consumer;
+            break;
+        }
+    }
+
+    if (consumer == NULL) {
+        /* Unregistered / unknown client: return clean silence */
+        memset(dest, 0, totalBytes);
+        return kAudioHardwareNoError;
+    }
+
     JaMeetSharedSegment* seg = atomic_load_explicit(&gSharedSegment, memory_order_acquire);
     if (seg != NULL) {
-        /* Locate per-client consumer cursor */
-        JaMeetConsumer* consumer = &gFallbackConsumer;
-        for (uint32_t i = 0; i < JAMEET_DRIVER_MAX_CLIENTS; i++) {
-            if (atomic_load_explicit(&gClientSlots[i].clientID, memory_order_relaxed) == inClientID) {
-                consumer = &gClientSlots[i].consumer;
-                break;
-            }
-        }
-
         uint64_t nowTicks = mach_absolute_time();
         uint64_t nowNanos = (nowTicks * gTimebaseInfo.numer) / gTimebaseInfo.denom;
         uint64_t nowMs = nowNanos / 1000000ULL;
