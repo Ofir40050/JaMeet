@@ -42,17 +42,18 @@ extern "C" {
 #define JAMEET_SLOT_FLAG_DISCONT    0x00000002U
 
 /**
- * Audio slot payload container (1088 bytes, 64-byte aligned).
+ * Audio slot container with true Seqlock in-progress publication guard (1088 bytes, 64-byte aligned).
  * 
  * Publication Architecture:
- * - publishSequence is incremented atomically with release semantics upon every write or continuation.
- * - Samples are stored as fixed-width 32-bit float values accessed via atomic load/store primitives,
- *   guaranteeing 100% data-race-free access under C11/C++ memory models.
- * - Partial writes preserve prefix frames in the valid ring history so consecutive non-128 multiple
- *   batches (e.g. 480 frames + 480 frames) produce an unbroken, continuous stream.
+ * - publishSequence is odd while a producer is actively modifying slot metadata or PCM content.
+ * - publishSequence is even when publication is complete and internally consistent.
+ * - All mutable metadata and PCM bit representations are fixed-width primitive types accessed
+ *   via race-safe atomic primitives, guaranteeing 100% data-race-free access under C11/C++ memory models.
+ * - PCM samples are stored as explicit 32-bit integer bit representations (pcmBits) to eliminate
+ *   pointer-aliasing between float and uint32_t.
  */
 typedef struct JAMEET_ALIGNED(64) JaMeetAudioSlot {
-    /* Offset 0x00 (0): Monotonic slot publication sequence */
+    /* Offset 0x00 (0): Monotonic publication sequence (odd = writing, even = published) */
     uint64_t publishSequence;
 
     /* Offset 0x08 (8): Stream epoch/generation when this slot was published */
@@ -65,22 +66,22 @@ typedef struct JAMEET_ALIGNED(64) JaMeetAudioSlot {
     uint32_t sampleRate;
 
     /* Offset 0x1C (28): Channels (2) */
-    uint16_t channels;
+    uint32_t channels;
 
-    /* Offset 0x1E (30): Number of valid continuous frames in this slot (1..128) */
-    uint16_t validFrames;
+    /* Offset 0x20 (32): Number of valid continuous frames in this slot (1..128) */
+    uint32_t validFrames;
 
-    /* Offset 0x20 (32): Slot flags (JAMEET_SLOT_FLAG_*) */
+    /* Offset 0x24 (36): Slot flags (JAMEET_SLOT_FLAG_*) */
     uint32_t flags;
 
-    /* Offset 0x24 (36): Reserved metadata */
+    /* Offset 0x28 (40): Reserved metadata */
     uint32_t reserved;
 
-    /* Offset 0x28 (40): Explicit padding to align pcmData to offset 0x40 (64) */
-    uint8_t slotPadding[24];
+    /* Offset 0x2C (44): Explicit padding to align pcmBits to offset 0x40 (64) */
+    uint8_t slotPadding[20];
 
-    /* Offset 0x40 (64): Interleaved Stereo 32-bit Float PCM [256 floats = 1024 bytes] */
-    float pcmData[JAMEET_SLOT_SAMPLES];
+    /* Offset 0x40 (64): Interleaved Stereo 32-bit Float PCM Bit Representations [256 uint32_t = 1024 bytes] */
+    uint32_t pcmBits[JAMEET_SLOT_SAMPLES];
 } JaMeetAudioSlot;
 
 /**
@@ -174,9 +175,10 @@ _Static_assert(offsetof(JaMeetAudioSlot, producerGeneration) == 8, "producerGene
 _Static_assert(offsetof(JaMeetAudioSlot, slotStartFrame) == 16, "slotStartFrame offset must be 16");
 _Static_assert(offsetof(JaMeetAudioSlot, sampleRate) == 24, "sampleRate offset must be 24");
 _Static_assert(offsetof(JaMeetAudioSlot, channels) == 28, "channels offset must be 28");
-_Static_assert(offsetof(JaMeetAudioSlot, validFrames) == 30, "validFrames offset must be 30");
-_Static_assert(offsetof(JaMeetAudioSlot, flags) == 32, "flags offset must be 32");
-_Static_assert(offsetof(JaMeetAudioSlot, pcmData) == 64, "pcmData offset must be 64");
+_Static_assert(offsetof(JaMeetAudioSlot, validFrames) == 32, "validFrames offset must be 32");
+_Static_assert(offsetof(JaMeetAudioSlot, flags) == 36, "flags offset must be 36");
+_Static_assert(offsetof(JaMeetAudioSlot, reserved) == 40, "reserved offset must be 40");
+_Static_assert(offsetof(JaMeetAudioSlot, pcmBits) == 64, "pcmBits offset must be 64");
 
 /* JaMeetSharedSegment Assertions */
 _Static_assert(sizeof(JaMeetSharedSegment) == 139392, "JaMeetSharedSegment size must be exactly 139,392 bytes");
@@ -205,9 +207,10 @@ static_assert(offsetof(JaMeetAudioSlot, producerGeneration) == 8, "producerGener
 static_assert(offsetof(JaMeetAudioSlot, slotStartFrame) == 16, "slotStartFrame offset must be 16");
 static_assert(offsetof(JaMeetAudioSlot, sampleRate) == 24, "sampleRate offset must be 24");
 static_assert(offsetof(JaMeetAudioSlot, channels) == 28, "channels offset must be 28");
-static_assert(offsetof(JaMeetAudioSlot, validFrames) == 30, "validFrames offset must be 30");
-static_assert(offsetof(JaMeetAudioSlot, flags) == 32, "flags offset must be 32");
-static_assert(offsetof(JaMeetAudioSlot, pcmData) == 64, "pcmData offset must be 64");
+static_assert(offsetof(JaMeetAudioSlot, validFrames) == 32, "validFrames offset must be 32");
+static_assert(offsetof(JaMeetAudioSlot, flags) == 36, "flags offset must be 36");
+static_assert(offsetof(JaMeetAudioSlot, reserved) == 40, "reserved offset must be 40");
+static_assert(offsetof(JaMeetAudioSlot, pcmBits) == 64, "pcmBits offset must be 64");
 
 static_assert(sizeof(JaMeetSharedSegment) == 139392, "JaMeetSharedSegment size must be exactly 139,392 bytes");
 static_assert(offsetof(JaMeetSharedSegment, slots) == 128, "slots offset must be 128");

@@ -33,6 +33,7 @@ describe('JaMeet Remote Bridge (Phase 1 Native Bridge)', () => {
 
     expect(output).toContain('[PASS] test_abi_layout');
     expect(output).toContain('[PASS] test_basic_read_write');
+    expect(output).toContain('[PASS] test_seqlock_in_progress_guard');
     expect(output).toContain('[PASS] test_consecutive_non128_writes_and_delayed_consumer');
     expect(output).toContain('[PASS] test_generation_epoch_resync_and_sanitization');
     expect(output).toContain('[PASS] test_producer_reattachment_without_memset');

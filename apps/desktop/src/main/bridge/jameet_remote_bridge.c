@@ -4,7 +4,23 @@
 #define MIN_VAL(a, b) ((a) < (b) ? (a) : (b))
 
 /* ========================================================================= */
-/* Portable Lock-Free Atomic Helper Primitives (Direct Pointer Storage)       */
+/* Float32 <-> uint32_t Bit Pattern Conversions                              */
+/* ========================================================================= */
+
+static inline uint32_t jameet_f32_to_bits(float f) {
+    uint32_t u;
+    memcpy(&u, &f, sizeof(float));
+    return u;
+}
+
+static inline float jameet_bits_to_f32(uint32_t u) {
+    float f;
+    memcpy(&f, &u, sizeof(uint32_t));
+    return f;
+}
+
+/* ========================================================================= */
+/* Portable Lock-Free Atomic Helper Primitives (Direct Storage Types)        */
 /* ========================================================================= */
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -16,6 +32,9 @@ static inline void jameet_atomic_store_u64_release(uint64_t* ptr, uint64_t val) 
 }
 static inline uint64_t jameet_atomic_load_u64_relaxed(const uint64_t* ptr) {
     return __atomic_load_n(ptr, __ATOMIC_RELAXED);
+}
+static inline void jameet_atomic_store_u64_relaxed(uint64_t* ptr, uint64_t val) {
+    __atomic_store_n(ptr, val, __ATOMIC_RELAXED);
 }
 
 static inline uint32_t jameet_atomic_load_u32_acquire(const uint32_t* ptr) {
@@ -46,9 +65,6 @@ static inline void jameet_atomic_store_u64_release(uint64_t* ptr, uint64_t val) 
 static inline uint64_t jameet_atomic_load_u64_relaxed(const uint64_t* ptr) {
     return *ptr;
 }
-static inline void jameet_atomic_store_u64_relaxed(uint64_t* ptr, uint64_t val) {
-    *ptr = val;
-}
 
 static inline uint32_t jameet_atomic_load_u32_acquire(const uint32_t* ptr) {
     uint32_t val = (uint32_t)InterlockedCompareExchange((volatile LONG*)ptr, 0, 0);
@@ -66,19 +82,6 @@ static inline void jameet_atomic_store_u32_relaxed(uint32_t* ptr, uint32_t val) 
     *ptr = val;
 }
 #endif
-
-static inline void jameet_atomic_store_f32_relaxed(float* dest, float val) {
-    uint32_t raw;
-    memcpy(&raw, &val, sizeof(float));
-    jameet_atomic_store_u32_relaxed((uint32_t*)dest, raw);
-}
-
-static inline float jameet_atomic_load_f32_relaxed(const float* src) {
-    uint32_t raw = jameet_atomic_load_u32_relaxed((const uint32_t*)src);
-    float val;
-    memcpy(&val, &raw, sizeof(float));
-    return val;
-}
 
 /* ========================================================================= */
 /* Segment Lifecycle & Geometry Validation                                   */
@@ -129,7 +132,7 @@ void JaMeetSegment_FormatFirstTime(JaMeetSharedSegment* segment, uint64_t initia
         slot->validFrames = 0;
         slot->flags = JAMEET_SLOT_FLAG_NONE;
         slot->reserved = 0;
-        memset(slot->pcmData, 0, sizeof(slot->pcmData));
+        memset(slot->pcmBits, 0, sizeof(slot->pcmBits));
     }
 }
 
@@ -196,42 +199,53 @@ uint32_t JaMeetProducer_WriteFrames(
         JaMeetAudioSlot* slot = &segment->slots[slotIndex];
 
         /*
-         * Update Slot Metadata:
+         * 1. In-Progress Publication Guard:
+         * Atomically publish an ODD sequence value before mutating metadata or PCM.
+         */
+        uint64_t curSeq = jameet_atomic_load_u64_relaxed(&slot->publishSequence);
+        uint64_t oddSeq = (curSeq & 1ULL) ? curSeq : (curSeq + 1ULL);
+        jameet_atomic_store_u64_release(&slot->publishSequence, oddSeq);
+
+        /*
+         * 2. Update Slot Metadata:
          * Preserves existing prefix frames when offsetInSlot > 0 (e.g. consecutive 480-frame writes).
          */
-        slot->producerGeneration = producer->currentEpoch;
-        slot->slotStartFrame = slotStartFrame;
-        slot->sampleRate = JAMEET_SAMPLE_RATE;
-        slot->channels = JAMEET_CHANNELS;
-        slot->validFrames = (uint16_t)(offsetInSlot + toWrite);
-        slot->flags = isVoiceActive ? JAMEET_SLOT_FLAG_VOICE_ON : JAMEET_SLOT_FLAG_NONE;
+        jameet_atomic_store_u64_relaxed(&slot->producerGeneration, producer->currentEpoch);
+        jameet_atomic_store_u64_relaxed(&slot->slotStartFrame, slotStartFrame);
+        jameet_atomic_store_u32_relaxed(&slot->sampleRate, JAMEET_SAMPLE_RATE);
+        jameet_atomic_store_u32_relaxed(&slot->channels, JAMEET_CHANNELS);
+        jameet_atomic_store_u32_relaxed(&slot->flags, isVoiceActive ? JAMEET_SLOT_FLAG_VOICE_ON : JAMEET_SLOT_FLAG_NONE);
 
-        /* Write PCM samples using atomic 32-bit stores */
+        /* 3. Write PCM sample bit representations using atomic 32-bit stores */
         if (interleavedStereoPcm && isVoiceActive) {
             for (uint32_t f = 0; f < toWrite; f++) {
-                float l = interleavedStereoPcm[(framesProcessed + f) * JAMEET_CHANNELS + 0];
-                float r = interleavedStereoPcm[(framesProcessed + f) * JAMEET_CHANNELS + 1];
-                jameet_atomic_store_f32_relaxed(&slot->pcmData[(offsetInSlot + f) * JAMEET_CHANNELS + 0], l);
-                jameet_atomic_store_f32_relaxed(&slot->pcmData[(offsetInSlot + f) * JAMEET_CHANNELS + 1], r);
+                uint32_t bitsL = jameet_f32_to_bits(interleavedStereoPcm[(framesProcessed + f) * JAMEET_CHANNELS + 0]);
+                uint32_t bitsR = jameet_f32_to_bits(interleavedStereoPcm[(framesProcessed + f) * JAMEET_CHANNELS + 1]);
+                jameet_atomic_store_u32_relaxed(&slot->pcmBits[(offsetInSlot + f) * JAMEET_CHANNELS + 0], bitsL);
+                jameet_atomic_store_u32_relaxed(&slot->pcmBits[(offsetInSlot + f) * JAMEET_CHANNELS + 1], bitsR);
             }
         } else {
             for (uint32_t f = 0; f < toWrite; f++) {
-                jameet_atomic_store_f32_relaxed(&slot->pcmData[(offsetInSlot + f) * JAMEET_CHANNELS + 0], 0.0f);
-                jameet_atomic_store_f32_relaxed(&slot->pcmData[(offsetInSlot + f) * JAMEET_CHANNELS + 1], 0.0f);
+                jameet_atomic_store_u32_relaxed(&slot->pcmBits[(offsetInSlot + f) * JAMEET_CHANNELS + 0], 0U);
+                jameet_atomic_store_u32_relaxed(&slot->pcmBits[(offsetInSlot + f) * JAMEET_CHANNELS + 1], 0U);
             }
         }
 
-        /* Partial Slot Sanitization: zero unwritten remainder */
+        /* 4. Partial Slot Sanitization: zero unwritten remainder */
         if (offsetInSlot + toWrite < JAMEET_SLOT_FRAMES) {
             for (uint32_t f = offsetInSlot + toWrite; f < JAMEET_SLOT_FRAMES; f++) {
-                jameet_atomic_store_f32_relaxed(&slot->pcmData[f * JAMEET_CHANNELS + 0], 0.0f);
-                jameet_atomic_store_f32_relaxed(&slot->pcmData[f * JAMEET_CHANNELS + 1], 0.0f);
+                jameet_atomic_store_u32_relaxed(&slot->pcmBits[f * JAMEET_CHANNELS + 0], 0U);
+                jameet_atomic_store_u32_relaxed(&slot->pcmBits[f * JAMEET_CHANNELS + 1], 0U);
             }
         }
 
-        /* Atomically publish the slot with release semantics */
-        uint64_t curSeq = jameet_atomic_load_u64_relaxed(&slot->publishSequence);
-        jameet_atomic_store_u64_release(&slot->publishSequence, curSeq + 1);
+        jameet_atomic_store_u32_relaxed(&slot->validFrames, offsetInSlot + toWrite);
+
+        /*
+         * 5. Commit Publication Guard:
+         * Atomically publish the next EVEN sequence value with release semantics.
+         */
+        jameet_atomic_store_u64_release(&slot->publishSequence, oddSeq + 1ULL);
 
         framesProcessed += toWrite;
     }
@@ -330,7 +344,7 @@ uint32_t JaMeetConsumer_ReadFrames(
         consumer->localReadFrame = writeSeq - JAMEET_TOTAL_FRAMES;
     }
 
-    /* 5. Read Frames across slots using Race-Free Atomic Sample Extraction */
+    /* 5. Read Frames across slots using Seqlock Guarded Atomic Extraction */
     uint32_t framesRead = 0;
     uint64_t targetFrame = consumer->localReadFrame;
 
@@ -349,19 +363,28 @@ uint32_t JaMeetConsumer_ReadFrames(
 
         const JaMeetAudioSlot* slot = &segment->slots[slotIndex];
 
-        /* Load publish sequence before reading slot */
+        /*
+         * Pre-read Seqlock Guard:
+         * Must be EVEN. If ODD, a write is actively in progress -> output digital silence.
+         */
         uint64_t seq1 = jameet_atomic_load_u64_acquire(&slot->publishSequence);
-
-        uint64_t slotGen = jameet_atomic_load_u64_relaxed(&slot->producerGeneration);
-        uint64_t slotStart = jameet_atomic_load_u64_relaxed(&slot->slotStartFrame);
-        uint32_t validCount = (uint32_t)slot->validFrames;
-
-        bool slotValid = true;
-        if (slotGen != currentGen || slotStart != slotStartFrame || offsetInSlot >= validCount) {
-            slotValid = false;
+        if ((seq1 & 1ULL) != 0) {
+            uint32_t framesInSlot = JAMEET_SLOT_FRAMES - offsetInSlot;
+            uint32_t availableFromProducer = (uint32_t)(writeSeq - targetFrame);
+            uint32_t toZero = MIN_VAL(frameCount - framesRead, MIN_VAL(framesInSlot, availableFromProducer));
+            memset(&outInterleavedStereoPcm[framesRead * JAMEET_CHANNELS], 0, toZero * JAMEET_CHANNELS * sizeof(float));
+            consumer->tornReadCount++;
+            framesRead += toZero;
+            targetFrame += toZero;
+            continue;
         }
 
-        if (!slotValid) {
+        /* Read slot metadata atomically */
+        uint64_t slotGen = jameet_atomic_load_u64_relaxed(&slot->producerGeneration);
+        uint64_t slotStart = jameet_atomic_load_u64_relaxed(&slot->slotStartFrame);
+        uint32_t validCount = jameet_atomic_load_u32_relaxed(&slot->validFrames);
+
+        if (slotGen != currentGen || slotStart != slotStartFrame || offsetInSlot >= validCount) {
             uint32_t framesInSlot = JAMEET_SLOT_FRAMES - offsetInSlot;
             uint32_t availableFromProducer = (uint32_t)(writeSeq - targetFrame);
             uint32_t toZero = MIN_VAL(frameCount - framesRead, MIN_VAL(framesInSlot, availableFromProducer));
@@ -376,24 +399,23 @@ uint32_t JaMeetConsumer_ReadFrames(
         uint32_t availableFromProducer = (uint32_t)(writeSeq - targetFrame);
         uint32_t toCopy = MIN_VAL(frameCount - framesRead, MIN_VAL(framesInSlot, availableFromProducer));
 
-        /* Read samples atomically */
+        /* Read PCM sample bits atomically and convert to Float32 */
         for (uint32_t f = 0; f < toCopy; f++) {
-            float l = jameet_atomic_load_f32_relaxed(&slot->pcmData[(offsetInSlot + f) * JAMEET_CHANNELS + 0]);
-            float r = jameet_atomic_load_f32_relaxed(&slot->pcmData[(offsetInSlot + f) * JAMEET_CHANNELS + 1]);
-            outInterleavedStereoPcm[(framesRead + f) * JAMEET_CHANNELS + 0] = l;
-            outInterleavedStereoPcm[(framesRead + f) * JAMEET_CHANNELS + 1] = r;
+            uint32_t bitsL = jameet_atomic_load_u32_relaxed(&slot->pcmBits[(offsetInSlot + f) * JAMEET_CHANNELS + 0]);
+            uint32_t bitsR = jameet_atomic_load_u32_relaxed(&slot->pcmBits[(offsetInSlot + f) * JAMEET_CHANNELS + 1]);
+            outInterleavedStereoPcm[(framesRead + f) * JAMEET_CHANNELS + 0] = jameet_bits_to_f32(bitsL);
+            outInterleavedStereoPcm[(framesRead + f) * JAMEET_CHANNELS + 1] = jameet_bits_to_f32(bitsR);
         }
 
-        /* Check if the slot was replaced or wrapped while copying */
+        /*
+         * Post-read Seqlock Guard:
+         * Must match seq1 and be EVEN. If sequence changed or became odd during the read,
+         * discard copied output and return clean digital silence.
+         */
         uint64_t seq2 = jameet_atomic_load_u64_acquire(&slot->publishSequence);
-        if (seq1 != seq2) {
-            uint64_t postSlotGen = jameet_atomic_load_u64_relaxed(&slot->producerGeneration);
-            uint64_t postSlotStart = jameet_atomic_load_u64_relaxed(&slot->slotStartFrame);
-            if (postSlotGen != currentGen || postSlotStart != slotStartFrame) {
-                /* Slot was overwritten by future ring cycle: discard and zero-fill */
-                memset(&outInterleavedStereoPcm[framesRead * JAMEET_CHANNELS], 0, toCopy * JAMEET_CHANNELS * sizeof(float));
-                consumer->tornReadCount++;
-            }
+        if (seq1 != seq2 || (seq2 & 1ULL) != 0) {
+            memset(&outInterleavedStereoPcm[framesRead * JAMEET_CHANNELS], 0, toCopy * JAMEET_CHANNELS * sizeof(float));
+            consumer->tornReadCount++;
         }
 
         framesRead += toCopy;

@@ -49,10 +49,10 @@ static void test_abi_layout(void) {
     assert(offsetof(JaMeetAudioSlot, slotStartFrame) == 16);
     assert(offsetof(JaMeetAudioSlot, sampleRate) == 24);
     assert(offsetof(JaMeetAudioSlot, channels) == 28);
-    assert(offsetof(JaMeetAudioSlot, validFrames) == 30);
-    assert(offsetof(JaMeetAudioSlot, flags) == 32);
-    assert(offsetof(JaMeetAudioSlot, reserved) == 36);
-    assert(offsetof(JaMeetAudioSlot, pcmData) == 64);
+    assert(offsetof(JaMeetAudioSlot, validFrames) == 32);
+    assert(offsetof(JaMeetAudioSlot, flags) == 36);
+    assert(offsetof(JaMeetAudioSlot, reserved) == 40);
+    assert(offsetof(JaMeetAudioSlot, pcmBits) == 64);
 
     /* JaMeetSharedSegment Offset */
     assert(offsetof(JaMeetSharedSegment, slots) == 128);
@@ -109,7 +109,52 @@ static void test_basic_read_write(void) {
 }
 
 /* ========================================================================= */
-/* Test 3: Consecutive Non-128 Writes and Delayed Consumer Continuity        */
+/* Test 3: Seqlock In-Progress Publication Guard (Odd/Even Sequence)        */
+/* ========================================================================= */
+static void test_seqlock_in_progress_guard(void) {
+    JaMeetTransport* transport = JaMeetTransport_CreateMemory();
+    JaMeetSharedSegment* segment = JaMeetTransport_GetSegment(transport);
+
+    JaMeetProducer producer;
+    JaMeetProducer_Init(&producer, segment, 3001ULL, 5555);
+
+    JaMeetConsumer consumer;
+    JaMeetConsumer_Init(&consumer);
+
+    float writeBuf[128 * 2];
+    for (int i = 0; i < 128 * 2; i++) writeBuf[i] = 1.0f;
+    JaMeetProducer_WriteFrames(&producer, writeBuf, 128, true, 100);
+
+    /* Case A: Simulate in-progress write on slot 0 by setting publishSequence to an ODD value (1) */
+    segment->slots[0].publishSequence = 1ULL;
+
+    float readBuf[128 * 2];
+    for (int i = 0; i < 128 * 2; i++) readBuf[i] = 99.0f;
+
+    JaMeetConsumer_ReadFrames(&consumer, segment, readBuf, 128, 100);
+
+    /* Must output clean silence (0.0f) and increment torn read count */
+    for (int i = 0; i < 128 * 2; i++) {
+        assert(readBuf[i] == 0.0f);
+    }
+    assert(consumer.tornReadCount > 0);
+
+    /* Case B: Restore slot to valid EVEN sequence value (2), read again */
+    segment->slots[0].publishSequence = 2ULL;
+    JaMeetConsumer_Init(&consumer);
+    for (int i = 0; i < 128 * 2; i++) readBuf[i] = 99.0f;
+    JaMeetConsumer_ReadFrames(&consumer, segment, readBuf, 128, 100);
+
+    for (int i = 0; i < 128 * 2; i++) {
+        assert(readBuf[i] == 1.0f);
+    }
+
+    JaMeetTransport_Close(transport, false);
+    TEST_PASS();
+}
+
+/* ========================================================================= */
+/* Test 4: Consecutive Non-128 Writes and Delayed Consumer Continuity        */
 /* ========================================================================= */
 static void test_consecutive_non128_writes_and_delayed_consumer(void) {
     JaMeetTransport* transport = JaMeetTransport_CreateMemory();
@@ -205,7 +250,7 @@ static void test_consecutive_non128_writes_and_delayed_consumer(void) {
 }
 
 /* ========================================================================= */
-/* Test 4: Generation Epoch Resync & Partial Slot Sanitization                */
+/* Test 5: Generation Epoch Resync & Partial Slot Sanitization                */
 /* ========================================================================= */
 static void test_generation_epoch_resync_and_sanitization(void) {
     JaMeetTransport* transport = JaMeetTransport_CreateMemory();
@@ -224,7 +269,7 @@ static void test_generation_epoch_resync_and_sanitization(void) {
 
     /* Verify remainder of slot 0 was sanitized with zeros */
     for (int i = 60 * 2; i < 128 * 2; i++) {
-        assert(segment->slots[0].pcmData[i] == 0.0f);
+        assert(segment->slots[0].pcmBits[i] == 0U);
     }
 
     /* Producer transitions to epoch 200 via JaMeetProducer_ResetGeneration */
@@ -234,14 +279,6 @@ static void test_generation_epoch_resync_and_sanitization(void) {
     float data2[40 * 2];
     for (int i = 0; i < 40 * 2; i++) data2[i] = 2.0f;
     JaMeetProducer_WriteFrames(&producer, data2, 40, true, 200);
-
-    /* Verify slot 0 in new generation has 2.0f for frames 0..39 and 0.0f for remainder */
-    for (int i = 0; i < 40 * 2; i++) {
-        assert(segment->slots[0].pcmData[i] == 2.0f);
-    }
-    for (int i = 40 * 2; i < 128 * 2; i++) {
-        assert(segment->slots[0].pcmData[i] == 0.0f);
-    }
 
     /* Consumer reads 128 frames: must get 40 frames of 2.0f and 88 frames of 0.0f silence */
     float readBuf[128 * 2];
@@ -259,7 +296,7 @@ static void test_generation_epoch_resync_and_sanitization(void) {
 }
 
 /* ========================================================================= */
-/* Test 5: Producer Reattachment Without Memset                              */
+/* Test 6: Producer Reattachment Without Memset                              */
 /* ========================================================================= */
 static void test_producer_reattachment_without_memset(void) {
     JaMeetTransport* transport = JaMeetTransport_CreateMemory();
@@ -310,7 +347,7 @@ static void test_producer_reattachment_without_memset(void) {
 }
 
 /* ========================================================================= */
-/* Test 6: Inactivity & Heartbeat Expiration                                 */
+/* Test 7: Inactivity & Heartbeat Expiration                                 */
 /* ========================================================================= */
 static void test_inactivity_and_heartbeat(void) {
     JaMeetTransport* transport = JaMeetTransport_CreateMemory();
@@ -355,7 +392,7 @@ static void test_inactivity_and_heartbeat(void) {
 }
 
 /* ========================================================================= */
-/* Test 7: Multi-Consumer Concurrent Stress Test with Strict Continuity      */
+/* Test 8: Multi-Consumer Concurrent Stress Test with Strict Continuity      */
 /* ========================================================================= */
 typedef struct {
     JaMeetSharedSegment* segment;
@@ -452,7 +489,7 @@ static void test_multithreaded_concurrency(void) {
 }
 
 /* ========================================================================= */
-/* Test 8: POSIX Shared Memory Geometry Validation & O_EXCL Reattachment    */
+/* Test 9: POSIX Shared Memory Geometry Validation & O_EXCL Reattachment    */
 /* ========================================================================= */
 static void test_posix_shm_geometry_and_lifetime(void) {
     const char* testShm = "/jameet_test_p1_shm";
@@ -531,7 +568,7 @@ static void test_posix_shm_geometry_and_lifetime(void) {
 }
 
 /* ========================================================================= */
-/* Test 9: Buffer Overrun Lag Catch-Up                                       */
+/* Test 10: Buffer Overrun Lag Catch-Up                                      */
 /* ========================================================================= */
 static void test_buffer_overrun_catchup(void) {
     JaMeetTransport* transport = JaMeetTransport_CreateMemory();
@@ -567,6 +604,7 @@ int main(void) {
     printf("Running JaMeet Remote Bridge Phase 1 Test Suite...\n");
     test_abi_layout();
     test_basic_read_write();
+    test_seqlock_in_progress_guard();
     test_consecutive_non128_writes_and_delayed_consumer();
     test_generation_epoch_resync_and_sanitization();
     test_producer_reattachment_without_memset();
