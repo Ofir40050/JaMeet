@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lockMeetingSchema } from '@musiczoom/shared';
+import { lockMeetingSchema } from '@jameet/shared';
 
 describe('lock session schema validation', () => {
   it('validates a valid lock session payload', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createScheduledSessionSchema, updateScheduledSessionSchema } from '@musiczoom/shared';
+import { createScheduledSessionSchema, updateScheduledSessionSchema } from '@jameet/shared';
 
 describe('scheduled sessions validation & timezone handling', () => {
   it('validates a valid create scheduled session payload with ISO 8601 UTC string', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeMeetingCode, meetingCodeSchema } from '@musiczoom/shared';
+import { normalizeMeetingCode, meetingCodeSchema } from '@jameet/shared';
 
 describe('Shared Session Links', () => {
   it('extracts and normalizes valid session code from deep link URL', () => {

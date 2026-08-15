@@ -64,7 +64,7 @@ function buildProductionWin(envOverride = {}) {
   };
 
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const result = spawnSync(npmCmd, ['run', 'package:win', '-w', '@musiczoom/desktop'], {
+  const result = spawnSync(npmCmd, ['run', 'package:win', '-w', '@jameet/desktop'], {
     cwd: repoDir,
     stdio: 'inherit',
     env,

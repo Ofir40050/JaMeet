@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMeetingSchema, admitParticipantSchema, waitingParticipantItemSchema } from '@musiczoom/shared';
+import { createMeetingSchema, admitParticipantSchema, waitingParticipantItemSchema } from '@jameet/shared';
 
 describe('waiting room schema validation', () => {
   it('validates create meeting with waitingRoomEnabled flag', () => {

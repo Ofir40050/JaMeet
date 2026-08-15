@@ -1,4 +1,4 @@
-import type { UserProfile, RegisterRequest, LoginRequest, UpdateProfileRequest, SessionHistoryItem } from '@musiczoom/shared';
+import type { UserProfile, RegisterRequest, LoginRequest, UpdateProfileRequest, SessionHistoryItem } from '@jameet/shared';
 
 export type AuthStateListener = (user: UserProfile | null, guestName?: string) => void;
 

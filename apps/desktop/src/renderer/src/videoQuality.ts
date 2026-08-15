@@ -1,4 +1,4 @@
-import type { PerformanceMode, VideoQuality } from '@musiczoom/shared';
+import type { PerformanceMode, VideoQuality } from '@jameet/shared';
 
 export type VideoQualityProfile = {
   width: number;

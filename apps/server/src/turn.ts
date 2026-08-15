@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import type { IceServerConfig } from '@musiczoom/shared';
+import type { IceServerConfig } from '@jameet/shared';
 import type { ServerConfig } from './config.js';
 
 export function createIceServers(config: ServerConfig, participantId: string, now = Date.now()): IceServerConfig[] {

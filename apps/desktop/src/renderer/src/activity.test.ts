@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ProjectActivityItem, ProjectActivityType } from '@musiczoom/shared';
+import type { ProjectActivityItem, ProjectActivityType } from '@jameet/shared';
 
 function formatRelativeTime(timestamp: number, now = Date.now()): string {
   const diffMs = Math.max(0, now - timestamp);

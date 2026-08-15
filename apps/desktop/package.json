@@ -1,5 +1,5 @@
 {
-  "name": "@musiczoom/desktop",
+  "name": "@jameet/desktop",
   "version": "0.1.0",
   "private": true,
   "description": "Two-person remote music sessions",
@@ -21,7 +21,7 @@
     "package:linux": "npm run build && electron-builder --linux --publish never"
   },
   "dependencies": {
-    "@musiczoom/shared": "0.1.0",
+    "@jameet/shared": "0.1.0",
     "lucide": "^1.31.0",
     "socket.io-client": "^4.8.1"
   },

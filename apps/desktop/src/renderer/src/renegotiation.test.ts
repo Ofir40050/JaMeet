@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { signalRenegotiateSchema } from '@musiczoom/shared';
+import { signalRenegotiateSchema } from '@jameet/shared';
 
 describe('WebRTC renegotiation schema validation', () => {
   it('validates valid session code for renegotiation request', () => {

@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { io as client, type Socket } from 'socket.io-client';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { MeetingAck } from '@musiczoom/shared';
+import type { MeetingAck } from '@jameet/shared';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { UserStore } from './auth.js';

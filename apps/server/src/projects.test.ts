@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { ProjectStore } from './projects.js';
-import type { UserProfile } from '@musiczoom/shared';
+import type { UserProfile } from '@jameet/shared';
 
 describe('ProjectStore & Workspace', () => {
   let tmpDir: string;

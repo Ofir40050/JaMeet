@@ -1,5 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
-import type { MediaMetadata, MeetingRole, ParticipantIdentity, SessionSummaryEvent } from '@musiczoom/shared';
+import type { MediaMetadata, MeetingRole, ParticipantIdentity, SessionSummaryEvent } from '@jameet/shared';
 
 const ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 

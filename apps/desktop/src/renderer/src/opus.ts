@@ -1,4 +1,4 @@
-import type { AudioMode } from '@musiczoom/shared';
+import type { AudioMode } from '@jameet/shared';
 
 const POLICY: Record<AudioMode, Record<string, string>> = {
   talk: { stereo: '0', 'sprop-stereo': '0', maxaveragebitrate: '96000', maxplaybackrate: '48000', useinbandfec: '1', usedtx: '1' },

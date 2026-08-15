@@ -7,20 +7,20 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @musiczoom/shared && npm run build -w @musiczoom/server && npm run build -w @musiczoom/desktop",
-    "build:server": "npm run build -w @musiczoom/shared && npm run build -w @musiczoom/server",
+    "build": "npm run build -w @jameet/shared && npm run build -w @jameet/server && npm run build -w @jameet/desktop",
+    "build:server": "npm run build -w @jameet/shared && npm run build -w @jameet/server",
     "start:server": "node apps/server/dist/index.js",
-    "dev:server": "npm run build -w @musiczoom/shared && npm run dev -w @musiczoom/server",
-    "dev:desktop": "npm run build -w @musiczoom/shared && npm run dev -w @musiczoom/desktop",
+    "dev:server": "npm run build -w @jameet/shared && npm run dev -w @jameet/server",
+    "dev:desktop": "npm run build -w @jameet/shared && npm run dev -w @jameet/desktop",
     "dev:desktop:2": "node apps/desktop/scripts/dev-instance.cjs 2",
     "dev:desktop:peer": "node apps/desktop/scripts/dev-instance.cjs 2",
-    "test": "npm run build -w @musiczoom/shared && npm test --workspaces --if-present",
-    "typecheck": "npm run build -w @musiczoom/shared && npm run typecheck --workspaces --if-present",
-    "package:mac": "npm run package:mac -w @musiczoom/desktop",
+    "test": "npm run build -w @jameet/shared && npm test --workspaces --if-present",
+    "typecheck": "npm run build -w @jameet/shared && npm run typecheck --workspaces --if-present",
+    "package:mac": "npm run package:mac -w @jameet/desktop",
     "package:mac:production": "sh deploy/build-production-mac.sh",
-    "package:win": "npm run package:win -w @musiczoom/desktop",
+    "package:win": "npm run package:win -w @jameet/desktop",
     "package:win:production": "node deploy/build-production-win.cjs",
-    "package:linux": "npm run package:linux -w @musiczoom/desktop"
+    "package:linux": "npm run package:linux -w @jameet/desktop"
   },
   "engines": {
     "node": ">=22"

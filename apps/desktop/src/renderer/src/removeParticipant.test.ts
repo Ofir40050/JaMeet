@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { removeParticipantSchema } from '@musiczoom/shared';
+import { removeParticipantSchema } from '@jameet/shared';
 
 describe('remove participant schema validation', () => {
   it('validates a valid remove participant payload with canonical participantId', () => {

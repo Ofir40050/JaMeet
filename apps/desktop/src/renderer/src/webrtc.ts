@@ -1,4 +1,4 @@
-import type { AudioMode, IceServerConfig, MediaMetadata, MeetingRole, VideoQuality } from '@musiczoom/shared';
+import type { AudioMode, IceServerConfig, MediaMetadata, MeetingRole, VideoQuality } from '@jameet/shared';
 import { opusBitrate } from './audioProfiles';
 import { LocalAudioSourceManager } from './audioSources';
 import { applyOpusPolicy } from './opus';

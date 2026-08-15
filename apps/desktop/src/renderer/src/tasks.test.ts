@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ProjectTaskItem, ProjectTaskStatus } from '@musiczoom/shared';
+import type { ProjectTaskItem, ProjectTaskStatus } from '@jameet/shared';
 
 describe('Project Tasks Workspace Engine', () => {
   it('creates music production tasks with default todo status, metadata, and timestamps', () => {

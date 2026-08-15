@@ -1,4 +1,4 @@
-import type { Project, CreateProjectRequest, UpdateProjectRequest, UpdateProjectWorkspaceRequest, ProjectWorkspace } from '@musiczoom/shared';
+import type { Project, CreateProjectRequest, UpdateProjectRequest, UpdateProjectWorkspaceRequest, ProjectWorkspace } from '@jameet/shared';
 
 const DEFAULT_PROD_SERVER_URL = 'https://jameet-jwi8.onrender.com';
 const DEFAULT_DEV_SERVER_URL = 'http://localhost:3000';

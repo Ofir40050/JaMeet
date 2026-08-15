@@ -15,7 +15,7 @@ import {
   type UserProfile, type UpdateProfileRequest, type ProjectWorkspace, type UpdateProjectWorkspaceRequest,
   type SessionChatMessage, type WaitingParticipantItem, type ScheduledSession,
   type SessionSummaryEvent, type ProjectActivityItem
-} from '@musiczoom/shared';
+} from '@jameet/shared';
 import type { ServerConfig } from './config.js';
 import { RoomStore, type Room } from './rooms.js';
 import { UserStore } from './auth.js';

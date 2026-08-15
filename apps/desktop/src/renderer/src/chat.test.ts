@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sessionChatMessageSchema, sendChatMessageSchema } from '@musiczoom/shared';
+import { sessionChatMessageSchema, sendChatMessageSchema } from '@jameet/shared';
 
 describe('chat schema validation', () => {
   it('validates a valid chat message payload', () => {

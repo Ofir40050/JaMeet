@@ -13,7 +13,7 @@ case "$url" in */) url=${url%/} ;; esac
 
 export VITE_SIGNALING_URL="$url"
 export VITE_ICE_TRANSPORT_POLICY=all
-npm run package:mac:arm64 -w @musiczoom/desktop
+npm run package:mac:arm64 -w @jameet/desktop
 
 if ! grep -R --fixed-strings "$url" apps/desktop/out/renderer/assets >/dev/null; then
   echo "Production signaling URL was not found in the renderer bundle." >&2

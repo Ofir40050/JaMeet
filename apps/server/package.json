@@ -1,5 +1,5 @@
 {
-  "name": "@musiczoom/server",
+  "name": "@jameet/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
   "dependencies": {
     "@fastify/cors": "^11.1.0",
     "@fastify/rate-limit": "^10.3.0",
-    "@musiczoom/shared": "0.1.0",
+    "@jameet/shared": "0.1.0",
     "dotenv": "^17.2.2",
     "fastify": "^5.5.0",
     "socket.io": "^4.8.1",

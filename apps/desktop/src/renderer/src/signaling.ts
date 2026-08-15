@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
-import type { MediaMetadata, MeetingAck, SessionChatMessage } from '@musiczoom/shared';
+import type { MediaMetadata, MeetingAck, SessionChatMessage } from '@jameet/shared';
 
 type Listener = (...args: any[]) => void;
 

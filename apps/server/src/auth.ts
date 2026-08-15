@@ -10,7 +10,7 @@ import type {
   ScheduledSession,
   FactualSessionSummary,
   SessionSummaryEvent
-} from '@musiczoom/shared';
+} from '@jameet/shared';
 
 export interface StoredUser {
   id: string;

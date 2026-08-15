@@ -15,7 +15,7 @@ import type {
   ProjectWorkspace,
   UserProfile,
   ParticipantIdentity
-} from '@musiczoom/shared';
+} from '@jameet/shared';
 
 export interface ProjectDatabaseSchema {
   version: number;

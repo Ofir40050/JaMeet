@@ -2,7 +2,7 @@ import type {
   ScheduledSession,
   CreateScheduledSessionRequest,
   UpdateScheduledSessionRequest
-} from '@musiczoom/shared';
+} from '@jameet/shared';
 
 const DEFAULT_PROD_API_URL = 'https://jameet-jwi8.onrender.com';
 const DEFAULT_DEV_API_URL = 'http://localhost:3000';

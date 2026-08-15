@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeDueReminders } from './scheduledNotifications';
-import type { ScheduledSession } from '@musiczoom/shared';
+import type { ScheduledSession } from '@jameet/shared';
 
 describe('Scheduled Session Notifications', () => {
   const baseSession: ScheduledSession = {

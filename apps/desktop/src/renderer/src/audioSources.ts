@@ -1,4 +1,4 @@
-import type { AudioMode, AudioSourceMetadata } from '@musiczoom/shared';
+import type { AudioMode, AudioSourceMetadata } from '@jameet/shared';
 import { audioConstraints, effectiveSettings, type AudioCapturePreferences, type EffectiveAudioSettings } from './audioProfiles';
 
 export type AudioSourcePurpose = 'voice' | 'music';

@@ -1,4 +1,4 @@
-import type { AudioMode } from '@musiczoom/shared';
+import type { AudioMode } from '@jameet/shared';
 
 export type EffectiveAudioSettings = {
   channelCount?: number;

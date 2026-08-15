@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { FactualSessionSummary, SessionHistoryItem } from '@musiczoom/shared';
+import type { FactualSessionSummary, SessionHistoryItem } from '@jameet/shared';
 
 describe('Factual Session Summary', () => {
   it('formats verified session timing, duration, and participants correctly', () => {

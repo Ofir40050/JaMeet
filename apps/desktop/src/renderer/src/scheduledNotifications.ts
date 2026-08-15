@@ -1,4 +1,4 @@
-import type { ScheduledSession } from '@musiczoom/shared';
+import type { ScheduledSession } from '@jameet/shared';
 
 const PRIMARY_STORAGE_KEY = 'jameet:notified-scheduled-reminders';
 const LEGACY_STORAGE_KEY = 'musiczoom:notified-scheduled-reminders';

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { SongSectionItem, SongSectionType } from '@musiczoom/shared';
+import type { SongSectionItem, SongSectionType } from '@jameet/shared';
 
 const SECTION_TYPE_LABELS: Record<string, string> = {
   'intro': 'Intro',

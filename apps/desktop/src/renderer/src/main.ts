@@ -1,4 +1,4 @@
-import type { AudioMode, MediaMetadata, MeetingAck, PerformanceMode, VideoQuality, ParticipantIdentity, UserProfile, UpdateProfileRequest, Project, ProjectSessionItem, SessionHistoryItem, ProjectTaskItem, ProjectTaskStatus, ProjectActivityItem, ProjectActivityType, SessionChatMessage, WaitingParticipantItem, ScheduledSession } from '@musiczoom/shared';
+import type { AudioMode, MediaMetadata, MeetingAck, PerformanceMode, VideoQuality, ParticipantIdentity, UserProfile, UpdateProfileRequest, Project, ProjectSessionItem, SessionHistoryItem, ProjectTaskItem, ProjectTaskStatus, ProjectActivityItem, ProjectActivityType, SessionChatMessage, WaitingParticipantItem, ScheduledSession } from '@jameet/shared';
 import * as projectsApi from './projects';
 import {
   setScheduledApiBase,
@@ -8,7 +8,7 @@ import {
   deleteScheduledSession
 } from './scheduledApi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
-import { meetingCodeSchema, normalizeMeetingCode } from '@musiczoom/shared';
+import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
 import { LocalAudioSourceManager } from './audioSources';
 import { LevelMeter, type LevelReading } from './levelMeter';
