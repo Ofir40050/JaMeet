@@ -212,9 +212,9 @@ export class AuthManager {
       throw new Error('Unable to connect to the server. Please check your connection.');
     }
 
-    let data: { ok: boolean; user?: UserProfile; message?: string };
+    let data: { ok: boolean; user?: UserProfile; token?: string; message?: string };
     try {
-      data = (await res.json()) as { ok: boolean; user?: UserProfile; message?: string };
+      data = (await res.json()) as { ok: boolean; user?: UserProfile; token?: string; message?: string };
     } catch {
       throw new Error(`Server returned status ${res.status}. Profile update could not be completed.`);
     }
@@ -224,7 +224,12 @@ export class AuthManager {
     }
 
     this.currentUser = data.user;
-    await this.persistSession(this.currentToken, data.user);
+    if (data.token) {
+      this.currentToken = data.token;
+      await this.persistSession(data.token, data.user);
+    } else {
+      await this.persistSession(this.currentToken, data.user);
+    }
     this.notify();
     return data.user;
   }

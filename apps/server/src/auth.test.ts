@@ -161,12 +161,14 @@ describe('UserStore & Password Hashing', () => {
       newPassword: 'NewStrongPassword99!'
     });
 
-    expect(updated.displayName).toBe('Mike Shredder');
-    expect(updated.role).toBe('Lead Guitarist & Producer');
-    expect(updated.location).toBe('Tel Aviv, Israel');
-    expect(updated.primaryDaw).toBe('Logic Pro');
-    expect(updated.genres).toEqual(['Rock', 'Blues', 'Metal']);
-    expect(updated.avatarColor).toBe('#ec4899');
+    expect(updated.user.displayName).toBe('Mike Shredder');
+    expect(updated.user.role).toBe('Lead Guitarist & Producer');
+    expect(updated.user.location).toBe('Tel Aviv, Israel');
+    expect(updated.user.primaryDaw).toBe('Logic Pro');
+    expect(updated.user.genres).toEqual(['Rock', 'Blues', 'Metal']);
+    expect(updated.user.avatarColor).toBe('#ec4899');
+    expect(updated.token).toBeDefined();
+    expect(store.verifyToken(updated.token)).not.toBeNull();
 
     // Verify login with new password succeeds and old password fails
     await expect(store.login({
@@ -380,10 +382,12 @@ describe('UserStore & Password Hashing', () => {
     expect(store1.verifyToken(token2)).not.toBeNull();
 
     // Change password
-    await store1.updateProfile(reg.user.id, {
+    const { token: newSessionToken } = await store1.updateProfile(reg.user.id, {
       currentPassword: 'InitialPassword123!',
       newPassword: 'BrandNewPassword99!'
     });
+    expect(newSessionToken).toBeDefined();
+    expect(store1.verifyToken(newSessionToken)).not.toBeNull();
 
     // All prior tokens must be invalid
     expect(store1.verifyToken(token1)).toBeNull();
@@ -397,10 +401,11 @@ describe('UserStore & Password Hashing', () => {
     const token3 = loginAfterPwd.token;
     expect(store1.verifyToken(token3)).not.toBeNull();
 
-    // Restart server and ensure old tokens remain invalid and token3 remains valid
+    // Restart server and ensure old tokens remain invalid and token3 and newSessionToken remain valid
     const store2 = new UserStore(testDir);
     expect(store2.verifyToken(token1)).toBeNull();
     expect(store2.verifyToken(token2)).toBeNull();
+    expect(store2.verifyToken(newSessionToken)).not.toBeNull();
     expect(store2.verifyToken(token3)).not.toBeNull();
     expect(store2.verifyToken(token3)?.username).toBe('pwd_user');
   });

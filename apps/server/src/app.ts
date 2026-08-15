@@ -177,8 +177,8 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       return reply.code(400).send({ ok: false, message: errMessage });
     }
     try {
-      const updatedUser = await userStore.updateProfile(user.id, parsed.data);
-      return reply.send({ ok: true, user: updatedUser });
+      const result = await userStore.updateProfile(user.id, parsed.data);
+      return reply.send({ ok: true, user: result.user, token: result.token });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to update profile.';
       const isClientErr = msg.includes('password') || msg.includes('User not found');

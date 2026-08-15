@@ -180,4 +180,38 @@ describe('AuthManager', () => {
     expect(auth.getUser()?.displayName).toBe('Dan Producer');
     expect(notifiedDisplayName).toBe('Dan Producer');
   });
+
+  it('updates token and persists session when server returns new token on password change', async () => {
+    const initialUser = {
+      id: 'usr_1',
+      username: 'dan',
+      email: 'dan@music.com',
+      displayName: 'Dan',
+      avatarColor: '#06b6d4',
+      createdAt: Date.now()
+    };
+
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, token: 'initial_token_123', user: initialUser })
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, user: initialUser, token: 'post_pwd_token_456' })
+      } as Response);
+
+    await auth.login({ usernameOrEmail: 'dan', password: 'oldPassword123!' });
+    expect(auth.getToken()).toBe('initial_token_123');
+
+    await auth.updateProfile({
+      currentPassword: 'oldPassword123!',
+      newPassword: 'newPassword456!'
+    });
+
+    expect(auth.getToken()).toBe('post_pwd_token_456');
+    expect(auth.getUser()?.username).toBe('dan');
+  });
 });

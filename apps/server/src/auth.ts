@@ -671,7 +671,7 @@ export class UserStore {
     }
   }
 
-  async updateProfile(userId: string, req: UpdateProfileRequest): Promise<UserProfile> {
+  async updateProfile(userId: string, req: UpdateProfileRequest): Promise<{ user: UserProfile; token?: string }> {
     const user = this.users.get(userId);
     if (!user) {
       throw new Error('User not found.');
@@ -684,6 +684,7 @@ export class UserStore {
     };
     const tokensSnapshot = new Map(this.tokens);
 
+    let newToken: string | undefined;
     if (req.newPassword) {
       if (!req.currentPassword) {
         throw new Error('Current password is required to change password.');
@@ -699,6 +700,17 @@ export class UserStore {
           this.tokens.delete(tok);
         }
       }
+
+      // Issue a fresh post-password-change token for the current client
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
+      this.tokens.set(rawToken, {
+        token: rawToken,
+        userId,
+        createdAt: Date.now(),
+        expiresAt
+      });
+      newToken = rawToken;
     }
 
     if (req.displayName !== undefined) user.displayName = req.displayName.trim();
@@ -720,7 +732,7 @@ export class UserStore {
       this.tokens = tokensSnapshot;
       throw err;
     }
-    return this.toProfile(user);
+    return { user: this.toProfile(user), token: newToken };
   }
 
   getSessionHistory(userId: string): StoredSessionRecord[] {

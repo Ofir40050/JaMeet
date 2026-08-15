@@ -2175,6 +2175,9 @@ describe('signaling integration', () => {
         })
       });
       expect(updatePwdRes.status).toBe(200);
+      const updatePwdData = (await updatePwdRes.json()) as { ok: boolean; user: any; token: string };
+      expect(updatePwdData.token).toBeDefined();
+      const newSessionToken = updatePwdData.token;
 
       // 5. Verify both token1 and token2 are rejected on REST
       const meToken1 = await fetch(`${url}/api/auth/me`, {
@@ -2192,6 +2195,12 @@ describe('signaling integration', () => {
       });
       expect(projToken1.status).toBe(401);
 
+      // Verify the new token issued to the client on password change works on REST
+      const meNewSession = await fetch(`${url}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${newSessionToken}` }
+      });
+      expect(meNewSession.status).toBe(200);
+
       // 6. Verify both token1 and token2 are rejected on Socket.IO
       const socket = await connected(url);
       const joinToken1 = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
@@ -2205,6 +2214,12 @@ describe('signaling integration', () => {
       });
       expect(joinToken2.ok).toBe(false);
       expect(joinToken2.message).toBe('Unauthorized');
+
+      // Verify the new token issued to the client on password change works on Socket.IO
+      const joinNewSession = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        socket.emit('project:workspace:join', { projectId, authToken: newSessionToken }, resolve);
+      });
+      expect(joinNewSession.ok).toBe(true);
 
       // 7. Login with new password (token 3)
       const loginAfterRes = await fetch(`${url}/api/auth/login`, {
