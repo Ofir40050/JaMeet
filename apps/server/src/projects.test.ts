@@ -1205,6 +1205,77 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('rejects workspace updates containing empty or duplicate lyrics document IDs without mutating state', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-doc-id-val-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'owner-doc-id-1',
+        displayName: 'Owner Alice',
+        username: 'alice',
+        email: 'alice@music.com',
+        avatarColor: '#6366f1',
+        isGuest: false,
+        createdAt: 1000
+      };
+
+      const project = store.createProject(owner, { name: 'Lyrics ID Validation Song' });
+
+      // Baseline state
+      const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
+
+      // 1. Reject empty document ID
+      const emptyIdRes = store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documents: [
+            { id: '', title: 'Empty Doc', content: 'Empty ID' }
+          ]
+        }
+      });
+      expect(emptyIdRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 2. Reject whitespace-only document ID
+      const wsIdRes = store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documents: [
+            { id: '   ', title: 'Whitespace Doc', content: 'Whitespace ID' }
+          ]
+        }
+      });
+      expect(wsIdRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 3. Reject duplicate document IDs
+      const dupIdRes = store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documents: [
+            { id: 'doc-main', title: 'Main Draft', content: 'Main words' },
+            { id: 'doc-main', title: 'Duplicate Draft', content: 'Duplicate words' }
+          ]
+        }
+      });
+      expect(dupIdRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 4. Accept valid unique document IDs
+      const validRes = store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documents: [
+            { id: 'doc-main', title: 'Main Draft', content: 'Main words' },
+            { id: 'doc-draft-2', title: 'Acoustic Draft', content: 'Acoustic words' }
+          ]
+        }
+      });
+      expect(validRes).not.toBeNull();
+      expect(validRes?.workspace.lyrics.documents.length).toBe(2);
+      expect(validRes?.workspace.lyrics.documents[0].id).toBe('doc-main');
+      expect(validRes?.workspace.lyrics.documents[1].id).toBe('doc-draft-2');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

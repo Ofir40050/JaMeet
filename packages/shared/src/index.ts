@@ -195,7 +195,7 @@ export const projectSessionItemSchema = z.object({
 export type ProjectSessionItem = z.infer<typeof projectSessionItemSchema>;
 
 export const lyricsDocumentSchema = z.object({
-  id: z.string(),
+  id: z.string().trim().min(1, 'Document ID is required'),
   title: z.string().trim().min(1).max(80).default('Main Lyrics'),
   content: z.string().default(''),
   updatedAt: z.number().default(0),

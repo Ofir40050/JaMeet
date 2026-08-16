@@ -4763,6 +4763,84 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('rejects REST and Socket.IO workspace updates containing empty or duplicate lyrics document IDs', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-doc-id-rest-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-doc-id-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_doc_id', 'beta', userStore);
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Lyrics ID Integration Song' });
+
+      // 1. REST update with empty document ID -> 400 Bad Request
+      const emptyIdRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          lyrics: {
+            documents: [{ id: '', title: 'Empty Doc', content: 'Empty ID' }]
+          }
+        })
+      });
+      expect(emptyIdRes.status).toBe(400);
+
+      // 2. REST update with duplicate document IDs -> rejected with 403 or 400 without changing state
+      const dupIdRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          lyrics: {
+            documents: [
+              { id: 'doc-main', title: 'Main Draft', content: 'Main words' },
+              { id: 'doc-main', title: 'Duplicate Draft', content: 'Duplicate words' }
+            ]
+          }
+        })
+      });
+      expect(dupIdRes.status).toBe(403);
+
+      // Verify project lyrics documents remain untouched
+      const projAfterDup = projectStore.getProject(project.id, ownerAuth.user.id);
+      expect(projAfterDup?.workspace.lyrics.documents.length).toBe(1);
+
+      // 3. Socket update with duplicate document IDs -> ack with ok: false
+      const socket = await connected(url);
+      const joinAck = await ack(socket, 'project:workspace:join', {
+        projectId: project.id,
+        authToken: ownerAuth.token
+      });
+      expect(joinAck.ok).toBe(true);
+
+      const socketDupRes = await ack(socket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: ownerAuth.token,
+        updates: {
+          lyrics: {
+            documents: [
+              { id: 'doc-dup', title: 'Draft 1', content: 'Words 1' },
+              { id: 'doc-dup', title: 'Draft 2', content: 'Words 2' }
+            ]
+          }
+        }
+      });
+      expect(socketDupRes.ok).toBe(false);
+
+      socket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

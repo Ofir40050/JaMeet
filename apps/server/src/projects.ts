@@ -347,6 +347,20 @@ export class ProjectStore {
       return null;
     }
 
+    // Validate lyrics documents (identities and uniqueness) before performing any workspace mutation or activity recording
+    if (updates.lyrics && updates.lyrics.documents !== undefined) {
+      const seenDocIds = new Set<string>();
+      for (const d of updates.lyrics.documents) {
+        if (!d.id || typeof d.id !== 'string' || d.id.trim().length === 0) {
+          return null;
+        }
+        if (seenDocIds.has(d.id)) {
+          return null;
+        }
+        seenDocIds.add(d.id);
+      }
+    }
+
     // Validate song structure sections (identities and uniqueness) before performing any workspace mutation or activity recording
     if (updates.structure && updates.structure.sections !== undefined) {
       const seenSectionIds = new Set<string>();
