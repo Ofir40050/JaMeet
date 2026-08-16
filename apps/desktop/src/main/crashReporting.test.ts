@@ -274,6 +274,69 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
     (ipcMain as any).handle = originalHandle;
   });
 
+  it('validates and normalizes malformed renderer logging IPC input without throwing', () => {
+    let logHandler: Function | undefined;
+    const originalOn = (ipcMain as any)?.on;
+    const originalHandle = (ipcMain as any)?.handle;
+
+    (ipcMain as any).on = vi.fn((channel: string, handler: Function) => {
+      if (channel === 'logger:log') {
+        logHandler = handler;
+      }
+    });
+    (ipcMain as any).handle = vi.fn();
+
+    const freshLogger = new DesktopLogger(testLogDir, 'test-instance-3');
+    const logSpy = vi.spyOn(freshLogger, 'log');
+    freshLogger.setupGlobalHandlers();
+
+    expect(logHandler).toBeDefined();
+
+    // 1. Malformed level (numeric, invalid string, object) and empty event
+    expect(() => {
+      logHandler!({}, {
+        level: 12345, // Invalid level type
+        event: '   ',  // Empty event
+        message: 'Normal message',
+        sessionId: 'sess-abc'
+      });
+    }).not.toThrow();
+
+    let lastCall = logSpy.mock.calls[logSpy.mock.calls.length - 1][0];
+    expect(lastCall.level).toBe('info');
+    expect(lastCall.event).toBe('renderer_event');
+    expect(lastCall.message).toBe('Normal message');
+    expect(lastCall.process).toBe('renderer');
+    expect(lastCall.sessionId).toBe('sess-abc');
+
+    // 2. Completely malformed payload (null, undefined, non-object)
+    expect(() => {
+      logHandler!({}, null);
+      logHandler!({}, undefined);
+      logHandler!({}, 'just a string');
+    }).not.toThrow();
+
+    // 3. Valid levels (debug, warn, error)
+    logHandler!({}, {
+      level: 'WARN', // Case-insensitive normalization
+      event: 'webrtc_ice_failure',
+      message: 'ICE connection disconnected',
+      sessionCode: 'ABCDEFGH',
+      meta: { candidateCount: 0 }
+    });
+
+    lastCall = logSpy.mock.calls[logSpy.mock.calls.length - 1][0];
+    expect(lastCall.level).toBe('warn');
+    expect(lastCall.event).toBe('webrtc_ice_failure');
+    expect(lastCall.message).toBe('ICE connection disconnected');
+    expect(lastCall.process).toBe('renderer');
+    expect(lastCall.sessionCode).toBe('ABCDEFGH');
+    expect(lastCall.meta).toEqual({ candidateCount: 0 });
+
+    (ipcMain as any).on = originalOn;
+    (ipcMain as any).handle = originalHandle;
+  });
+
   it('preserves non-sensitive diagnostic messages, technical identifiers, and error details', () => {
     const logEntry = testLogger.info(
       'audio_init_success',

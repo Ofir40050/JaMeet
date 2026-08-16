@@ -98,8 +98,14 @@ export class DesktopLogger {
   }
 
   log(entry: Partial<StructuredLogEntry> & { event: string; message: string; level?: LogLevel }): StructuredLogEntry {
-    const level: LogLevel = entry.level || 'info';
+    const rawLevel = typeof entry.level === 'string' ? entry.level.toLowerCase() : '';
+    const level: LogLevel = (rawLevel === 'debug' || rawLevel === 'info' || rawLevel === 'warn' || rawLevel === 'error')
+      ? (rawLevel as LogLevel)
+      : 'info';
     const timestamp = entry.timestamp || new Date().toISOString();
+    const event = typeof entry.event === 'string' && entry.event.trim().length > 0 ? entry.event.trim() : 'log_event';
+    const rawMessage = typeof entry.message === 'string' ? entry.message : (entry.message !== null && entry.message !== undefined ? String(entry.message) : '');
+    const message = sanitizeLogString(rawMessage);
     const sanitizedMeta = entry.meta ? sanitizeLogData(entry.meta) : undefined;
     const sanitizedError = entry.error ? (sanitizeLogData(entry.error) as StructuredError) : undefined;
 
@@ -107,16 +113,16 @@ export class DesktopLogger {
       timestamp,
       level,
       process: entry.process || 'main',
-      event: entry.event,
-      message: sanitizeLogString(entry.message || ''),
+      event,
+      message,
       appVersion: this.appVersion,
       platform: this.platform,
       arch: this.arch,
       osRelease: this.osRelease,
       instanceId: this.instanceId || undefined,
-      sessionId: entry.sessionId,
-      sessionCode: entry.sessionCode,
-      attemptId: entry.attemptId,
+      sessionId: typeof entry.sessionId === 'string' ? entry.sessionId : undefined,
+      sessionCode: typeof entry.sessionCode === 'string' ? entry.sessionCode : undefined,
+      attemptId: typeof entry.attemptId === 'string' ? entry.attemptId : undefined,
       meta: sanitizedMeta,
       error: sanitizedError
     };
@@ -301,17 +307,62 @@ export class DesktopLogger {
   private setupIpcHandlers(): void {
     try {
       if (!ipcMain?.on) return;
-      ipcMain.on('logger:log', (_event, entry: Partial<StructuredLogEntry>) => {
+      ipcMain.on('logger:log', (_event, entry: unknown) => {
         if (!entry || typeof entry !== 'object') return;
+        const raw = entry as Record<string, unknown>;
+
+        // Validate and normalize log level (accept only debug, info, warn, error)
+        let level: LogLevel = 'info';
+        if (typeof raw.level === 'string') {
+          const lower = raw.level.toLowerCase();
+          if (lower === 'debug' || lower === 'info' || lower === 'warn' || lower === 'error') {
+            level = lower;
+          }
+        }
+
+        // Validate and normalize event name
+        const event = typeof raw.event === 'string' && raw.event.trim().length > 0
+          ? raw.event.trim()
+          : 'renderer_event';
+
+        // Validate and normalize message
+        const message = typeof raw.message === 'string'
+          ? raw.message
+          : (raw.message !== null && raw.message !== undefined ? String(raw.message) : '');
+
+        const sessionId = typeof raw.sessionId === 'string' ? raw.sessionId : undefined;
+        const sessionCode = typeof raw.sessionCode === 'string' ? raw.sessionCode : undefined;
+        const attemptId = typeof raw.attemptId === 'string' ? raw.attemptId : undefined;
+        const meta = raw.meta && typeof raw.meta === 'object' && !Array.isArray(raw.meta)
+          ? (raw.meta as StructuredLogMeta)
+          : undefined;
+        const error = raw.error && typeof raw.error === 'object' && !Array.isArray(raw.error)
+          ? (raw.error as StructuredError)
+          : undefined;
+
         this.log({
-          ...entry,
+          level,
+          event,
+          message,
+          sessionId,
+          sessionCode,
+          attemptId,
+          meta,
+          error,
           process: 'renderer'
         });
       });
 
-      ipcMain.handle('logger:crash', async (_event, crashData: Partial<CrashReport>) => {
+      ipcMain.handle('logger:crash', async (_event, crashData: unknown) => {
+        if (!crashData || typeof crashData !== 'object') {
+          return this.recordCrash({
+            process: 'renderer',
+            reason: 'unknown_renderer_crash'
+          });
+        }
+        const raw = crashData as Partial<CrashReport>;
         return this.recordCrash({
-          ...crashData,
+          ...raw,
           process: 'renderer'
         });
       });
