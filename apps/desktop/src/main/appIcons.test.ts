@@ -64,4 +64,19 @@ describe('JaMeet Official Application Icon Integration', () => {
     expect(pkg.build.win.icon).toBe('build/icon.ico');
     expect(pkg.build.linux.icon).toBe('build/icons');
   });
+
+  it('provides dedicated system tray and macOS menu bar icon assets', () => {
+    const trayTemplate = join(desktopRoot, 'build/trayTemplate.png');
+    const trayTemplate2x = join(desktopRoot, 'build/trayTemplate@2x.png');
+    const trayIco = join(desktopRoot, 'build/tray.ico');
+
+    expect(existsSync(trayTemplate), 'build/trayTemplate.png must exist').toBe(true);
+    expect(statSync(trayTemplate).size).toBeGreaterThan(100);
+
+    expect(existsSync(trayTemplate2x), 'build/trayTemplate@2x.png must exist').toBe(true);
+    expect(statSync(trayTemplate2x).size).toBeGreaterThan(100);
+
+    expect(existsSync(trayIco), 'build/tray.ico must exist').toBe(true);
+    expect(statSync(trayIco).size).toBeGreaterThan(500);
+  });
 });
