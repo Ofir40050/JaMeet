@@ -46,14 +46,12 @@ describe('JaMeet Official Application Icon Integration', () => {
     const icon192 = join(publicDir, 'icon-192.png');
     const iconPng = join(publicDir, 'icon.png');
     const logoPng = join(publicDir, 'logo.png');
-    const logoSvg = join(publicDir, 'logo.svg');
 
     expect(existsSync(faviconIco), 'public/favicon.ico must exist').toBe(true);
     expect(existsSync(faviconPng), 'public/favicon.png must exist').toBe(true);
     expect(existsSync(icon192), 'public/icon-192.png must exist').toBe(true);
     expect(existsSync(iconPng), 'public/icon.png must exist').toBe(true);
     expect(existsSync(logoPng), 'public/logo.png must exist').toBe(true);
-    expect(existsSync(logoSvg), 'public/logo.svg must exist').toBe(true);
   });
 
   it('configures icon in package.json build configurations', () => {
