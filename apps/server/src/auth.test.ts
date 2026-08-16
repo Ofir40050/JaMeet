@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { UserStore, type StoredSessionRecord, type StoredScheduledSession } from './auth.js';
+import type { FactualSessionSummary } from '@jameet/shared';
 
 describe('UserStore & Password Hashing', () => {
   let testDir: string;
@@ -957,6 +958,42 @@ describe('Session Access State & Centralized Authorization', () => {
       createdAt: Date.now() - 1000,
       expiresAt: Date.now() + 1000000
     };
+    const sessionSummary: FactualSessionSummary = {
+      id: 'sum-legacy-1',
+      sessionId: 'ses-legacy-1',
+      code: 'ABCD2345',
+      startedAt: 5000,
+      endedAt: 6000,
+      durationSeconds: 1000,
+      role: 'host',
+      participants: [
+        {
+          displayName: 'Legacy User',
+          username: 'legacy_user',
+          isHost: true,
+          isGuest: false,
+          avatarColor: '#06b6d4'
+        },
+        {
+          displayName: 'Legacy Collaborator',
+          username: 'legacy_collab',
+          isHost: false,
+          isGuest: false,
+          avatarColor: '#3b82f6'
+        }
+      ],
+      events: [
+        {
+          id: 'ev-1',
+          timestamp: 5500,
+          category: 'task',
+          action: 'created',
+          description: 'Record acoustic guitar'
+        }
+      ],
+      chatMessagesCount: 3
+    };
+
     const sessionHistory: StoredSessionRecord = {
       id: 'ses-legacy-1',
       sessionId: 'ses-legacy-1',
@@ -973,20 +1010,7 @@ describe('Session Access State & Centralized Authorization', () => {
         isGuest: false,
         avatarColor: '#3b82f6'
       },
-      summary: {
-        totalParticipants: 2,
-        collaboratorNames: ['Legacy Collaborator'],
-        events: [
-          {
-            id: 'ev-1',
-            timestamp: 5500,
-            category: 'general',
-            action: 'jammed',
-            description: 'Started jam'
-          }
-        ],
-        chatMessagesCount: 3
-      }
+      summary: sessionSummary
     };
     const scheduledSession: StoredScheduledSession = {
       id: 'sched-legacy-1',
@@ -1019,6 +1043,7 @@ describe('Session Access State & Centralized Authorization', () => {
     expect(history.length).toBe(1);
     expect(history[0]?.id).toBe('ses-legacy-1');
     expect(history[0]?.collaborator?.displayName).toBe('Legacy Collaborator');
+    expect(history[0]?.summary).toEqual(sessionSummary);
 
     const scheduled = store.listScheduledSessions('legacy-user-1');
     expect(scheduled.length).toBe(1);
@@ -1040,6 +1065,7 @@ describe('Session Access State & Centralized Authorization', () => {
     expect(diskDb.sessions.length).toBe(1);
     expect(diskDb.sessions[0].id).toBe('ses-legacy-1');
     expect(diskDb.sessions[0].collaborator.displayName).toBe('Legacy Collaborator');
+    expect(diskDb.sessions[0].summary).toEqual(sessionSummary);
     expect(diskDb.scheduledSessions.length).toBe(1);
     expect(diskDb.scheduledSessions[0]).toEqual({
       id: 'sched-legacy-1',
