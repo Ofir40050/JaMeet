@@ -877,31 +877,14 @@ export type SessionAuthResult =
       message: string;
     };
 
-export function authorizeSessionAccess(
+export function validateStoredUserSessionAccess(
   userStore: UserStore,
-  authToken: string | undefined,
+  userId: string,
   config: ServerConfig,
   isHost: boolean,
   now: number = Date.now()
 ): SessionAuthResult {
-  if (!authToken || typeof authToken !== 'string' || !authToken.trim()) {
-    return {
-      ok: false,
-      code: 'AUTH_REQUIRED',
-      message: 'Authentication required to create or join a session.'
-    };
-  }
-
-  const verifiedProfile = userStore.verifyToken(authToken);
-  if (!verifiedProfile || !verifiedProfile.id) {
-    return {
-      ok: false,
-      code: 'AUTH_REQUIRED',
-      message: 'Authentication required to create or join a session.'
-    };
-  }
-
-  const storedUser = userStore.getStoredUser(verifiedProfile.id);
+  const storedUser = userStore.getStoredUser(userId);
   if (!storedUser) {
     return {
       ok: false,
@@ -961,4 +944,32 @@ export function authorizeSessionAccess(
     identity
   };
 }
+
+export function authorizeSessionAccess(
+  userStore: UserStore,
+  authToken: string | undefined,
+  config: ServerConfig,
+  isHost: boolean,
+  now: number = Date.now()
+): SessionAuthResult {
+  if (!authToken || typeof authToken !== 'string' || !authToken.trim()) {
+    return {
+      ok: false,
+      code: 'AUTH_REQUIRED',
+      message: 'Authentication required to create or join a session.'
+    };
+  }
+
+  const verifiedProfile = userStore.verifyToken(authToken);
+  if (!verifiedProfile || !verifiedProfile.id) {
+    return {
+      ok: false,
+      code: 'AUTH_REQUIRED',
+      message: 'Authentication required to create or join a session.'
+    };
+  }
+
+  return validateStoredUserSessionAccess(userStore, verifiedProfile.id, config, isHost, now);
+}
+
 

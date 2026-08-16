@@ -3272,6 +3272,112 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
       await app.close();
     }
   });
+
+  it('revalidates waiting participant session access before admission and rejects blocked or expired users', async () => {
+    const betaEndMs = Date.now() + 500;
+    const betaEndIso = new Date(betaEndMs).toISOString();
+
+    const { app, io, userStore } = await createApp(loadConfig({
+      NODE_ENV: 'test',
+      TURN_SHARED_SECRET: 'a-secure-test-secret',
+      BETA_END_AT: betaEndIso
+    }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const hostUser = await createTestAccount(url, 'admit_host_user', 'paid', userStore);
+      const guestBlocked = await createTestAccount(url, 'admit_guest_blocked', 'beta', userStore);
+      const guestBeta = await createTestAccount(url, 'admit_guest_beta', 'beta', userStore);
+
+      const hostSocket = await connected(url);
+      const guestBlockedSocket = await connected(url);
+      const guestBetaSocket = await connected(url);
+
+      const hostCreateRes = await ack(hostSocket, 'meeting:create', {
+        participantId: '10000000-0000-4000-8000-000000000001',
+        authToken: hostUser.token,
+        waitingRoomEnabled: true,
+        media
+      });
+      expect(hostCreateRes.ok).toBe(true);
+      if (!hostCreateRes.ok) return;
+
+      // 1. Guest 1 joins waiting room successfully
+      const joinBlockedRes = await ack(guestBlockedSocket, 'meeting:join', {
+        code: hostCreateRes.code,
+        participantId: '20000000-0000-4000-8000-000000000002',
+        authToken: guestBlocked.token,
+        media
+      });
+      expect(joinBlockedRes.ok).toBe(true);
+      if (!joinBlockedRes.ok) return;
+      expect(joinBlockedRes.waiting).toBe(true);
+
+      // Change Guest 1 entitlement to blocked while in waiting room
+      userStore.setSessionAccess(guestBlocked.user.id, 'blocked');
+
+      let guestBlockedAdmittedEmitted = false;
+      guestBlockedSocket.on('waiting:admitted', () => { guestBlockedAdmittedEmitted = true; });
+
+      // Host attempts to admit Guest 1 -> fails closed with access error
+      const admitBlockedRes = await ack(hostSocket, 'waiting:admit', {
+        code: hostCreateRes.code,
+        participantId: '20000000-0000-4000-8000-000000000002'
+      });
+      expect(admitBlockedRes.ok).toBe(false);
+      expect(admitBlockedRes.message).toContain('does not currently have access');
+      expect(guestBlockedAdmittedEmitted).toBe(false);
+
+      // 2. Guest 2 joins waiting room as beta user
+      const joinBetaRes = await ack(guestBetaSocket, 'meeting:join', {
+        code: hostCreateRes.code,
+        participantId: '30000000-0000-4000-8000-000000000003',
+        authToken: guestBeta.token,
+        media
+      });
+      expect(joinBetaRes.ok).toBe(true);
+      if (!joinBetaRes.ok) return;
+      expect(joinBetaRes.waiting).toBe(true);
+
+      // Wait for BETA_END_AT to expire
+      await new Promise((r) => setTimeout(r, 600));
+
+      let guestBetaAdmittedEmitted = false;
+      guestBetaSocket.on('waiting:admitted', () => { guestBetaAdmittedEmitted = true; });
+
+      // Host attempts to admit Guest 2 after beta expiration -> fails closed with BETA_ENDED
+      const admitBetaRes = await ack(hostSocket, 'waiting:admit', {
+        code: hostCreateRes.code,
+        participantId: '30000000-0000-4000-8000-000000000003'
+      });
+      expect(admitBetaRes.ok).toBe(false);
+      expect(admitBetaRes.message).toContain('JaMeet Beta has ended');
+      expect(guestBetaAdmittedEmitted).toBe(false);
+
+      // Upgrade Guest 2 to paid access and retry admission -> succeeds
+      userStore.setSessionAccess(guestBeta.user.id, 'paid');
+      const admittedPromise = new Promise<MeetingAck>((resolve) => guestBetaSocket.once('waiting:admitted', resolve));
+
+      const admitPaidRes = await ack(hostSocket, 'waiting:admit', {
+        code: hostCreateRes.code,
+        participantId: '30000000-0000-4000-8000-000000000003'
+      });
+      expect(admitPaidRes.ok).toBe(true);
+
+      const admittedAck = await admittedPromise;
+      expect(admittedAck.ok).toBe(true);
+      if (admittedAck.ok) {
+        expect(admittedAck.waiting).toBe(false);
+        expect(admittedAck.iceServers.length).toBeGreaterThan(0);
+        expect(admittedAck.peerPresent).toBe(true);
+      }
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
 });
 
 

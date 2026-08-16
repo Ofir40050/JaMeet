@@ -18,7 +18,7 @@ import {
 } from '@jameet/shared';
 import type { ServerConfig } from './config.js';
 import { RoomStore, type Room } from './rooms.js';
-import { UserStore, authorizeSessionAccess } from './auth.js';
+import { UserStore, authorizeSessionAccess, validateStoredUserSessionAccess } from './auth.js';
 import { ProjectStore } from './projects.js';
 import { createIceServers } from './turn.js';
 import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from './rate-limiter.js';
@@ -959,6 +959,14 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         ack?.({ ok: false, message: 'Participant is no longer in waiting room' });
         return;
       }
+
+      const accessAuth = validateStoredUserSessionAccess(userStore, waiting.identity.id, config, false);
+      if (!accessAuth.ok) {
+        ack?.({ ok: false, message: accessAuth.message || 'Participant session access is no longer valid' });
+        return;
+      }
+      waiting.identity = accessAuth.identity;
+
       const admitted = rooms.admit(parsed.data.code, parsed.data.participantId);
       if (!admitted.ok) {
         ack?.({ ok: false, message: admitted.reason === 'ROOM_FULL' ? 'Session is already full' : 'Failed to admit' });
