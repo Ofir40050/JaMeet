@@ -50,19 +50,6 @@ class JaMeetRemoteVoiceProcessor extends AudioWorkletProcessor {
 registerProcessor('jameet-remote-voice-processor', JaMeetRemoteVoiceProcessor);
 `;
 
-declare global {
-  interface Window {
-    jameet?: {
-      platform?: string;
-      remoteVoiceBridge?: {
-        start: () => Promise<boolean>;
-        sendPcm: (data: Float32Array, isRouteActive: boolean) => void;
-        stop: () => Promise<boolean>;
-      };
-    };
-  }
-}
-
 let activeWorkletNode: AudioWorkletNode | null = null;
 let registeredAudioContexts = new WeakSet<AudioContext>();
 

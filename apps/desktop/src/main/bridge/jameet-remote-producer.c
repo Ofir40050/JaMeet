@@ -34,10 +34,8 @@ typedef struct JaMeetSetActivePayload {
 
 static JaMeetTransport* gTransport = NULL;
 static JaMeetProducer gProducer;
-static atomic_bool gRunning = true;
+static volatile sig_atomic_t gRunning = 1;
 static atomic_bool gVoiceActive = false;
-static pthread_mutex_t gHeartbeatMutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t gHeartbeatCond = PTHREAD_COND_INITIALIZER;
 
 static uint64_t get_monotonic_ms(void) {
     struct timespec ts;
@@ -45,99 +43,20 @@ static uint64_t get_monotonic_ms(void) {
     return ((uint64_t)ts.tv_sec * 1000ULL) + ((uint64_t)ts.tv_nsec / 1000000ULL);
 }
 
+/* Strictly async-signal-safe: modifies only a sig_atomic_t variable without locks */
 static void handle_signal(int sig) {
     (void)sig;
-    atomic_store_explicit(&gRunning, false, memory_order_release);
-    pthread_mutex_lock(&gHeartbeatMutex);
-    pthread_cond_broadcast(&gHeartbeatCond);
-    pthread_mutex_unlock(&gHeartbeatMutex);
+    gRunning = 0;
 }
 
 static void* heartbeat_worker(void* arg) {
     (void)arg;
-    while (atomic_load_explicit(&gRunning, memory_order_acquire)) {
+    while (gRunning) {
         uint64_t nowMs = get_monotonic_ms();
         bool active = atomic_load_explicit(&gVoiceActive, memory_order_relaxed);
         JaMeetProducer_UpdateHeartbeat(&gProducer, nowMs, active);
-
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_nsec += 50 * 1000 * 1000; /* 50 ms */
-        if (ts.tv_nsec >= 1000000000) {
-            ts.tv_sec += 1;
-            ts.tv_nsec -= 1000000000;
-        }
-
-        pthread_mutex_lock(&gHeartbeatMutex);
-        if (atomic_load_explicit(&gRunning, memory_order_relaxed)) {
-            pthread_cond_timedwait(&gHeartbeatCond, &gHeartbeatMutex, &ts);
-        }
-        pthread_mutex_unlock(&gHeartbeatMutex);
+        usleep(50000); /* 50 ms */
     }
-    return NULL;
-}
-
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <sys/stat.h>
-
-#define JAMEET_BRIDGE_SOCKET_PATH   "/var/tmp/jameet_remote_voice.sock"
-
-static void* socket_server_worker(void* arg) {
-    (void)arg;
-    unlink(JAMEET_BRIDGE_SOCKET_PATH);
-
-    int sfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sfd < 0) return NULL;
-
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, JAMEET_BRIDGE_SOCKET_PATH, sizeof(addr.sun_path) - 1);
-
-    if (bind(sfd, (struct sockaddr*)&addr, sizeof(addr)) != 0) {
-        close(sfd);
-        return NULL;
-    }
-    chmod(JAMEET_BRIDGE_SOCKET_PATH, 0666);
-    listen(sfd, 5);
-
-    while (atomic_load_explicit(&gRunning, memory_order_acquire)) {
-        struct timeval tv = { .tv_sec = 0, .tv_usec = 100000 };
-        fd_set fds;
-        FD_ZERO(&fds);
-        FD_SET(sfd, &fds);
-        int sel = select(sfd + 1, &fds, NULL, NULL, &tv);
-        if (sel > 0 && FD_ISSET(sfd, &fds)) {
-            int cfd = accept(sfd, NULL, NULL);
-            if (cfd >= 0) {
-                if (gTransport && gTransport->fd >= 0) {
-                    struct msghdr msg;
-                    memset(&msg, 0, sizeof(msg));
-                    char cmsgBuf[CMSG_SPACE(sizeof(int))];
-                    memset(cmsgBuf, 0, sizeof(cmsgBuf));
-                    struct iovec io = { .iov_base = "F", .iov_len = 1 };
-
-                    msg.msg_iov = &io;
-                    msg.msg_iovlen = 1;
-                    msg.msg_control = cmsgBuf;
-                    msg.msg_controllen = sizeof(cmsgBuf);
-
-                    struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-                    cmsg->cmsg_level = SOL_SOCKET;
-                    cmsg->cmsg_type = SCM_RIGHTS;
-                    cmsg->cmsg_len = CMSG_LEN(sizeof(int));
-                    *((int*)CMSG_DATA(cmsg)) = gTransport->fd;
-
-                    sendmsg(cfd, &msg, 0);
-                }
-                close(cfd);
-            }
-        }
-    }
-
-    close(sfd);
-    unlink(JAMEET_BRIDGE_SOCKET_PATH);
     return NULL;
 }
 
@@ -145,6 +64,9 @@ static bool read_exact(int fd, void* buffer, size_t size) {
     size_t total = 0;
     uint8_t* ptr = (uint8_t*)buffer;
     while (total < size) {
+        if (!gRunning) {
+            return false;
+        }
         ssize_t bytesRead = read(fd, ptr + total, size - total);
         if (bytesRead <= 0) {
             return false;
@@ -158,8 +80,12 @@ int main(int argc, char* argv[]) {
     (void)argc;
     (void)argv;
 
-    signal(SIGTERM, handle_signal);
-    signal(SIGINT, handle_signal);
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = handle_signal;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
     signal(SIGPIPE, SIG_IGN);
 
     /* Open POSIX shared memory transport with default owner-only 0600 mode */
@@ -181,16 +107,13 @@ int main(int argc, char* argv[]) {
     pthread_t heartbeatThread;
     pthread_create(&heartbeatThread, NULL, heartbeat_worker, NULL);
 
-    pthread_t socketServerThread;
-    pthread_create(&socketServerThread, NULL, socket_server_worker, NULL);
-
     float* pcmBuffer = NULL;
     size_t pcmBufferSize = 0;
 
     JaMeetCmdHeader header;
-    while (atomic_load_explicit(&gRunning, memory_order_acquire)) {
+    while (gRunning) {
         if (!read_exact(STDIN_FILENO, &header, sizeof(header))) {
-            /* Stdin closed / EOF */
+            /* Stdin closed / EOF or signal received */
             break;
         }
 
@@ -254,16 +177,11 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    atomic_store_explicit(&gRunning, false, memory_order_release);
+    gRunning = 0;
     atomic_store_explicit(&gVoiceActive, false, memory_order_release);
     JaMeetProducer_UpdateHeartbeat(&gProducer, get_monotonic_ms(), false);
 
-    pthread_mutex_lock(&gHeartbeatMutex);
-    pthread_cond_broadcast(&gHeartbeatCond);
-    pthread_mutex_unlock(&gHeartbeatMutex);
-
     pthread_join(heartbeatThread, NULL);
-    pthread_join(socketServerThread, NULL);
 
     if (pcmBuffer) {
         free(pcmBuffer);

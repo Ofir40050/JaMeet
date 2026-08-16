@@ -22,6 +22,45 @@ let activeHardwareDeviceId: string | undefined = undefined;
 let pendingDeepLink: string | null = null;
 let pendingDisplaySource: { id: string; expiresAt: number } | null = null;
 
+let remoteVoiceProducerProcess: import('child_process').ChildProcess | null = null;
+let isRemoteVoiceProducerDraining = false;
+let pendingRemoteVoicePcmPacket: Buffer | null = null;
+let remoteVoiceRouteGeneration = 0;
+
+const JAMEET_PRODUCER_MAGIC = 0x4A4D5250;
+const JAMEET_CMD_WRITE_FRAMES = 1;
+const JAMEET_CMD_SET_ACTIVE = 2;
+const JAMEET_CMD_STOP = 3;
+
+function stopRemoteVoiceProducer(): void {
+  remoteVoiceRouteGeneration++;
+  pendingRemoteVoicePcmPacket = null;
+  isRemoteVoiceProducerDraining = false;
+
+  if (remoteVoiceProducerProcess) {
+    const proc = remoteVoiceProducerProcess;
+    remoteVoiceProducerProcess = null;
+    try {
+      proc.stdout?.removeAllListeners();
+      proc.stderr?.removeAllListeners();
+      proc.removeAllListeners();
+      if (proc.stdin && !proc.stdin.destroyed) {
+        const stopPacket = Buffer.allocUnsafe(12);
+        stopPacket.writeUInt32LE(JAMEET_PRODUCER_MAGIC, 0);
+        stopPacket.writeUInt32LE(JAMEET_CMD_STOP, 4);
+        stopPacket.writeUInt32LE(0, 8);
+        proc.stdin.write(stopPacket);
+        proc.stdin.end();
+      }
+    } catch {}
+    setTimeout(() => {
+      try {
+        if (!proc.killed) proc.kill('SIGTERM');
+      } catch {}
+    }, 100);
+  }
+}
+
 function stopActiveNativeScreenCapture(): void {
   activeNativeScreenCaptureSessionId++;
   if (activeNativeScreenCaptureProcess) {
@@ -121,6 +160,7 @@ function createWindow(): void {
       activeHardwareAudioProcess = null;
     }
     stopActiveNativeScreenCapture();
+    stopRemoteVoiceProducer();
   });
 
   mainWindow.webContents.on('render-process-gone', () => {
@@ -133,6 +173,7 @@ function createWindow(): void {
       activeHardwareAudioProcess = null;
     }
     stopActiveNativeScreenCapture();
+    stopRemoteVoiceProducer();
   });
 
   if (process.env.ELECTRON_RENDERER_URL) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -149,6 +190,7 @@ function createWindow(): void {
       activeHardwareAudioProcess = null;
     }
     stopActiveNativeScreenCapture();
+    stopRemoteVoiceProducer();
     if (presenterToolbarWindow && !presenterToolbarWindow.isDestroyed()) {
       presenterToolbarWindow.close();
       presenterToolbarWindow = null;
@@ -1058,13 +1100,31 @@ else {
     // =========================================================================
     // JaMeet Remote Bridge Producer Lifecycle & Bounded Flow Control (macOS)
     // =========================================================================
-    let remoteVoiceProducerProcess: import('child_process').ChildProcess | null = null;
-    let isRemoteVoiceProducerDraining = false;
-    let pendingRemoteVoicePcmPacket: Buffer | null = null;
+    function pumpDrainBackpressure(producer: import('child_process').ChildProcess, generation: number): void {
+      producer.stdin?.once('drain', () => {
+        isRemoteVoiceProducerDraining = false;
+        // If route was stopped or producer changed, drop pending audio immediately
+        if (
+          generation !== remoteVoiceRouteGeneration ||
+          remoteVoiceProducerProcess !== producer ||
+          !producer.stdin ||
+          producer.stdin.destroyed
+        ) {
+          pendingRemoteVoicePcmPacket = null;
+          return;
+        }
 
-    const JAMEET_PRODUCER_MAGIC = 0x4A4D5250;
-    const JAMEET_CMD_WRITE_FRAMES = 1;
-    const JAMEET_CMD_STOP = 3;
+        if (pendingRemoteVoicePcmPacket) {
+          const nextPacket = pendingRemoteVoicePcmPacket;
+          pendingRemoteVoicePcmPacket = null;
+          const ok = producer.stdin.write(nextPacket);
+          if (!ok) {
+            isRemoteVoiceProducerDraining = true;
+            pumpDrainBackpressure(producer, generation);
+          }
+        }
+      });
+    }
 
     function writePcmToRemoteVoiceProducer(
       producer: import('child_process').ChildProcess,
@@ -1072,6 +1132,22 @@ else {
       isVoiceActive: boolean
     ): void {
       if (!producer || !producer.stdin || producer.stdin.destroyed) return;
+
+      if (!isVoiceActive) {
+        // Immediate route invalidation: bump generation & clear any pending queue
+        remoteVoiceRouteGeneration++;
+        pendingRemoteVoicePcmPacket = null;
+        isRemoteVoiceProducerDraining = false;
+        try {
+          const activePacket = Buffer.allocUnsafe(16);
+          activePacket.writeUInt32LE(JAMEET_PRODUCER_MAGIC, 0);
+          activePacket.writeUInt32LE(JAMEET_CMD_SET_ACTIVE, 4);
+          activePacket.writeUInt32LE(4, 8);
+          activePacket.writeUInt32LE(0, 12);
+          producer.stdin.write(activePacket);
+        } catch {}
+        return;
+      }
 
       const frameCount = Math.floor(pcmFloat32.length / 2);
       const pcmBytes = pcmFloat32.byteLength;
@@ -1083,7 +1159,7 @@ else {
       packet.writeUInt32LE(JAMEET_CMD_WRITE_FRAMES, 4);
       packet.writeUInt32LE(payloadSize, 8);
       packet.writeUInt32LE(frameCount, 12);
-      packet.writeUInt32LE(isVoiceActive ? 1 : 0, 16);
+      packet.writeUInt32LE(1, 16);
       Buffer.from(pcmFloat32.buffer, pcmFloat32.byteOffset, pcmFloat32.byteLength).copy(packet, 20);
 
       if (isRemoteVoiceProducerDraining) {
@@ -1095,42 +1171,7 @@ else {
       const ok = producer.stdin.write(packet);
       if (!ok) {
         isRemoteVoiceProducerDraining = true;
-        producer.stdin.once('drain', () => {
-          isRemoteVoiceProducerDraining = false;
-          if (pendingRemoteVoicePcmPacket && remoteVoiceProducerProcess === producer && !producer.stdin.destroyed) {
-            const nextPacket = pendingRemoteVoicePcmPacket;
-            pendingRemoteVoicePcmPacket = null;
-            const writeOk = producer.stdin.write(nextPacket);
-            if (!writeOk) {
-              isRemoteVoiceProducerDraining = true;
-              producer.stdin.once('drain', () => {
-                isRemoteVoiceProducerDraining = false;
-              });
-            }
-          }
-        });
-      }
-    }
-
-    function stopRemoteVoiceProducer(): void {
-      pendingRemoteVoicePcmPacket = null;
-      isRemoteVoiceProducerDraining = false;
-      if (remoteVoiceProducerProcess) {
-        const proc = remoteVoiceProducerProcess;
-        remoteVoiceProducerProcess = null;
-        try {
-          if (proc.stdin && !proc.stdin.destroyed) {
-            const stopPacket = Buffer.allocUnsafe(12);
-            stopPacket.writeUInt32LE(JAMEET_PRODUCER_MAGIC, 0);
-            stopPacket.writeUInt32LE(JAMEET_CMD_STOP, 4);
-            stopPacket.writeUInt32LE(0, 8);
-            proc.stdin.write(stopPacket);
-            proc.stdin.end();
-          }
-        } catch {}
-        setTimeout(() => {
-          try { proc.kill('SIGTERM'); } catch {}
-        }, 100);
+        pumpDrainBackpressure(producer, remoteVoiceRouteGeneration);
       }
     }
 
@@ -1164,14 +1205,24 @@ else {
       try {
         const child = spawn(binPath, [], { stdio: ['pipe', 'pipe', 'pipe'] });
         remoteVoiceProducerProcess = child;
+        remoteVoiceRouteGeneration++;
         isRemoteVoiceProducerDraining = false;
         pendingRemoteVoicePcmPacket = null;
 
-        child.stderr.on('data', (data: Buffer) => {
+        child.stderr?.on('data', (data: Buffer) => {
           console.log('[JaMeetProducer]', data.toString().trim());
         });
 
         child.on('close', () => {
+          if (remoteVoiceProducerProcess === child) {
+            remoteVoiceProducerProcess = null;
+            pendingRemoteVoicePcmPacket = null;
+            isRemoteVoiceProducerDraining = false;
+          }
+        });
+
+        child.on('error', (err) => {
+          console.error('[JaMeetProducer] Error:', err);
           if (remoteVoiceProducerProcess === child) {
             remoteVoiceProducerProcess = null;
             pendingRemoteVoicePcmPacket = null;
@@ -1204,12 +1255,7 @@ else {
 
 app.on('before-quit', () => {
   stopActiveNativeScreenCapture();
-  if (process.platform === 'darwin') {
-    try {
-      const { execSync } = require('child_process');
-      execSync('killall jameet-remote-producer 2>/dev/null || true');
-    } catch {}
-  }
+  stopRemoteVoiceProducer();
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

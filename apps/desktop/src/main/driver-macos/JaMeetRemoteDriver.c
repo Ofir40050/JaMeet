@@ -56,21 +56,15 @@ static void JaMeetDriver_DetachBridge(void);
 static ULONG STDMETHODCALLTYPE JaMeetDriver_AddRef(void* inDriver);
 static ULONG STDMETHODCALLTYPE JaMeetDriver_Release(void* inDriver);
 
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <sys/mman.h>
-#include <unistd.h>
-
-#define JAMEET_BRIDGE_SOCKET_PATH   "/var/tmp/jameet_remote_voice.sock"
-
-static void* gDirectMappedAddr = NULL;
+/* ========================================================================= */
+/* Out-of-band Shared Memory Lifecycle & Background Discovery                */
+/* ========================================================================= */
 
 static void JaMeetDriver_TryAttachBridge(void) {
     if (atomic_load_explicit(&gSharedSegment, memory_order_relaxed) != NULL) {
         return;
     }
 
-    /* 1. Try direct POSIX shared memory open */
     JaMeetTransportConfig config = JaMeetTransportConfig_Default(false, true);
     JaMeetTransport* transport = JaMeetTransport_OpenPosixShmConfig(&config);
     if (transport != NULL) {
@@ -78,54 +72,9 @@ static void JaMeetDriver_TryAttachBridge(void) {
         if (seg != NULL && JaMeetSegment_ValidateGeometry(seg)) {
             gActiveTransport = transport;
             atomic_store_explicit(&gSharedSegment, seg, memory_order_release);
-            return;
         } else {
             JaMeetTransport_Close(transport, false);
         }
-    }
-
-    /* 2. Secure Backchannel: Connect to producer socket to receive FD across sandbox/user boundaries */
-    int sfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sfd >= 0) {
-        struct sockaddr_un addr;
-        memset(&addr, 0, sizeof(addr));
-        addr.sun_family = AF_UNIX;
-        strncpy(addr.sun_path, JAMEET_BRIDGE_SOCKET_PATH, sizeof(addr.sun_path) - 1);
-
-        if (connect(sfd, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
-            struct msghdr msg;
-            memset(&msg, 0, sizeof(msg));
-            char cmsgBuf[CMSG_SPACE(sizeof(int))];
-            memset(cmsgBuf, 0, sizeof(cmsgBuf));
-            char dummy = 0;
-            struct iovec io = { .iov_base = &dummy, .iov_len = 1 };
-
-            msg.msg_iov = &io;
-            msg.msg_iovlen = 1;
-            msg.msg_control = cmsgBuf;
-            msg.msg_controllen = sizeof(cmsgBuf);
-
-            if (recvmsg(sfd, &msg, 0) > 0) {
-                struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-                if (cmsg && cmsg->cmsg_type == SCM_RIGHTS) {
-                    int receivedFd = *((int*)CMSG_DATA(cmsg));
-                    if (receivedFd >= 0) {
-                        void* mapped = mmap(NULL, sizeof(JaMeetSharedSegment), PROT_READ, MAP_SHARED, receivedFd, 0);
-                        close(receivedFd);
-                        if (mapped != MAP_FAILED) {
-                            JaMeetSharedSegment* seg = (JaMeetSharedSegment*)mapped;
-                            if (JaMeetSegment_ValidateGeometry(seg)) {
-                                gDirectMappedAddr = mapped;
-                                atomic_store_explicit(&gSharedSegment, seg, memory_order_release);
-                            } else {
-                                munmap(mapped, sizeof(JaMeetSharedSegment));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        close(sfd);
     }
 }
 
@@ -134,10 +83,6 @@ static void JaMeetDriver_DetachBridge(void) {
     if (gActiveTransport != NULL) {
         JaMeetTransport_Close(gActiveTransport, false);
         gActiveTransport = NULL;
-    }
-    if (gDirectMappedAddr != NULL) {
-        munmap(gDirectMappedAddr, sizeof(JaMeetSharedSegment));
-        gDirectMappedAddr = NULL;
     }
 }
 

@@ -48,6 +48,11 @@ export interface JaMeetDesktopApi {
   onPresenterVideoFrame(listener: (frame: unknown) => void): () => void;
   showScheduledNotification(payload: { title: string; body: string; sessionId: string }): Promise<boolean>;
   onScheduledNotificationClicked(listener: (sessionId: string) => void): () => void;
+  remoteVoiceBridge: {
+    start(): Promise<boolean>;
+    sendPcm(data: Float32Array, isRouteActive: boolean): void;
+    stop(): Promise<boolean>;
+  };
   platform: string;
   [key: string]: any;
 }

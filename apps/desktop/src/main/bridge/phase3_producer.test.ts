@@ -199,4 +199,89 @@ int main(int argc, char* argv[]) {
     // Must have received chunk 1 and chunk 4 (chunk 2 and 3 dropped as obsolete)
     expect(receivedChunks).toEqual([1, 4]);
   });
+
+  it('verifies immediate route invalidation purges pending backpressure audio and prevents stale delivery', () => {
+    let isDraining = false;
+    let pendingPacket: Buffer | null = null;
+    let routeGeneration = 0;
+    const deliveredPackets: number[] = [];
+
+    const mockStdin = {
+      write: (buf: Buffer) => {
+        const cmd = buf.readUInt32LE(4);
+        if (cmd === JAMEET_CMD_SET_ACTIVE) {
+          deliveredPackets.push(999); // active/inactive state change marker
+          return true;
+        }
+        const id = buf.readUInt32LE(12);
+        deliveredPackets.push(id);
+        return false; // simulate continuous backpressure
+      }
+    };
+
+    function pumpDrain(gen: number) {
+      // Simulate async drain callback
+      return () => {
+        isDraining = false;
+        if (gen !== routeGeneration) {
+          pendingPacket = null;
+          return;
+        }
+        if (pendingPacket) {
+          const next = pendingPacket;
+          pendingPacket = null;
+          const ok = mockStdin.write(next);
+          if (!ok) {
+            isDraining = true;
+          }
+        }
+      };
+    }
+
+    function sendAudio(id: number, isVoiceActive: boolean) {
+      if (!isVoiceActive) {
+        routeGeneration++;
+        pendingPacket = null;
+        isDraining = false;
+        const activeBuf = Buffer.alloc(16);
+        activeBuf.writeUInt32LE(JAMEET_PRODUCER_MAGIC, 0);
+        activeBuf.writeUInt32LE(JAMEET_CMD_SET_ACTIVE, 4);
+        mockStdin.write(activeBuf);
+        return;
+      }
+
+      const pcm = new Float32Array(960);
+      const packet = createPcmPacket(pcm, true);
+      packet.writeUInt32LE(id, 12);
+
+      if (isDraining) {
+        pendingPacket = packet;
+        return;
+      }
+
+      const ok = mockStdin.write(packet);
+      if (!ok) {
+        isDraining = true;
+      }
+    }
+
+    // 1. Send packet 1 -> triggers backpressure
+    sendAudio(1, true);
+    expect(isDraining).toBe(true);
+
+    // 2. Queue packet 2 behind backpressure
+    sendAudio(2, true);
+    expect(pendingPacket).not.toBeNull();
+
+    // 3. Invalidate route (e.g. remote participant muted or route stopped)
+    sendAudio(0, false);
+    expect(pendingPacket).toBeNull();
+
+    // 4. Fire obsolete drain from the previous generation
+    const oldDrain = pumpDrain(0);
+    oldDrain();
+
+    // Stale packet 2 must NOT have been delivered!
+    expect(deliveredPackets).toEqual([1, 999]);
+  });
 });
