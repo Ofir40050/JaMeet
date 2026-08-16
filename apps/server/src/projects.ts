@@ -347,6 +347,31 @@ export class ProjectStore {
       return null;
     }
 
+    // Validate task assignees before performing any workspace mutation or activity recording
+    if (updates.tasks && updates.tasks.tasks !== undefined) {
+      for (const t of updates.tasks.tasks) {
+        if (t.assigneeId) {
+          let memberName: string | null = null;
+          if (project.ownerId === t.assigneeId) {
+            memberName = project.ownerDisplayName;
+          } else {
+            const collab = project.collaborators.find((c) => c.userId === t.assigneeId);
+            if (collab) {
+              memberName = collab.displayName;
+            }
+          }
+
+          if (!memberName) {
+            return null;
+          }
+          t.assigneeName = memberName;
+        } else {
+          t.assigneeId = undefined;
+          t.assigneeName = undefined;
+        }
+      }
+    }
+
     const snapshot = JSON.parse(JSON.stringify(project)) as Project;
     const now = Date.now();
     if (!project.workspace) {
@@ -523,29 +548,6 @@ export class ProjectStore {
     if (updates.tasks && updates.tasks.tasks !== undefined) {
       const oldTasks = project.workspace.tasks.tasks || [];
       const newTasks = updates.tasks.tasks;
-
-      // Validate task assignees and derive server-authoritative assigneeName
-      for (const t of newTasks) {
-        if (t.assigneeId) {
-          let memberName: string | null = null;
-          if (project.ownerId === t.assigneeId) {
-            memberName = project.ownerDisplayName;
-          } else {
-            const collab = project.collaborators.find((c) => c.userId === t.assigneeId);
-            if (collab) {
-              memberName = collab.displayName;
-            }
-          }
-
-          if (!memberName) {
-            return null;
-          }
-          t.assigneeName = memberName;
-        } else {
-          t.assigneeId = undefined;
-          t.assigneeName = undefined;
-        }
-      }
 
       // Detect new task
       const oldIds = new Set(oldTasks.map((t) => t.id));

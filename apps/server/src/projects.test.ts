@@ -857,6 +857,31 @@ describe('ProjectStore & Workspace', () => {
       expect(unassignUpdate).not.toBeNull();
       expect(unassignUpdate!.workspace.tasks.tasks[0].assigneeId).toBeUndefined();
       expect(unassignUpdate!.workspace.tasks.tasks[0].assigneeName).toBeUndefined();
+
+      // 5. Atomic validation: Attempt combined update with notes, lyrics, structure, and invalid task assignee
+      const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
+      const failedCombinedUpdate = store.updateWorkspace(project.id, owner, {
+        notes: { content: 'Modified Notes Text', bpm: '140' },
+        lyrics: { content: 'Modified Lyrics Text' },
+        structure: { sections: [{ id: 'sec-1', name: 'Chorus', bars: 8, color: '#f59e0b', order: 0 }] },
+        tasks: {
+          tasks: [
+            {
+              id: 'task-bad',
+              title: 'Illegal Task',
+              status: 'todo',
+              assigneeId: 'unauthorized-user-999',
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            }
+          ]
+        }
+      });
+      expect(failedCombinedUpdate).toBeNull();
+
+      // Ensure no in-memory workspace properties, timestamps, or activities were mutated
+      const afterState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
+      expect(afterState).toEqual(beforeState);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
