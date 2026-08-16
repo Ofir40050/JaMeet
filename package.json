@@ -10,6 +10,7 @@
     "build": "npm run build -w @jameet/shared && npm run build -w @jameet/server && npm run build -w @jameet/desktop",
     "build:server": "npm run build -w @jameet/shared && npm run build -w @jameet/server",
     "start:server": "node apps/server/dist/index.js",
+    "admin:access": "npm run admin:access -w @jameet/server --",
     "dev:server": "npm run build -w @jameet/shared && npm run dev -w @jameet/server",
     "dev:desktop": "npm run build -w @jameet/shared && npm run dev -w @jameet/desktop",
     "dev:desktop:2": "node apps/desktop/scripts/dev-instance.cjs 2",
