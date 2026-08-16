@@ -4002,6 +4002,205 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('removes socket from project room when authentication token is revoked via logout while other active session for same user remains valid', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-collab-logout-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-logout-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_logout_test', 'beta', userStore);
+      const collabAuth1 = await createTestAccount(url, 'collab_logout_test', 'beta', userStore);
+
+      // Collaborator logs in a second time to get a second active session token
+      const loginRes = await fetch(`${url}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usernameOrEmail: collabAuth1.user.username, password: 'StrongPassword123!' })
+      });
+      expect(loginRes.status).toBe(200);
+      const loginData = (await loginRes.json()) as { ok: boolean; token: string };
+      const collabToken2 = loginData.token;
+
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Logout Test Song' }, [collabAuth1.user]);
+
+      const ownerSocket = await connected(url);
+      const collabSocket1 = await connected(url);
+      const collabSocket2 = await connected(url);
+
+      // Sockets join project workspace
+      await new Promise<{ ok: boolean }>((resolve) => {
+        ownerSocket.emit('project:workspace:join', { projectId: project.id, authToken: ownerAuth.token }, resolve);
+      });
+      await new Promise<{ ok: boolean }>((resolve) => {
+        collabSocket1.emit('project:workspace:join', { projectId: project.id, authToken: collabAuth1.token }, resolve);
+      });
+      await new Promise<{ ok: boolean }>((resolve) => {
+        collabSocket2.emit('project:workspace:join', { projectId: project.id, authToken: collabToken2 }, resolve);
+      });
+
+      // Collaborator logs out of session 1
+      const logoutRes = await fetch(`${url}/api/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${collabAuth1.token}` }
+      });
+      expect(logoutRes.status).toBe(200);
+
+      let socket1GotSync = false;
+      let socket2GotSync = false;
+      collabSocket1.on('project:workspace:synced', () => { socket1GotSync = true; });
+      collabSocket2.on('project:workspace:synced', () => { socket2GotSync = true; });
+
+      // Owner updates workspace via REST
+      await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({ notes: { content: 'Update after session 1 logout' } })
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Socket 1 (revoked token) must NOT receive the update
+      expect(socket1GotSync).toBe(false);
+      // Socket 2 (valid token for same user) MUST receive the update
+      expect(socket2GotSync).toBe(true);
+
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('prunes socket from project room when password change invalidates older authentication session', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-collab-pwd-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-pwd-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_pwd_test', 'beta', userStore);
+      const collabAuth = await createTestAccount(url, 'collab_pwd_test', 'beta', userStore);
+
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Password Test Song' }, [collabAuth.user]);
+
+      const ownerSocket = await connected(url);
+      const collabSocket = await connected(url);
+
+      await new Promise<{ ok: boolean }>((resolve) => {
+        ownerSocket.emit('project:workspace:join', { projectId: project.id, authToken: ownerAuth.token }, resolve);
+      });
+      await new Promise<{ ok: boolean }>((resolve) => {
+        collabSocket.emit('project:workspace:join', { projectId: project.id, authToken: collabAuth.token }, resolve);
+      });
+
+      // Collaborator changes password (which invalidates existing sessions)
+      await new Promise((resolve) => setTimeout(resolve, 10)); // Ensure passwordChangedAt > session.createdAt
+      const changePwdRes = await fetch(`${url}/api/auth/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${collabAuth.token}` },
+        body: JSON.stringify({ currentPassword: 'StrongPassword123!', newPassword: 'BrandNewSecurePassword99!' })
+      });
+      expect(changePwdRes.status).toBe(200);
+
+      let collabGotSync = false;
+      let collabGotActivity = false;
+      collabSocket.on('project:workspace:synced', () => { collabGotSync = true; });
+      collabSocket.on('project:activity:new', () => { collabGotActivity = true; });
+
+      // Owner updates workspace via socket
+      await new Promise((resolve) => {
+        ownerSocket.emit('project:workspace:update', {
+          projectId: project.id,
+          authToken: ownerAuth.token,
+          updates: { notes: { content: 'Update after password change' } }
+        }, resolve);
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Collaborator with invalidated session must NOT receive the update
+      expect(collabGotSync).toBe(false);
+      expect(collabGotActivity).toBe(false);
+
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('prunes socket from project room when authentication token expires', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-collab-exp-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-exp-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_exp_test', 'beta', userStore);
+      const collabAuth = await createTestAccount(url, 'collab_exp_test', 'beta', userStore);
+
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Expiry Test Song' }, [collabAuth.user]);
+
+      const ownerSocket = await connected(url);
+      const collabSocket = await connected(url);
+
+      await new Promise<{ ok: boolean }>((resolve) => {
+        ownerSocket.emit('project:workspace:join', { projectId: project.id, authToken: ownerAuth.token }, resolve);
+      });
+      await new Promise<{ ok: boolean }>((resolve) => {
+        collabSocket.emit('project:workspace:join', { projectId: project.id, authToken: collabAuth.token }, resolve);
+      });
+
+      // Manually expire collaborator token in userStore
+      const storedToken = userStore.tokens.get(collabAuth.token);
+      if (storedToken) {
+        storedToken.expiresAt = Date.now() - 1000;
+      }
+
+      let collabGotSync = false;
+      collabSocket.on('project:workspace:synced', () => { collabGotSync = true; });
+
+      // Owner updates workspace
+      await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({ notes: { content: 'Update after token expiry' } })
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Expired token subscriber must NOT receive broadcast
+      expect(collabGotSync).toBe(false);
+
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

@@ -28,7 +28,8 @@ import { updateAccountSessionAccess, writeAdminRuntimeFile, cleanupAdminRuntimeF
 import { acquireDatastoreLock, type DatastoreLock } from './datastore-lock.js';
 import { logger } from './logger.js';
 
-type SocketData = { code?: string; participantId?: string; identity?: ParticipantIdentity; isWaiting?: boolean; limiter?: SocketRateLimiter; projectSubscriptions?: Map<string, string> };
+type ProjectSubscription = { userId: string; authToken: string };
+type SocketData = { code?: string; participantId?: string; identity?: ParticipantIdentity; isWaiting?: boolean; limiter?: SocketRateLimiter; projectSubscriptions?: Map<string, ProjectSubscription> };
 
 function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSummaryEvent | null {
   let category: 'task' | 'note' | 'lyrics' | 'structure' | null = null;
@@ -586,6 +587,28 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     }
   });
 
+  function pruneStaleProjectSubscribers(projectId: string) {
+    const roomName = `project:${projectId}`;
+    for (const s of io.sockets.sockets.values()) {
+      const sData = s.data as SocketData;
+      const sub = sData?.projectSubscriptions?.get(projectId);
+      if (!sub) {
+        if (s.rooms.has(roomName)) {
+          void s.leave(roomName);
+        }
+        continue;
+      }
+      const verifiedUser = userStore.verifyToken(sub.authToken);
+      const isSessionValid = Boolean(verifiedUser && verifiedUser.id === sub.userId);
+      const hasAccess = isSessionValid && projectStore.hasAccess(projectId, sub.userId);
+
+      if (!isSessionValid || !hasAccess) {
+        sData.projectSubscriptions?.delete(projectId);
+        void s.leave(roomName);
+      }
+    }
+  }
+
   app.post<{ Params: { id: string } }>('/api/projects/:id/collaborators', async (request, reply) => {
     const authHeader = request.headers.authorization;
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
@@ -613,6 +636,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       if (!updated) {
         return reply.code(403).send({ ok: false, message: 'Unauthorized to add collaborator or assign role.' });
       }
+      pruneStaleProjectSubscribers(request.params.id);
       io.to(`project:${request.params.id}`).emit('project:activity:new', {
         projectId: request.params.id,
         activities: updated.activities
@@ -650,11 +674,13 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       const roomName = `project:${projectId}`;
       for (const s of io.sockets.sockets.values()) {
         const sData = s.data as SocketData;
-        if (sData?.projectSubscriptions?.get(projectId) === targetUserId) {
+        const sub = sData?.projectSubscriptions?.get(projectId);
+        if (sub && sub.userId === targetUserId) {
           sData.projectSubscriptions.delete(projectId);
           void s.leave(roomName);
         }
       }
+      pruneStaleProjectSubscribers(projectId);
 
       io.to(roomName).emit('project:activity:new', {
         projectId: request.params.id,
@@ -691,6 +717,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         return reply.code(403).send({ ok: false, message: 'Unauthorized to modify workspace.' });
       }
       // Broadcast real-time update to socket room
+      pruneStaleProjectSubscribers(request.params.id);
       io.to(`project:${request.params.id}`).emit('project:workspace:synced', {
         projectId: request.params.id,
         workspace: updated.workspace,
@@ -954,14 +981,14 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       if (!limiter.consume('session')) { ack?.({ ok: false, message: 'Too many requests. Please slow down.' }); return; }
       if (!raw?.projectId) { ack?.({ ok: false, message: 'Invalid projectId' }); return; }
       const user = userStore.verifyToken(raw.authToken);
-      if (!user || !projectStore.hasAccess(raw.projectId, user.id)) {
+      if (!user || !raw.authToken || !projectStore.hasAccess(raw.projectId, user.id)) {
         ack?.({ ok: false, message: 'Unauthorized' });
         return;
       }
       if (!socketData.projectSubscriptions) {
-        socketData.projectSubscriptions = new Map<string, string>();
+        socketData.projectSubscriptions = new Map<string, ProjectSubscription>();
       }
-      socketData.projectSubscriptions.set(raw.projectId, user.id);
+      socketData.projectSubscriptions.set(raw.projectId, { userId: user.id, authToken: raw.authToken });
       void socket.join(`project:${raw.projectId}`);
       const project = projectStore.getProject(raw.projectId, user.id);
       ack?.({ ok: true, workspace: project?.workspace });
@@ -1022,6 +1049,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
 
       // Broadcast real-time update to other collaborators in this project
+      pruneStaleProjectSubscribers(raw.projectId);
       socket.to(`project:${raw.projectId}`).emit('project:workspace:synced', {
         projectId: raw.projectId,
         workspace: updated.workspace,
