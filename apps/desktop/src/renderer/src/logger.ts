@@ -104,9 +104,14 @@ export class RendererLogger {
 
     if (api?.logger?.crash) {
       try {
-        void api.logger.crash(report);
+        const crashPromise = api.logger.crash(report);
+        if (crashPromise && typeof (crashPromise as any).catch === 'function') {
+          (crashPromise as Promise<unknown>).catch(() => {
+            // Silently handle IPC failure to prevent unhandledrejection loops
+          });
+        }
       } catch {
-        // fallback
+        // Silently ignore synchronous invocation errors
       }
     }
 
