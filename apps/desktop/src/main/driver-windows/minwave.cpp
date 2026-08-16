@@ -602,13 +602,22 @@ public:
             return STATUS_NOT_SUPPORTED;
         }
 
-        PKSDATARANGE_AUDIO pDataRangeAudio = (PKSDATARANGE_AUDIO)DataRange;
-        PKSDATARANGE_AUDIO pMatchingAudio = (PKSDATARANGE_AUDIO)MatchingDataRange;
-
-        if (!IsEqualGUID(pDataRangeAudio->DataRange.MajorFormat, KSDATAFORMAT_TYPE_AUDIO) ||
-            !IsEqualGUID(pMatchingAudio->DataRange.MajorFormat, KSDATAFORMAT_TYPE_AUDIO)) {
+        /* Structural size validation: ensure both ranges contain a complete KSDATARANGE_AUDIO structure */
+        if (DataRange->FormatSize < sizeof(KSDATARANGE_AUDIO) ||
+            MatchingDataRange->FormatSize < sizeof(KSDATARANGE_AUDIO)) {
             return STATUS_NO_MATCH;
         }
+
+        /* Require audio major format and WAVEFORMATEX specifier on both ranges */
+        if (!IsEqualGUID(DataRange->MajorFormat, KSDATAFORMAT_TYPE_AUDIO) ||
+            !IsEqualGUID(MatchingDataRange->MajorFormat, KSDATAFORMAT_TYPE_AUDIO) ||
+            !IsEqualGUID(DataRange->Specifier, KSDATAFORMAT_SPECIFIER_WAVEFORMATEX) ||
+            !IsEqualGUID(MatchingDataRange->Specifier, KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)) {
+            return STATUS_NO_MATCH;
+        }
+
+        PKSDATARANGE_AUDIO pDataRangeAudio = (PKSDATARANGE_AUDIO)DataRange;
+        PKSDATARANGE_AUDIO pMatchingAudio = (PKSDATARANGE_AUDIO)MatchingDataRange;
 
         /* Strict validation: require 48 kHz within frequency range for both ranges */
         if (pDataRangeAudio->MinimumSampleFrequency > 48000 ||
