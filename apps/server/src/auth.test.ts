@@ -1076,6 +1076,26 @@ describe('Session Access State & Centralized Authorization', () => {
       updatedAt: 1000
     });
   });
+
+  it('initializes normally with an empty store when the accounts file does not exist', () => {
+    const accountsPath = path.join(testDir, 'jameet-accounts.json');
+    expect(fs.existsSync(accountsPath)).toBe(false);
+
+    const store = new UserStore(testDir);
+    expect(store.findByUsernameOrEmail('nonexistent')).toBeNull();
+  });
+
+  it('fails initialization and stops server startup when an existing accounts file is corrupted or unreadable', () => {
+    const accountsPath = path.join(testDir, 'jameet-accounts.json');
+    const corruptContent = '{"users": [unparseable corrupted json...';
+    fs.writeFileSync(accountsPath, corruptContent, 'utf-8');
+
+    // Must throw rather than silently resetting the database to an empty datastore
+    expect(() => new UserStore(testDir)).toThrow(/Failed to load account datastore/i);
+
+    // Verify the corrupted file was preserved untouched
+    expect(fs.readFileSync(accountsPath, 'utf-8')).toBe(corruptContent);
+  });
 });
 
 
