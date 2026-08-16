@@ -127,6 +127,9 @@ int main(int argc, char* argv[]) {
             if (!read_exact(STDIN_FILENO, &payload, sizeof(payload))) {
                 break;
             }
+            if (!gRunning) {
+                break;
+            }
 
             size_t pcmBytes = (size_t)payload.frameCount * JAMEET_CHANNELS * sizeof(float);
             if (pcmBytes > header.payloadSize - sizeof(payload)) {
@@ -147,15 +150,27 @@ int main(int argc, char* argv[]) {
             if (!read_exact(STDIN_FILENO, pcmBuffer, pcmBytes)) {
                 break;
             }
+            if (!gRunning) {
+                break;
+            }
 
             bool isVoiceActive = (payload.isVoiceActive != 0);
+            if (!gRunning) {
+                break;
+            }
             atomic_store_explicit(&gVoiceActive, isVoiceActive, memory_order_relaxed);
 
+            if (!gRunning) {
+                break;
+            }
             uint64_t nowMs = get_monotonic_ms();
             JaMeetProducer_WriteFrames(&gProducer, pcmBuffer, payload.frameCount, isVoiceActive, nowMs);
         } else if (header.command == JAMEET_CMD_SET_ACTIVE) {
             JaMeetSetActivePayload payload;
             if (!read_exact(STDIN_FILENO, &payload, sizeof(payload))) {
+                break;
+            }
+            if (!gRunning) {
                 break;
             }
             bool isVoiceActive = (payload.isVoiceActive != 0);
