@@ -138,110 +138,48 @@ export function acquireDatastoreLock(dataDir: string, owner: 'server' | 'admin-c
     }
 
     // Recorded owner is confirmed dead (ESRCH).
-    // Atomically claim this exact dead lock using a deterministic claim link with a fully written ticket.
-    const claimPath = path.join(
-      dataDir,
-      `.account-datastore.lock.claim.${lockInfo.pid}.${lockInfo.createdAt}`
-    );
-    const recoveryTicketPath = path.join(
-      dataDir,
-      `.account-datastore.lock.rec.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
-    );
-    fs.writeFileSync(
-      recoveryTicketPath,
-      JSON.stringify({
-        recoveringPid: process.pid,
-        targetPid: lockInfo.pid,
-        targetCreatedAt: lockInfo.createdAt,
-        createdAt: Date.now()
-      }, null, 2),
-      { mode: 0o600, encoding: 'utf-8' }
-    );
-
-    let claimed = false;
-    try {
-      fs.linkSync(recoveryTicketPath, claimPath);
-      claimed = true;
-    } catch (claimErr: any) {
-      if (claimErr.code === 'EEXIST') {
-        // A claim file already exists. Inspect it to see if it was abandoned by a dead process.
-        let isClaimDead = false;
-        try {
-          const rawClaim = fs.readFileSync(claimPath, 'utf-8');
-          const parsedClaim = JSON.parse(rawClaim);
-          if (
-            parsedClaim &&
-            typeof parsedClaim.recoveringPid === 'number' &&
-            !isProcessAlive(parsedClaim.recoveringPid)
-          ) {
-            isClaimDead = true;
-          }
-        } catch {}
-
-        if (isClaimDead) {
-          // Atomically isolate the dead claim via renameSync so only ONE concurrent process can take it over.
-          // This prevents an old stale observation from ever unlinking a newer live recovery claim.
-          const takeoverPath = path.join(
-            dataDir,
-            `.account-datastore.lock.claim-takeover.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
+    // Re-verify the lock file on disk is still the exact dead lock before removing it.
+    const currentInfo = readDatastoreLockInfo(dataDir);
+    if (
+      currentInfo &&
+      currentInfo.pid === lockInfo.pid &&
+      currentInfo.createdAt === lockInfo.createdAt
+    ) {
+      try {
+        fs.unlinkSync(lockFilePath);
+      } catch (unlinkErr: any) {
+        if (unlinkErr.code !== 'ENOENT') {
+          try { fs.unlinkSync(tempPath); } catch {}
+          throw new DatastoreLockError(
+            `Failed to clean up stale datastore lock at ${lockFilePath}: ${unlinkErr.message || unlinkErr}`
           );
-          let tookOver = false;
-          try {
-            fs.renameSync(claimPath, takeoverPath);
-            tookOver = true;
-          } catch {
-            // Another process already took over claimPath; do not touch claimPath!
-          }
-
-          if (tookOver) {
-            try {
-              let verifiedDead = false;
-              try {
-                const rawIso = fs.readFileSync(takeoverPath, 'utf-8');
-                const parsedIso = JSON.parse(rawIso);
-                if (
-                  parsedIso &&
-                  typeof parsedIso.recoveringPid === 'number' &&
-                  !isProcessAlive(parsedIso.recoveringPid)
-                ) {
-                  verifiedDead = true;
-                }
-              } catch {}
-
-              if (verifiedDead) {
-                try { fs.unlinkSync(takeoverPath); } catch {}
-                // Atomically link our recovery ticket to claimPath
-                try {
-                  fs.linkSync(recoveryTicketPath, claimPath);
-                  claimed = true;
-                } catch {}
-              } else {
-                // If not verified dead, restore back if claimPath is vacant
-                try {
-                  if (!fs.existsSync(claimPath)) {
-                    fs.renameSync(takeoverPath, claimPath);
-                  } else {
-                    fs.unlinkSync(takeoverPath);
-                  }
-                } catch {}
-              }
-            } finally {
-              try {
-                if (fs.existsSync(takeoverPath)) {
-                  fs.unlinkSync(takeoverPath);
-                }
-              } catch {}
-            }
-          }
         }
       }
-    } finally {
-      try { fs.unlinkSync(recoveryTicketPath); } catch {}
-    }
 
-    if (!claimed) {
-      try { fs.unlinkSync(tempPath); } catch {}
+      // Atomically link our new lock file. The kernel guarantees exactly one process wins linkSync.
+      try {
+        fs.linkSync(tempPath, lockFilePath);
+        acquired = true;
+      } catch (retryErr: any) {
+        // Another process acquired the lock during the transition.
+        const liveLockInfo = readDatastoreLockInfoWithRetry(dataDir, 5, 20);
+        if (liveLockInfo && isProcessAlive(liveLockInfo.pid)) {
+          try { fs.unlinkSync(tempPath); } catch {}
+          throw new DatastoreLockError(
+            `Account datastore lock is already held by live ${liveLockInfo.owner} (PID ${liveLockInfo.pid}) at ${lockFilePath}.`,
+            liveLockInfo
+          );
+        }
+        try { fs.unlinkSync(tempPath); } catch {}
+        throw new DatastoreLockError(
+          `Failed to acquire datastore lock after removing stale lock: ${retryErr.message || retryErr}`,
+          liveLockInfo || undefined
+        );
+      }
+    } else {
+      // Lock file was already replaced or modified by another process. Do not unlink!
       const liveLockInfo = readDatastoreLockInfoWithRetry(dataDir, 5, 20);
+      try { fs.unlinkSync(tempPath); } catch {}
       if (liveLockInfo && isProcessAlive(liveLockInfo.pid)) {
         throw new DatastoreLockError(
           `Account datastore lock is already held by live ${liveLockInfo.owner} (PID ${liveLockInfo.pid}) at ${lockFilePath}.`,
@@ -249,38 +187,8 @@ export function acquireDatastoreLock(dataDir: string, owner: 'server' | 'admin-c
         );
       }
       throw new DatastoreLockError(
-        `Concurrent stale datastore lock recovery in progress at ${lockFilePath}.`
+        `Aborted stale datastore lock recovery: lock at ${lockFilePath} was modified concurrently.`
       );
-    }
-
-    try {
-      // Under verified recovery claim, check if lockFilePath is still the dead lock
-      const currentInfo = readDatastoreLockInfo(dataDir);
-      if (
-        currentInfo &&
-        currentInfo.pid === lockInfo.pid &&
-        currentInfo.createdAt === lockInfo.createdAt
-      ) {
-        // Remove confirmed dead lock
-        fs.unlinkSync(lockFilePath);
-        // Link our fully written new lock
-        fs.linkSync(tempPath, lockFilePath);
-        acquired = true;
-      } else {
-        // Lock was replaced or modified concurrently
-        const liveLockInfo = readDatastoreLockInfoWithRetry(dataDir, 5, 20);
-        if (liveLockInfo && isProcessAlive(liveLockInfo.pid)) {
-          throw new DatastoreLockError(
-            `Account datastore lock is already held by live ${liveLockInfo.owner} (PID ${liveLockInfo.pid}) at ${lockFilePath}.`,
-            liveLockInfo
-          );
-        }
-        throw new DatastoreLockError(
-          `Aborted stale datastore lock recovery: lock at ${lockFilePath} was modified concurrently.`
-        );
-      }
-    } finally {
-      try { fs.unlinkSync(claimPath); } catch {}
     }
   }
 

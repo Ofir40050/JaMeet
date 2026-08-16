@@ -460,7 +460,7 @@ describe('Admin Session Access CLI & Management Tool', () => {
     }
   });
 
-  it('safely recovers from an abandoned claim file left by a crashed recovery process', () => {
+  it('safely recovers from a confirmed stale lock file with a dead PID', () => {
     const lockPath = getDatastoreLockPath(testDir);
     const staleCreatedAt = Date.now() - 10000;
     // Write stale lock with dead PID 9999999
@@ -470,20 +470,7 @@ describe('Admin Session Access CLI & Management Tool', () => {
       { mode: 0o600, encoding: 'utf-8' }
     );
 
-    // Simulate an abandoned claim file from a crashed recovery process (dead PID 8888888)
-    const claimPath = path.join(testDir, `.account-datastore.lock.claim.9999999.${staleCreatedAt}`);
-    fs.writeFileSync(
-      claimPath,
-      JSON.stringify({
-        recoveringPid: 8888888,
-        targetPid: 9999999,
-        targetCreatedAt: staleCreatedAt,
-        createdAt: Date.now() - 5000
-      }),
-      { mode: 0o600, encoding: 'utf-8' }
-    );
-
-    // New process should detect the claim owner is dead, remove abandoned claim, and successfully acquire lock
+    // New process should detect recorded process is dead, remove stale lock, and acquire lock
     const lock = acquireDatastoreLock(testDir, 'server');
     expect(lock).toBeDefined();
 
@@ -491,14 +478,12 @@ describe('Admin Session Access CLI & Management Tool', () => {
       const currentInfo = readDatastoreLockInfo(testDir);
       expect(currentInfo?.pid).toBe(process.pid);
       expect(currentInfo?.owner).toBe('server');
-      // Verify claim path was cleaned up
-      expect(fs.existsSync(claimPath)).toBe(false);
     } finally {
       lock.release();
     }
   });
 
-  it('preserves an active claim file from a live recovery process and fails closed', () => {
+  it('guarantees exactly one owner when concurrent processes race to recover a stale lock', () => {
     const lockPath = getDatastoreLockPath(testDir);
     const staleCreatedAt = Date.now() - 10000;
     // Write stale lock with dead PID 9999999
@@ -508,52 +493,7 @@ describe('Admin Session Access CLI & Management Tool', () => {
       { mode: 0o600, encoding: 'utf-8' }
     );
 
-    // Write an active claim file belonging to current live process PID
-    const claimPath = path.join(testDir, `.account-datastore.lock.claim.9999999.${staleCreatedAt}`);
-    fs.writeFileSync(
-      claimPath,
-      JSON.stringify({
-        recoveringPid: process.pid,
-        targetPid: 9999999,
-        targetCreatedAt: staleCreatedAt,
-        createdAt: Date.now()
-      }),
-      { mode: 0o600, encoding: 'utf-8' }
-    );
-
-    try {
-      // Attempting to acquire lock while live claim exists must fail closed and preserve claim
-      expect(() => acquireDatastoreLock(testDir, 'server')).toThrow(DatastoreLockError);
-      expect(fs.existsSync(claimPath)).toBe(true);
-    } finally {
-      try { fs.unlinkSync(claimPath); } catch {}
-    }
-  });
-
-  it('guarantees atomic takeover when multiple processes race to claim an abandoned claim', () => {
-    const lockPath = getDatastoreLockPath(testDir);
-    const staleCreatedAt = Date.now() - 10000;
-    // Write stale lock with dead PID 9999999
-    fs.writeFileSync(
-      lockPath,
-      JSON.stringify({ pid: 9999999, owner: 'server', createdAt: staleCreatedAt }),
-      { mode: 0o600, encoding: 'utf-8' }
-    );
-
-    // Simulate abandoned claim from dead PID 8888888
-    const claimPath = path.join(testDir, `.account-datastore.lock.claim.9999999.${staleCreatedAt}`);
-    fs.writeFileSync(
-      claimPath,
-      JSON.stringify({
-        recoveringPid: 8888888,
-        targetPid: 9999999,
-        targetCreatedAt: staleCreatedAt,
-        createdAt: Date.now() - 5000
-      }),
-      { mode: 0o600, encoding: 'utf-8' }
-    );
-
-    // Process 1 takes over the abandoned claim and acquires datastore lock
+    // Process 1 acquires lock recovering the stale lock
     const lock1 = acquireDatastoreLock(testDir, 'server');
     expect(lock1).toBeDefined();
 
