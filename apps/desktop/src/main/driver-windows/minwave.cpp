@@ -127,7 +127,7 @@ KDEFERRED_ROUTINE WaveRTServicingDpcRoutine;
 /*
  * CMiniportWaveRTCaptureStream
  * Real-time WaveRT capture stream reading from nonpaged kernel shared segment
- * using PortCls IPortWaveRTStream buffer allocation model and cyclic servicing.
+ * using PortCls IPortWaveRTStream buffer allocation model and high-precision cyclic servicing.
  */
 class CMiniportWaveRTCaptureStream : public IMiniportWaveRTStreamNotification, public CUnknown {
 private:
@@ -137,7 +137,7 @@ private:
     ULONG m_ulDmaBufferSize;
     ULONG m_ulNotificationCount;
     ULONG m_ulNotificationIntervalFrames;
-    ULONG m_ulNotificationPeriodMs;
+    ULONGLONG m_ullServicingCount;
     ULONG m_ulPosition;
     ULONGLONG m_ullLinearPosition;
     JaMeetKernelConsumer m_Consumer;
@@ -160,9 +160,9 @@ public:
         m_pAudioBufferMdl = NULL;
         m_pDmaBuffer = NULL;
         m_ulDmaBufferSize = 0;
-        m_ulNotificationCount = 10;
+        m_ulNotificationCount = 2;
         m_ulNotificationIntervalFrames = 480; /* Default 10 ms @ 48 kHz */
-        m_ulNotificationPeriodMs = 10;
+        m_ullServicingCount = 0;
         m_ulPosition = 0;
         m_ullLinearPosition = 0;
         m_bFloatFormat = TRUE;
@@ -227,15 +227,19 @@ public:
         m_StreamState = State;
         if (State == KSSTATE_RUN) {
             m_Consumer.active = TRUE;
-            /* Start periodic timer servicing matching exact calculated notification period */
+            m_ullServicingCount = 0;
+
+            /* Schedule first servicing DPC with exact 100-ns precision matching 48 kHz clock */
+            LONGLONG step100ns = ((LONGLONG)m_ulNotificationIntervalFrames * 10000000LL) / 48000LL;
             LARGE_INTEGER dueTime;
-            dueTime.QuadPart = -((LONGLONG)m_ulNotificationPeriodMs * 10000LL);
-            KeSetTimerEx(&m_Timer, dueTime, m_ulNotificationPeriodMs, &m_Dpc);
+            dueTime.QuadPart = -step100ns;
+            KeSetTimer(&m_Timer, dueTime, &m_Dpc);
         } else if (State == KSSTATE_STOP) {
             KeCancelTimer(&m_Timer);
             KeRemoveQueueDpc(&m_Dpc);
             m_Consumer.active = FALSE;
             m_ulPosition = 0;
+            m_ullServicingCount = 0;
         } else if (State == KSSTATE_PAUSE) {
             KeCancelTimer(&m_Timer);
             KeRemoveQueueDpc(&m_Dpc);
@@ -393,10 +397,6 @@ public:
         m_ulDmaBufferSize = bufferSize;
         m_ulNotificationCount = NotificationCount;
         m_ulNotificationIntervalFrames = framesPerSegment;
-        m_ulNotificationPeriodMs = (framesPerSegment * 1000) / 48000;
-        if (m_ulNotificationPeriodMs == 0) {
-            m_ulNotificationPeriodMs = 1;
-        }
 
         *AudioBufferMdl = pMdl;
         *ActualSize = bufferSize;
@@ -494,6 +494,17 @@ public:
             }
         }
         KeReleaseSpinLock(&m_EventLock, oldIrql);
+
+        /* Re-arm timer for next servicing step with cumulative drift-free 100-ns precision */
+        m_ullServicingCount++;
+        if (m_StreamState == KSSTATE_RUN) {
+            LONGLONG nextTotal100ns = ((LONGLONG)(m_ullServicingCount + 1) * m_ulNotificationIntervalFrames * 10000000LL) / 48000LL;
+            LONGLONG currTotal100ns = ((LONGLONG)m_ullServicingCount * m_ulNotificationIntervalFrames * 10000000LL) / 48000LL;
+            LONGLONG step100ns = nextTotal100ns - currTotal100ns;
+            LARGE_INTEGER dueTime;
+            dueTime.QuadPart = -step100ns;
+            KeSetTimer(&m_Timer, dueTime, &m_Dpc);
+        }
     }
 };
 
