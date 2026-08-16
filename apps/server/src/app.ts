@@ -682,7 +682,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
     }
 
-    rooms.rooms.delete(room.code);
+    rooms.close(room.code);
   }
 
   function removeParticipantDueToAccessLoss(room: Room, participant: Participant, reason: string) {
