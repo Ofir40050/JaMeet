@@ -1065,6 +1065,75 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('rejects workspace updates containing empty or duplicate task IDs without mutating state', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-id-val-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'owner-task-id-1',
+        displayName: 'Owner Alice',
+        username: 'alice',
+        email: 'alice@music.com',
+        avatarColor: '#6366f1',
+        isGuest: false,
+        createdAt: 1000
+      };
+
+      const project = store.createProject(owner, { name: 'Task ID Validation Song' });
+
+      // Baseline state
+      const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
+
+      // 1. Reject empty task ID
+      const emptyIdRes = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: '', title: 'Empty ID Task', status: 'todo' }
+          ]
+        }
+      });
+      expect(emptyIdRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 2. Reject whitespace-only task ID
+      const wsIdRes = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: '   ', title: 'Whitespace ID Task', status: 'todo' }
+          ]
+        }
+      });
+      expect(wsIdRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 3. Reject duplicate task IDs
+      const dupIdRes = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'First Task', status: 'todo' },
+            { id: 'task-1', title: 'Duplicate ID Task', status: 'in_progress' }
+          ]
+        }
+      });
+      expect(dupIdRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 4. Accept valid unique task IDs
+      const validRes = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'First Task', status: 'todo' },
+            { id: 'task-2', title: 'Second Task', status: 'todo' }
+          ]
+        }
+      });
+      expect(validRes).not.toBeNull();
+      expect(validRes?.workspace.tasks.tasks.length).toBe(2);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

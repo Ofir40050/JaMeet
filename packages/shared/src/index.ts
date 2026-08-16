@@ -260,7 +260,7 @@ export const projectTaskStatusSchema = z.enum(['todo', 'in_progress', 'done']);
 export type ProjectTaskStatus = z.infer<typeof projectTaskStatusSchema>;
 
 export const projectTaskItemSchema = z.object({
-  id: z.string(),
+  id: z.string().trim().min(1, 'Task ID is required'),
   title: z.string().trim().min(1, 'Task title is required').max(150),
   status: projectTaskStatusSchema.default('todo'),
   assigneeId: z.string().optional(),

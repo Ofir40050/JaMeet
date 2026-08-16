@@ -4607,6 +4607,84 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('rejects REST and Socket.IO workspace updates containing empty or duplicate task IDs', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-id-rest-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-task-id-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_task_id', 'beta', userStore);
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Task ID Integration Song' });
+
+      // 1. REST update with empty task ID -> 400 Bad Request
+      const emptyIdRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          tasks: {
+            tasks: [{ id: '', title: 'Empty ID Task', status: 'todo' }]
+          }
+        })
+      });
+      expect(emptyIdRes.status).toBe(400);
+
+      // 2. REST update with duplicate task IDs -> rejected with 403 or 400 without changing state
+      const dupIdRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          tasks: {
+            tasks: [
+              { id: 'task-1', title: 'Task One', status: 'todo' },
+              { id: 'task-1', title: 'Task One Duplicate', status: 'in_progress' }
+            ]
+          }
+        })
+      });
+      expect(dupIdRes.status).toBe(403);
+
+      // Verify project tasks remain untouched
+      const projAfterDup = projectStore.getProject(project.id, ownerAuth.user.id);
+      expect(projAfterDup?.workspace.tasks.tasks.length).toBe(0);
+
+      // 3. Socket update with duplicate task IDs -> ack with ok: false
+      const socket = await connected(url);
+      const joinAck = await ack(socket, 'project:workspace:join', {
+        projectId: project.id,
+        authToken: ownerAuth.token
+      });
+      expect(joinAck.ok).toBe(true);
+
+      const socketDupRes = await ack(socket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: ownerAuth.token,
+        updates: {
+          tasks: {
+            tasks: [
+              { id: 'dup-1', title: 'Task A', status: 'todo' },
+              { id: 'dup-1', title: 'Task A Copy', status: 'todo' }
+            ]
+          }
+        }
+      });
+      expect(socketDupRes.ok).toBe(false);
+
+      socket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

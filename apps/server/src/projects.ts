@@ -347,9 +347,18 @@ export class ProjectStore {
       return null;
     }
 
-    // Validate task assignees before performing any workspace mutation or activity recording
+    // Validate tasks (identities and assignees) before performing any workspace mutation or activity recording
     if (updates.tasks && updates.tasks.tasks !== undefined) {
+      const seenTaskIds = new Set<string>();
       for (const t of updates.tasks.tasks) {
+        if (!t.id || typeof t.id !== 'string' || t.id.trim().length === 0) {
+          return null;
+        }
+        if (seenTaskIds.has(t.id)) {
+          return null;
+        }
+        seenTaskIds.add(t.id);
+
         if (t.assigneeId) {
           let memberName: string | null = null;
           if (project.ownerId === t.assigneeId) {
