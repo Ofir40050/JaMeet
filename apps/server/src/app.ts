@@ -17,7 +17,7 @@ import {
   type SessionSummaryEvent, type ProjectActivityItem
 } from '@jameet/shared';
 import type { ServerConfig } from './config.js';
-import { RoomStore, type Room } from './rooms.js';
+import { RoomStore, type Room, type Participant } from './rooms.js';
 import { UserStore, authorizeSessionAccess, validateStoredUserSessionAccess } from './auth.js';
 import { ProjectStore } from './projects.js';
 import { createIceServers } from './turn.js';
@@ -109,6 +109,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   const projectStore = new ProjectStore(dataDir);
   const rooms = new RoomStore(config.DISCONNECT_GRACE_MS, config.EMPTY_ROOM_TTL_MS);
   const runtimeAdminToken = randomUUID();
+  let entitlementInterval: NodeJS.Timeout | undefined;
 
   // Internal Loopback-Only Administration Endpoint
   app.post('/api/internal/admin/session-access', async (request, reply) => {
@@ -178,6 +179,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   process.once('exit', cleanupServerResources);
 
   app.addHook('onClose', async () => {
+    clearInterval(entitlementInterval);
     process.off('SIGINT', handleSignal);
     process.off('SIGTERM', handleSignal);
     process.off('exit', cleanupServerResources);
@@ -610,9 +612,159 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     transports: ['websocket', 'polling']
   });
 
+  function endRoomDueToAccessLoss(room: Room, reason: string) {
+    const project = room.projectId && room.hostIdentity.id
+      ? projectStore.getProject(room.projectId, room.hostIdentity.id)
+      : null;
+
+    try {
+      userStore.recordSessionClose(room.sessionId, {
+        code: room.code,
+        startedAt: room.startedAt,
+        allJoinedParticipants: room.allJoinedParticipants,
+        chatMessagesCount: room.chatMessagesCount || 0,
+        events: room.events || [],
+        projectId: room.projectId,
+        projectName: project?.name
+      });
+    } catch (err) {
+      console.error('Failed to record session close when host lost access:', err);
+    }
+
+    for (const p of Array.from(room.participants.values())) {
+      if (p.timer) clearTimeout(p.timer);
+      if (p.role !== 'host' && !p.identity.isGuest && p.identity.id) {
+        try {
+          userStore.recordSessionClose(room.sessionId, {
+            code: room.code,
+            startedAt: room.startedAt,
+            allJoinedParticipants: room.allJoinedParticipants,
+            chatMessagesCount: room.chatMessagesCount || 0,
+            events: room.events || [],
+            projectId: room.projectId,
+            projectName: project?.name
+          }, p.identity.id);
+        } catch (err) {
+          console.error('Failed to record participant session close when host lost access:', err);
+        }
+      }
+
+      if (p.socketId) {
+        const pSocket = io.sockets.sockets.get(p.socketId) || io.of('/').sockets.get(p.socketId);
+        if (pSocket) {
+          delete (pSocket.data as SocketData).code;
+          delete (pSocket.data as SocketData).participantId;
+          delete (pSocket.data as SocketData).identity;
+          void pSocket.leave(room.code);
+        }
+        io.to(p.socketId).emit('meeting:ended', {
+          code: room.code,
+          message: reason,
+          reason
+        });
+      }
+    }
+
+    for (const wp of Array.from(room.waitingParticipants.values())) {
+      if (wp.socketId) {
+        const wpSocket = io.sockets.sockets.get(wp.socketId) || io.of('/').sockets.get(wp.socketId);
+        if (wpSocket) {
+          delete (wpSocket.data as SocketData).code;
+          delete (wpSocket.data as SocketData).participantId;
+          delete (wpSocket.data as SocketData).identity;
+          void wpSocket.leave(room.code);
+        }
+        io.to(wp.socketId).emit('meeting:ended', {
+          code: room.code,
+          message: reason,
+          reason
+        });
+      }
+    }
+
+    rooms.rooms.delete(room.code);
+  }
+
+  function removeParticipantDueToAccessLoss(room: Room, participant: Participant, reason: string) {
+    if (participant.timer) clearTimeout(participant.timer);
+    rooms.removeParticipant(room.code, participant.id);
+
+    if (!participant.identity.isGuest && participant.identity.id) {
+      const project = room.projectId && room.hostIdentity.id
+        ? projectStore.getProject(room.projectId, room.hostIdentity.id)
+        : null;
+      try {
+        userStore.recordSessionClose(room.sessionId, {
+          code: room.code,
+          startedAt: room.startedAt,
+          allJoinedParticipants: room.allJoinedParticipants,
+          chatMessagesCount: room.chatMessagesCount || 0,
+          events: room.events || [],
+          projectId: room.projectId,
+          projectName: project?.name
+        }, participant.identity.id);
+      } catch (err) {
+        console.error('Failed to record session close on participant access loss:', err);
+      }
+    }
+
+    if (participant.socketId) {
+      const pSocket = io.sockets.sockets.get(participant.socketId) || io.of('/').sockets.get(participant.socketId);
+      if (pSocket) {
+        delete (pSocket.data as SocketData).code;
+        delete (pSocket.data as SocketData).participantId;
+        delete (pSocket.data as SocketData).identity;
+        void pSocket.leave(room.code);
+      }
+      io.to(participant.socketId).emit('meeting:ended', {
+        code: room.code,
+        message: reason,
+        reason
+      });
+    }
+
+    io.to(room.code).emit('peer:left', {
+      participantId: participant.id
+    });
+  }
+
+  function revalidateActiveSessions(now: number = Date.now()) {
+    for (const room of Array.from(rooms.rooms.values())) {
+      // 1. Validate host access
+      if (!room.hostIdentity.isGuest && room.hostIdentity.id) {
+        const hostAuth = validateStoredUserSessionAccess(userStore, room.hostIdentity.id, config, true, now);
+        if (!hostAuth.ok) {
+          endRoomDueToAccessLoss(room, hostAuth.message);
+          continue;
+        }
+      }
+
+      // 2. Validate non-host active participants
+      for (const participant of Array.from(room.participants.values())) {
+        if (participant.role === 'host') continue;
+        if (!participant.identity.isGuest && participant.identity.id) {
+          const partAuth = validateStoredUserSessionAccess(userStore, participant.identity.id, config, false, now);
+          if (!partAuth.ok) {
+            removeParticipantDueToAccessLoss(room, participant, partAuth.message);
+          }
+        }
+      }
+    }
+  }
+
+  entitlementInterval = setInterval(() => {
+    try {
+      revalidateActiveSessions();
+    } catch (err) {
+      console.error('Error during active session entitlement check:', err);
+    }
+  }, 1000);
+  entitlementInterval.unref();
+
   app.addHook('preClose', async () => {
     isShuttingDown = true;
     try {
+      if (entitlementInterval) clearInterval(entitlementInterval);
       rooms.closeAll();
       io.disconnectSockets(true);
       await new Promise<void>((resolve) => {
@@ -632,6 +784,28 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     const limiter = new SocketRateLimiter(customSocketLimits);
     const socketData = socket.data as SocketData;
     socketData.limiter = limiter;
+
+    const enforceSocketSessionAccess = (): boolean => {
+      if (socketData.code && socketData.participantId && socketData.identity && !socketData.identity.isGuest && socketData.identity.id) {
+        const room = rooms.rooms.get(socketData.code);
+        if (room) {
+          const isHost = socketData.identity.id === room.hostIdentity.id;
+          const authCheck = validateStoredUserSessionAccess(userStore, socketData.identity.id, config, isHost, Date.now());
+          if (!authCheck.ok) {
+            if (isHost) {
+              endRoomDueToAccessLoss(room, authCheck.message);
+            } else {
+              const participant = room.participants.get(socketData.participantId);
+              if (participant) {
+                removeParticipantDueToAccessLoss(room, participant, authCheck.message);
+              }
+            }
+            return false;
+          }
+        }
+      }
+      return true;
+    };
 
     // Project Workspace Real-Time Collaborative Sync
     socket.on('project:workspace:join', (raw: { projectId: string; authToken?: string }, ack?: (res: { ok: boolean; workspace?: ProjectWorkspace; message?: string }) => void) => {
@@ -1177,6 +1351,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
     socket.on('signal:description', (raw) => {
       if (!limiter.consume('signaling')) return;
+      if (!enforceSocketSessionAccess()) return;
       const parsed = signalDescriptionSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
@@ -1188,6 +1363,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
     socket.on('signal:candidate', (raw) => {
       if (!limiter.consume('ice')) return;
+      if (!enforceSocketSessionAccess()) return;
       const parsed = signalCandidateSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
@@ -1199,6 +1375,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
     socket.on('signal:renegotiate', (raw) => {
       if (!limiter.consume('signaling')) return;
+      if (!enforceSocketSessionAccess()) return;
       const parsed = signalRenegotiateSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
@@ -1210,6 +1387,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
     socket.on('meeting:action', (raw) => {
       if (!limiter.consume('action')) return;
+      if (!enforceSocketSessionAccess()) return;
       const parsed = meetingActionSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
@@ -1221,6 +1399,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
     socket.on('media:update', (raw) => {
       if (!limiter.consume('media')) return;
+      if (!enforceSocketSessionAccess()) return;
       const parsed = mediaUpdateSchema.safeParse(raw);
       if (!parsed.success || parsed.data.code !== socketData.code || !socketData.participantId || socketData.isWaiting) return;
       const room = rooms.rooms.get(parsed.data.code);
@@ -1234,6 +1413,10 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     socket.on('chat:send', (raw, ack?: (res: { ok: boolean; message?: SessionChatMessage; error?: string }) => void) => {
       if (!limiter.consume('chat')) {
         ack?.({ ok: false, error: 'Too many messages. Please slow down.' });
+        return;
+      }
+      if (!enforceSocketSessionAccess()) {
+        ack?.({ ok: false, error: 'Session access is no longer valid' });
         return;
       }
       const parsed = sendChatMessageSchema.safeParse(raw);

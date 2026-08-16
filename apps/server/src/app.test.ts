@@ -3378,6 +3378,120 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
       await app.close();
     }
   });
+
+  it('ends live session when host loses entitlement or beta expires during active call', async () => {
+    const betaEndMs = Date.now() + 500;
+    const betaEndIso = new Date(betaEndMs).toISOString();
+
+    const { app, io, userStore } = await createApp(loadConfig({
+      NODE_ENV: 'test',
+      TURN_SHARED_SECRET: 'a-secure-test-secret',
+      BETA_END_AT: betaEndIso
+    }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const hostUser = await createTestAccount(url, 'live_beta_host', 'beta', userStore);
+      const guestUser = await createTestAccount(url, 'live_paid_guest', 'paid', userStore);
+
+      const hostSocket = await connected(url);
+      const guestSocket = await connected(url);
+
+      const hostCreateRes = await ack(hostSocket, 'meeting:create', {
+        participantId: '10000000-0000-4000-8000-000000000011',
+        authToken: hostUser.token,
+        media
+      });
+      expect(hostCreateRes.ok).toBe(true);
+      if (!hostCreateRes.ok) return;
+
+      const guestJoinRes = await ack(guestSocket, 'meeting:join', {
+        code: hostCreateRes.code,
+        participantId: '20000000-0000-4000-8000-000000000022',
+        authToken: guestUser.token,
+        media
+      });
+      expect(guestJoinRes.ok).toBe(true);
+      if (!guestJoinRes.ok) return;
+
+      const hostMeetingEndedPromise = new Promise<{ code: string; message: string }>((resolve) => {
+        hostSocket.once('meeting:ended', resolve);
+      });
+      const guestMeetingEndedPromise = new Promise<{ code: string; message: string }>((resolve) => {
+        guestSocket.once('meeting:ended', resolve);
+      });
+
+      // Wait for BETA_END_AT to expire
+      const [hostEnded, guestEnded] = await Promise.all([
+        hostMeetingEndedPromise,
+        guestMeetingEndedPromise
+      ]);
+
+      expect(hostEnded.message).toContain('JaMeet Beta has ended');
+      expect(guestEnded.message).toContain('JaMeet Beta has ended');
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+
+  it('removes non-host participant when their access is revoked during active call while keeping session alive for host', async () => {
+    const { app, io, userStore } = await createApp(loadConfig({
+      NODE_ENV: 'test',
+      TURN_SHARED_SECRET: 'a-secure-test-secret'
+    }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const hostUser = await createTestAccount(url, 'active_host_paid', 'paid', userStore);
+      const guestUser = await createTestAccount(url, 'active_guest_to_block', 'beta', userStore);
+
+      const hostSocket = await connected(url);
+      const guestSocket = await connected(url);
+
+      const hostCreateRes = await ack(hostSocket, 'meeting:create', {
+        participantId: '10000000-0000-4000-8000-000000000033',
+        authToken: hostUser.token,
+        media
+      });
+      expect(hostCreateRes.ok).toBe(true);
+      if (!hostCreateRes.ok) return;
+
+      const guestJoinRes = await ack(guestSocket, 'meeting:join', {
+        code: hostCreateRes.code,
+        participantId: '20000000-0000-4000-8000-000000000044',
+        authToken: guestUser.token,
+        media
+      });
+      expect(guestJoinRes.ok).toBe(true);
+      if (!guestJoinRes.ok) return;
+
+      const guestEndedPromise = new Promise<{ code: string; message: string }>((resolve) => {
+        guestSocket.once('meeting:ended', resolve);
+      });
+      const peerLeftPromise = new Promise<{ participantId: string }>((resolve) => {
+        hostSocket.once('peer:left', resolve);
+      });
+
+      // Block the guest while in the call
+      userStore.setSessionAccess(guestUser.user.id, 'blocked');
+
+      const [guestEnded, peerLeft] = await Promise.all([
+        guestEndedPromise,
+        peerLeftPromise
+      ]);
+
+      expect(guestEnded.message).toContain('does not currently have access');
+      expect(peerLeft.participantId).toBe('20000000-0000-4000-8000-000000000044');
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
 });
 
 
