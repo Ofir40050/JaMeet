@@ -688,10 +688,13 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       const roomName = `project:${projectId}`;
       for (const s of io.sockets.sockets.values()) {
         const sData = s.data as SocketData;
-        const sub = sData?.projectSubscriptions?.get(projectId);
-        if (sub && sub.userId === targetUserId) {
-          sData.projectSubscriptions.delete(projectId);
-          void s.leave(roomName);
+        const projectSubscriptions = sData?.projectSubscriptions;
+        if (projectSubscriptions) {
+          const sub = projectSubscriptions.get(projectId);
+          if (sub && sub.userId === targetUserId) {
+            projectSubscriptions.delete(projectId);
+            void s.leave(roomName);
+          }
         }
       }
       pruneStaleProjectSubscribers(projectId);
