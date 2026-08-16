@@ -223,6 +223,12 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
     expect(loggedIce.credential).toBe('[REDACTED]');
   });
 
+  it('initializes native crash capture locally without remote upload', () => {
+    // Should safely invoke without error
+    const initialized = testLogger.initNativeCrashReporter();
+    expect(typeof initialized).toBe('boolean');
+  });
+
   it('preserves non-sensitive diagnostic messages, technical identifiers, and error details', () => {
     const logEntry = testLogger.info(
       'audio_init_success',

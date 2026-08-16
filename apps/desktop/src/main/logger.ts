@@ -1,4 +1,4 @@
-import { app, ipcMain, WebContents } from 'electron';
+import { app, crashReporter, ipcMain, WebContents } from 'electron';
 import { existsSync, mkdirSync, appendFileSync, statSync, renameSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { release } from 'node:os';
@@ -82,11 +82,18 @@ export class DesktopLogger {
     }
   }
 
-  getLogPaths(): { logDir: string; logFilePath: string; crashFilePath: string } {
+  getLogPaths(): { logDir: string; logFilePath: string; crashFilePath: string; crashDumpsDir?: string } {
+    let crashDumpsDir: string | undefined = undefined;
+    try {
+      if (app?.getPath) {
+        crashDumpsDir = app.getPath('crashDumps');
+      }
+    } catch {}
     return {
       logDir: this.logDir,
       logFilePath: this.logFilePath,
-      crashFilePath: this.crashFilePath
+      crashFilePath: this.crashFilePath,
+      crashDumpsDir
     };
   }
 
@@ -239,9 +246,33 @@ export class DesktopLogger {
     });
   }
 
+  initNativeCrashReporter(): boolean {
+    try {
+      if (!crashReporter?.start) return false;
+      crashReporter.start({
+        submitURL: '',
+        uploadToServer: false,
+        compress: true,
+        globalExtra: {
+          appVersion: this.appVersion,
+          platform: this.platform,
+          arch: this.arch,
+          instanceId: this.instanceId || ''
+        }
+      });
+      return true;
+    } catch (err) {
+      console.warn('[DesktopLogger] Could not initialize native crash reporter:', err);
+      return false;
+    }
+  }
+
   setupGlobalHandlers(): void {
     if (this.isInitialized) return;
     this.isInitialized = true;
+
+    // Initialize native Electron/Chromium local crash dump capture early
+    this.initNativeCrashReporter();
 
     // Use uncaughtExceptionMonitor to observe and persist fatal crashes
     // without altering Node's normal fatal error behavior or swallowing fatal exceptions.
@@ -254,7 +285,7 @@ export class DesktopLogger {
     });
 
     try {
-      app.on('child-process-gone', (_event, details) => {
+      app?.on?.('child-process-gone', (_event, details) => {
         this.recordCrash({
           process: 'child',
           reason: `child-process-gone (${details.type}: ${details.reason})`,
