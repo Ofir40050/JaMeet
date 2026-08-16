@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { UserStore } from './auth.js';
+import { UserStore, type StoredSessionRecord, type StoredScheduledSession } from './auth.js';
 
 describe('UserStore & Password Hashing', () => {
   let testDir: string;
@@ -957,31 +957,44 @@ describe('Session Access State & Centralized Authorization', () => {
       createdAt: Date.now() - 1000,
       expiresAt: Date.now() + 1000000
     };
-    const sessionHistory = {
+    const sessionHistory: StoredSessionRecord = {
       id: 'ses-legacy-1',
+      sessionId: 'ses-legacy-1',
       code: 'ABCD2345',
       userId: 'legacy-user-1',
-      role: 'host' as const,
-      projectId: null,
+      role: 'host',
       startedAt: 5000,
       endedAt: 6000,
       durationSeconds: 1000,
+      collaborator: {
+        id: 'legacy-collab-1',
+        displayName: 'Legacy Collaborator',
+        username: 'legacy_collab',
+        isGuest: false,
+        avatarColor: '#3b82f6'
+      },
       summary: {
         totalParticipants: 2,
         collaboratorNames: ['Legacy Collaborator'],
-        events: [],
+        events: [
+          {
+            id: 'ev-1',
+            timestamp: 5500,
+            category: 'general',
+            action: 'jammed',
+            description: 'Started jam'
+          }
+        ],
         chatMessagesCount: 3
       }
     };
-    const scheduledSession = {
+    const scheduledSession: StoredScheduledSession = {
       id: 'sched-legacy-1',
-      code: 'SCHED123',
-      hostUserId: 'legacy-user-1',
-      hostDisplayName: 'Legacy User',
-      name: 'Legacy Jam',
-      scheduledStartTime: Date.now() + 500000,
-      projectId: null,
-      createdAt: Date.now()
+      userId: 'legacy-user-1',
+      title: 'Legacy Jam Session',
+      scheduledAt: '2026-12-31T20:00:00Z',
+      createdAt: 1000,
+      updatedAt: 1000
     };
 
     const initialDb = {
@@ -1001,8 +1014,22 @@ describe('Session Access State & Centralized Authorization', () => {
     const migrated = store.getStoredUser('legacy-user-1');
     expect(migrated?.sessionAccess).toBe('beta');
     expect(store.verifyToken('tok-legacy-123')).not.toBeNull();
-    expect(store.getSessionHistory('legacy-user-1').length).toBe(1);
-    expect(store.listScheduledSessions().length).toBe(1);
+
+    const history = store.getSessionHistory('legacy-user-1');
+    expect(history.length).toBe(1);
+    expect(history[0]?.id).toBe('ses-legacy-1');
+    expect(history[0]?.collaborator?.displayName).toBe('Legacy Collaborator');
+
+    const scheduled = store.listScheduledSessions('legacy-user-1');
+    expect(scheduled.length).toBe(1);
+    expect(scheduled[0]).toEqual({
+      id: 'sched-legacy-1',
+      userId: 'legacy-user-1',
+      title: 'Legacy Jam Session',
+      scheduledAt: '2026-12-31T20:00:00Z',
+      createdAt: 1000,
+      updatedAt: 1000
+    });
 
     // On-disk verification: verify migration was persisted without erasing other collections
     const rawDisk = fs.readFileSync(accountsPath, 'utf-8');
@@ -1012,8 +1039,16 @@ describe('Session Access State & Centralized Authorization', () => {
     expect(diskDb.tokens[0].token).toBe('tok-legacy-123');
     expect(diskDb.sessions.length).toBe(1);
     expect(diskDb.sessions[0].id).toBe('ses-legacy-1');
+    expect(diskDb.sessions[0].collaborator.displayName).toBe('Legacy Collaborator');
     expect(diskDb.scheduledSessions.length).toBe(1);
-    expect(diskDb.scheduledSessions[0].id).toBe('sched-legacy-1');
+    expect(diskDb.scheduledSessions[0]).toEqual({
+      id: 'sched-legacy-1',
+      userId: 'legacy-user-1',
+      title: 'Legacy Jam Session',
+      scheduledAt: '2026-12-31T20:00:00Z',
+      createdAt: 1000,
+      updatedAt: 1000
+    });
   });
 });
 
