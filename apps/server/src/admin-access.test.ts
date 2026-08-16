@@ -458,14 +458,14 @@ describe('Admin Session Access CLI & Management Tool', () => {
     await expect(app.close()).resolves.not.toThrow();
   });
 
-  it('closes active Socket.IO connections on graceful shutdown and releases datastore lock without hanging', async () => {
+  it('closes active Socket.IO connections in live sessions on graceful shutdown and releases datastore lock without hanging or lingering timers', async () => {
     const config = loadConfig({
       NODE_ENV: 'test',
       DATA_DIR: testDir,
       TURN_SHARED_SECRET: 'test-secret-123456789'
     });
 
-    const { app } = await createApp(config);
+    const { app, rooms, userStore } = await createApp(config);
     await app.listen({ host: '127.0.0.1', port: 0 });
 
     const addr = app.server.address() as any;
@@ -474,26 +474,80 @@ describe('Admin Session Access CLI & Management Tool', () => {
     const lockPath = getDatastoreLockPath(testDir);
     expect(fs.existsSync(lockPath)).toBe(true);
 
-    // Connect active Socket.IO client
-    const socket: ClientSocket = ioc(url, { transports: ['websocket'] });
-    await new Promise<void>((resolve) => {
-      socket.on('connect', () => resolve());
+    // Register host and guest accounts with beta session access
+    const hostReg = await userStore.register({
+      username: 'shutdown_host',
+      email: 'host@shutdown.com',
+      password: 'Password123!',
+      displayName: 'Shutdown Host'
     });
-    expect(socket.connected).toBe(true);
+    userStore.setSessionAccess(hostReg.user.id, 'beta');
 
-    // Trigger graceful shutdown while Socket.IO client is connected
+    const guestReg = await userStore.register({
+      username: 'shutdown_guest',
+      email: 'guest@shutdown.com',
+      password: 'Password123!',
+      displayName: 'Shutdown Guest'
+    });
+    userStore.setSessionAccess(guestReg.user.id, 'beta');
+
+    // Connect host and guest Socket.IO clients
+    const hostSocket: ClientSocket = ioc(url, { transports: ['websocket'] });
+    const guestSocket: ClientSocket = ioc(url, { transports: ['websocket'] });
+
+    await Promise.all([
+      new Promise<void>((resolve) => hostSocket.on('connect', () => resolve())),
+      new Promise<void>((resolve) => guestSocket.on('connect', () => resolve()))
+    ]);
+
+    const media = {
+      audioSources: [{ id: 'primary', purpose: 'primary' as const, mode: 'music' as const, enabled: true, channels: 2 }],
+      cameraEnabled: true
+    };
+
+    // Host creates meeting
+    const hostAck = await new Promise<any>((resolve) => {
+      hostSocket.emit('meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        authToken: hostReg.token,
+        media
+      }, resolve);
+    });
+    expect(hostAck.ok).toBe(true);
+
+    // Guest joins meeting
+    const guestAck = await new Promise<any>((resolve) => {
+      guestSocket.emit('meeting:join', {
+        code: hostAck.code,
+        participantId: '22222222-2222-4222-8222-222222222222',
+        authToken: guestReg.token,
+        media
+      }, resolve);
+    });
+    expect(guestAck.ok).toBe(true);
+
+    // Verify session is actively alive in RoomStore
+    expect(rooms.rooms.size).toBe(1);
+    expect(rooms.rooms.get(hostAck.code)?.participants.size).toBe(2);
+
+    // Trigger graceful shutdown while both clients are inside the live session
     const closePromise = app.close();
 
-    // Verify shutdown resolves cleanly
+    // Verify shutdown resolves cleanly without hanging
     await expect(closePromise).resolves.not.toThrow();
 
-    // Socket.IO client must be disconnected
-    expect(socket.connected).toBe(false);
+    // Both sockets must be disconnected
+    expect(hostSocket.connected).toBe(false);
+    expect(guestSocket.connected).toBe(false);
+
+    // Rooms and grace timers must be cleared
+    expect(rooms.rooms.size).toBe(0);
 
     // Lock and runtime file must be released
     expect(fs.existsSync(lockPath)).toBe(false);
     expect(fs.existsSync(getAdminRuntimeFilePath(testDir))).toBe(false);
 
-    socket.disconnect();
+    hostSocket.disconnect();
+    guestSocket.disconnect();
   });
 });

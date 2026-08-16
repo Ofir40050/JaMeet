@@ -611,11 +611,14 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   });
 
   app.addHook('preClose', async () => {
+    isShuttingDown = true;
     try {
+      rooms.closeAll();
       io.disconnectSockets(true);
       await new Promise<void>((resolve) => {
         io.close(() => resolve());
       });
+      rooms.closeAll();
     } catch {
       // ignore
     }
@@ -1256,6 +1259,13 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     const leave = (explicit: boolean) => {
       const { code, participantId, isWaiting } = socketData;
       if (!code || !participantId) return;
+      if (isShuttingDown) {
+        delete socketData.code;
+        delete socketData.participantId;
+        delete socketData.identity;
+        delete socketData.isWaiting;
+        return;
+      }
       if (isWaiting) {
         const room = rooms.rooms.get(code);
         const waiting = room?.waitingParticipants.get(participantId);

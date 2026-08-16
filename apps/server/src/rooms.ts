@@ -269,4 +269,10 @@ export class RoomStore {
     for (const participant of room.waitingParticipants.values()) if (participant.timer) clearTimeout(participant.timer);
     this.rooms.delete(code);
   }
+
+  closeAll(): void {
+    for (const code of Array.from(this.rooms.keys())) {
+      this.close(code);
+    }
+  }
 }
