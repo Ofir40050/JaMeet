@@ -148,8 +148,6 @@ private:
     KSSTATE m_StreamState;
 
 public:
-    volatile LONG m_lDpcActive;
-
     DECLARE_STD_UNKNOWN();
 
     CMiniportWaveRTCaptureStream(PUNKNOWN pUnknownOuter) : CUnknown(pUnknownOuter) {
@@ -165,7 +163,6 @@ public:
         m_pNotificationEvents[0] = NULL;
         m_pNotificationEvents[1] = NULL;
         m_StreamState = KSSTATE_STOP;
-        m_lDpcActive = 0;
 
         JaMeetKernelConsumer_Init(&m_Consumer);
         KeInitializeSpinLock(&m_EventLock);
@@ -174,14 +171,14 @@ public:
     }
 
     ~CMiniportWaveRTCaptureStream() {
-        KeCancelTimer(&m_Timer);
+        m_StreamState = KSSTATE_STOP;
 
-        /* Focused per-stream DPC lifetime synchronization */
-        while (InterlockedCompareExchange(&m_lDpcActive, 0, 0) != 0) {
-            LARGE_INTEGER interval;
-            interval.QuadPart = -10000LL; /* 1 ms wait */
-            KeDelayExecutionThread(KernelMode, FALSE, &interval);
-        }
+        /* Cancel timer and dequeue any pending DPC */
+        KeCancelTimer(&m_Timer);
+        KeRemoveQueueDpc(&m_Dpc);
+
+        /* Flush queued/running DPCs across all processors to guarantee no DPC can execute */
+        KeFlushQueuedDpcs();
 
         if (m_pDmaBuffer) {
             ExFreePoolWithTag(m_pDmaBuffer, 'TMJR');
@@ -219,10 +216,12 @@ public:
             KeSetTimerEx(&m_Timer, dueTime, m_ulNotificationPeriodMs, &m_Dpc);
         } else if (State == KSSTATE_STOP) {
             KeCancelTimer(&m_Timer);
+            KeRemoveQueueDpc(&m_Dpc);
             m_Consumer.active = FALSE;
             m_ulPosition = 0;
         } else if (State == KSSTATE_PAUSE) {
             KeCancelTimer(&m_Timer);
+            KeRemoveQueueDpc(&m_Dpc);
         }
         return STATUS_SUCCESS;
     }
@@ -444,9 +443,7 @@ VOID WaveRTServicingDpcRoutine(
     (void)SystemArgument2;
     CMiniportWaveRTCaptureStream* pStream = (CMiniportWaveRTCaptureStream*)DeferredContext;
     if (pStream) {
-        InterlockedIncrement(&pStream->m_lDpcActive);
         pStream->ServicePeriodicTransfer();
-        InterlockedDecrement(&pStream->m_lDpcActive);
     }
 }
 
