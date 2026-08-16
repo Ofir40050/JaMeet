@@ -211,4 +211,59 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     expect(isFormatSupported(48000, 1, 32, true)).toBe(false);
     expect(isFormatSupported(48000, 2, 24, false)).toBe(false);
   });
+
+  it('verifies kernel consumer frame continuity across multi-slot boundaries', () => {
+    const JAMEET_SLOT_FRAMES = 128;
+    const JAMEET_SLOT_MASK = 127;
+
+    // Simulate 5 slots populated with continuous ascending frame numbers
+    const slots = new Map<number, { slotStart: number; validFrames: number }>();
+    for (let s = 0; s < 5; s++) {
+      slots.set(s, {
+        slotStart: s * JAMEET_SLOT_FRAMES,
+        validFrames: JAMEET_SLOT_FRAMES
+      });
+    }
+
+    const frameCount = 480;
+    const writeSequence = 640; // 5 full slots produced
+    let targetFrame = 100; // Starting at frame 100 (inside slot 0)
+    let framesDelivered = 0;
+    const collectedRanges: { start: number; length: number }[] = [];
+
+    while (framesDelivered < frameCount) {
+      if (targetFrame >= writeSequence) {
+        const remaining = frameCount - framesDelivered;
+        framesDelivered = frameCount;
+        targetFrame += remaining;
+        break;
+      }
+
+      const slotIdx = Math.floor(targetFrame / JAMEET_SLOT_FRAMES) & JAMEET_SLOT_MASK;
+      const offsetInSlot = targetFrame % JAMEET_SLOT_FRAMES;
+      const slot = slots.get(slotIdx);
+
+      if (!slot) break;
+
+      const framesInSlot = slot.validFrames - offsetInSlot;
+      const availableFromProducer = writeSequence - targetFrame;
+      const toCopy = Math.min(frameCount - framesDelivered, Math.min(framesInSlot, availableFromProducer));
+
+      collectedRanges.push({ start: targetFrame, length: toCopy });
+      framesDelivered += toCopy;
+      targetFrame += toCopy;
+    }
+
+    expect(framesDelivered).toBe(480);
+    expect(targetFrame).toBe(580);
+
+    // Verify all ranges are contiguous: 100..128 (28), 128..256 (128), 256..384 (128), 384..512 (128), 512..580 (68)
+    expect(collectedRanges).toEqual([
+      { start: 100, length: 28 },
+      { start: 128, length: 128 },
+      { start: 256, length: 128 },
+      { start: 384, length: 128 },
+      { start: 512, length: 68 }
+    ]);
+  });
 });

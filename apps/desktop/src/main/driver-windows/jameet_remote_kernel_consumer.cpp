@@ -25,8 +25,11 @@ static inline uint64_t jameet_read_sequence_acquire(const volatile uint64_t* ptr
 }
 #endif
 
-#define JAMEET_MAX_SEQLOCK_RETRIES      3
 #define JAMEET_MAX_HEARTBEAT_AGE_MS     500ULL
+
+#ifndef MIN_VAL
+#define MIN_VAL(a, b) (((a) < (b)) ? (a) : (b))
+#endif
 
 void JaMeetKernelConsumer_Init(JaMeetKernelConsumer* consumer) {
     if (!consumer) return;
@@ -123,91 +126,76 @@ uint32_t JaMeetKernelConsumer_ReadFloatFrames(
         targetFrame = (writeSequence > JAMEET_TOTAL_FRAMES) ? (writeSequence - JAMEET_TOTAL_FRAMES / 2) : 0;
     }
 
-    /* 5. Slot Reading with Seqlock Parity and Untrusted Value Hardening */
+    /* 5. Continuous Multi-Slot Reading with Seqlock Parity and Untrusted Value Hardening */
     uint32_t framesDelivered = 0;
 
     while (framesDelivered < frameCount) {
-        /* Check if we've reached current produced writeSequence */
         if (targetFrame >= writeSequence) {
             /* Remaining frames are not produced yet -> exact digital silence */
             uint32_t remainingFrames = frameCount - framesDelivered;
             memset(&outFloatPcm[framesDelivered * JAMEET_CHANNELS], 0, remainingFrames * JAMEET_CHANNELS * sizeof(float));
             framesDelivered = frameCount;
+            targetFrame += remainingFrames;
             break;
         }
 
         uint32_t slotIdx = (uint32_t)((targetFrame / JAMEET_SLOT_FRAMES) & JAMEET_SLOT_MASK);
+        uint32_t offsetInSlot = (uint32_t)(targetFrame % JAMEET_SLOT_FRAMES);
+        uint64_t expectedSlotStartFrame = targetFrame - offsetInSlot;
+
         const JaMeetAudioSlot* slot = &segment->slots[slotIdx];
 
-        uint32_t framesToCopy = frameCount - framesDelivered;
-        if (framesToCopy > JAMEET_SLOT_FRAMES) {
-            framesToCopy = JAMEET_SLOT_FRAMES;
+        /* Pre-read Seqlock Guard: Must be EVEN. If ODD, writer in progress -> silence this chunk */
+        uint64_t seq1 = jameet_read_sequence_acquire(&slot->publishSequence);
+        if ((seq1 & 1ULL) != 0) {
+            uint32_t framesInSlot = JAMEET_SLOT_FRAMES - offsetInSlot;
+            uint32_t availableFromProducer = (uint32_t)(writeSequence - targetFrame);
+            uint32_t toZero = MIN_VAL(frameCount - framesDelivered, MIN_VAL(framesInSlot, availableFromProducer));
+            memset(&outFloatPcm[framesDelivered * JAMEET_CHANNELS], 0, toZero * JAMEET_CHANNELS * sizeof(float));
+            framesDelivered += toZero;
+            targetFrame += toZero;
+            continue;
         }
 
-        /* Seqlock read loop with atomic acquire semantics */
-        bool readSuccess = false;
-        uint32_t actualFramesCopied = 0;
-        uint32_t tempBits[JAMEET_SLOT_SAMPLES];
-
-        for (int retry = 0; retry < JAMEET_MAX_SEQLOCK_RETRIES; retry++) {
-            uint64_t seq1 = jameet_read_sequence_acquire(&slot->publishSequence);
-            if (seq1 & 1) {
-                continue; /* Writer in progress */
-            }
-
-            /* Verify slot belongs to the current active generation */
-            if (slot->producerGeneration != currentGeneration) {
-                break;
-            }
-
-            /* Verify slot covers targetFrame */
-            uint64_t slotStart = slot->slotStartFrame;
-            uint32_t validFrames = slot->validFrames;
-            if (validFrames > JAMEET_SLOT_FRAMES) {
-                validFrames = JAMEET_SLOT_FRAMES; /* Clamp untrusted validFrames */
-            }
-
-            if (targetFrame < slotStart || targetFrame >= slotStart + validFrames) {
-                break; /* Target frame outside valid produced range in this slot */
-            }
-
-            uint32_t slotRelativeOffset = (uint32_t)(targetFrame - slotStart);
-            uint32_t validRemainingInSlot = (slotRelativeOffset < validFrames) ? (validFrames - slotRelativeOffset) : 0;
-            if (validRemainingInSlot == 0) {
-                break;
-            }
-
-            uint32_t chunkFrames = (framesToCopy < validRemainingInSlot) ? framesToCopy : validRemainingInSlot;
-            uint32_t samplesToRead = chunkFrames * JAMEET_CHANNELS;
-            uint32_t sampleStart = slotRelativeOffset * JAMEET_CHANNELS;
-
-            for (uint32_t i = 0; i < samplesToRead; i++) {
-                tempBits[i] = slot->pcmBits[sampleStart + i];
-            }
-
-            uint64_t seq2 = jameet_read_sequence_acquire(&slot->publishSequence);
-            if (seq1 == seq2) {
-                readSuccess = true;
-                actualFramesCopied = chunkFrames;
-                break;
-            }
+        /* Read slot metadata */
+        uint64_t slotGen = slot->producerGeneration;
+        uint64_t slotStart = slot->slotStartFrame;
+        uint32_t validCount = slot->validFrames;
+        if (validCount > JAMEET_SLOT_FRAMES) {
+            validCount = JAMEET_SLOT_FRAMES; /* Clamp untrusted validFrames */
         }
 
-        if (readSuccess && actualFramesCopied > 0) {
-            for (uint32_t i = 0; i < actualFramesCopied * JAMEET_CHANNELS; i++) {
-                outFloatPcm[(framesDelivered * JAMEET_CHANNELS) + i] = sanitize_sample(tempBits[i]);
-            }
-            if (actualFramesCopied < framesToCopy) {
-                /* Fill remainder with silence */
-                memset(&outFloatPcm[(framesDelivered + actualFramesCopied) * JAMEET_CHANNELS], 0, (framesToCopy - actualFramesCopied) * JAMEET_CHANNELS * sizeof(float));
-            }
-        } else {
-            /* Fallback to exact digital silence for this quantum */
-            memset(&outFloatPcm[framesDelivered * JAMEET_CHANNELS], 0, framesToCopy * JAMEET_CHANNELS * sizeof(float));
+        if (slotGen != currentGeneration || slotStart != expectedSlotStartFrame || offsetInSlot >= validCount) {
+            uint32_t framesInSlot = JAMEET_SLOT_FRAMES - offsetInSlot;
+            uint32_t availableFromProducer = (uint32_t)(writeSequence - targetFrame);
+            uint32_t toZero = MIN_VAL(frameCount - framesDelivered, MIN_VAL(framesInSlot, availableFromProducer));
+            memset(&outFloatPcm[framesDelivered * JAMEET_CHANNELS], 0, toZero * JAMEET_CHANNELS * sizeof(float));
+            framesDelivered += toZero;
+            targetFrame += toZero;
+            continue;
         }
 
-        framesDelivered += framesToCopy;
-        targetFrame += framesToCopy;
+        uint32_t framesInSlot = validCount - offsetInSlot;
+        uint32_t availableFromProducer = (uint32_t)(writeSequence - targetFrame);
+        uint32_t toCopy = MIN_VAL(frameCount - framesDelivered, MIN_VAL(framesInSlot, availableFromProducer));
+
+        /* Read PCM sample bits and sanitize float values */
+        for (uint32_t f = 0; f < toCopy; f++) {
+            uint32_t rawL = slot->pcmBits[(offsetInSlot + f) * JAMEET_CHANNELS + 0];
+            uint32_t rawR = slot->pcmBits[(offsetInSlot + f) * JAMEET_CHANNELS + 1];
+            outFloatPcm[(framesDelivered + f) * JAMEET_CHANNELS + 0] = sanitize_sample(rawL);
+            outFloatPcm[(framesDelivered + f) * JAMEET_CHANNELS + 1] = sanitize_sample(rawR);
+        }
+
+        /* Post-read Seqlock Guard */
+        uint64_t seq2 = jameet_read_sequence_acquire(&slot->publishSequence);
+        if (seq1 != seq2 || (seq2 & 1ULL) != 0) {
+            /* Torn read: discard copied output and fill with digital silence */
+            memset(&outFloatPcm[framesDelivered * JAMEET_CHANNELS], 0, toCopy * JAMEET_CHANNELS * sizeof(float));
+        }
+
+        framesDelivered += toCopy;
+        targetFrame += toCopy;
     }
 
     if (consumer) {
