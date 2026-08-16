@@ -14,6 +14,12 @@ import {
   cleanupAdminRuntimeFile,
   ALLOWED_SESSION_ACCESS_STATES
 } from './admin-access.js';
+import {
+  acquireDatastoreLock,
+  readDatastoreLockInfo,
+  getDatastoreLockPath,
+  DatastoreLockError
+} from './datastore-lock.js';
 
 describe('Admin Session Access CLI & Management Tool', () => {
   let testDir: string;
@@ -162,7 +168,7 @@ describe('Admin Session Access CLI & Management Tool', () => {
     });
   });
 
-  it('executes runCli offline and safely acquires lockfile', async () => {
+  it('executes runCli offline and safely acquires exclusive datastore lock', async () => {
     const store = new UserStore(testDir);
     await store.register({
       username: 'cli_artist',
@@ -182,6 +188,9 @@ describe('Admin Session Access CLI & Management Tool', () => {
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('cli_artist@example.com'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Previous Access: blocked'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('New Access: beta'));
+
+      // Verify lock was cleanly released after command finished
+      expect(fs.existsSync(getDatastoreLockPath(testDir))).toBe(false);
 
       // 2. Account not found
       const exitCode2 = await runCli(['nonexistent_user', 'beta', '--data-dir', testDir]);
@@ -205,6 +214,32 @@ describe('Admin Session Access CLI & Management Tool', () => {
     } finally {
       consoleLogSpy.mockRestore();
       consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('server startup fails closed when datastore lock is already held by another process', async () => {
+    // Acquire datastore lock manually as another process
+    const lock = acquireDatastoreLock(testDir, 'admin-cli');
+
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      DATA_DIR: testDir,
+      TURN_SHARED_SECRET: 'test-secret-123456789'
+    });
+
+    try {
+      // Attempting to start server must fail closed rather than becoming a second writer
+      await expect(createApp(config)).rejects.toThrow(DatastoreLockError);
+    } finally {
+      lock.release();
+    }
+
+    // After release, server startup succeeds
+    const serverInstance = await createApp(config);
+    try {
+      expect(serverInstance.datastoreLock).toBeDefined();
+    } finally {
+      await serverInstance.app.close();
     }
   });
 
@@ -233,7 +268,7 @@ describe('Admin Session Access CLI & Management Tool', () => {
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       try {
-        // Run CLI pointing to testDir where the live server runtime file exists
+        // Run CLI pointing to testDir where the live server holds the datastore lock
         const exitCode = await runCli(['live_producer', 'paid', '--data-dir', testDir]);
         expect(exitCode).toBe(0);
         expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Updated session access successfully'));
@@ -252,6 +287,23 @@ describe('Admin Session Access CLI & Management Tool', () => {
       }
     } finally {
       await app.close();
+    }
+  });
+
+  it('fails closed when datastore lock is held by server but admin discovery file is unavailable', async () => {
+    // Acquire lock pretending to be a running server
+    const lock = acquireDatastoreLock(testDir, 'server');
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      // CLI must not open a second UserStore when server lock is held without discovery
+      const exitCode = await runCli(['any_user', 'beta', '--data-dir', testDir]);
+      expect(exitCode).toBe(1);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('runtime discovery information could not be read'));
+    } finally {
+      lock.release();
+      consoleErrorSpy.mockRestore();
     }
   });
 
@@ -320,7 +372,7 @@ describe('Admin Session Access CLI & Management Tool', () => {
     }
   });
 
-  it('recovers from stale runtime file when server process is dead', async () => {
+  it('recovers conservatively from stale lock file when recorded owner PID is dead', async () => {
     const store = new UserStore(testDir);
     await store.register({
       username: 'offline_user',
@@ -329,13 +381,13 @@ describe('Admin Session Access CLI & Management Tool', () => {
       displayName: 'Offline User'
     });
 
-    // Write a fake stale runtime file with a dead PID (e.g. 9999999)
-    writeAdminRuntimeFile(testDir, {
-      pid: 9999999,
-      port: 59999,
-      adminToken: 'dead-token',
-      dataDir: testDir
-    });
+    // Write a fake stale lock file with a dead PID (e.g. 9999999)
+    const lockPath = getDatastoreLockPath(testDir);
+    fs.writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: 9999999, owner: 'admin-cli', createdAt: Date.now() }),
+      { mode: 0o600, encoding: 'utf-8' }
+    );
 
     const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -346,37 +398,35 @@ describe('Admin Session Access CLI & Management Tool', () => {
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Updated session access successfully'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('New Access: beta'));
 
-      // Verify stale runtime file was removed
-      expect(fs.existsSync(getAdminRuntimeFilePath(testDir))).toBe(false);
+      // Verify lock was cleanly released after successful offline execution
+      expect(fs.existsSync(lockPath)).toBe(false);
     } finally {
       consoleLogSpy.mockRestore();
       consoleErrorSpy.mockRestore();
     }
   });
 
-  it('fails safely when an offline lock collision occurs', async () => {
-    const store = new UserStore(testDir);
-    await store.register({
-      username: 'lock_user',
-      email: 'lock@example.com',
-      password: 'Password123!',
-      displayName: 'Lock User'
+  it('enforces 0o600 permissions on runtime admin file even when replacing an existing file', () => {
+    writeAdminRuntimeFile(testDir, {
+      pid: process.pid,
+      port: 3000,
+      adminToken: 'initial-token',
+      dataDir: testDir
     });
 
-    // Create active offline lock
-    const lockFile = path.join(testDir, '.admin-offline.lock');
-    fs.writeFileSync(lockFile, JSON.stringify({ pid: 12345, createdAt: Date.now() }), 'utf-8');
+    const runtimeFilePath = getAdminRuntimeFilePath(testDir);
+    expect(fs.existsSync(runtimeFilePath)).toBe(true);
 
-    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Overwrite existing file
+    writeAdminRuntimeFile(testDir, {
+      pid: process.pid,
+      port: 3001,
+      adminToken: 'replaced-token',
+      dataDir: testDir
+    });
 
-    try {
-      const exitCode = await runCli(['lock_user', 'beta', '--data-dir', testDir]);
-      expect(exitCode).toBe(1);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Another administration process is currently modifying the database'));
-    } finally {
-      consoleLogSpy.mockRestore();
-      consoleErrorSpy.mockRestore();
-    }
+    const stat = fs.statSync(runtimeFilePath);
+    // 0o600 in octal (user read/write only, no group/other)
+    expect(stat.mode & 0o777).toBe(0o600);
   });
 });

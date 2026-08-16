@@ -4,6 +4,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { UserStore, type SessionAccessState } from './auth.js';
+import {
+  acquireDatastoreLock,
+  readDatastoreLockInfo,
+  isProcessAlive,
+  type DatastoreLock
+} from './datastore-lock.js';
 
 export const ALLOWED_SESSION_ACCESS_STATES: readonly SessionAccessState[] = ['blocked', 'beta', 'paid'] as const;
 
@@ -28,15 +34,21 @@ export function getAdminRuntimeFilePath(dataDir: string): string {
 }
 
 export function writeAdminRuntimeFile(dataDir: string, info: Omit<AdminRuntimeInfo, 'createdAt'>): void {
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  const filePath = getAdminRuntimeFilePath(dataDir);
+  const content: AdminRuntimeInfo = { ...info, createdAt: Date.now() };
+  if (fs.existsSync(filePath)) {
+    try {
+      fs.unlinkSync(filePath);
+    } catch {}
+  }
+  fs.writeFileSync(filePath, JSON.stringify(content, null, 2), { mode: 0o600, encoding: 'utf-8' });
   try {
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-    const filePath = getAdminRuntimeFilePath(dataDir);
-    const content: AdminRuntimeInfo = { ...info, createdAt: Date.now() };
-    fs.writeFileSync(filePath, JSON.stringify(content, null, 2), { mode: 0o600, encoding: 'utf-8' });
+    fs.chmodSync(filePath, 0o600);
   } catch {
-    // Non-fatal if filesystem is unwritable in test fixtures
+    // Non-fatal on filesystems that do not support POSIX permissions
   }
 }
 
@@ -145,31 +157,27 @@ Examples:
   }
 
   const dataDir = options.dataDir ?? process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
-  const runtimeFilePath = getAdminRuntimeFilePath(dataDir);
+  const lockInfo = readDatastoreLockInfo(dataDir);
+  const isLockOwnerAlive = lockInfo !== null && isProcessAlive(lockInfo.pid);
 
-  let isServerRunning = false;
-  let runtimeInfo: AdminRuntimeInfo | null = null;
-
-  if (fs.existsSync(runtimeFilePath)) {
-    try {
-      const raw = fs.readFileSync(runtimeFilePath, 'utf-8');
-      runtimeInfo = JSON.parse(raw);
-      if (runtimeInfo && runtimeInfo.pid && runtimeInfo.port && runtimeInfo.adminToken) {
-        try {
-          process.kill(runtimeInfo.pid, 0);
-          isServerRunning = true;
-        } catch {
-          isServerRunning = false;
-          cleanupAdminRuntimeFile(dataDir);
-        }
-      }
-    } catch {
-      isServerRunning = false;
+  if (isLockOwnerAlive && lockInfo.owner === 'server') {
+    // Live JaMeet server owns the datastore lock. Route request to live server.
+    const runtimeFilePath = getAdminRuntimeFilePath(dataDir);
+    let runtimeInfo: AdminRuntimeInfo | null = null;
+    if (fs.existsSync(runtimeFilePath)) {
+      try {
+        const raw = fs.readFileSync(runtimeFilePath, 'utf-8');
+        runtimeInfo = JSON.parse(raw);
+      } catch {}
     }
-  }
 
-  if (isServerRunning && runtimeInfo) {
-    // Execute via live running server
+    if (!runtimeInfo || !runtimeInfo.port || !runtimeInfo.adminToken) {
+      console.error(
+        `Error: Datastore lock is held by a live JaMeet server (PID ${lockInfo.pid}), but runtime discovery information could not be read. Cannot safely modify datastore without the running server.`
+      );
+      return 1;
+    }
+
     try {
       const url = `http://127.0.0.1:${runtimeInfo.port}/api/internal/admin/session-access`;
       const response = await fetch(url, {
@@ -190,54 +198,37 @@ Examples:
         return 1;
       }
 
-      console.log(`Updated session access successfully:`);
+      console.log(`Updated session access successfully (live server):`);
       console.log(`  Account: ${data.email} (Username: ${data.username})`);
       console.log(`  User ID: ${data.userId}`);
       console.log(`  Previous Access: ${data.previousAccess}`);
       console.log(`  New Access: ${data.newAccess}`);
       return 0;
     } catch (err: any) {
-      if (err.code === 'ECONNREFUSED' || err.cause?.code === 'ECONNREFUSED') {
-        cleanupAdminRuntimeFile(dataDir);
-      } else {
-        console.error(`Error communicating with live server: ${err.message || err}`);
-        return 1;
-      }
-    }
-  }
-
-  // Explicit safe offline mode: acquire single-writer offline lock
-  if (!fs.existsSync(dataDir)) {
-    try {
-      fs.mkdirSync(dataDir, { recursive: true });
-    } catch {}
-  }
-  const lockFilePath = path.join(dataDir, '.admin-offline.lock');
-  let lockFd: number | null = null;
-  try {
-    lockFd = fs.openSync(lockFilePath, 'wx');
-    fs.writeFileSync(lockFd, JSON.stringify({ pid: process.pid, createdAt: Date.now() }), 'utf-8');
-  } catch (err: any) {
-    if (err.code === 'EEXIST') {
-      console.error(`Error: Another administration process is currently modifying the database (${lockFilePath}).`);
+      console.error(
+        `Error: Datastore lock is held by a live JaMeet server (PID ${lockInfo.pid}), but connecting to the administration endpoint failed (${err.message || err}).`
+      );
       return 1;
     }
   }
 
-  try {
-    // Verify server did not start up while acquiring lock
-    if (fs.existsSync(runtimeFilePath)) {
-      try {
-        const raw = fs.readFileSync(runtimeFilePath, 'utf-8');
-        const info = JSON.parse(raw);
-        if (info?.pid) {
-          process.kill(info.pid, 0);
-          console.error('Error: JaMeet server started concurrently. Please re-run the command to execute via the live server.');
-          return 1;
-        }
-      } catch {}
-    }
+  if (isLockOwnerAlive && lockInfo.owner === 'admin-cli' && lockInfo.pid !== process.pid) {
+    console.error(
+      `Error: Datastore lock is currently held by another live administration process (PID ${lockInfo.pid}).`
+    );
+    return 1;
+  }
 
+  // Safe offline mode: acquire exclusive shared datastore lock before initializing UserStore
+  let datastoreLock: DatastoreLock;
+  try {
+    datastoreLock = acquireDatastoreLock(dataDir, 'admin-cli');
+  } catch (err: any) {
+    console.error(`Error: Could not acquire exclusive datastore lock: ${err.message || err}`);
+    return 1;
+  }
+
+  try {
     const userStore = new UserStore(dataDir);
     const result = updateAccountSessionAccess(userStore, options.identifier, options.access);
 
@@ -251,14 +242,7 @@ Examples:
     console.error(`Error: ${err.message || err}`);
     return 1;
   } finally {
-    if (lockFd !== null) {
-      try {
-        fs.closeSync(lockFd);
-        if (fs.existsSync(lockFilePath)) {
-          fs.unlinkSync(lockFilePath);
-        }
-      } catch {}
-    }
+    datastoreLock.release();
   }
 }
 

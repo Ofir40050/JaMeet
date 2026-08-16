@@ -23,6 +23,7 @@ import { ProjectStore } from './projects.js';
 import { createIceServers } from './turn.js';
 import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from './rate-limiter.js';
 import { updateAccountSessionAccess, writeAdminRuntimeFile, cleanupAdminRuntimeFile } from './admin-access.js';
+import { acquireDatastoreLock, type DatastoreLock } from './datastore-lock.js';
 
 type SocketData = { code?: string; participantId?: string; identity?: ParticipantIdentity; isWaiting?: boolean; limiter?: SocketRateLimiter };
 
@@ -103,6 +104,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
   
   const dataDir = config.DATA_DIR ?? path.join(process.cwd(), 'data');
+  const datastoreLock = acquireDatastoreLock(dataDir, 'server');
   const userStore = new UserStore(dataDir);
   const projectStore = new ProjectStore(dataDir);
   const rooms = new RoomStore(config.DISCONNECT_GRACE_MS, config.EMPTY_ROOM_TTL_MS);
@@ -154,8 +156,20 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     app.server.once('listening', syncRuntimeInfo);
   }
 
-  app.addHook('onClose', async () => {
+  const cleanupServerResources = () => {
     cleanupAdminRuntimeFile(dataDir);
+    datastoreLock.release();
+  };
+
+  process.once('exit', cleanupServerResources);
+  process.once('SIGINT', cleanupServerResources);
+  process.once('SIGTERM', cleanupServerResources);
+
+  app.addHook('onClose', async () => {
+    process.off('exit', cleanupServerResources);
+    process.off('SIGINT', cleanupServerResources);
+    process.off('SIGTERM', cleanupServerResources);
+    cleanupServerResources();
   });
 
   app.get('/healthz', async () => ({ ok: true }));
@@ -1366,6 +1380,6 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     socket.on('disconnect', () => leave(false));
   });
 
-  return { app, io, rooms, userStore, projectStore, runtimeAdminToken };
+  return { app, io, rooms, userStore, projectStore, runtimeAdminToken, datastoreLock };
 }
 

@@ -1333,12 +1333,14 @@ describe('signaling integration', () => {
       const config = loadConfig({
         NODE_ENV: 'test',
         TURN_SHARED_SECRET: 'a-secure-test-secret',
-        DATA_DIR: unwritableDir
+        DATA_DIR: tmpDataDir
       });
-      const { app, io } = await createApp(config);
+      const { app, io, userStore } = await createApp(config);
       await app.listen({ host: '127.0.0.1', port: 0 });
       const addr = app.server.address() as AddressInfo;
       const url = `http://127.0.0.1:${addr.port}`;
+
+      (userStore as any).dataFilePath = path.join(unwritableDir, 'accounts.json');
 
       try {
         // Register should return 500 because persistence cannot be completed
