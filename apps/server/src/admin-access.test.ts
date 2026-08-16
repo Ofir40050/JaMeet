@@ -530,6 +530,45 @@ describe('Admin Session Access CLI & Management Tool', () => {
     }
   });
 
+  it('guarantees atomic takeover when multiple processes race to claim an abandoned claim', () => {
+    const lockPath = getDatastoreLockPath(testDir);
+    const staleCreatedAt = Date.now() - 10000;
+    // Write stale lock with dead PID 9999999
+    fs.writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: 9999999, owner: 'server', createdAt: staleCreatedAt }),
+      { mode: 0o600, encoding: 'utf-8' }
+    );
+
+    // Simulate abandoned claim from dead PID 8888888
+    const claimPath = path.join(testDir, `.account-datastore.lock.claim.9999999.${staleCreatedAt}`);
+    fs.writeFileSync(
+      claimPath,
+      JSON.stringify({
+        recoveringPid: 8888888,
+        targetPid: 9999999,
+        targetCreatedAt: staleCreatedAt,
+        createdAt: Date.now() - 5000
+      }),
+      { mode: 0o600, encoding: 'utf-8' }
+    );
+
+    // Process 1 takes over the abandoned claim and acquires datastore lock
+    const lock1 = acquireDatastoreLock(testDir, 'server');
+    expect(lock1).toBeDefined();
+
+    try {
+      // Process 2 attempting acquisition must observe Process 1's live lock and fail closed
+      expect(() => acquireDatastoreLock(testDir, 'server')).toThrow(DatastoreLockError);
+
+      const currentInfo = readDatastoreLockInfo(testDir);
+      expect(currentInfo?.pid).toBe(process.pid);
+      expect(currentInfo?.owner).toBe('server');
+    } finally {
+      lock1.release();
+    }
+  });
+
   it('enforces 0o600 permissions on runtime admin file even when replacing an existing file', () => {
     writeAdminRuntimeFile(testDir, {
       pid: process.pid,

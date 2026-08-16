@@ -165,6 +165,7 @@ export function acquireDatastoreLock(dataDir: string, owner: 'server' | 'admin-c
     } catch (claimErr: any) {
       if (claimErr.code === 'EEXIST') {
         // A claim file already exists. Inspect it to see if it was abandoned by a dead process.
+        let isClaimDead = false;
         try {
           const rawClaim = fs.readFileSync(claimPath, 'utf-8');
           const parsedClaim = JSON.parse(rawClaim);
@@ -173,15 +174,66 @@ export function acquireDatastoreLock(dataDir: string, owner: 'server' | 'admin-c
             typeof parsedClaim.recoveringPid === 'number' &&
             !isProcessAlive(parsedClaim.recoveringPid)
           ) {
-            // The previous recovering process is confirmed dead (ESRCH). Safely remove abandoned claim.
-            try { fs.unlinkSync(claimPath); } catch {}
-            // Retry linking our recovery ticket
-            try {
-              fs.linkSync(recoveryTicketPath, claimPath);
-              claimed = true;
-            } catch {}
+            isClaimDead = true;
           }
         } catch {}
+
+        if (isClaimDead) {
+          // Atomically isolate the dead claim via renameSync so only ONE concurrent process can take it over.
+          // This prevents an old stale observation from ever unlinking a newer live recovery claim.
+          const takeoverPath = path.join(
+            dataDir,
+            `.account-datastore.lock.claim-takeover.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
+          );
+          let tookOver = false;
+          try {
+            fs.renameSync(claimPath, takeoverPath);
+            tookOver = true;
+          } catch {
+            // Another process already took over claimPath; do not touch claimPath!
+          }
+
+          if (tookOver) {
+            try {
+              let verifiedDead = false;
+              try {
+                const rawIso = fs.readFileSync(takeoverPath, 'utf-8');
+                const parsedIso = JSON.parse(rawIso);
+                if (
+                  parsedIso &&
+                  typeof parsedIso.recoveringPid === 'number' &&
+                  !isProcessAlive(parsedIso.recoveringPid)
+                ) {
+                  verifiedDead = true;
+                }
+              } catch {}
+
+              if (verifiedDead) {
+                try { fs.unlinkSync(takeoverPath); } catch {}
+                // Atomically link our recovery ticket to claimPath
+                try {
+                  fs.linkSync(recoveryTicketPath, claimPath);
+                  claimed = true;
+                } catch {}
+              } else {
+                // If not verified dead, restore back if claimPath is vacant
+                try {
+                  if (!fs.existsSync(claimPath)) {
+                    fs.renameSync(takeoverPath, claimPath);
+                  } else {
+                    fs.unlinkSync(takeoverPath);
+                  }
+                } catch {}
+              }
+            } finally {
+              try {
+                if (fs.existsSync(takeoverPath)) {
+                  fs.unlinkSync(takeoverPath);
+                }
+              } catch {}
+            }
+          }
+        }
       }
     } finally {
       try { fs.unlinkSync(recoveryTicketPath); } catch {}
