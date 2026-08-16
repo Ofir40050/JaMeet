@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface StructuredLogMeta {
@@ -30,8 +32,9 @@ export interface StructuredLogEntry {
 }
 
 export interface CrashReport {
+  reportId?: string;
   timestamp: string;
-  process: 'main' | 'renderer' | 'child';
+  process: 'main' | 'renderer' | 'child' | 'native' | 'unknown';
   appVersion: string;
   electronVersion?: string;
   nodeVersion?: string;
@@ -46,6 +49,30 @@ export interface CrashReport {
   error?: StructuredError;
   context?: StructuredLogMeta;
 }
+
+export const crashReportSchema = z.object({
+  reportId: z.string().min(1).max(128).optional(),
+  timestamp: z.string().min(1).max(64),
+  process: z.enum(['main', 'renderer', 'child', 'native', 'unknown']),
+  appVersion: z.string().min(1).max(64),
+  electronVersion: z.string().max(64).optional(),
+  nodeVersion: z.string().max(64).optional(),
+  platform: z.string().min(1).max(64),
+  arch: z.string().min(1).max(64),
+  osRelease: z.string().max(128).optional(),
+  instanceId: z.string().max(128).optional(),
+  sessionId: z.string().max(128).optional(),
+  sessionCode: z.string().max(64).optional(),
+  reason: z.string().max(2000).optional(),
+  exitCode: z.number().int().optional(),
+  error: z.object({
+    name: z.string().max(256).optional(),
+    message: z.string().max(4000),
+    stack: z.string().max(8000).optional(),
+    code: z.union([z.string().max(128), z.number()]).optional()
+  }).optional(),
+  context: z.record(z.string(), z.unknown()).optional()
+});
 
 const SENSITIVE_KEY_PATTERNS = [
   /password/i,

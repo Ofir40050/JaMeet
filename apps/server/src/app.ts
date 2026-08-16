@@ -14,12 +14,14 @@ import {
   type ParticipantIdentity, type MediaMetadata,
   type UserProfile, type UpdateProfileRequest, type ProjectWorkspace, type UpdateProjectWorkspaceRequest,
   type SessionChatMessage, type WaitingParticipantItem, type ScheduledSession,
-  type SessionSummaryEvent, type ProjectActivityItem
+  type SessionSummaryEvent, type ProjectActivityItem,
+  crashReportSchema, type CrashReport, sanitizeLogData
 } from '@jameet/shared';
 import type { ServerConfig } from './config.js';
 import { RoomStore, type Room, type Participant } from './rooms.js';
 import { UserStore, authorizeSessionAccess, validateStoredUserSessionAccess } from './auth.js';
 import { ProjectStore } from './projects.js';
+import { CrashReportStore } from './crash-store.js';
 import { createIceServers } from './turn.js';
 import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from './rate-limiter.js';
 import { updateAccountSessionAccess, writeAdminRuntimeFile, cleanupAdminRuntimeFile } from './admin-access.js';
@@ -131,6 +133,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   const datastoreLock = acquireDatastoreLock(dataDir, 'server');
   const userStore = new UserStore(dataDir);
   const projectStore = new ProjectStore(dataDir);
+  const crashStore = new CrashReportStore(dataDir);
   const rooms = new RoomStore(config.DISCONNECT_GRACE_MS, config.EMPTY_ROOM_TTL_MS);
   const runtimeAdminToken = randomUUID();
   let entitlementInterval: NodeJS.Timeout | undefined;
@@ -212,6 +215,65 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/health', async () => ({ ok: true }));
+
+  // REST Canonical Crash Report Ingestion Endpoint
+  app.post('/api/crashes', {
+    config: {
+      rateLimit: {
+        max: 30,
+        timeWindow: '1 minute'
+      }
+    }
+  }, async (request, reply) => {
+    const parsed = crashReportSchema.safeParse(request.body);
+    if (!parsed.success) {
+      logger.warn('crash_report_invalid', 'Crash report payload validation failed', {
+        reason: parsed.error.issues[0]?.message
+      });
+      return reply.code(400).send({
+        ok: false,
+        message: parsed.error.issues[0]?.message || 'Invalid crash report payload.'
+      });
+    }
+
+    try {
+      // Re-sanitize entire crash report payload on the server before storage
+      const sanitizedReport = sanitizeLogData(parsed.data) as CrashReport;
+
+      const result = crashStore.recordReport(sanitizedReport);
+      if (result.isDuplicate) {
+        logger.info('crash_report_duplicate', `Duplicate crash report acknowledged: ${result.report.reportId}`, {
+          reportId: result.report.reportId,
+          process: result.report.process
+        });
+        return reply.code(200).send({
+          ok: true,
+          reportId: result.report.reportId,
+          duplicate: true
+        });
+      }
+
+      logger.info('crash_report_stored', `Crash report durably stored: ${result.report.reportId}`, {
+        reportId: result.report.reportId,
+        process: result.report.process,
+        appVersion: result.report.appVersion,
+        platform: result.report.platform,
+        reason: result.report.reason
+      });
+
+      return reply.code(201).send({
+        ok: true,
+        reportId: result.report.reportId,
+        duplicate: false
+      });
+    } catch (err) {
+      logger.error('crash_report_store_failed', 'Failed to durably store crash report', {}, err);
+      return reply.code(500).send({
+        ok: false,
+        message: 'Failed to persist crash report.'
+      });
+    }
+  });
 
   // REST Authentication Endpoints
   app.post('/api/auth/register', async (request, reply) => {
@@ -1658,6 +1720,6 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     socket.on('disconnect', () => leave(false));
   });
 
-  return { app, io, rooms, userStore, projectStore, runtimeAdminToken, datastoreLock };
+  return { app, io, rooms, userStore, projectStore, crashStore, runtimeAdminToken, datastoreLock };
 }
 

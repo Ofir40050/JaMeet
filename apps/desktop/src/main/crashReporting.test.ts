@@ -348,4 +348,145 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
     expect(logEntry.appVersion).toBeDefined();
     expect(logEntry.platform).toBe(process.platform);
   });
+
+  describe('Automatic Remote Crash Reporting & Delivery Queue', () => {
+    it('generates unique reportId and enqueues to pending-crashes.json before remote delivery', () => {
+      const crash = testLogger.recordCrash({
+        process: 'renderer',
+        reason: 'WebGL Context Loss'
+      });
+
+      expect(crash.reportId).toBeDefined();
+      expect(typeof crash.reportId).toBe('string');
+
+      // Verify local file persistence
+      const pendingQueue = testLogger.loadPendingQueue();
+      expect(pendingQueue).toHaveLength(1);
+      expect(pendingQueue[0].reportId).toBe(crash.reportId);
+      expect(pendingQueue[0].reason).toBe('WebGL Context Loss');
+    });
+
+    it('flushes pending queue and removes acknowledged reports on successful delivery', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        status: 201,
+        ok: true,
+        json: async () => ({ ok: true, reportId: 'crash-rem-1', duplicate: false })
+      } as any);
+
+      testLogger.recordCrash({
+        reportId: 'crash-rem-1',
+        process: 'renderer',
+        reason: 'Render process crash'
+      });
+
+      expect(testLogger.loadPendingQueue()).toHaveLength(1);
+
+      await testLogger.flushPendingCrashes();
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/api/crashes'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        })
+      );
+
+      // Successfully acknowledged crash should be removed from pending queue
+      expect(testLogger.loadPendingQueue()).toHaveLength(0);
+
+      fetchSpy.mockRestore();
+    });
+
+    it('retains report in pending queue if delivery fails or server is unreachable', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED: Server unreachable'));
+
+      testLogger.recordCrash({
+        reportId: 'crash-offline-1',
+        process: 'main',
+        reason: 'Fatal main process crash'
+      });
+
+      expect(testLogger.loadPendingQueue()).toHaveLength(1);
+
+      await testLogger.flushPendingCrashes();
+
+      // Pending queue must still retain the crash for next retry
+      const remaining = testLogger.loadPendingQueue();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0].reportId).toBe('crash-offline-1');
+
+      fetchSpy.mockRestore();
+    });
+
+    it('preserves concurrent crash reports added while flusher is processing', async () => {
+      let resolveFirstFetch: Function;
+      const fetchPromise = new Promise((resolve) => {
+        resolveFirstFetch = resolve;
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
+        return fetchPromise.then(() => ({
+          status: 201,
+          ok: true,
+          json: async () => ({ ok: true, reportId: 'crash-concurrent-1', duplicate: false })
+        } as any));
+      });
+
+      // 1. First crash enqueued and background flush initiated
+      testLogger.recordCrash({
+        reportId: 'crash-concurrent-1',
+        process: 'main',
+        reason: 'Initial crash'
+      });
+
+      // 2. Concurrently record a second crash while flusher is in-flight on the first request
+      testLogger.recordCrash({
+        reportId: 'crash-concurrent-2',
+        process: 'renderer',
+        reason: 'Second concurrent crash'
+      });
+
+      // 3. Resolve first fetch
+      resolveFirstFetch!();
+      await new Promise((r) => setTimeout(r, 50));
+
+      // 4. Verify first crash was removed on 201 acknowledgement, but second crash was NOT overwritten or dropped
+      const queueAfter = testLogger.loadPendingQueue();
+      expect(queueAfter).toHaveLength(1);
+      expect(queueAfter[0].reportId).toBe('crash-concurrent-2');
+
+      fetchSpy.mockRestore();
+    });
+
+    it('detects native Crashpad minidumps on startup, creates deterministic metadata reports with process native, and tracks processed dumps', () => {
+      const mockDumpsDir = join(testLogDir, 'mock-crash-dumps');
+      mkdirSync(mockDumpsDir, { recursive: true });
+
+      // Create a dummy .dmp file
+      const dmpFile = join(mockDumpsDir, 'crashpad-dump-12345.dmp');
+      writeFileSync(dmpFile, 'MOCK_MINIDUMP_BINARY_DATA');
+
+      testLogger.checkNativeCrashDumps(mockDumpsDir);
+
+      // Verify crash report was recorded with process: 'native'
+      const crashContent = readFileSync(testLogger.getLogPaths().crashFilePath, 'utf8');
+      const lines = crashContent.trim().split('\n');
+      const latestCrash = JSON.parse(lines[lines.length - 1]);
+
+      expect(latestCrash.process).toBe('native');
+      expect(latestCrash.reason).toBe('native_crashpad_dump');
+      expect(latestCrash.reportId).toMatch(/^native-[a-f0-9]{32}$/);
+      expect(latestCrash.context?.dumpFilename).toBe('crashpad-dump-12345.dmp');
+
+      // Verify pending queue has this native dump report
+      const pending = testLogger.loadPendingQueue();
+      expect(pending.some((p) => p.reportId === latestCrash.reportId)).toBe(true);
+
+      // Verify second scan skips already processed dump file
+      const initialCrashLinesCount = lines.length;
+      testLogger.checkNativeCrashDumps(mockDumpsDir);
+      const crashContent2 = readFileSync(testLogger.getLogPaths().crashFilePath, 'utf8');
+      expect(crashContent2.trim().split('\n').length).toBe(initialCrashLinesCount);
+    });
+  });
 });
