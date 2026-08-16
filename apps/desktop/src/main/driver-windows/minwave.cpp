@@ -127,10 +127,12 @@ KDEFERRED_ROUTINE WaveRTServicingDpcRoutine;
 /*
  * CMiniportWaveRTCaptureStream
  * Real-time WaveRT capture stream reading from nonpaged kernel shared segment
- * with periodic timer servicing, cyclic buffer wrap-around, and notification delivery.
+ * using PortCls IPortWaveRTStream buffer allocation model and cyclic servicing.
  */
 class CMiniportWaveRTCaptureStream : public IMiniportWaveRTStreamNotification, public CUnknown {
 private:
+    PPORTWAVERTSTREAM m_pPortStream;
+    PMDL m_pAudioBufferMdl;
     PVOID m_pDmaBuffer;
     ULONG m_ulDmaBufferSize;
     ULONG m_ulNotificationCount;
@@ -150,7 +152,12 @@ private:
 public:
     DECLARE_STD_UNKNOWN();
 
-    CMiniportWaveRTCaptureStream(PUNKNOWN pUnknownOuter) : CUnknown(pUnknownOuter) {
+    CMiniportWaveRTCaptureStream(PUNKNOWN pUnknownOuter, PPORTWAVERTSTREAM pPortStream) : CUnknown(pUnknownOuter) {
+        m_pPortStream = pPortStream;
+        if (m_pPortStream) {
+            m_pPortStream->AddRef();
+        }
+        m_pAudioBufferMdl = NULL;
         m_pDmaBuffer = NULL;
         m_ulDmaBufferSize = 0;
         m_ulNotificationCount = 10;
@@ -180,9 +187,19 @@ public:
         /* Flush queued/running DPCs across all processors to guarantee no DPC can execute */
         KeFlushQueuedDpcs();
 
-        if (m_pDmaBuffer) {
-            ExFreePoolWithTag(m_pDmaBuffer, 'TMJR');
-            m_pDmaBuffer = NULL;
+        /* Unmap and free PortCls allocated WaveRT audio buffer */
+        if (m_pPortStream && m_pAudioBufferMdl) {
+            if (m_pDmaBuffer) {
+                m_pPortStream->UnmapAllocatedPages(m_pDmaBuffer, m_pAudioBufferMdl);
+                m_pDmaBuffer = NULL;
+            }
+            m_pPortStream->FreePagesFromMdl(m_pAudioBufferMdl);
+            m_pAudioBufferMdl = NULL;
+        }
+
+        if (m_pPortStream) {
+            m_pPortStream->Release();
+            m_pPortStream = NULL;
         }
     }
 
@@ -240,28 +257,34 @@ public:
         OUT ULONG* OffsetFromFirstPage,
         OUT MEMORY_CACHING_TYPE* CacheType
     ) {
-        if (!AudioBufferMdl || !ActualSize || !OffsetFromFirstPage || !CacheType) {
+        if (!AudioBufferMdl || !ActualSize || !OffsetFromFirstPage || !CacheType || !m_pPortStream) {
             return STATUS_INVALID_PARAMETER;
         }
 
         ULONG bytesPerFrame = m_bFloatFormat ? (sizeof(float) * 2) : (sizeof(int16_t) * 2);
         ULONG minSize = 4800 * bytesPerFrame; /* 100 ms buffer */
         ULONG bufferSize = (RequestedSize >= minSize) ? RequestedSize : minSize;
+        bufferSize = (ULONG)ROUND_TO_PAGES(bufferSize);
 
-        PVOID pBuffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, bufferSize, 'TMJR');
-        if (!pBuffer) return STATUS_INSUFFICIENT_RESOURCES;
+        PHYSICAL_ADDRESS highAddress;
+        highAddress.QuadPart = MAXULONG64;
 
-        RtlZeroMemory(pBuffer, bufferSize);
+        PMDL pMdl = NULL;
+        NTSTATUS status = m_pPortStream->AllocatePagesForMdl(highAddress, bufferSize, &pMdl);
+        if (!NT_SUCCESS(status) || !pMdl) {
+            return status;
+        }
 
-        PMDL pMdl = IoAllocateMdl(pBuffer, bufferSize, FALSE, FALSE, NULL);
-        if (!pMdl) {
-            ExFreePoolWithTag(pBuffer, 'TMJR');
+        PVOID pBuffer = m_pPortStream->MapAllocatedPages(pMdl, MmCached);
+        if (!pBuffer) {
+            m_pPortStream->FreePagesFromMdl(pMdl);
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
-        MmBuildMdlForNonPagedPool(pMdl);
+        RtlZeroMemory(pBuffer, bufferSize);
 
         m_pDmaBuffer = pBuffer;
+        m_pAudioBufferMdl = pMdl;
         m_ulDmaBufferSize = bufferSize;
 
         *AudioBufferMdl = pMdl;
@@ -274,13 +297,15 @@ public:
 
     STDMETHODIMP FreeAudioBuffer(IN PMDL AudioBufferMdl, IN ULONG BufferSize) {
         (void)BufferSize;
-        if (AudioBufferMdl) {
-            IoFreeMdl(AudioBufferMdl);
+        if (m_pPortStream && AudioBufferMdl) {
+            if (m_pDmaBuffer) {
+                m_pPortStream->UnmapAllocatedPages(m_pDmaBuffer, AudioBufferMdl);
+                m_pDmaBuffer = NULL;
+            }
+            m_pPortStream->FreePagesFromMdl(AudioBufferMdl);
+            m_pAudioBufferMdl = NULL;
         }
-        if (m_pDmaBuffer) {
-            ExFreePoolWithTag(m_pDmaBuffer, 'TMJR');
-            m_pDmaBuffer = NULL;
-        }
+        m_ulDmaBufferSize = 0;
         return STATUS_SUCCESS;
     }
 
@@ -599,8 +624,7 @@ public:
         IN BOOLEAN Capture,
         IN PKSDATAFORMAT DataFormat
     ) {
-        (void)PortStream;
-        if (!Stream || !DataFormat || !Capture || Pin != 0) return STATUS_INVALID_PARAMETER;
+        if (!Stream || !DataFormat || !Capture || Pin != 0 || !PortStream) return STATUS_INVALID_PARAMETER;
 
         /* Validate requested format strictly: 48 kHz stereo 32-bit Float or 16-bit PCM */
         PWAVEFORMATEX pWfx = (PWAVEFORMATEX)(DataFormat + 1);
@@ -626,7 +650,7 @@ public:
             return STATUS_INVALID_PARAMETER;
         }
 
-        CMiniportWaveRTCaptureStream* pStream = new (POOL_FLAG_NON_PAGED, 'TMJR') CMiniportWaveRTCaptureStream(NULL);
+        CMiniportWaveRTCaptureStream* pStream = new (POOL_FLAG_NON_PAGED, 'TMJR') CMiniportWaveRTCaptureStream(NULL, PortStream);
         if (!pStream) return STATUS_INSUFFICIENT_RESOURCES;
 
         pStream->SetFormat(DataFormat);
