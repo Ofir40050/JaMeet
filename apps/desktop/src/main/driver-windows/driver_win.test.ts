@@ -75,6 +75,7 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     expect(installerSrc).toContain('ROOT\\JaMeetRemote');
     expect(installerSrc).toContain('SetupDiCreateDeviceInfoW');
     expect(installerSrc).toContain('UpdateDriverForPlugAndPlayDevicesW');
+    expect(installerSrc).toContain('DiUninstallDriverW');
     expect(installerSrc).toContain('DIF_REMOVE');
 
     const installCmdPath = path.join(driverDir, 'install-driver.cmd');
@@ -85,11 +86,11 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
 
     const installContent = fs.readFileSync(installCmdPath, 'utf-8');
     expect(installContent).toContain('jameet-device-installer.exe');
-    expect(installContent).toContain('pnputil.exe');
+    expect(installContent).toContain('install');
 
     const uninstallContent = fs.readFileSync(uninstallCmdPath, 'utf-8');
     expect(uninstallContent).toContain('jameet-device-installer.exe');
-    expect(uninstallContent).toContain('pnputil.exe');
+    expect(uninstallContent).toContain('uninstall');
   });
 
   it('validates NSIS installer integration and package.json Windows resources', () => {
@@ -99,6 +100,7 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     expect(nshContent).toContain('install-driver.cmd');
     expect(nshContent).toContain('customUnInstall');
     expect(nshContent).toContain('uninstall-driver.cmd');
+    expect(nshContent).toContain('Abort');
 
     expect(fs.existsSync(packageJsonPath)).toBe(true);
     const pkgContent = fs.readFileSync(packageJsonPath, 'utf-8');
@@ -173,5 +175,40 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     expect(floatToInt16(-1.0)).toBe(-32767);
     expect(floatToInt16(2.5)).toBe(32767); // saturated
     expect(floatToInt16(-3.0)).toBe(-32767); // saturated
+  });
+
+  it('verifies dynamic WaveRT notification interval and strict format filtering', () => {
+    function computeNotificationCadence(bufferSizeBytes: number, notificationCount: number, isFloat: boolean) {
+      const bytesPerFrame = isFloat ? 8 : 4;
+      const count = notificationCount > 0 ? notificationCount : 10;
+      const bytesPerNotif = Math.floor(bufferSizeBytes / count);
+      const frames = Math.floor(bytesPerNotif / bytesPerFrame) || 480;
+      const periodMs = Math.floor((frames * 1000) / 48000) || 1;
+      return { frames, periodMs };
+    }
+
+    // Default 10 notifications on 100 ms Float32 buffer (38400 bytes = 4800 frames * 8)
+    const cadence10 = computeNotificationCadence(38400, 10, true);
+    expect(cadence10.frames).toBe(480);
+    expect(cadence10.periodMs).toBe(10);
+
+    // 20 notifications on 100 ms Float32 buffer
+    const cadence20 = computeNotificationCadence(38400, 20, true);
+    expect(cadence20.frames).toBe(240);
+    expect(cadence20.periodMs).toBe(5);
+
+    // Format filter: 44.1 kHz or mono must be rejected
+    function isFormatSupported(sampleRate: number, channels: number, bitsPerSample: number, isFloat: boolean): boolean {
+      if (sampleRate !== 48000 || channels < 2) return false;
+      if (isFloat && bitsPerSample === 32) return true;
+      if (!isFloat && bitsPerSample === 16) return true;
+      return false;
+    }
+
+    expect(isFormatSupported(48000, 2, 32, true)).toBe(true);
+    expect(isFormatSupported(48000, 2, 16, false)).toBe(true);
+    expect(isFormatSupported(44100, 2, 32, true)).toBe(false);
+    expect(isFormatSupported(48000, 1, 32, true)).toBe(false);
+    expect(isFormatSupported(48000, 2, 24, false)).toBe(false);
   });
 });

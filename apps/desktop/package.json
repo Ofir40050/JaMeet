@@ -53,7 +53,9 @@
         ]
       }
     ],
+    "icon": "build/icon.png",
     "mac": {
+      "icon": "build/icon.icns",
       "extraResources": [
         {
           "from": "bin",
@@ -81,12 +83,20 @@
       }
     },
     "win": {
+      "icon": "build/icon.ico",
       "extraResources": [
         {
           "from": "bin",
           "to": "bin",
           "filter": [
             "**/*.exe"
+          ]
+        },
+        {
+          "from": "src/main/driver-windows/package",
+          "to": "driver-windows/package",
+          "filter": [
+            "*"
           ]
         },
         {
@@ -119,6 +129,7 @@
       "include": "build/installer.nsh"
     },
     "linux": {
+      "icon": "build/icons",
       "target": [
         {
           "target": "AppImage",

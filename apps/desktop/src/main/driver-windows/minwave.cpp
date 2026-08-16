@@ -135,6 +135,7 @@ private:
     ULONG m_ulDmaBufferSize;
     ULONG m_ulNotificationCount;
     ULONG m_ulNotificationIntervalFrames;
+    ULONG m_ulNotificationPeriodMs;
     ULONG m_ulPosition;
     ULONGLONG m_ullLinearPosition;
     JaMeetKernelConsumer m_Consumer;
@@ -147,6 +148,8 @@ private:
     KSSTATE m_StreamState;
 
 public:
+    volatile LONG m_lDpcActive;
+
     DECLARE_STD_UNKNOWN();
 
     CMiniportWaveRTCaptureStream(PUNKNOWN pUnknownOuter) : CUnknown(pUnknownOuter) {
@@ -154,6 +157,7 @@ public:
         m_ulDmaBufferSize = 0;
         m_ulNotificationCount = 10;
         m_ulNotificationIntervalFrames = 480; /* Default 10 ms @ 48 kHz */
+        m_ulNotificationPeriodMs = 10;
         m_ulPosition = 0;
         m_ullLinearPosition = 0;
         m_bFloatFormat = TRUE;
@@ -161,6 +165,7 @@ public:
         m_pNotificationEvents[0] = NULL;
         m_pNotificationEvents[1] = NULL;
         m_StreamState = KSSTATE_STOP;
+        m_lDpcActive = 0;
 
         JaMeetKernelConsumer_Init(&m_Consumer);
         KeInitializeSpinLock(&m_EventLock);
@@ -170,7 +175,14 @@ public:
 
     ~CMiniportWaveRTCaptureStream() {
         KeCancelTimer(&m_Timer);
-        KeFlushQueuedDpcs();
+
+        /* Focused per-stream DPC lifetime synchronization */
+        while (InterlockedCompareExchange(&m_lDpcActive, 0, 0) != 0) {
+            LARGE_INTEGER interval;
+            interval.QuadPart = -10000LL; /* 1 ms wait */
+            KeDelayExecutionThread(KernelMode, FALSE, &interval);
+        }
+
         if (m_pDmaBuffer) {
             ExFreePoolWithTag(m_pDmaBuffer, 'TMJR');
             m_pDmaBuffer = NULL;
@@ -201,18 +213,16 @@ public:
         m_StreamState = State;
         if (State == KSSTATE_RUN) {
             m_Consumer.active = TRUE;
-            /* Start periodic timer servicing every 10 ms */
+            /* Start periodic timer servicing matching exact calculated notification period */
             LARGE_INTEGER dueTime;
-            dueTime.QuadPart = -100000LL; /* 10 ms relative */
-            KeSetTimerEx(&m_Timer, dueTime, 10 /* 10 ms period */, &m_Dpc);
+            dueTime.QuadPart = -((LONGLONG)m_ulNotificationPeriodMs * 10000LL);
+            KeSetTimerEx(&m_Timer, dueTime, m_ulNotificationPeriodMs, &m_Dpc);
         } else if (State == KSSTATE_STOP) {
             KeCancelTimer(&m_Timer);
-            KeFlushQueuedDpcs();
             m_Consumer.active = FALSE;
             m_ulPosition = 0;
         } else if (State == KSSTATE_PAUSE) {
             KeCancelTimer(&m_Timer);
-            KeFlushQueuedDpcs();
         }
         return STATUS_SUCCESS;
     }
@@ -324,6 +334,10 @@ public:
             if (m_ulNotificationIntervalFrames == 0) {
                 m_ulNotificationIntervalFrames = 480;
             }
+            m_ulNotificationPeriodMs = (m_ulNotificationIntervalFrames * 1000) / 48000;
+            if (m_ulNotificationPeriodMs == 0) {
+                m_ulNotificationPeriodMs = 1;
+            }
         }
         return status;
     }
@@ -430,7 +444,9 @@ VOID WaveRTServicingDpcRoutine(
     (void)SystemArgument2;
     CMiniportWaveRTCaptureStream* pStream = (CMiniportWaveRTCaptureStream*)DeferredContext;
     if (pStream) {
+        InterlockedIncrement(&pStream->m_lDpcActive);
         pStream->ServicePeriodicTransfer();
+        InterlockedDecrement(&pStream->m_lDpcActive);
     }
 }
 
@@ -513,10 +529,22 @@ public:
             return STATUS_NO_MATCH;
         }
 
+        /* Strict validation: require 48 kHz and at least 2 channels */
+        if (pDataRangeAudio->MaximumChannels < 2 ||
+            pDataRangeAudio->MinimumSampleFrequency > 48000 ||
+            pDataRangeAudio->MaximumSampleFrequency < 48000) {
+            return STATUS_NO_MATCH;
+        }
+
         BOOLEAN isFloat = IsEqualGUID(pDataRangeAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) &&
-                          IsEqualGUID(pMatchingAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+                          IsEqualGUID(pMatchingAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) &&
+                          pDataRangeAudio->MinimumBitsPerSample <= 32 &&
+                          pDataRangeAudio->MaximumBitsPerSample >= 32;
+
         BOOLEAN isPcm = IsEqualGUID(pDataRangeAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_PCM) &&
-                        IsEqualGUID(pMatchingAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_PCM);
+                        IsEqualGUID(pMatchingAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_PCM) &&
+                        pDataRangeAudio->MinimumBitsPerSample <= 16 &&
+                        pDataRangeAudio->MaximumBitsPerSample >= 16;
 
         if (!isFloat && !isPcm) {
             return STATUS_NO_MATCH;

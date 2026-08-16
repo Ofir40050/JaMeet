@@ -51,56 +51,103 @@ static int install_device(const wchar_t* infPath) {
     )) {
         DWORD err = GetLastError();
         if (err != ERROR_FILE_EXISTS) {
-            fwprintf(stderr, L"[JaMeetInstaller] Warning: SetupCopyOEMInfW returned error: 0x%08X (proceeding to device update)\n", err);
+            fwprintf(stderr, L"[JaMeetInstaller] Warning: SetupCopyOEMInfW returned: 0x%08X\n", err);
         }
     } else {
-        wprintf(L"[JaMeetInstaller] Staged driver as: %s\n", destinationInfFileName);
+        wprintf(L"[JaMeetInstaller] Staged driver in DriverStore as: %s\n", destinationInfFileName);
     }
 
-    /* 2. Create and register the root enumerated device node */
-    HDEVINFO devInfoSet = SetupDiCreateDeviceInfoList(&GUID_DEVCLASS_MEDIA, NULL);
+    /* 2. Locate existing device node or create a new root device instance */
+    HDEVINFO devInfoSet = SetupDiGetClassDevsW(
+        &GUID_DEVCLASS_MEDIA,
+        NULL,
+        NULL,
+        DIGCF_ALLCLASSES
+    );
+
     if (devInfoSet == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
-        fwprintf(stderr, L"[JaMeetInstaller] Error: SetupDiCreateDeviceInfoList failed: 0x%08X\n", err);
+        fwprintf(stderr, L"[JaMeetInstaller] Error: SetupDiGetClassDevs failed: 0x%08X\n", err);
         return (int)err;
     }
 
     SP_DEVINFO_DATA devInfoData;
     memset(&devInfoData, 0, sizeof(devInfoData));
     devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+    bool deviceFound = false;
 
-    if (!SetupDiCreateDeviceInfoW(
-        devInfoSet,
-        L"ROOT\\JaMeetRemote",
-        &GUID_DEVCLASS_MEDIA,
-        L"JaMeet Remote",
-        NULL,
-        DICD_GENERATE_ID,
-        &devInfoData
-    )) {
-        DWORD err = GetLastError();
-        if (err != ERROR_DEVINST_ALREADY_EXISTS) {
-            fwprintf(stderr, L"[JaMeetInstaller] Warning: SetupDiCreateDeviceInfoW returned: 0x%08X\n", err);
+    for (DWORD idx = 0; SetupDiEnumDeviceInfo(devInfoSet, idx, &devInfoData); idx++) {
+        WCHAR hwId[MAX_PATH] = { 0 };
+        if (SetupDiGetDeviceRegistryPropertyW(
+            devInfoSet,
+            &devInfoData,
+            SPDRP_HARDWAREID,
+            NULL,
+            (PBYTE)hwId,
+            sizeof(hwId),
+            NULL
+        )) {
+            if (_wcsicmp(hwId, JAMEET_HARDWARE_ID) == 0) {
+                wprintf(L"[JaMeetInstaller] Found existing JaMeet Remote device instance (index %u), reusing for upgrade.\n", idx);
+                deviceFound = true;
+                break;
+            }
         }
     }
 
-    /* Set Hardware ID property */
-    WCHAR hwIdBuffer[MAX_PATH] = { 0 };
-    wcscpy_s(hwIdBuffer, MAX_PATH, JAMEET_HARDWARE_ID);
-    DWORD hwIdSize = (DWORD)((wcslen(hwIdBuffer) + 2) * sizeof(WCHAR)); /* Double null terminated */
+    if (!deviceFound) {
+        SetupDiDestroyDeviceInfoList(devInfoSet);
 
-    SetupDiSetDeviceRegistryPropertyW(
-        devInfoSet,
-        &devInfoData,
-        SPDRP_HARDWAREID,
-        (const BYTE*)hwIdBuffer,
-        hwIdSize
-    );
+        devInfoSet = SetupDiCreateDeviceInfoList(&GUID_DEVCLASS_MEDIA, NULL);
+        if (devInfoSet == INVALID_HANDLE_VALUE) {
+            DWORD err = GetLastError();
+            fwprintf(stderr, L"[JaMeetInstaller] Error: SetupDiCreateDeviceInfoList failed: 0x%08X\n", err);
+            return (int)err;
+        }
 
-    /* Register device instance */
-    if (!SetupDiCallClassInstaller(DIF_REGISTERDEVICE, devInfoSet, &devInfoData)) {
-        DWORD err = GetLastError();
-        fwprintf(stderr, L"[JaMeetInstaller] Warning: DIF_REGISTERDEVICE returned: 0x%08X\n", err);
+        memset(&devInfoData, 0, sizeof(devInfoData));
+        devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+
+        if (!SetupDiCreateDeviceInfoW(
+            devInfoSet,
+            L"ROOT\\JaMeetRemote",
+            &GUID_DEVCLASS_MEDIA,
+            L"JaMeet Remote",
+            NULL,
+            DICD_GENERATE_ID,
+            &devInfoData
+        )) {
+            DWORD err = GetLastError();
+            fwprintf(stderr, L"[JaMeetInstaller] Error: SetupDiCreateDeviceInfoW failed: 0x%08X\n", err);
+            SetupDiDestroyDeviceInfoList(devInfoSet);
+            return (int)err;
+        }
+
+        /* Set Hardware ID property */
+        WCHAR hwIdBuffer[MAX_PATH] = { 0 };
+        wcscpy_s(hwIdBuffer, MAX_PATH, JAMEET_HARDWARE_ID);
+        DWORD hwIdSize = (DWORD)((wcslen(hwIdBuffer) + 2) * sizeof(WCHAR)); /* Double null terminated */
+
+        if (!SetupDiSetDeviceRegistryPropertyW(
+            devInfoSet,
+            &devInfoData,
+            SPDRP_HARDWAREID,
+            (const BYTE*)hwIdBuffer,
+            hwIdSize
+        )) {
+            DWORD err = GetLastError();
+            fwprintf(stderr, L"[JaMeetInstaller] Error: SetupDiSetDeviceRegistryPropertyW failed: 0x%08X\n", err);
+            SetupDiDestroyDeviceInfoList(devInfoSet);
+            return (int)err;
+        }
+
+        /* Register device instance */
+        if (!SetupDiCallClassInstaller(DIF_REGISTERDEVICE, devInfoSet, &devInfoData)) {
+            DWORD err = GetLastError();
+            fwprintf(stderr, L"[JaMeetInstaller] Error: DIF_REGISTERDEVICE failed: 0x%08X\n", err);
+            SetupDiDestroyDeviceInfoList(devInfoSet);
+            return (int)err;
+        }
     }
 
     SetupDiDestroyDeviceInfoList(devInfoSet);
@@ -119,11 +166,11 @@ static int install_device(const wchar_t* infPath) {
         return (int)err;
     }
 
-    wprintf(L"[JaMeetInstaller] JaMeet Remote device installed successfully.\n");
+    wprintf(L"[JaMeetInstaller] JaMeet Remote device installed successfully.%s\n", rebootRequired ? L" (Reboot required)" : L"");
     return 0;
 }
 
-static int uninstall_device(void) {
+static int uninstall_device(const wchar_t* infPath) {
     if (!is_elevated()) {
         fwprintf(stderr, L"[JaMeetInstaller] Error: Administrator elevation required for driver uninstallation.\n");
         return 5;
@@ -163,6 +210,20 @@ static int uninstall_device(void) {
         SetupDiDestroyDeviceInfoList(devInfoSet);
     }
 
+    /* 2. Uninstall driver package from DriverStore using DiUninstallDriverW */
+    if (infPath != NULL && wcslen(infPath) > 0) {
+        wprintf(L"[JaMeetInstaller] Uninstalling driver package from DriverStore: %s\n", infPath);
+        BOOL rebootRequired = FALSE;
+        if (!DiUninstallDriverW(NULL, infPath, 0, &rebootRequired)) {
+            DWORD err = GetLastError();
+            if (err != ERROR_FILE_NOT_FOUND) {
+                fwprintf(stderr, L"[JaMeetInstaller] Warning: DiUninstallDriverW returned: 0x%08X\n", err);
+            }
+        } else {
+            wprintf(L"[JaMeetInstaller] Driver package uninstalled cleanly from DriverStore.%s\n", rebootRequired ? L" (Reboot required)" : L"");
+        }
+    }
+
     wprintf(L"[JaMeetInstaller] JaMeet Remote uninstalled cleanly.\n");
     return 0;
 }
@@ -177,7 +238,8 @@ int wmain(int argc, wchar_t* argv[]) {
         const wchar_t* infPath = (argc >= 3) ? argv[2] : L"JaMeetRemote.inf";
         return install_device(infPath);
     } else if (_wcsicmp(argv[1], L"uninstall") == 0) {
-        return uninstall_device();
+        const wchar_t* infPath = (argc >= 3) ? argv[2] : L"JaMeetRemote.inf";
+        return uninstall_device(infPath);
     } else {
         fwprintf(stderr, L"[JaMeetInstaller] Unknown command: %s\n", argv[1]);
         return 1;

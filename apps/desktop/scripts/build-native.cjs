@@ -86,15 +86,36 @@ if (process.platform === 'darwin') {
     }
   }
 
-  // Stage driver package files into package directory
+  // 2. Build WDK Driver Project
   const packageDir = path.join(driverWinDir, 'package');
   fs.mkdirSync(packageDir, { recursive: true });
-  const srcInf = path.join(driverWinDir, 'JaMeetRemote.inf');
-  if (fs.existsSync(srcInf)) {
-    fs.copyFileSync(srcInf, path.join(packageDir, 'JaMeetRemote.inf'));
+
+  console.log('[build-native] Building WDK driver JaMeetRemote.sys...');
+  try {
+    execSync(`msbuild "${path.join(driverWinDir, 'JaMeetRemote.vcxproj')}" /p:Configuration=Release /p:Platform=x64 /v:m`, {
+      cwd: driverWinDir,
+      stdio: 'inherit'
+    });
+
+    const builtSys = path.join(driverWinDir, 'dist/x64/Release/JaMeetRemote.sys');
+    const builtCat = path.join(driverWinDir, 'dist/x64/Release/JaMeetRemote.cat');
+    const srcInf = path.join(driverWinDir, 'JaMeetRemote.inf');
+
+    if (fs.existsSync(builtSys)) {
+      fs.copyFileSync(builtSys, path.join(packageDir, 'JaMeetRemote.sys'));
+    }
+    if (fs.existsSync(builtCat)) {
+      fs.copyFileSync(builtCat, path.join(packageDir, 'JaMeetRemote.cat'));
+    }
+    if (fs.existsSync(srcInf)) {
+      fs.copyFileSync(srcInf, path.join(packageDir, 'JaMeetRemote.inf'));
+    }
+  } catch (err) {
+    console.error('[build-native] Error: WDK driver compilation failed:', err.message);
+    process.exit(1);
   }
 
-  console.log('[build-native] All Windows native binaries built and staged successfully.');
+  console.log('[build-native] All Windows native binaries and driver package staged successfully.');
 } else {
   console.log('Skipping native compilation on ' + process.platform);
 }

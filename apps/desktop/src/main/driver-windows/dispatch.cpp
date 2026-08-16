@@ -4,6 +4,7 @@
 
 static JaMeetSharedSegment* gKernelSharedSegment = NULL;
 static PMDL gSharedMdl = NULL;
+static SIZE_T gAllocatedPoolSize = 0;
 
 static KEVENT gProducerMutexEvent;
 static PEPROCESS gProducerProcess = NULL;
@@ -19,21 +20,56 @@ JaMeetSharedSegment* JaMeetDispatch_GetKernelSharedSegment(void) {
     return gKernelSharedSegment;
 }
 
+static void SafeUnmapProducerView(void) {
+    if (gUserViewBaseAddress != NULL && gSharedMdl != NULL) {
+        BOOLEAN attached = FALSE;
+        KAPC_STATE apcState;
+
+        /* If not in the producer process context, safely attach to unmap user pages */
+        if (gProducerProcess != NULL && PsGetCurrentProcess() != gProducerProcess) {
+            KeStackAttachProcess(gProducerProcess, &apcState);
+            attached = TRUE;
+        }
+
+        __try {
+            MmUnmapLockedPages(gUserViewBaseAddress, gSharedMdl);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        }
+
+        if (attached) {
+            KeUnstackDetachProcess(&apcState);
+        }
+
+        gUserViewBaseAddress = NULL;
+    }
+
+    if (gProducerProcess != NULL) {
+        ObDereferenceObject(gProducerProcess);
+        gProducerProcess = NULL;
+    }
+    gActiveProducerFileObject = NULL;
+
+    if (gKernelSharedSegment != NULL) {
+        gKernelSharedSegment->header.isVoiceActive = 0;
+    }
+}
+
 NTSTATUS JaMeetDispatch_InitSection(void) {
     KeInitializeEvent(&gProducerMutexEvent, SynchronizationEvent, TRUE);
 
-    /* Allocate permanent nonpaged shared memory segment resident at DISPATCH_LEVEL */
+    /* Allocate dedicated page-aligned nonpaged memory region to prevent exposing adjacent pool data */
+    gAllocatedPoolSize = ROUND_TO_PAGES(sizeof(JaMeetSharedSegment));
     gKernelSharedSegment = (JaMeetSharedSegment*)ExAllocatePool2(
         POOL_FLAG_NON_PAGED,
-        sizeof(JaMeetSharedSegment),
+        gAllocatedPoolSize,
         'TMJR'
     );
     if (!gKernelSharedSegment) {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    /* Zero all shared pages before exposure */
-    RtlZeroMemory(gKernelSharedSegment, sizeof(JaMeetSharedSegment));
+    /* Zero the entire allocated page range */
+    RtlZeroMemory(gKernelSharedSegment, gAllocatedPoolSize);
 
     /* Initialize shared segment format with exact authoritative ABI fields */
     gKernelSharedSegment->header.magic = JAMEET_SHM_MAGIC;
@@ -46,8 +82,8 @@ NTSTATUS JaMeetDispatch_InitSection(void) {
     gKernelSharedSegment->header.framesPerSlot = JAMEET_SLOT_FRAMES;
     gKernelSharedSegment->header.totalCapacityFrames = JAMEET_TOTAL_FRAMES;
 
-    /* Build MDL to allow mapping into user mode */
-    gSharedMdl = IoAllocateMdl(gKernelSharedSegment, sizeof(JaMeetSharedSegment), FALSE, FALSE, NULL);
+    /* Build MDL over the dedicated page-aligned allocation */
+    gSharedMdl = IoAllocateMdl(gKernelSharedSegment, (ULONG)gAllocatedPoolSize, FALSE, FALSE, NULL);
     if (!gSharedMdl) {
         ExFreePoolWithTag(gKernelSharedSegment, 'TMJR');
         gKernelSharedSegment = NULL;
@@ -62,19 +98,7 @@ NTSTATUS JaMeetDispatch_InitSection(void) {
 void JaMeetDispatch_TeardownSection(void) {
     KeWaitForSingleObject(&gProducerMutexEvent, Executive, KernelMode, FALSE, NULL);
 
-    if (gUserViewBaseAddress != NULL && gSharedMdl != NULL) {
-        __try {
-            MmUnmapLockedPages(gUserViewBaseAddress, gSharedMdl);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
-        }
-        gUserViewBaseAddress = NULL;
-    }
-
-    if (gProducerProcess != NULL) {
-        ObDereferenceObject(gProducerProcess);
-        gProducerProcess = NULL;
-    }
-    gActiveProducerFileObject = NULL;
+    SafeUnmapProducerView();
 
     KeSetEvent(&gProducerMutexEvent, IO_NO_INCREMENT, FALSE);
 
@@ -174,22 +198,8 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
     } else if (ioctlCode == IOCTL_JAMEET_UNMAP_PRODUCER_VIEW) {
         KeWaitForSingleObject(&gProducerMutexEvent, Executive, KernelMode, FALSE, NULL);
 
-        if (irpSp->FileObject == gActiveProducerFileObject && gUserViewBaseAddress != NULL) {
-            __try {
-                MmUnmapLockedPages(gUserViewBaseAddress, gSharedMdl);
-            } __except (EXCEPTION_EXECUTE_HANDLER) {
-            }
-            gUserViewBaseAddress = NULL;
-
-            if (gProducerProcess != NULL) {
-                ObDereferenceObject(gProducerProcess);
-                gProducerProcess = NULL;
-            }
-            gActiveProducerFileObject = NULL;
-
-            if (gKernelSharedSegment != NULL) {
-                gKernelSharedSegment->header.isVoiceActive = 0;
-            }
+        if (irpSp->FileObject == gActiveProducerFileObject) {
+            SafeUnmapProducerView();
         }
 
         KeSetEvent(&gProducerMutexEvent, IO_NO_INCREMENT, FALSE);
@@ -240,22 +250,8 @@ static NTSTATUS JaMeetDispatch_HandleCleanup(PDEVICE_OBJECT DeviceObject, PIRP I
 
     KeWaitForSingleObject(&gProducerMutexEvent, Executive, KernelMode, FALSE, NULL);
 
-    if (irpSp->FileObject == gActiveProducerFileObject && gUserViewBaseAddress != NULL) {
-        __try {
-            MmUnmapLockedPages(gUserViewBaseAddress, gSharedMdl);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
-        }
-        gUserViewBaseAddress = NULL;
-
-        if (gProducerProcess != NULL) {
-            ObDereferenceObject(gProducerProcess);
-            gProducerProcess = NULL;
-        }
-        gActiveProducerFileObject = NULL;
-
-        if (gKernelSharedSegment != NULL) {
-            gKernelSharedSegment->header.isVoiceActive = 0;
-        }
+    if (irpSp->FileObject == gActiveProducerFileObject) {
+        SafeUnmapProducerView();
     }
 
     KeSetEvent(&gProducerMutexEvent, IO_NO_INCREMENT, FALSE);

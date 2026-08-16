@@ -3,23 +3,27 @@ setlocal enabledelayedexpansion
 
 echo [JaMeetRemote] Uninstalling Windows JaMeet Remote virtual audio driver...
 set DRIVER_DIR=%~dp0
+set INF_PATH=%DRIVER_DIR%package\JaMeetRemote.inf
+if not exist "%INF_PATH%" set INF_PATH=%DRIVER_DIR%JaMeetRemote.inf
 
-:: 1. Attempt uninstallation via native JaMeet device installer if available
-set INSTALLER_EXE=%DRIVER_DIR%..\..\..\bin\jameet-device-installer.exe
+:: Locate native JaMeet device installer in packaged layout (resources\bin) or dev layout (bin)
+set INSTALLER_EXE=%DRIVER_DIR%..\bin\jameet-device-installer.exe
+if not exist "%INSTALLER_EXE%" set INSTALLER_EXE=%DRIVER_DIR%..\..\bin\jameet-device-installer.exe
+if not exist "%INSTALLER_EXE%" set INSTALLER_EXE=%DRIVER_DIR%..\..\..\bin\jameet-device-installer.exe
 if not exist "%INSTALLER_EXE%" set INSTALLER_EXE=%DRIVER_DIR%jameet-device-installer.exe
 
-if exist "%INSTALLER_EXE%" (
-    echo [JaMeetRemote] Invoking jameet-device-installer.exe uninstall...
-    "%INSTALLER_EXE%" uninstall
+if not exist "%INSTALLER_EXE%" (
+    echo [JaMeetRemote] Error: Could not find jameet-device-installer.exe
+    exit /b 1
 )
 
-:: 2. Find published oem*.inf name and delete from DriverStore
-for /f "tokens=1,2 delims=:" %%a in ('pnputil.exe /enum-drivers ^| findstr /i /c:"JaMeetRemote.inf" /c:"Published Name"') do (
-    set LINE=%%b
+echo [JaMeetRemote] Invoking jameet-device-installer.exe uninstall from %INSTALLER_EXE%...
+"%INSTALLER_EXE%" uninstall "%INF_PATH%"
+set UNINSTALL_STATUS=%ERRORLEVEL%
+if %UNINSTALL_STATUS% NEQ 0 (
+    echo [JaMeetRemote] Error: Driver uninstallation failed with code %UNINSTALL_STATUS%
+    exit /b %UNINSTALL_STATUS%
 )
-
-pnputil.exe /delete-driver JaMeetRemote.inf /uninstall /force >nul 2>&1
-pnputil.exe /scan-devices
 
 echo [JaMeetRemote] JaMeet Remote driver uninstalled cleanly.
 exit /b 0

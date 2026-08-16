@@ -1,12 +1,28 @@
 #include "jameet_remote_kernel_consumer.h"
 #include <string.h>
 
-#if defined(__cplusplus)
-#include <atomic>
-#define JAMEET_ATOMIC_LOAD_U64(ptr) std::atomic_load_explicit((const std::atomic<uint64_t>*)(ptr), std::memory_order_acquire)
+#if defined(_WIN32) && defined(__KERNEL__)
+#include <ntddk.h>
+static inline uint64_t jameet_read_sequence_acquire(const volatile uint64_t* ptr) {
+    #if defined(_M_ARM64) || defined(__aarch64__)
+    return (uint64_t)__ldar64((unsigned __int64 volatile*)ptr);
+    #else
+    uint64_t val = *ptr;
+    _ReadWriteBarrier();
+    return val;
+    #endif
+}
+#elif defined(_WIN32)
+#include <windows.h>
+static inline uint64_t jameet_read_sequence_acquire(const volatile uint64_t* ptr) {
+    return (uint64_t)InterlockedCompareExchange64((LONG64 volatile*)ptr, 0, 0);
+}
 #else
-#include <stdatomic.h>
-#define JAMEET_ATOMIC_LOAD_U64(ptr) atomic_load_explicit((const _Atomic(uint64_t)*)(ptr), memory_order_acquire)
+static inline uint64_t jameet_read_sequence_acquire(const volatile uint64_t* ptr) {
+    uint64_t val = *ptr;
+    __sync_synchronize();
+    return val;
+}
 #endif
 
 #define JAMEET_MAX_SEQLOCK_RETRIES      3
@@ -134,7 +150,7 @@ uint32_t JaMeetKernelConsumer_ReadFloatFrames(
         uint32_t tempBits[JAMEET_SLOT_SAMPLES];
 
         for (int retry = 0; retry < JAMEET_MAX_SEQLOCK_RETRIES; retry++) {
-            uint64_t seq1 = JAMEET_ATOMIC_LOAD_U64(&slot->publishSequence);
+            uint64_t seq1 = jameet_read_sequence_acquire(&slot->publishSequence);
             if (seq1 & 1) {
                 continue; /* Writer in progress */
             }
@@ -169,7 +185,7 @@ uint32_t JaMeetKernelConsumer_ReadFloatFrames(
                 tempBits[i] = slot->pcmBits[sampleStart + i];
             }
 
-            uint64_t seq2 = JAMEET_ATOMIC_LOAD_U64(&slot->publishSequence);
+            uint64_t seq2 = jameet_read_sequence_acquire(&slot->publishSequence);
             if (seq1 == seq2) {
                 readSuccess = true;
                 actualFramesCopied = chunkFrames;
