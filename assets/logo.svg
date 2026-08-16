@@ -1,87 +1,55 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <defs>
-    <!-- Background gradient: deep navy with subtle radial highlight -->
-    <radialGradient id="bgGrad" cx="50%" cy="35%" r="70%" fx="50%" fy="25%">
-      <stop offset="0%" stop-color="#1a3a9e"/>
-      <stop offset="60%" stop-color="#0e2070"/>
-      <stop offset="100%" stop-color="#091550"/>
-    </radialGradient>
-
-    <!-- Outer glow / drop shadow for the card -->
-    <filter id="outerGlow" x="-12%" y="-12%" width="124%" height="124%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="28" result="blur"/>
-      <feFlood flood-color="#4466ff" flood-opacity="0.35" result="color"/>
-      <feComposite in="color" in2="blur" operator="in" result="glow"/>
-      <feMerge>
-        <feMergeNode in="glow"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-
-    <!-- Soft drop shadow for the J letter -->
-    <filter id="jShadow" x="-15%" y="-15%" width="130%" height="130%">
-      <feDropShadow dx="6" dy="8" stdDeviation="12" flood-color="#07104a" flood-opacity="0.55"/>
-    </filter>
-
-    <!-- Glow filter for the waveform bars -->
-    <filter id="waveGlow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-
-    <!-- Wave bar gradient: cyan to blue -->
-    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#00e5ff"/>
-      <stop offset="100%" stop-color="#1a7aff"/>
-    </linearGradient>
-
-    <!-- Clip to rounded square -->
-    <clipPath id="roundedClip">
-      <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224"/>
-    </clipPath>
-  </defs>
-
-  <!-- === CARD BACKGROUND === -->
-  <g filter="url(#outerGlow)">
-    <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#bgGrad)"/>
-  </g>
-
-  <!-- === INNER HIGHLIGHT (top subtle sheen) === -->
-  <ellipse cx="512" cy="160" rx="340" ry="120" fill="white" opacity="0.06"/>
-
-  <!-- === J LETTER – shadow/depth layer (slightly offset, darker) === -->
-  <g clip-path="url(#roundedClip)">
-    <!-- Back shadow layer of J -->
-    <g opacity="0.45" transform="translate(16, 14)">
-      <path
-        d="M 590 150 C 590 150 620 150 620 180 L 620 615 C 620 730 540 820 420 820 C 300 820 220 745 210 650 L 210 610 C 210 580 235 558 265 560 C 295 562 318 586 318 616 L 318 642 C 322 700 362 730 420 730 C 490 730 520 688 520 615 L 520 245 L 380 245 C 350 245 326 221 326 191 C 326 161 350 137 380 137 L 590 137 Z"
-        fill="#b0bfe8"
-      />
-    </g>
-
-    <!-- Main J letter -->
-    <g filter="url(#jShadow)">
-      <path
-        d="M 590 150 C 590 150 620 150 620 180 L 620 615 C 620 730 540 820 420 820 C 300 820 220 745 210 650 L 210 610 C 210 580 235 558 265 560 C 295 562 318 586 318 616 L 318 642 C 322 700 362 730 420 730 C 490 730 520 688 520 615 L 520 245 L 380 245 C 350 245 326 221 326 191 C 326 161 350 137 380 137 L 590 137 Z"
-        fill="#c8d8f4"
-      />
-    </g>
-
-    <!-- === AUDIO WAVEFORM BARS === -->
-    <g filter="url(#waveGlow)" fill="url(#waveGrad)">
-      <!-- Bar 1 - far left, short -->
-      <rect x="198" y="430" width="42" height="110" rx="21" ry="21"/>
-      <!-- Bar 2 - second left, medium -->
-      <rect x="264" y="370" width="42" height="230" rx="21" ry="21"/>
-      <!-- Bar 3 - center, tallest -->
-      <rect x="330" y="310" width="44" height="350" rx="22" ry="22"/>
-      <!-- Bar 4 - second right, tall -->
-      <rect x="398" y="345" width="44" height="280" rx="22" ry="22"/>
-      <!-- Bar 5 - far right, short -->
-      <rect x="466" y="430" width="42" height="110" rx="21" ry="21"/>
-    </g>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" shape-rendering="geometricPrecision">
+<defs>
+  <linearGradient id="iconBase" x1="175" y1="105" x2="865" y2="905" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#1050ba"/>
+    <stop offset="0.30" stop-color="#0a3b96"/>
+    <stop offset="0.62" stop-color="#062a74"/>
+    <stop offset="1" stop-color="#082668"/>
+  </linearGradient>
+  <radialGradient id="topGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(245 135) rotate(42) scale(650 530)">
+    <stop offset="0" stop-color="#1b66d5" stop-opacity="0.48"/>
+    <stop offset="0.55" stop-color="#164cae" stop-opacity="0.14"/>
+    <stop offset="1" stop-color="#164cae" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="bottomGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(520 916) rotate(-90) scale(220 590)">
+    <stop offset="0" stop-color="#113dac" stop-opacity="0.26"/>
+    <stop offset="1" stop-color="#113dac" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="audioGrad" x1="0" y1="336" x2="0" y2="571" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#18e5ee"/>
+    <stop offset="0.43" stop-color="#13caf6"/>
+    <stop offset="1" stop-color="#079dff"/>
+  </linearGradient>
+  <linearGradient id="jGrad" x1="420" y1="240" x2="615" y2="775" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#d3eaff"/>
+    <stop offset="0.54" stop-color="#cbe5fb"/>
+    <stop offset="1" stop-color="#c0def8"/>
+  </linearGradient>
+  <linearGradient id="foldGrad" x1="342" y1="704" x2="700" y2="494" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#d3ebff"/>
+    <stop offset="0.43" stop-color="#c8e5fb"/>
+    <stop offset="0.78" stop-color="#b7d9f6"/>
+    <stop offset="1" stop-color="#9fc9ef"/>
+  </linearGradient>
+  <filter id="outerShadow" x="30" y="40" width="965" height="955" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation="13"/></filter>
+  <filter id="softShadow" x="250" y="220" width="500" height="610" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation="5"/></filter>
+  <filter id="foldShadow" x="300" y="460" width="435" height="290" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation="7"/></filter>
+  <clipPath id="jClip"><path d="M 689 249 L 686 249 L 685 248 L 680 248 L 679 247 L 504 247 L 503 248 L 495 248 L 494 249 L 491 249 L 490 250 L 485 251 L 479 254 L 477 256 L 474 257 L 461 269 L 459 273 L 456 276 L 455 279 L 450 286 L 446 295 L 444 297 L 439 307 L 437 309 L 435 314 L 433 316 L 431 321 L 429 323 L 427 328 L 425 330 L 421 339 L 419 341 L 419 343 L 418 344 L 418 350 L 421 354 L 425 356 L 553 356 L 560 359 L 565 364 L 567 368 L 567 371 L 568 372 L 568 588 L 567 589 L 567 597 L 566 598 L 566 602 L 565 603 L 564 608 L 562 611 L 562 613 L 560 617 L 557 620 L 554 625 L 542 636 L 541 636 L 536 640 L 521 647 L 519 647 L 515 649 L 512 649 L 511 650 L 508 650 L 507 651 L 504 651 L 503 652 L 496 652 L 495 653 L 483 653 L 482 652 L 469 651 L 468 650 L 462 649 L 459 647 L 457 647 L 445 640 L 442 637 L 441 637 L 430 625 L 424 613 L 423 608 L 420 602 L 415 597 L 409 594 L 406 594 L 405 593 L 320 593 L 319 594 L 316 594 L 310 597 L 304 603 L 303 607 L 301 610 L 301 613 L 300 614 L 300 639 L 301 640 L 301 646 L 302 647 L 303 656 L 304 657 L 304 660 L 305 661 L 305 663 L 308 670 L 308 673 L 319 695 L 323 700 L 324 703 L 328 707 L 328 708 L 332 712 L 332 713 L 336 717 L 336 718 L 351 732 L 352 732 L 355 735 L 356 735 L 359 738 L 360 738 L 368 744 L 371 745 L 373 747 L 376 748 L 378 750 L 384 753 L 386 753 L 395 758 L 403 760 L 406 762 L 408 762 L 412 764 L 415 764 L 419 766 L 423 766 L 427 768 L 431 768 L 432 769 L 436 769 L 437 770 L 442 770 L 443 771 L 447 771 L 448 772 L 455 772 L 456 773 L 463 773 L 464 774 L 509 774 L 510 773 L 519 773 L 520 772 L 525 772 L 526 771 L 531 771 L 532 770 L 543 769 L 544 768 L 555 766 L 556 765 L 558 765 L 559 764 L 561 764 L 562 763 L 564 763 L 565 762 L 579 758 L 589 753 L 591 753 L 593 751 L 597 750 L 601 748 L 603 746 L 612 742 L 614 740 L 627 732 L 631 728 L 632 728 L 636 724 L 637 724 L 658 703 L 658 702 L 663 697 L 663 696 L 666 693 L 666 692 L 674 681 L 686 658 L 686 656 L 688 653 L 691 642 L 693 639 L 694 631 L 696 627 L 697 617 L 698 616 L 699 604 L 700 603 L 700 592 L 701 591 L 701 265 L 700 264 L 699 259 L 697 257 L 697 256 Z"/></clipPath>
+</defs>
+<rect x="79" y="97" width="858" height="816" rx="220" fill="#1949bd" opacity="0.28" filter="url(#outerShadow)"/>
+<rect x="79" y="91" width="858" height="824" rx="220" fill="url(#iconBase)"/>
+<rect x="79" y="91" width="858" height="824" rx="220" fill="url(#topGlow)"/>
+<rect x="79" y="91" width="858" height="824" rx="220" fill="url(#bottomGlow)"/>
+<rect x="80" y="92" width="856" height="822" rx="219" fill="none" stroke="#3b6ccf" stroke-width="1.4" opacity="0.16"/>
+<g opacity="0.18" transform="translate(0 5)" filter="url(#softShadow)"><path d="M 689 249 L 686 249 L 685 248 L 680 248 L 679 247 L 504 247 L 503 248 L 495 248 L 494 249 L 491 249 L 490 250 L 485 251 L 479 254 L 477 256 L 474 257 L 461 269 L 459 273 L 456 276 L 455 279 L 450 286 L 446 295 L 444 297 L 439 307 L 437 309 L 435 314 L 433 316 L 431 321 L 429 323 L 427 328 L 425 330 L 421 339 L 419 341 L 419 343 L 418 344 L 418 350 L 421 354 L 425 356 L 553 356 L 560 359 L 565 364 L 567 368 L 567 371 L 568 372 L 568 588 L 567 589 L 567 597 L 566 598 L 566 602 L 565 603 L 564 608 L 562 611 L 562 613 L 560 617 L 557 620 L 554 625 L 542 636 L 541 636 L 536 640 L 521 647 L 519 647 L 515 649 L 512 649 L 511 650 L 508 650 L 507 651 L 504 651 L 503 652 L 496 652 L 495 653 L 483 653 L 482 652 L 469 651 L 468 650 L 462 649 L 459 647 L 457 647 L 445 640 L 442 637 L 441 637 L 430 625 L 424 613 L 423 608 L 420 602 L 415 597 L 409 594 L 406 594 L 405 593 L 320 593 L 319 594 L 316 594 L 310 597 L 304 603 L 303 607 L 301 610 L 301 613 L 300 614 L 300 639 L 301 640 L 301 646 L 302 647 L 303 656 L 304 657 L 304 660 L 305 661 L 305 663 L 308 670 L 308 673 L 319 695 L 323 700 L 324 703 L 328 707 L 328 708 L 332 712 L 332 713 L 336 717 L 336 718 L 351 732 L 352 732 L 355 735 L 356 735 L 359 738 L 360 738 L 368 744 L 371 745 L 373 747 L 376 748 L 378 750 L 384 753 L 386 753 L 395 758 L 403 760 L 406 762 L 408 762 L 412 764 L 415 764 L 419 766 L 423 766 L 427 768 L 431 768 L 432 769 L 436 769 L 437 770 L 442 770 L 443 771 L 447 771 L 448 772 L 455 772 L 456 773 L 463 773 L 464 774 L 509 774 L 510 773 L 519 773 L 520 772 L 525 772 L 526 771 L 531 771 L 532 770 L 543 769 L 544 768 L 555 766 L 556 765 L 558 765 L 559 764 L 561 764 L 562 763 L 564 763 L 565 762 L 579 758 L 589 753 L 591 753 L 593 751 L 597 750 L 601 748 L 603 746 L 612 742 L 614 740 L 627 732 L 631 728 L 632 728 L 636 724 L 637 724 L 658 703 L 658 702 L 663 697 L 663 696 L 666 693 L 666 692 L 674 681 L 686 658 L 686 656 L 688 653 L 691 642 L 693 639 L 694 631 L 696 627 L 697 617 L 698 616 L 699 604 L 700 603 L 700 592 L 701 591 L 701 265 L 700 264 L 699 259 L 697 257 L 697 256 Z" fill="#001846"/></g>
+<g><rect x="203" y="448" width="39" height="63" rx="19.5" fill="url(#audioGrad)"/>
+<rect x="264" y="393" width="40" height="161" rx="20" fill="url(#audioGrad)"/>
+<rect x="328" y="336" width="39" height="235" rx="19.5" fill="url(#audioGrad)"/>
+<rect x="391" y="409" width="39" height="131" rx="19.5" fill="url(#audioGrad)"/>
+<rect x="452" y="450" width="38" height="60" rx="19" fill="url(#audioGrad)"/></g>
+<path d="M 689 249 L 686 249 L 685 248 L 680 248 L 679 247 L 504 247 L 503 248 L 495 248 L 494 249 L 491 249 L 490 250 L 485 251 L 479 254 L 477 256 L 474 257 L 461 269 L 459 273 L 456 276 L 455 279 L 450 286 L 446 295 L 444 297 L 439 307 L 437 309 L 435 314 L 433 316 L 431 321 L 429 323 L 427 328 L 425 330 L 421 339 L 419 341 L 419 343 L 418 344 L 418 350 L 421 354 L 425 356 L 553 356 L 560 359 L 565 364 L 567 368 L 567 371 L 568 372 L 568 588 L 567 589 L 567 597 L 566 598 L 566 602 L 565 603 L 564 608 L 562 611 L 562 613 L 560 617 L 557 620 L 554 625 L 542 636 L 541 636 L 536 640 L 521 647 L 519 647 L 515 649 L 512 649 L 511 650 L 508 650 L 507 651 L 504 651 L 503 652 L 496 652 L 495 653 L 483 653 L 482 652 L 469 651 L 468 650 L 462 649 L 459 647 L 457 647 L 445 640 L 442 637 L 441 637 L 430 625 L 424 613 L 423 608 L 420 602 L 415 597 L 409 594 L 406 594 L 405 593 L 320 593 L 319 594 L 316 594 L 310 597 L 304 603 L 303 607 L 301 610 L 301 613 L 300 614 L 300 639 L 301 640 L 301 646 L 302 647 L 303 656 L 304 657 L 304 660 L 305 661 L 305 663 L 308 670 L 308 673 L 319 695 L 323 700 L 324 703 L 328 707 L 328 708 L 332 712 L 332 713 L 336 717 L 336 718 L 351 732 L 352 732 L 355 735 L 356 735 L 359 738 L 360 738 L 368 744 L 371 745 L 373 747 L 376 748 L 378 750 L 384 753 L 386 753 L 395 758 L 403 760 L 406 762 L 408 762 L 412 764 L 415 764 L 419 766 L 423 766 L 427 768 L 431 768 L 432 769 L 436 769 L 437 770 L 442 770 L 443 771 L 447 771 L 448 772 L 455 772 L 456 773 L 463 773 L 464 774 L 509 774 L 510 773 L 519 773 L 520 772 L 525 772 L 526 771 L 531 771 L 532 770 L 543 769 L 544 768 L 555 766 L 556 765 L 558 765 L 559 764 L 561 764 L 562 763 L 564 763 L 565 762 L 579 758 L 589 753 L 591 753 L 593 751 L 597 750 L 601 748 L 603 746 L 612 742 L 614 740 L 627 732 L 631 728 L 632 728 L 636 724 L 637 724 L 658 703 L 658 702 L 663 697 L 663 696 L 666 693 L 666 692 L 674 681 L 686 658 L 686 656 L 688 653 L 691 642 L 693 639 L 694 631 L 696 627 L 697 617 L 698 616 L 699 604 L 700 603 L 700 592 L 701 591 L 701 265 L 700 264 L 699 259 L 697 257 L 697 256 Z" fill="url(#jGrad)"/>
+<g clip-path="url(#jClip)">
+  <path d="M 326 703 C 406 706 490 682 561 642 C 625 605 673 548 707 485 L 727 604 C 711 684 668 735 603 760 C 520 792 410 781 345 729 C 337 722 331 713 326 703 Z" fill="url(#foldGrad)"/>
+  <path d="M 332 700 C 407 704 491 680 561 640 C 624 603 673 546 704 489" fill="none" stroke="#6998cd" stroke-width="12" stroke-linecap="round" opacity="0.20" filter="url(#foldShadow)"/>
+</g>
 </svg>
