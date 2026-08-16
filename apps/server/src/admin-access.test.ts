@@ -429,4 +429,31 @@ describe('Admin Session Access CLI & Management Tool', () => {
     // 0o600 in octal (user read/write only, no group/other)
     expect(stat.mode & 0o777).toBe(0o600);
   });
+
+  it('gracefully shuts down server on SIGTERM / SIGINT and releases datastore lock only in onClose', async () => {
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      DATA_DIR: testDir,
+      TURN_SHARED_SECRET: 'test-secret-123456789'
+    });
+
+    const { app } = await createApp(config);
+    await app.listen({ host: '127.0.0.1', port: 0 });
+
+    const lockPath = getDatastoreLockPath(testDir);
+    expect(fs.existsSync(lockPath)).toBe(true);
+
+    // Emitting SIGTERM should trigger app.close() rather than immediately unlinking lock synchronously
+    process.emit('SIGTERM', 'SIGTERM');
+
+    // Wait for Fastify to finish its close lifecycle
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // After graceful close completes, lock and runtime file must be released
+    expect(fs.existsSync(lockPath)).toBe(false);
+    expect(fs.existsSync(getAdminRuntimeFilePath(testDir))).toBe(false);
+
+    // Additional calls to app.close() must be safe and idempotent
+    await expect(app.close()).resolves.not.toThrow();
+  });
 });

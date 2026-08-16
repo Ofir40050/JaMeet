@@ -156,19 +156,31 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     app.server.once('listening', syncRuntimeInfo);
   }
 
+  let isResourcesCleanedUp = false;
   const cleanupServerResources = () => {
+    if (isResourcesCleanedUp) return;
+    isResourcesCleanedUp = true;
     cleanupAdminRuntimeFile(dataDir);
     datastoreLock.release();
   };
 
+  let isShuttingDown = false;
+  const handleSignal = () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    app.close().catch((err) => {
+      app.log.error(err, 'Error during graceful server shutdown on signal');
+    });
+  };
+
+  process.on('SIGINT', handleSignal);
+  process.on('SIGTERM', handleSignal);
   process.once('exit', cleanupServerResources);
-  process.once('SIGINT', cleanupServerResources);
-  process.once('SIGTERM', cleanupServerResources);
 
   app.addHook('onClose', async () => {
+    process.off('SIGINT', handleSignal);
+    process.off('SIGTERM', handleSignal);
     process.off('exit', cleanupServerResources);
-    process.off('SIGINT', cleanupServerResources);
-    process.off('SIGTERM', cleanupServerResources);
     cleanupServerResources();
   });
 
