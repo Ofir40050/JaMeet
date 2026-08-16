@@ -3,6 +3,8 @@ import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { logger } from './logger.js';
 
+logger.setupGlobalHandlers();
+
 const config = loadConfig();
 logger.info('server_startup', 'Starting JaMeet server', {
   host: config.HOST,

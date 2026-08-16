@@ -102,4 +102,35 @@ describe('Server Production Structured Logging & Error Handling', () => {
     expect(ice.username).toBe('1786914300:part-99');
     expect(ice.credential).toBe('[REDACTED]');
   });
+
+  it('observes fatal server errors via uncaughtExceptionMonitor without intercepting process termination', () => {
+    const errorSpy = vi.spyOn(serverLogger, 'error');
+    const originalListeners = process.listeners('uncaughtExceptionMonitor');
+
+    serverLogger.setupGlobalHandlers();
+
+    const currentListeners = process.listeners('uncaughtExceptionMonitor');
+    expect(currentListeners.length).toBeGreaterThan(originalListeners.length);
+
+    const latestListener = currentListeners[currentListeners.length - 1];
+    const fatalError = new Error('Fatal database memory exhaustion in signaling loop with token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.sig');
+
+    // Simulate Node emitting uncaughtExceptionMonitor
+    (latestListener as any)(fatalError, 'uncaughtException');
+
+    expect(errorSpy).toHaveBeenCalled();
+    const [event, msg, meta] = errorSpy.mock.calls[errorSpy.mock.calls.length - 1];
+    expect(event).toBe('fatal_server_crash');
+    expect(msg).toContain('Fatal server crash detected: uncaughtException');
+    expect(meta?.nodeVersion).toBe(process.version);
+    expect(meta?.platform).toBe(process.platform);
+    expect(meta?.pid).toBe(process.pid);
+
+    const returnedEntry = errorSpy.mock.results[errorSpy.mock.results.length - 1].value;
+    expect(returnedEntry.error?.message).not.toContain('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.sig');
+    expect(returnedEntry.error?.message).toContain('token=[REDACTED]');
+
+    // Cleanup
+    process.removeListener('uncaughtExceptionMonitor', latestListener);
+  });
 });

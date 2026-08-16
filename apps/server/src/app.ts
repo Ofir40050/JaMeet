@@ -78,6 +78,7 @@ function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSumm
 }
 
 export async function createApp(config: ServerConfig, customSocketLimits?: Partial<Record<RateLimitCategory, RateLimitConfig>>) {
+  logger.setupGlobalHandlers();
   const app = Fastify({ logger: config.NODE_ENV !== 'test', bodyLimit: 2_097_152 });
   const origins = config.ALLOWED_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean);
   const isOriginAllowed = (origin?: string): boolean => {

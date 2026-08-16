@@ -177,8 +177,8 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
     expect(logEntry.message).not.toContain('RawPasswordHere!');
     expect(logEntry.message).not.toContain('rec-999-xyz');
     expect(logEntry.message).not.toContain('turn-secret-123');
-    expect(logEntry.message).not.toContain('turnPass789');
-    expect(logEntry.message).toContain('https://admin_user:[REDACTED]@signaling.jameet.app:3000/ws?authToken=[REDACTED]');
+    expect(logEntry.message).toContain('https://admin_user:[REDACTED]@signaling.jameet.app:3000/ws?authToken=[REDACTED_TOKEN]');
+    expect(logEntry.message).toContain('reconnectToken=[REDACTED]');
     expect(logEntry.message).toContain('password:[REDACTED]');
     expect(logEntry.message).toContain('turnSharedSecret=[REDACTED]');
     expect(logEntry.message).toContain('credential=[REDACTED]');

@@ -94,17 +94,17 @@ export function sanitizeLogString(input: string): string {
   str = str.replace(/bearer\s+[a-z0-9_.~+\/-]+=*/gi, 'Bearer [REDACTED]');
 
   // 3. Redact JSON Web Tokens (3 base64url segments starting with eyJ)
-  str = str.replace(/\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_.-]*/g, '[REDACTED_TOKEN]');
+  str = str.replace(/\beyJ[a-zA-Z0-9_-]{5,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_.-]*/g, '[REDACTED_TOKEN]');
 
-  // 4. Redact JSON-style key-values: "password": "...", "credential": "...", "authToken": "...", etc.
+  // 4. Redact JSON-style key-values: "password": "...", "token": "...", etc.
   str = str.replace(
-    /"((?:password|passphrase|currentPassword|newPassword|secret|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token|credential|credentials|email|usernameOrEmail|username_or_email))"\s*:\s*("(?:[^"\\]|\\.)*"|[^\s,}\]]+)/gi,
+    /"((?:password|passphrase|currentPassword|newPassword|secret|token|sessionToken|session_token|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token|credential|credentials|email|usernameOrEmail|username_or_email))"\s*:\s*("(?:[^"\\]|\\.)*"|(?!\[REDACTED)[^\s,}\]]+)/gi,
     '"$1":"[REDACTED]"'
   );
 
   // 5. Redact Key-Value patterns in text, query strings, headers, error messages:
   str = str.replace(
-    /((?:password|passphrase|currentPassword|newPassword|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token|credential|credentials|email|usernameOrEmail|username_or_email))\s*([:=])\s*("(?:[^"\\]|\\.)*"|'[^']*'|[^\s,;&'"}]+)/gi,
+    /((?:password|passphrase|currentPassword|newPassword|secret|token|sessionToken|session_token|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token|credential|credentials|email|usernameOrEmail|username_or_email))\s*([:=])\s*("(?:[^"\\]|\\.)*"|'[^']*'|(?!\[REDACTED)[^\s,;&'"}]+)/gi,
     '$1$2[REDACTED]'
   );
 

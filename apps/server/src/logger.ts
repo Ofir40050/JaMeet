@@ -10,9 +10,27 @@ import {
 
 export class ServerLogger {
   private isTesting: boolean;
+  private isInitialized = false;
 
   constructor(isTesting = process.env.NODE_ENV === 'test') {
     this.isTesting = isTesting;
+  }
+
+  setupGlobalHandlers(): void {
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+
+    // Use uncaughtExceptionMonitor to observe and persist fatal server crashes
+    // without altering Node's normal fatal error behavior or swallowing fatal exceptions.
+    process.on('uncaughtExceptionMonitor', (err, origin) => {
+      this.error('fatal_server_crash', `Fatal server crash detected: ${origin || 'uncaughtException'}`, {
+        origin: origin || 'uncaughtException',
+        nodeVersion: process.version,
+        platform: process.platform,
+        arch: process.arch,
+        pid: process.pid
+      }, err);
+    });
   }
 
   log(entry: Partial<StructuredLogEntry> & { event: string; message: string; level?: LogLevel }): StructuredLogEntry {
