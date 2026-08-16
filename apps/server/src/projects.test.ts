@@ -1134,6 +1134,77 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('rejects workspace updates containing empty or duplicate structure section IDs without mutating state', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-sec-id-val-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'owner-sec-id-1',
+        displayName: 'Owner Alice',
+        username: 'alice',
+        email: 'alice@music.com',
+        avatarColor: '#6366f1',
+        isGuest: false,
+        createdAt: 1000
+      };
+
+      const project = store.createProject(owner, { name: 'Structure ID Validation Song' });
+
+      // Baseline state
+      const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
+
+      // 1. Reject empty section ID
+      const emptyIdRes = store.updateWorkspace(project.id, owner, {
+        structure: {
+          sections: [
+            { id: '', type: 'verse', name: 'Verse 1', bars: 8 }
+          ]
+        }
+      });
+      expect(emptyIdRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 2. Reject whitespace-only section ID
+      const wsIdRes = store.updateWorkspace(project.id, owner, {
+        structure: {
+          sections: [
+            { id: '   ', type: 'verse', name: 'Verse 1', bars: 8 }
+          ]
+        }
+      });
+      expect(wsIdRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 3. Reject duplicate section IDs
+      const dupIdRes = store.updateWorkspace(project.id, owner, {
+        structure: {
+          sections: [
+            { id: 'sec-1', type: 'verse', name: 'Verse 1', bars: 8 },
+            { id: 'sec-1', type: 'chorus', name: 'Chorus', bars: 16 }
+          ]
+        }
+      });
+      expect(dupIdRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 4. Accept valid unique section IDs
+      const validRes = store.updateWorkspace(project.id, owner, {
+        structure: {
+          sections: [
+            { id: 'sec-1', type: 'verse', name: 'Verse 1', bars: 8 },
+            { id: 'sec-2', type: 'chorus', name: 'Chorus', bars: 16 }
+          ]
+        }
+      });
+      expect(validRes).not.toBeNull();
+      expect(validRes?.workspace.structure.sections.length).toBe(2);
+      expect(validRes?.workspace.structure.sections[0].id).toBe('sec-1');
+      expect(validRes?.workspace.structure.sections[1].id).toBe('sec-2');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

@@ -4685,6 +4685,84 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('rejects REST and Socket.IO workspace updates containing empty or duplicate structure section IDs', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-sec-id-rest-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-sec-id-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_sec_id', 'beta', userStore);
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Structure ID Integration Song' });
+
+      // 1. REST update with empty section ID -> 400 Bad Request
+      const emptyIdRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          structure: {
+            sections: [{ id: '', type: 'verse', name: 'Verse 1' }]
+          }
+        })
+      });
+      expect(emptyIdRes.status).toBe(400);
+
+      // 2. REST update with duplicate section IDs -> rejected with 403 or 400 without changing state
+      const dupIdRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          structure: {
+            sections: [
+              { id: 'sec-1', type: 'verse', name: 'Verse 1' },
+              { id: 'sec-1', type: 'chorus', name: 'Chorus 1' }
+            ]
+          }
+        })
+      });
+      expect(dupIdRes.status).toBe(403);
+
+      // Verify project structure sections remain untouched
+      const projAfterDup = projectStore.getProject(project.id, ownerAuth.user.id);
+      expect(projAfterDup?.workspace.structure.sections.length).toBe(0);
+
+      // 3. Socket update with duplicate section IDs -> ack with ok: false
+      const socket = await connected(url);
+      const joinAck = await ack(socket, 'project:workspace:join', {
+        projectId: project.id,
+        authToken: ownerAuth.token
+      });
+      expect(joinAck.ok).toBe(true);
+
+      const socketDupRes = await ack(socket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: ownerAuth.token,
+        updates: {
+          structure: {
+            sections: [
+              { id: 'sec-dup', type: 'intro', name: 'Intro' },
+              { id: 'sec-dup', type: 'outro', name: 'Outro' }
+            ]
+          }
+        }
+      });
+      expect(socketDupRes.ok).toBe(false);
+
+      socket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

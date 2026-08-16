@@ -347,6 +347,20 @@ export class ProjectStore {
       return null;
     }
 
+    // Validate song structure sections (identities and uniqueness) before performing any workspace mutation or activity recording
+    if (updates.structure && updates.structure.sections !== undefined) {
+      const seenSectionIds = new Set<string>();
+      for (const s of updates.structure.sections) {
+        if (!s.id || typeof s.id !== 'string' || s.id.trim().length === 0) {
+          return null;
+        }
+        if (seenSectionIds.has(s.id)) {
+          return null;
+        }
+        seenSectionIds.add(s.id);
+      }
+    }
+
     // Validate tasks (identities and assignees) before performing any workspace mutation or activity recording
     if (updates.tasks && updates.tasks.tasks !== undefined) {
       const seenTaskIds = new Set<string>();

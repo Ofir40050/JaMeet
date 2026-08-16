@@ -240,7 +240,7 @@ export const songSectionTypeSchema = z.enum([
 export type SongSectionType = z.infer<typeof songSectionTypeSchema>;
 
 export const songSectionItemSchema = z.object({
-  id: z.string(),
+  id: z.string().trim().min(1, 'Section ID is required'),
   type: songSectionTypeSchema.default('verse'),
   name: z.string().trim().min(1).max(80).default('Verse'),
   bars: z.number().int().min(1).max(256).optional(),
