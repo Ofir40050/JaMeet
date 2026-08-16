@@ -3722,6 +3722,288 @@ describe('Graceful Server Shutdown Active Session Finalization', () => {
   });
 });
 
+describe('Real-Time Project Authorization on Collaborator Removal', () => {
+  afterEach(() => { for (const socket of sockets.splice(0)) socket.disconnect(); });
+
+  it('removes active socket subscription when collaborator is removed by project owner and stops real-time broadcasts', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-collab-rem-test-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-collab-rem-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_collab_test', 'beta', userStore);
+      const collabAuth = await createTestAccount(url, 'collab_user_test', 'beta', userStore);
+
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Collaborative Song' }, [collabAuth.user]);
+
+      const ownerSocket = await connected(url);
+      const collabSocket = await connected(url);
+
+      // Both join project workspace room
+      const ownerJoin = await new Promise<{ ok: boolean }>((resolve) => {
+        ownerSocket.emit('project:workspace:join', { projectId: project.id, authToken: ownerAuth.token }, resolve);
+      });
+      expect(ownerJoin.ok).toBe(true);
+
+      const collabJoin = await new Promise<{ ok: boolean }>((resolve) => {
+        collabSocket.emit('project:workspace:join', { projectId: project.id, authToken: collabAuth.token }, resolve);
+      });
+      expect(collabJoin.ok).toBe(true);
+
+      // Verify collaborator receives real-time workspace updates while authorized
+      const collabReceivedInitialUpdate = new Promise<any>((resolve) => {
+        collabSocket.once('project:workspace:synced', resolve);
+      });
+      await new Promise((resolve) => {
+        ownerSocket.emit('project:workspace:update', {
+          projectId: project.id,
+          authToken: ownerAuth.token,
+          updates: { notes: { content: 'Initial lyrics idea' } }
+        }, resolve);
+      });
+      const initialSync = await collabReceivedInitialUpdate;
+      expect(initialSync.workspace.notes.content).toBe('Initial lyrics idea');
+
+      // Set up listeners for collaborator removal broadcast
+      let collabGotRemovalActivity = false;
+      collabSocket.on('project:activity:new', () => { collabGotRemovalActivity = true; });
+
+      let collabGotPostRemovalSync = false;
+      collabSocket.on('project:workspace:synced', () => { collabGotPostRemovalSync = true; });
+
+      const ownerGotRemovalActivity = new Promise<any>((resolve) => {
+        ownerSocket.once('project:activity:new', resolve);
+      });
+
+      // Owner removes collaborator via REST
+      const removeRes = await fetch(`${url}/api/projects/${project.id}/collaborators/${collabAuth.user.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${ownerAuth.token}` }
+      });
+      expect(removeRes.status).toBe(200);
+
+      // Owner receives removal activity
+      const removalActivity = await ownerGotRemovalActivity;
+      expect(removalActivity.projectId).toBe(project.id);
+      expect(collabGotRemovalActivity).toBe(false);
+
+      // Owner performs another workspace update
+      const ownerGotSecondSync = new Promise<any>((resolve) => {
+        ownerSocket.once('project:workspace:synced', resolve);
+      });
+      const restUpdateRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${ownerAuth.token}`
+        },
+        body: JSON.stringify({ notes: { content: 'Secret owner-only notes' } })
+      });
+      expect(restUpdateRes.status).toBe(200);
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Collaborator must NOT have received the workspace update
+      expect(collabGotPostRemovalSync).toBe(false);
+
+      // Collaborator attempting to write via socket is rejected
+      const collabUpdateAttempt = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        collabSocket.emit('project:workspace:update', {
+          projectId: project.id,
+          authToken: collabAuth.token,
+          updates: { notes: { content: 'Hacked update' } }
+        }, resolve);
+      });
+      expect(collabUpdateAttempt.ok).toBe(false);
+      expect(collabUpdateAttempt.message).toBe('Unauthorized');
+
+      // Collaborator attempting to join via socket is rejected
+      const collabRejoinAttempt = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        collabSocket.emit('project:workspace:join', { projectId: project.id, authToken: collabAuth.token }, resolve);
+      });
+      expect(collabRejoinAttempt.ok).toBe(false);
+      expect(collabRejoinAttempt.message).toBe('Unauthorized');
+
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('removes active socket subscription when collaborator self-removes (leaves project)', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-collab-selfrem-test-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-collab-rem-2'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_self_test', 'beta', userStore);
+      const collabAuth = await createTestAccount(url, 'collab_self_test', 'beta', userStore);
+
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Self Remove Song' }, [collabAuth.user]);
+
+      const ownerSocket = await connected(url);
+      const collabSocket = await connected(url);
+
+      await new Promise<{ ok: boolean }>((resolve) => {
+        ownerSocket.emit('project:workspace:join', { projectId: project.id, authToken: ownerAuth.token }, resolve);
+      });
+      await new Promise<{ ok: boolean }>((resolve) => {
+        collabSocket.emit('project:workspace:join', { projectId: project.id, authToken: collabAuth.token }, resolve);
+      });
+
+      let collabGotRemovalActivity = false;
+      collabSocket.on('project:activity:new', () => { collabGotRemovalActivity = true; });
+
+      let collabGotPostRemovalSync = false;
+      collabSocket.on('project:workspace:synced', () => { collabGotPostRemovalSync = true; });
+
+      const ownerGotRemovalActivity = new Promise<any>((resolve) => {
+        ownerSocket.once('project:activity:new', resolve);
+      });
+
+      // Collaborator leaves project themselves via DELETE with own userId
+      const leaveRes = await fetch(`${url}/api/projects/${project.id}/collaborators/${collabAuth.user.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${collabAuth.token}` }
+      });
+      expect(leaveRes.status).toBe(200);
+
+      // Owner receives activity
+      await ownerGotRemovalActivity;
+      expect(collabGotRemovalActivity).toBe(false);
+
+      // Owner updates workspace
+      await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${ownerAuth.token}`
+        },
+        body: JSON.stringify({ notes: { content: 'Post self-leave update' } })
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(collabGotPostRemovalSync).toBe(false);
+
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('preserves independent project subscriptions on the same socket connection', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-collab-multi-proj-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-collab-rem-3'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_multi_proj', 'beta', userStore);
+      const collabAuth = await createTestAccount(url, 'collab_multi_proj', 'beta', userStore);
+
+      const projectA = projectStore.createProject(ownerAuth.user, { name: 'Project A' }, [collabAuth.user]);
+      const projectB = projectStore.createProject(ownerAuth.user, { name: 'Project B' }, [collabAuth.user]);
+
+      const ownerSocket = await connected(url);
+      const collabSocket = await connected(url);
+
+      // Collaborator joins both project rooms on the same socket
+      await new Promise<{ ok: boolean }>((resolve) => {
+        collabSocket.emit('project:workspace:join', { projectId: projectA.id, authToken: collabAuth.token }, resolve);
+      });
+      await new Promise<{ ok: boolean }>((resolve) => {
+        collabSocket.emit('project:workspace:join', { projectId: projectB.id, authToken: collabAuth.token }, resolve);
+      });
+
+      // Owner joins both project rooms
+      await new Promise<{ ok: boolean }>((resolve) => {
+        ownerSocket.emit('project:workspace:join', { projectId: projectA.id, authToken: ownerAuth.token }, resolve);
+      });
+      await new Promise<{ ok: boolean }>((resolve) => {
+        ownerSocket.emit('project:workspace:join', { projectId: projectB.id, authToken: ownerAuth.token }, resolve);
+      });
+
+      // Owner removes collaborator from Project A only
+      await fetch(`${url}/api/projects/${projectA.id}/collaborators/${collabAuth.user.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${ownerAuth.token}` }
+      });
+
+      let collabGotProjA = false;
+      let collabGotProjB = false;
+
+      collabSocket.on('project:workspace:synced', (data: any) => {
+        if (data.projectId === projectA.id) collabGotProjA = true;
+        if (data.projectId === projectB.id) collabGotProjB = true;
+      });
+
+      // Owner updates Project A
+      await fetch(`${url}/api/projects/${projectA.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({ notes: { content: 'Project A updated' } })
+      });
+
+      // Owner updates Project B
+      await fetch(`${url}/api/projects/${projectB.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({ notes: { content: 'Project B updated' } })
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Collaborator lost access to Project A but STILL receives Project B updates
+      expect(collabGotProjA).toBe(false);
+      expect(collabGotProjB).toBe(true);
+
+      // Collaborator explicitly leaves Project B
+      collabSocket.emit('project:workspace:leave', { projectId: projectB.id });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      collabGotProjB = false;
+      await fetch(`${url}/api/projects/${projectB.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({ notes: { content: 'Project B updated again' } })
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(collabGotProjB).toBe(false);
+
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+});
+
 
 
 

@@ -28,7 +28,7 @@ import { updateAccountSessionAccess, writeAdminRuntimeFile, cleanupAdminRuntimeF
 import { acquireDatastoreLock, type DatastoreLock } from './datastore-lock.js';
 import { logger } from './logger.js';
 
-type SocketData = { code?: string; participantId?: string; identity?: ParticipantIdentity; isWaiting?: boolean; limiter?: SocketRateLimiter };
+type SocketData = { code?: string; participantId?: string; identity?: ParticipantIdentity; isWaiting?: boolean; limiter?: SocketRateLimiter; projectSubscriptions?: Map<string, string> };
 
 function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSummaryEvent | null {
   let category: 'task' | 'note' | 'lyrics' | 'structure' | null = null;
@@ -643,7 +643,20 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       if (!updated) {
         return reply.code(403).send({ ok: false, message: 'Unauthorized to remove collaborator.' });
       }
-      io.to(`project:${request.params.id}`).emit('project:activity:new', {
+
+      // Remove all active Socket.IO subscriptions for that user from this project room before broadcasting
+      const projectId = request.params.id;
+      const targetUserId = request.params.userId;
+      const roomName = `project:${projectId}`;
+      for (const s of io.sockets.sockets.values()) {
+        const sData = s.data as SocketData;
+        if (sData?.projectSubscriptions?.get(projectId) === targetUserId) {
+          sData.projectSubscriptions.delete(projectId);
+          void s.leave(roomName);
+        }
+      }
+
+      io.to(roomName).emit('project:activity:new', {
         projectId: request.params.id,
         activities: updated.activities
       });
@@ -945,6 +958,10 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         ack?.({ ok: false, message: 'Unauthorized' });
         return;
       }
+      if (!socketData.projectSubscriptions) {
+        socketData.projectSubscriptions = new Map<string, string>();
+      }
+      socketData.projectSubscriptions.set(raw.projectId, user.id);
       void socket.join(`project:${raw.projectId}`);
       const project = projectStore.getProject(raw.projectId, user.id);
       ack?.({ ok: true, workspace: project?.workspace });
@@ -953,6 +970,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     socket.on('project:workspace:leave', (raw: { projectId: string }) => {
       if (!limiter.consume('session')) return;
       if (raw?.projectId) {
+        socketData.projectSubscriptions?.delete(raw.projectId);
         void socket.leave(`project:${raw.projectId}`);
       }
     });
