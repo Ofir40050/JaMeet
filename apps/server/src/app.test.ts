@@ -4267,6 +4267,115 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('validates task assignees server-authoritatively and rejects invalid assignees across REST and Socket.IO', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-assignee-int-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-assignee-int'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_assignee', 'beta', userStore);
+      const collabAuth = await createTestAccount(url, 'collab_assignee', 'beta', userStore);
+
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Assignee Song' }, [collabAuth.user]);
+
+      const ownerSocket = await connected(url);
+      const collabSocket = await connected(url);
+
+      await new Promise<{ ok: boolean }>((resolve) => {
+        ownerSocket.emit('project:workspace:join', { projectId: project.id, authToken: ownerAuth.token }, resolve);
+      });
+      await new Promise<{ ok: boolean }>((resolve) => {
+        collabSocket.emit('project:workspace:join', { projectId: project.id, authToken: collabAuth.token }, resolve);
+      });
+
+      // 1. Reject task assignment to non-member ID via REST
+      const invalidRestRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          tasks: {
+            tasks: [
+              {
+                id: 'task-1',
+                title: 'Master Audio',
+                status: 'todo',
+                assigneeId: 'non-member-user-99',
+                assigneeName: 'Fake Name'
+              }
+            ]
+          }
+        })
+      });
+      expect(invalidRestRes.status).toBe(403);
+
+      // 2. Reject task assignment to non-member ID via Socket.IO
+      const invalidSocketRes = await new Promise<{ ok: boolean; message?: string }>((resolve) => {
+        collabSocket.emit('project:workspace:update', {
+          projectId: project.id,
+          authToken: collabAuth.token,
+          updates: {
+            tasks: {
+              tasks: [
+                {
+                  id: 'task-1',
+                  title: 'Master Audio',
+                  status: 'todo',
+                  assigneeId: 'non-member-user-99',
+                  assigneeName: 'Fake Name'
+                }
+              ]
+            }
+          }
+        }, resolve);
+      });
+      expect(invalidSocketRes.ok).toBe(false);
+
+      // 3. Valid assignment over Socket.IO derives server-authoritative assigneeName
+      const syncPromise = new Promise<any>((resolve) => {
+        ownerSocket.once('project:workspace:synced', resolve);
+      });
+
+      const validSocketRes = await new Promise<{ ok: boolean; workspace?: any }>((resolve) => {
+        collabSocket.emit('project:workspace:update', {
+          projectId: project.id,
+          authToken: collabAuth.token,
+          updates: {
+            tasks: {
+              tasks: [
+                {
+                  id: 'task-1',
+                  title: 'Master Audio',
+                  status: 'in_progress',
+                  assigneeId: collabAuth.user.id,
+                  assigneeName: 'Injected Spoofed Name'
+                }
+              ]
+            }
+          }
+        }, resolve);
+      });
+      expect(validSocketRes.ok).toBe(true);
+      expect(validSocketRes.workspace.tasks.tasks[0].assigneeId).toBe(collabAuth.user.id);
+      expect(validSocketRes.workspace.tasks.tasks[0].assigneeName).toBe(collabAuth.user.displayName);
+
+      const receivedSync = await syncPromise;
+      expect(receivedSync.workspace.tasks.tasks[0].assigneeName).toBe(collabAuth.user.displayName);
+
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

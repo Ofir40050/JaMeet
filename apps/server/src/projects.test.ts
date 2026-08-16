@@ -754,6 +754,113 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(legacyDir, { recursive: true, force: true });
     }
   });
+
+  it('validates task assignees server-authoritatively and derives assigneeName from project members', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-assignee-test-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'owner-task-1',
+        displayName: 'Real Owner Name',
+        username: 'realowner',
+        email: 'owner@music.com',
+        avatarColor: '#6366f1',
+        isGuest: false,
+        createdAt: Date.now()
+      };
+      const collab: UserProfile = {
+        id: 'collab-task-1',
+        displayName: 'Real Collab Name',
+        username: 'realcollab',
+        email: 'collab@music.com',
+        avatarColor: '#06b6d4',
+        isGuest: false,
+        createdAt: Date.now()
+      };
+
+      const project = store.createProject(owner, { name: 'Task Assignee Project' }, [collab]);
+
+      // 1. Reject task assignment to an invalid user ID (stranger)
+      const invalidAssigneeUpdate = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            {
+              id: 'task-1',
+              title: 'Mix Track',
+              status: 'todo',
+              assigneeId: 'stranger-user-id-999',
+              assigneeName: 'Fake Stranger Name',
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            }
+          ]
+        }
+      });
+      expect(invalidAssigneeUpdate).toBeNull();
+
+      // 2. Accept assignment to owner and derive server-authoritative owner name (ignoring client spoofed name)
+      const validOwnerAssign = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            {
+              id: 'task-1',
+              title: 'Mix Track',
+              status: 'todo',
+              assigneeId: owner.id,
+              assigneeName: 'Spoofed Owner Name',
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            }
+          ]
+        }
+      });
+      expect(validOwnerAssign).not.toBeNull();
+      expect(validOwnerAssign!.workspace.tasks.tasks[0].assigneeId).toBe(owner.id);
+      expect(validOwnerAssign!.workspace.tasks.tasks[0].assigneeName).toBe('Real Owner Name');
+
+      // 3. Accept assignment to collaborator and derive server-authoritative collaborator name
+      const validCollabAssign = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            {
+              id: 'task-1',
+              title: 'Mix Track',
+              status: 'todo',
+              assigneeId: collab.id,
+              assigneeName: 'Spoofed Collab Name',
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            }
+          ]
+        }
+      });
+      expect(validCollabAssign).not.toBeNull();
+      expect(validCollabAssign!.workspace.tasks.tasks[0].assigneeId).toBe(collab.id);
+      expect(validCollabAssign!.workspace.tasks.tasks[0].assigneeName).toBe('Real Collab Name');
+
+      // 4. Unassigning task clears both assigneeId and assigneeName
+      const unassignUpdate = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            {
+              id: 'task-1',
+              title: 'Mix Track',
+              status: 'todo',
+              assigneeId: undefined,
+              assigneeName: 'Old Stale Name',
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            }
+          ]
+        }
+      });
+      expect(unassignUpdate).not.toBeNull();
+      expect(unassignUpdate!.workspace.tasks.tasks[0].assigneeId).toBeUndefined();
+      expect(unassignUpdate!.workspace.tasks.tasks[0].assigneeName).toBeUndefined();
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 
