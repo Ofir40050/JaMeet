@@ -42,6 +42,9 @@ export class ProjectStore {
     try {
       const raw = fs.readFileSync(this.dataFilePath, 'utf-8');
       const data = JSON.parse(raw) as ProjectDatabaseSchema;
+      if (!data || typeof data !== 'object') {
+        throw new Error(`Invalid project database structure in ${this.dataFilePath}`);
+      }
       if (Array.isArray(data.projects)) {
         for (const p of data.projects) {
           if (!Array.isArray(p.activities)) {
@@ -72,8 +75,9 @@ export class ProjectStore {
           this.projects.set(p.id, p);
         }
       }
-    } catch (err) {
-      console.warn('Could not read project database, starting fresh:', err);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to load project datastore from ${this.dataFilePath}: ${message}`);
     }
   }
 

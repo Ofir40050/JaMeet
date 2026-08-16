@@ -565,6 +565,36 @@ describe('ProjectStore & Workspace', () => {
     expect(reloadedStore.isOwner(project.id, mockImpostor.id)).toBe(false);
     expect(reloadedStore.getUserRole(project.id, mockImpostor.id)).toBe('collaborator');
   });
+
+  it('initializes normally with an empty store when the projects file does not exist', () => {
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-empty-proj-'));
+    try {
+      const projectsPath = path.join(emptyDir, 'jameet-projects.json');
+      expect(fs.existsSync(projectsPath)).toBe(false);
+
+      const store = new ProjectStore(emptyDir);
+      expect(store.listProjects('user-1')).toEqual([]);
+    } finally {
+      fs.rmSync(emptyDir, { recursive: true, force: true });
+    }
+  });
+
+  it('fails initialization and stops server startup when an existing projects file is corrupted or unreadable', () => {
+    const corruptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-corrupt-proj-'));
+    try {
+      const projectsPath = path.join(corruptDir, 'jameet-projects.json');
+      const corruptContent = '{"projects": [broken corrupted json...';
+      fs.writeFileSync(projectsPath, corruptContent, 'utf-8');
+
+      // Must throw rather than silently resetting the project store
+      expect(() => new ProjectStore(corruptDir)).toThrow(/Failed to load project datastore/i);
+
+      // Verify the corrupted file was preserved untouched
+      expect(fs.readFileSync(projectsPath, 'utf-8')).toBe(corruptContent);
+    } finally {
+      fs.rmSync(corruptDir, { recursive: true, force: true });
+    }
+  });
 });
 
 
