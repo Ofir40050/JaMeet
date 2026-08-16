@@ -999,6 +999,70 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('preserves valid activeDocumentId and restores fallback document on lyrics document deletion', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-lyrics-del-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'owner-lyr-del',
+        displayName: 'Owner Alice',
+        username: 'alice',
+        email: 'alice@music.com',
+        avatarColor: '#6366f1',
+        isGuest: false,
+        createdAt: 1000
+      };
+
+      const project = store.createProject(owner, { name: 'Lyrics Delete Song' });
+
+      // 1. Create doc-2 and make it active
+      store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documentId: 'doc-2',
+          title: 'Chorus Draft',
+          content: 'Chorus melody lyrics',
+          activeDocumentId: 'doc-2'
+        }
+      });
+      const projAfterAdd = store.getProject(project.id, owner.id)!;
+      expect(projAfterAdd.workspace.lyrics.documents.length).toBe(2);
+      expect(projAfterAdd.workspace.lyrics.activeDocumentId).toBe('doc-2');
+      expect(projAfterAdd.workspace.lyrics.content).toBe('Chorus melody lyrics');
+
+      // 2. Delete doc-2 by providing documents array containing only doc-main
+      const projAfterDelete = store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documents: [
+            {
+              id: 'doc-main',
+              title: 'Main Lyrics',
+              content: 'Main verses text'
+            }
+          ]
+        }
+      })!;
+
+      expect(projAfterDelete.workspace.lyrics.documents.length).toBe(1);
+      expect(projAfterDelete.workspace.lyrics.documents[0].id).toBe('doc-main');
+      // activeDocumentId must point to doc-main, not the deleted doc-2
+      expect(projAfterDelete.workspace.lyrics.activeDocumentId).toBe('doc-main');
+      expect(projAfterDelete.workspace.lyrics.content).toBe('Main verses text');
+
+      // 3. Delete all documents by passing empty documents array: fallback document must be restored
+      const projAfterEmpty = store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documents: []
+        }
+      })!;
+
+      expect(projAfterEmpty.workspace.lyrics.documents.length).toBe(1);
+      expect(projAfterEmpty.workspace.lyrics.documents[0].id).toBe('doc-main');
+      expect(projAfterEmpty.workspace.lyrics.activeDocumentId).toBe('doc-main');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

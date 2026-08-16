@@ -442,6 +442,12 @@ export class ProjectStore {
             updatedByName: user.displayName
           };
         });
+        if (curLyrics.documents.length === 0) {
+          curLyrics.documents = [
+            { id: 'doc-main', title: 'Main Lyrics', content: curLyrics.content || '', updatedAt: now, updatedBy: user.id, updatedByName: user.displayName }
+          ];
+          curLyrics.activeDocumentId = 'doc-main';
+        }
       }
 
       if (updates.lyrics.activeDocumentId) {
@@ -512,6 +518,11 @@ export class ProjectStore {
             doc.updatedByName = user.displayName;
           }
         }
+      }
+
+      // Ensure activeDocumentId is still valid after any document additions
+      if (!curLyrics.activeDocumentId || !curLyrics.documents.some((d) => d.id === curLyrics.activeDocumentId)) {
+        curLyrics.activeDocumentId = curLyrics.documents[0]?.id || 'doc-main';
       }
 
       // Sync active document content to top-level content for backwards compatibility
