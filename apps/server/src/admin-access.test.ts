@@ -407,6 +407,38 @@ describe('Admin Session Access CLI & Management Tool', () => {
     }
   });
 
+  it('refuses to treat a newly created initializing lock file as stale and fails closed', () => {
+    const lockPath = getDatastoreLockPath(testDir);
+    // Create an empty lock file as if process A just called openSync('wx')
+    fs.writeFileSync(lockPath, '', { mode: 0o600 });
+
+    // Process B attempting to acquire lock must fail closed rather than deleting the initializing lock
+    expect(() => acquireDatastoreLock(testDir, 'server')).toThrow(DatastoreLockError);
+
+    // Initializing lock file must still exist untouched
+    expect(fs.existsSync(lockPath)).toBe(true);
+  });
+
+  it('cleans up ancient corrupt lock file older than threshold and acquires lock safely', () => {
+    const lockPath = getDatastoreLockPath(testDir);
+    // Create an empty/corrupt lock file with mtime 10 seconds in the past
+    fs.writeFileSync(lockPath, 'corrupted{data', { mode: 0o600 });
+    const pastTime = new Date(Date.now() - 10000);
+    fs.utimesSync(lockPath, pastTime, pastTime);
+
+    // Process should safely recover from ancient abandoned corrupt lock
+    const lock = acquireDatastoreLock(testDir, 'server');
+    expect(lock).toBeDefined();
+
+    try {
+      const lockInfo = readDatastoreLockInfo(testDir);
+      expect(lockInfo?.pid).toBe(process.pid);
+      expect(lockInfo?.owner).toBe('server');
+    } finally {
+      lock.release();
+    }
+  });
+
   it('enforces 0o600 permissions on runtime admin file even when replacing an existing file', () => {
     writeAdminRuntimeFile(testDir, {
       pid: process.pid,
