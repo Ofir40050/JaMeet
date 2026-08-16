@@ -162,4 +162,42 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
     // Clean up test listener
     process.removeListener('uncaughtExceptionMonitor', latestListener);
   });
+
+  it('sanitizes sensitive credentials embedded inside top-level log messages and crash reasons', () => {
+    const logEntry = testLogger.info(
+      'network_error',
+      'Failed connecting to https://admin_user:super_secret_pwd@signaling.jameet.app:3000/ws?authToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgN&reconnectToken=rec-999-xyz with password: "RawPasswordHere!" and turnSharedSecret=turn-secret-123'
+    );
+
+    expect(logEntry.message).not.toContain('super_secret_pwd');
+    expect(logEntry.message).not.toContain('RawPasswordHere!');
+    expect(logEntry.message).not.toContain('rec-999-xyz');
+    expect(logEntry.message).not.toContain('turn-secret-123');
+    expect(logEntry.message).toContain('https://admin_user:[REDACTED]@signaling.jameet.app:3000/ws?authToken=[REDACTED]');
+    expect(logEntry.message).toContain('password:[REDACTED]');
+    expect(logEntry.message).toContain('turnSharedSecret=[REDACTED]');
+
+    const crashReport = testLogger.recordCrash({
+      process: 'main',
+      reason: 'Fatal crash during handshake with token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEyMyJ9.sig and password=SecretCrashPassword',
+      error: new Error('Uncaught exception in auth: reconnectToken: "reconnect-secret-token"')
+    });
+
+    expect(crashReport.reason).not.toContain('SecretCrashPassword');
+    expect(crashReport.reason).toContain('[REDACTED_TOKEN]');
+    expect(crashReport.error?.message).not.toContain('reconnect-secret-token');
+    expect(crashReport.error?.message).toContain('reconnectToken:[REDACTED]');
+  });
+
+  it('preserves non-sensitive diagnostic messages, technical identifiers, and error details', () => {
+    const logEntry = testLogger.info(
+      'audio_init_success',
+      'Microphone 1 initialized at 48000Hz (sampleRate: 48000, channelRoute: 1-2, device: Built-in Microphone)',
+      { sampleRate: 48000 }
+    );
+
+    expect(logEntry.message).toBe('Microphone 1 initialized at 48000Hz (sampleRate: 48000, channelRoute: 1-2, device: Built-in Microphone)');
+    expect(logEntry.appVersion).toBeDefined();
+    expect(logEntry.platform).toBe(process.platform);
+  });
 });

@@ -5,6 +5,7 @@ import {
   type StructuredError,
   type CrashReport,
   sanitizeLogData,
+  sanitizeLogString,
   serializeError
 } from '@jameet/shared';
 
@@ -34,7 +35,7 @@ export class RendererLogger {
       level,
       process: 'renderer',
       event: entry.event,
-      message: entry.message,
+      message: sanitizeLogString(entry.message || ''),
       sessionId: entry.sessionId || this.currentSessionId,
       sessionCode: entry.sessionCode || this.currentSessionCode,
       attemptId: entry.attemptId,
@@ -94,7 +95,7 @@ export class RendererLogger {
 
     const report: Partial<CrashReport> = {
       process: 'renderer',
-      reason: crashData.reason || 'renderer_error',
+      reason: sanitizeLogString(crashData.reason || 'renderer_error'),
       sessionId: crashData.sessionId || this.currentSessionId,
       sessionCode: crashData.sessionCode || this.currentSessionCode,
       error: sanitizedError,

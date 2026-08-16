@@ -9,6 +9,7 @@ import {
   type StructuredError,
   type CrashReport,
   sanitizeLogData,
+  sanitizeLogString,
   serializeError
 } from '@jameet/shared';
 
@@ -100,7 +101,7 @@ export class DesktopLogger {
       level,
       process: entry.process || 'main',
       event: entry.event,
-      message: entry.message,
+      message: sanitizeLogString(entry.message || ''),
       appVersion: this.appVersion,
       platform: this.platform,
       arch: this.arch,
@@ -182,7 +183,7 @@ export class DesktopLogger {
       instanceId: this.instanceId || undefined,
       sessionId: crashData.sessionId,
       sessionCode: crashData.sessionCode,
-      reason: crashData.reason || 'unexpected_crash',
+      reason: sanitizeLogString(crashData.reason || 'unexpected_crash'),
       exitCode: crashData.exitCode,
       error: sanitizedError,
       context: sanitizedContext

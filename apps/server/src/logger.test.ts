@@ -65,4 +65,19 @@ describe('Server Production Structured Logging & Error Handling', () => {
     expect(sanitized.adminToken).toBe('[REDACTED]');
     expect(sanitized.safeField).toBe('session_ready');
   });
+
+  it('sanitizes credentials and tokens embedded in arbitrary server log messages', () => {
+    const entry = serverLogger.info(
+      'auth_failure',
+      'Signaling client failed auth with authToken=rec-123 and standalone token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c3JfMSJ9.sig and password="mySecretPassword123" at url https://admin:superSecretPass@turn.jameet.app:3478'
+    );
+
+    expect(entry.message).not.toContain('superSecretPass');
+    expect(entry.message).not.toContain('mySecretPassword123');
+    expect(entry.message).not.toContain('rec-123');
+    expect(entry.message).toContain('https://admin:[REDACTED]@turn.jameet.app:3478');
+    expect(entry.message).toContain('authToken=[REDACTED]');
+    expect(entry.message).toContain('[REDACTED_TOKEN]');
+    expect(entry.message).toContain('password=[REDACTED]');
+  });
 });

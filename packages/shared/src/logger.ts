@@ -74,6 +74,39 @@ export function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
 
+export function sanitizeLogString(input: string): string {
+  if (!input || typeof input !== 'string') return input;
+
+  let str = input;
+
+  if (str.length > 4000) {
+    str = `${str.slice(0, 500)}...[TRUNCATED ${str.length} bytes]`;
+  }
+
+  // 1. Redact basic authentication in URLs (e.g. https://user:pass@domain.com)
+  str = str.replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^:\s\/@]+):([^@\s\/]+)@/g, '$1$2:[REDACTED]@');
+
+  // 2. Redact Authorization Bearer tokens
+  str = str.replace(/bearer\s+[a-z0-9_.~+\/-]+=*/gi, 'Bearer [REDACTED]');
+
+  // 3. Redact JSON Web Tokens (3 base64url segments starting with eyJ)
+  str = str.replace(/\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_.-]*/g, '[REDACTED_TOKEN]');
+
+  // 4. Redact JSON-style key-values: "password": "...", "authToken": "...", etc.
+  str = str.replace(
+    /"((?:password|passphrase|currentPassword|newPassword|secret|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token))"\s*:\s*("(?:[^"\\]|\\.)*"|[^\s,}\]]+)/gi,
+    '"$1":"[REDACTED]"'
+  );
+
+  // 5. Redact Key-Value patterns in text, query strings, headers, error messages:
+  str = str.replace(
+    /((?:password|passphrase|currentPassword|newPassword|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token))\s*([:=])\s*("(?:[^"\\]|\\.)*"|'[^']*'|[^\s,;&'"}]+)/gi,
+    '$1$2[REDACTED]'
+  );
+
+  return str;
+}
+
 export function sanitizeLogData<T>(data: T, seen = new WeakSet<object>(), depth = 0): T {
   if (data === null || data === undefined) {
     return data;
@@ -84,13 +117,7 @@ export function sanitizeLogData<T>(data: T, seen = new WeakSet<object>(), depth 
   }
 
   if (typeof data === 'string') {
-    if (data.length > 2000) {
-      return `${data.slice(0, 100)}...[TRUNCATED ${data.length} bytes]` as unknown as T;
-    }
-    if (/bearer\s+[a-z0-9_.~+\/-]+=*/i.test(data)) {
-      return data.replace(/bearer\s+[a-z0-9_.~+\/-]+=*/gi, 'Bearer [REDACTED]') as unknown as T;
-    }
-    return data;
+    return sanitizeLogString(data) as unknown as T;
   }
 
   if (typeof data !== 'object') {
@@ -105,8 +132,8 @@ export function sanitizeLogData<T>(data: T, seen = new WeakSet<object>(), depth 
   if (data instanceof Error) {
     const serializedError: StructuredError = {
       name: data.name,
-      message: sanitizeLogData(data.message, seen, depth + 1),
-      stack: data.stack ? sanitizeLogData(data.stack, seen, depth + 1) : undefined,
+      message: sanitizeLogString(data.message),
+      stack: data.stack ? sanitizeLogString(data.stack) : undefined,
       code: (data as any).code
     };
     return serializedError as unknown as T;
@@ -133,8 +160,8 @@ export function serializeError(err: unknown): StructuredError | undefined {
   if (err instanceof Error) {
     return {
       name: err.name,
-      message: err.message,
-      stack: err.stack,
+      message: sanitizeLogString(err.message),
+      stack: err.stack ? sanitizeLogString(err.stack) : undefined,
       code: (err as any).code
     };
   }
@@ -142,12 +169,12 @@ export function serializeError(err: unknown): StructuredError | undefined {
     const obj = err as Record<string, unknown>;
     return {
       name: typeof obj.name === 'string' ? obj.name : 'Error',
-      message: typeof obj.message === 'string' ? obj.message : JSON.stringify(sanitizeLogData(err)),
-      stack: typeof obj.stack === 'string' ? obj.stack : undefined,
+      message: typeof obj.message === 'string' ? sanitizeLogString(obj.message) : JSON.stringify(sanitizeLogData(err)),
+      stack: typeof obj.stack === 'string' ? sanitizeLogString(obj.stack) : undefined,
       code: typeof obj.code === 'string' || typeof obj.code === 'number' ? obj.code : undefined
     };
   }
   return {
-    message: String(err)
+    message: sanitizeLogString(String(err))
   };
 }

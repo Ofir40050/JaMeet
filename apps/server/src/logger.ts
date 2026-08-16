@@ -4,6 +4,7 @@ import {
   type StructuredLogMeta,
   type StructuredError,
   sanitizeLogData,
+  sanitizeLogString,
   serializeError
 } from '@jameet/shared';
 
@@ -25,7 +26,7 @@ export class ServerLogger {
       level,
       process: 'server',
       event: entry.event,
-      message: entry.message,
+      message: sanitizeLogString(entry.message || ''),
       sessionId: entry.sessionId,
       sessionCode: entry.sessionCode,
       attemptId: entry.attemptId,
