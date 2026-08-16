@@ -118,8 +118,27 @@ if (instanceId) {
   }
 }
 
+function getAppIconPath(): string | undefined {
+  if (process.platform === 'win32') {
+    const icoPackaged = join(process.resourcesPath, 'icon.ico');
+    if (existsSync(icoPackaged)) return icoPackaged;
+    const icoDev = join(__dirname, '../../resources/icon.ico');
+    if (existsSync(icoDev)) return icoDev;
+    const icoBuild = join(__dirname, '../../build/icon.ico');
+    if (existsSync(icoBuild)) return icoBuild;
+  }
+  const pngPackaged = join(process.resourcesPath, 'icon.png');
+  if (existsSync(pngPackaged)) return pngPackaged;
+  const pngDev = join(__dirname, '../../resources/icon.png');
+  if (existsSync(pngDev)) return pngDev;
+  const pngBuild = join(__dirname, '../../build/icon.png');
+  if (existsSync(pngBuild)) return pngBuild;
+  return undefined;
+}
+
 function createWindow(): void {
   const windowTitle = instanceId ? `JaMeet [Instance ${instanceId}]` : 'JaMeet';
+  const appIcon = getAppIconPath();
   mainWindow = new BrowserWindow({
     width: 1120,
     height: 760,
@@ -127,6 +146,7 @@ function createWindow(): void {
     minHeight: 620,
     backgroundColor: '#111315',
     title: windowTitle,
+    ...(appIcon ? { icon: appIcon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -205,6 +225,7 @@ function createOrGetPresenterToolbarWindow(): BrowserWindow {
   const tbHeight = 340;
   const tbX = Math.round(primaryDisplay.bounds.x + (primaryDisplay.bounds.width - tbWidth) / 2);
   const tbY = primaryDisplay.bounds.y + 10;
+  const appIcon = getAppIconPath();
 
   presenterToolbarWindow = new BrowserWindow({
     width: tbWidth,
@@ -219,6 +240,7 @@ function createOrGetPresenterToolbarWindow(): BrowserWindow {
     resizable: false,
     hasShadow: false,
     show: false,
+    ...(appIcon ? { icon: appIcon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -265,6 +287,7 @@ function createOrGetPresenterVideoWindow(): BrowserWindow {
   const vidX = primaryDisplay.bounds.x + primaryDisplay.bounds.width - vidWidth - 20;
   const vidY = primaryDisplay.bounds.y + 70;
 
+  const appIcon = getAppIconPath();
   presenterVideoWindow = new BrowserWindow({
     width: vidWidth,
     height: vidHeight,
@@ -282,6 +305,7 @@ function createOrGetPresenterVideoWindow(): BrowserWindow {
     maxHeight: 400,
     hasShadow: true,
     show: false,
+    ...(appIcon ? { icon: appIcon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -1229,6 +1253,17 @@ else {
       stopRemoteVoiceProducer();
       return true;
     });
+
+    if (process.platform === 'darwin' && app.dock) {
+      try {
+        const iconPath = getAppIconPath();
+        if (iconPath) {
+          app.dock.setIcon(iconPath);
+        }
+      } catch (err) {
+        console.warn('Could not set dock icon:', err);
+      }
+    }
 
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

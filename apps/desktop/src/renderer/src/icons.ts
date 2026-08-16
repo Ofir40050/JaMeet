@@ -266,7 +266,7 @@ export const icons = {
   ),
 
   logo: createSvg(
-    '<path d="M4 12V8a4 4 0 0 1 4-4h2"/><path d="M8 12h8"/><path d="M12 4v16"/><path d="M16 12v4a4 4 0 0 1-4 4h-2"/><circle cx="12" cy="12" r="2" fill="currentColor"/>'
+    '<path d="M2 12h.01M5 9v6M8 6v12M11 9v6M14 12h.01" stroke-width="2.5"/><path d="M12 7h4a2 2 0 0 1 2 2v7a4 4 0 0 1-4 4h-2a3 3 0 0 1-3-3v-1"/><polygon points="18 9 22 7 22 15 18 13" fill="currentColor"/>'
   )
 };
 
