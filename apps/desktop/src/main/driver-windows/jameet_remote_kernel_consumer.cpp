@@ -126,12 +126,12 @@ uint32_t JaMeetKernelConsumer_ReadFloatFrames(
             consumer->lastObservedGeneration = currentGeneration;
             consumer->initialized = true;
             consumer->active = true;
-            consumer->lastConsumerFrame = (writeSequence > JAMEET_SLOT_FRAMES) ? (writeSequence - JAMEET_SLOT_FRAMES) : 0;
+            consumer->lastConsumerFrame = (writeSequence >= frameCount) ? (writeSequence - frameCount) : 0;
         }
     }
 
     /* 4. Bound Requested Target Range Against Ring Geometry */
-    uint64_t targetFrame = consumer ? consumer->lastConsumerFrame : (writeSequence > frameCount ? writeSequence - frameCount : 0);
+    uint64_t targetFrame = consumer ? consumer->lastConsumerFrame : (writeSequence >= frameCount ? writeSequence - frameCount : 0);
 
     /* If target is ahead of produced audio, clamp to silence and clamp cursor to writeSequence */
     if (targetFrame >= writeSequence) {
