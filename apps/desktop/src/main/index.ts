@@ -9,6 +9,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'musiczoom-app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
 ]);
 
+let isAppQuitting = false;
 let mainWindow: BrowserWindow | null = null;
 let presenterToolbarWindow: BrowserWindow | null = null;
 let presenterVideoWindow: BrowserWindow | null = null;
@@ -268,6 +269,13 @@ function createWindow(): void {
 
   if (process.env.ELECTRON_RENDERER_URL) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   else void mainWindow.loadURL('jameet-app://bundle/index.html');
+
+  mainWindow.on('close', (event) => {
+    if (!isAppQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -1344,13 +1352,14 @@ else {
 
     createTray();
     createWindow();
-    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+    app.on('activate', () => { showMainWindow(); });
   });
 }
 
 app.on('before-quit', () => {
+  isAppQuitting = true;
   stopActiveNativeScreenCapture();
   stopRemoteVoiceProducer();
 });
 
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => { if (process.platform !== 'darwin' && isAppQuitting) app.quit(); });
