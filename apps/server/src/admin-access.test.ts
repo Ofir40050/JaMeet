@@ -419,23 +419,44 @@ describe('Admin Session Access CLI & Management Tool', () => {
     expect(fs.existsSync(lockPath)).toBe(true);
   });
 
-  it('cleans up ancient corrupt lock file older than threshold and acquires lock safely', () => {
+  it('fails closed and does not delete lock file when lock ownership cannot be safely established', () => {
     const lockPath = getDatastoreLockPath(testDir);
-    // Create an empty/corrupt lock file with mtime 10 seconds in the past
+    // Create an unparseable lock file with mtime in the past
     fs.writeFileSync(lockPath, 'corrupted{data', { mode: 0o600 });
     const pastTime = new Date(Date.now() - 10000);
     fs.utimesSync(lockPath, pastTime, pastTime);
 
-    // Process should safely recover from ancient abandoned corrupt lock
-    const lock = acquireDatastoreLock(testDir, 'server');
-    expect(lock).toBeDefined();
+    // Process attempting to acquire lock must fail closed rather than deleting unverified lock
+    expect(() => acquireDatastoreLock(testDir, 'server')).toThrow(DatastoreLockError);
+
+    // Unverified lock file must still exist untouched
+    expect(fs.existsSync(lockPath)).toBe(true);
+    expect(fs.readFileSync(lockPath, 'utf-8')).toBe('corrupted{data');
+  });
+
+  it('guarantees exactly one owner when concurrent processes race to recover a stale lock', () => {
+    const lockPath = getDatastoreLockPath(testDir);
+    // Write a stale lock with confirmed dead PID (9999999)
+    fs.writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: 9999999, owner: 'server', createdAt: Date.now() - 5000 }),
+      { mode: 0o600, encoding: 'utf-8' }
+    );
+
+    // Process 1 acquires lock recovering the stale lock
+    const lock1 = acquireDatastoreLock(testDir, 'server');
+    expect(lock1).toBeDefined();
 
     try {
-      const lockInfo = readDatastoreLockInfo(testDir);
-      expect(lockInfo?.pid).toBe(process.pid);
-      expect(lockInfo?.owner).toBe('server');
+      // Process 2 attempting to acquire lock must observe Process 1's live lock and fail closed
+      expect(() => acquireDatastoreLock(testDir, 'server')).toThrow(DatastoreLockError);
+
+      // Process 1's live lock must remain intact and valid
+      const currentInfo = readDatastoreLockInfo(testDir);
+      expect(currentInfo?.pid).toBe(process.pid);
+      expect(currentInfo?.owner).toBe('server');
     } finally {
-      lock.release();
+      lock1.release();
     }
   });
 

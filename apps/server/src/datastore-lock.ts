@@ -102,75 +102,87 @@ export function acquireDatastoreLock(dataDir: string, owner: 'server' | 'admin-c
 
     // Lock file exists: check if holding process is alive with retries to allow concurrent metadata writing
     const lockInfo = readDatastoreLockInfoWithRetry(dataDir, 5, 20);
-    if (lockInfo) {
-      if (isProcessAlive(lockInfo.pid)) {
+    if (!lockInfo) {
+      // Lock file is present but ownership cannot be safely established.
+      // Fail closed rather than deleting an unverified or initializing lock.
+      throw new DatastoreLockError(
+        `Account datastore lock at ${lockFilePath} is present but lock ownership could not be safely established.`
+      );
+    }
+
+    if (isProcessAlive(lockInfo.pid)) {
+      throw new DatastoreLockError(
+        `Account datastore lock is already held by live ${lockInfo.owner} (PID ${lockInfo.pid}) at ${lockFilePath}.`,
+        lockInfo
+      );
+    }
+
+    // Recorded process is confirmed dead (ESRCH).
+    // Atomically claim the specific stale lock file to prevent deleting a lock replaced concurrently by another process.
+    const recoveryPath = path.join(
+      dataDir,
+      `.account-datastore.lock.recovering.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
+    );
+
+    try {
+      fs.renameSync(lockFilePath, recoveryPath);
+    } catch (renameErr: any) {
+      // Another process already claimed or replaced the lock
+      const liveLockInfo = readDatastoreLockInfoWithRetry(dataDir, 5, 20);
+      if (liveLockInfo && isProcessAlive(liveLockInfo.pid)) {
         throw new DatastoreLockError(
-          `Account datastore lock is already held by live ${lockInfo.owner} (PID ${lockInfo.pid}) at ${lockFilePath}.`,
-          lockInfo
+          `Account datastore lock is already held by live ${liveLockInfo.owner} (PID ${liveLockInfo.pid}) at ${lockFilePath}.`,
+          liveLockInfo
         );
       }
+      throw new DatastoreLockError(
+        `Failed to claim stale datastore lock at ${lockFilePath} during concurrent recovery.`
+      );
+    }
 
-      // Recorded process is confirmed dead (ESRCH): safely remove stale lock and retry atomic creation
-      try {
-        if (fs.existsSync(lockFilePath)) {
-          fs.unlinkSync(lockFilePath);
-        }
-      } catch (unlinkErr: any) {
-        if (unlinkErr.code !== 'ENOENT') {
-          throw new DatastoreLockError(`Failed to clean up stale datastore lock at ${lockFilePath}: ${unlinkErr.message || unlinkErr}`);
-        }
-      }
+    // Read the claimed isolated file to verify it still belongs to a dead process
+    let recoveryRaw: string | null = null;
+    try {
+      recoveryRaw = fs.readFileSync(recoveryPath, 'utf-8');
+    } catch {}
 
+    let recoveryParsed: any = null;
+    try {
+      recoveryParsed = recoveryRaw ? JSON.parse(recoveryRaw) : null;
+    } catch {}
+
+    if (
+      !recoveryParsed ||
+      typeof recoveryParsed.pid !== 'number' ||
+      isProcessAlive(recoveryParsed.pid)
+    ) {
+      // The isolated file did not belong to a dead process. Restore if path is vacant and fail closed.
       try {
-        lockFd = fs.openSync(lockFilePath, 'wx', 0o600);
-      } catch (retryErr: any) {
-        throw new DatastoreLockError(`Failed to acquire datastore lock after removing stale lock: ${retryErr.message || retryErr}`);
-      }
-    } else {
-      // Lock file exists but metadata could not be parsed after retries.
-      // Refuse to treat a newly created or unverified lock as stale.
-      let stat: fs.Stats | undefined;
-      try {
-        stat = fs.statSync(lockFilePath);
-      } catch (statErr: any) {
-        if (statErr.code === 'ENOENT') {
-          // Lock was released in the interim; retry open
-          try {
-            lockFd = fs.openSync(lockFilePath, 'wx', 0o600);
-          } catch (retryErr: any) {
-            throw new DatastoreLockError(`Failed to acquire datastore lock: ${retryErr.message || retryErr}`);
-          }
+        if (!fs.existsSync(lockFilePath)) {
+          fs.renameSync(recoveryPath, lockFilePath);
         } else {
-          throw new DatastoreLockError(`Failed to inspect datastore lock at ${lockFilePath}: ${statErr.message || statErr}`);
+          fs.unlinkSync(recoveryPath);
         }
-      }
+      } catch {}
+      throw new DatastoreLockError(
+        `Aborted stale datastore lock recovery: lock at ${lockFilePath} was not verified as dead.`
+      );
+    }
 
-      if (stat && lockFd === undefined) {
-        const fileAgeMs = Date.now() - stat.mtimeMs;
-        const STALE_CORRUPT_THRESHOLD_MS = 5000;
-        if (fileAgeMs < STALE_CORRUPT_THRESHOLD_MS) {
-          throw new DatastoreLockError(
-            `Account datastore lock at ${lockFilePath} is held or initializing. Refusing to remove unverified lock.`
-          );
-        }
+    // Verified dead lock is safely deleted from its isolated recovery path
+    try {
+      fs.unlinkSync(recoveryPath);
+    } catch {}
 
-        // Abandoned corrupt file older than threshold: clean up and retry
-        try {
-          if (fs.existsSync(lockFilePath)) {
-            fs.unlinkSync(lockFilePath);
-          }
-        } catch (unlinkErr: any) {
-          if (unlinkErr.code !== 'ENOENT') {
-            throw new DatastoreLockError(`Failed to clean up abandoned datastore lock at ${lockFilePath}: ${unlinkErr.message || unlinkErr}`);
-          }
-        }
-
-        try {
-          lockFd = fs.openSync(lockFilePath, 'wx', 0o600);
-        } catch (retryErr: any) {
-          throw new DatastoreLockError(`Failed to acquire datastore lock after removing abandoned lock: ${retryErr.message || retryErr}`);
-        }
-      }
+    // Atomically create the new live lock file
+    try {
+      lockFd = fs.openSync(lockFilePath, 'wx', 0o600);
+    } catch (retryErr: any) {
+      const liveLockInfo = readDatastoreLockInfoWithRetry(dataDir, 5, 20);
+      throw new DatastoreLockError(
+        `Failed to acquire datastore lock after removing stale lock: ${retryErr.message || retryErr}`,
+        liveLockInfo || undefined
+      );
     }
   }
 
