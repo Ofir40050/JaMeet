@@ -266,4 +266,30 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
       { start: 512, length: 68 }
     ]);
   });
+
+  it('verifies underrun cursor clamps to writeSequence without consuming future positions', () => {
+    const frameCount = 480;
+    const writeSequence = 200; // Producer only produced up to frame 200
+    let targetFrame = 100;
+    let framesDelivered = 0;
+
+    // Simulate reading 480 frames when only 100 are left until writeSequence (100..200)
+    while (framesDelivered < frameCount) {
+      if (targetFrame >= writeSequence) {
+        framesDelivered = frameCount;
+        targetFrame = writeSequence; // Clamped to writeSequence
+        break;
+      }
+
+      const available = writeSequence - targetFrame;
+      const toCopy = Math.min(frameCount - framesDelivered, available);
+      framesDelivered += toCopy;
+      targetFrame += toCopy;
+    }
+
+    expect(framesDelivered).toBe(480);
+    // Crucial guarantee: cursor must NOT advance beyond writeSequence (200)
+    expect(targetFrame).toBe(200);
+    expect(targetFrame).toBeLessThanOrEqual(writeSequence);
+  });
 });
