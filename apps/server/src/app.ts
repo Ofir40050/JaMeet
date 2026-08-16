@@ -860,14 +860,48 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     isShuttingDown = true;
     try {
       if (entitlementInterval) clearInterval(entitlementInterval);
+
+      // 1. Finalize all active session histories in UserStore before room state is discarded
+      const activeRooms = Array.from(rooms.rooms.values());
+      for (const room of activeRooms) {
+        try {
+          const project = room.projectId && room.hostIdentity.id
+            ? projectStore.getProject(room.projectId, room.hostIdentity.id)
+            : null;
+
+          userStore.recordSessionClose(room.sessionId, {
+            code: room.code,
+            startedAt: room.startedAt,
+            allJoinedParticipants: room.allJoinedParticipants,
+            chatMessagesCount: room.chatMessagesCount || 0,
+            events: room.events || [],
+            projectId: room.projectId,
+            projectName: project?.name
+          });
+        } catch (err: unknown) {
+          logger.error('shutdown_session_close_failed', `Failed to record session close for room ${room.code} during graceful shutdown`, {
+            code: room.code,
+            sessionId: room.sessionId,
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+      }
+
+      // 2. Close all RoomStore state and clear reconnect/waiting timers
       rooms.closeAll();
-      io.disconnectSockets(true);
-      await new Promise<void>((resolve) => {
-        io.close(() => resolve());
+
+      // 3. Explicitly disconnect active Socket.IO client connections
+      try {
+        io.disconnectSockets(true);
+      } catch (err: unknown) {
+        logger.warn('shutdown_socket_disconnect_error', 'Error disconnecting Socket.IO clients during shutdown', {
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    } catch (err: unknown) {
+      logger.error('shutdown_preclose_error', 'Error during server preClose lifecycle', {
+        error: err instanceof Error ? err.message : String(err)
       });
-      rooms.closeAll();
-    } catch {
-      // ignore
     }
   });
 

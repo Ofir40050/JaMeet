@@ -605,6 +605,17 @@ describe('Admin Session Access CLI & Management Tool', () => {
     expect(fs.existsSync(lockPath)).toBe(false);
     expect(fs.existsSync(getAdminRuntimeFilePath(testDir))).toBe(false);
 
+    // Verify session history was finalized for both host and guest
+    const hostHistory = userStore.getSessionHistory(hostReg.user.id);
+    expect(hostHistory.length).toBe(1);
+    expect(hostHistory[0]?.endedAt).toBeDefined();
+    expect(hostHistory[0]?.summary?.participants.length).toBe(2);
+
+    const guestHistory = userStore.getSessionHistory(guestReg.user.id);
+    expect(guestHistory.length).toBe(1);
+    expect(guestHistory[0]?.endedAt).toBeDefined();
+    expect(guestHistory[0]?.summary?.participants.length).toBe(2);
+
     hostSocket.disconnect();
     guestSocket.disconnect();
   });

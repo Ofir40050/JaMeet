@@ -3494,6 +3494,234 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
   });
 });
 
+describe('Graceful Server Shutdown Active Session Finalization', () => {
+  afterEach(() => { for (const socket of sockets.splice(0)) socket.disconnect(); });
+
+  it('finalizes active session history for all participants and preserves summary metadata on direct app.close()', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-shutdown-test-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-shutdown-1'
+      });
+      const { app, io, userStore, projectStore, rooms } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      try {
+        const hostUser = await createTestAccount(url, 'shut_host', 'beta', userStore);
+        const guestUser = await createTestAccount(url, 'shut_guest', 'beta', userStore);
+
+        const project = projectStore.createProject(hostUser.user, { name: 'Shutdown Album Project' }, [guestUser.user]);
+
+        const hostSocket = await connected(url);
+        const guestSocket = await connected(url);
+
+        const hostCreateRes = await ack(hostSocket, 'meeting:create', {
+          participantId: '11111111-1111-4111-8111-111111111111',
+          authToken: hostUser.token,
+          projectId: project.id,
+          media
+        });
+        expect(hostCreateRes.ok).toBe(true);
+        if (!hostCreateRes.ok) return;
+
+        const guestJoinRes = await ack(guestSocket, 'meeting:join', {
+          code: hostCreateRes.code,
+          participantId: '22222222-2222-4222-8222-222222222222',
+          authToken: guestUser.token,
+          media
+        });
+        expect(guestJoinRes.ok).toBe(true);
+
+        // Chat message in room
+        await new Promise((resolve) => {
+          hostSocket.emit('chat:send', { code: hostCreateRes.code, text: 'Jamming before shutdown' }, resolve);
+        });
+
+        // Workspace update in project to generate session summary event
+        await new Promise((resolve) => {
+          hostSocket.emit('project:workspace:update', {
+            projectId: project.id,
+            authToken: hostUser.token,
+            updates: {
+              lyrics: { content: 'Verse 1: Live until shutdown' }
+            }
+          }, resolve);
+        });
+
+        expect(rooms.rooms.size).toBe(1);
+
+        // Direct graceful shutdown while live session is active
+        await app.close();
+
+        // 1. Verify rooms were cleared and sockets disconnected
+        expect(rooms.rooms.size).toBe(0);
+        expect(hostSocket.connected).toBe(false);
+        expect(guestSocket.connected).toBe(false);
+
+        // 2. Verify Host session history was finalized
+        const hostHistory = userStore.getSessionHistory(hostUser.user.id);
+        expect(hostHistory.length).toBe(1);
+        expect(hostHistory[0]?.endedAt).toBeDefined();
+        expect(hostHistory[0]?.durationSeconds).toBeGreaterThanOrEqual(1);
+        expect(hostHistory[0]?.summary?.projectName).toBe('Shutdown Album Project');
+        expect(hostHistory[0]?.summary?.projectId).toBe(project.id);
+        expect(hostHistory[0]?.summary?.chatMessagesCount).toBe(1);
+        expect(hostHistory[0]?.summary?.events.length).toBe(1);
+        expect(hostHistory[0]?.summary?.participants.length).toBe(2);
+
+        // 3. Verify Guest session history was finalized
+        const guestHistory = userStore.getSessionHistory(guestUser.user.id);
+        expect(guestHistory.length).toBe(1);
+        expect(guestHistory[0]?.endedAt).toBeDefined();
+        expect(guestHistory[0]?.durationSeconds).toBeGreaterThanOrEqual(1);
+        expect(guestHistory[0]?.summary?.projectName).toBe('Shutdown Album Project');
+        expect(guestHistory[0]?.summary?.projectId).toBe(project.id);
+        expect(guestHistory[0]?.summary?.chatMessagesCount).toBe(1);
+        expect(guestHistory[0]?.summary?.events.length).toBe(1);
+        expect(guestHistory[0]?.summary?.participants.length).toBe(2);
+      } finally {
+        if (fs.existsSync(tmpDataDir)) {
+          fs.rmSync(tmpDataDir, { recursive: true, force: true });
+        }
+      }
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('finalizes active session history when shutdown is triggered by SIGTERM', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-sigterm-test-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-shutdown-2'
+      });
+      const { app, io, userStore, rooms } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const hostUser = await createTestAccount(url, 'sig_host', 'beta', userStore);
+      const guestUser = await createTestAccount(url, 'sig_guest', 'beta', userStore);
+
+      const hostSocket = await connected(url);
+      const guestSocket = await connected(url);
+
+      const hostCreateRes = await ack(hostSocket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        authToken: hostUser.token,
+        media
+      });
+      expect(hostCreateRes.ok).toBe(true);
+      if (!hostCreateRes.ok) return;
+
+      const guestJoinRes = await ack(guestSocket, 'meeting:join', {
+        code: hostCreateRes.code,
+        participantId: '22222222-2222-4222-8222-222222222222',
+        authToken: guestUser.token,
+        media
+      });
+      expect(guestJoinRes.ok).toBe(true);
+
+      // Emit SIGTERM signal to trigger graceful shutdown
+      process.emit('SIGTERM', 'SIGTERM');
+
+      // Wait for Fastify shutdown
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(rooms.rooms.size).toBe(0);
+      expect(hostSocket.connected).toBe(false);
+      expect(guestSocket.connected).toBe(false);
+
+      const hostHistory = userStore.getSessionHistory(hostUser.user.id);
+      expect(hostHistory.length).toBe(1);
+      expect(hostHistory[0]?.endedAt).toBeDefined();
+
+      const guestHistory = userStore.getSessionHistory(guestUser.user.id);
+      expect(guestHistory.length).toBe(1);
+      expect(guestHistory[0]?.endedAt).toBeDefined();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('finalizes multiple concurrent active rooms and is resilient to single room errors during shutdown', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-multi-shut-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-shutdown-3'
+      });
+      const { app, io, userStore, rooms } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const host1 = await createTestAccount(url, 'multi_h1', 'beta', userStore);
+      const guest1 = await createTestAccount(url, 'multi_g1', 'beta', userStore);
+      const host2 = await createTestAccount(url, 'multi_h2', 'beta', userStore);
+      const guest2 = await createTestAccount(url, 'multi_g2', 'beta', userStore);
+
+      const sHost1 = await connected(url);
+      const sGuest1 = await connected(url);
+      const sHost2 = await connected(url);
+      const sGuest2 = await connected(url);
+
+      // Room 1
+      const res1 = await ack(sHost1, 'meeting:create', {
+        participantId: '10000000-0000-4000-8000-000000000001',
+        authToken: host1.token,
+        media
+      });
+      await ack(sGuest1, 'meeting:join', {
+        code: (res1 as any).code,
+        participantId: '20000000-0000-4000-8000-000000000001',
+        authToken: guest1.token,
+        media
+      });
+
+      // Room 2
+      const res2 = await ack(sHost2, 'meeting:create', {
+        participantId: '10000000-0000-4000-8000-000000000002',
+        authToken: host2.token,
+        media
+      });
+      await ack(sGuest2, 'meeting:join', {
+        code: (res2 as any).code,
+        participantId: '20000000-0000-4000-8000-000000000002',
+        authToken: guest2.token,
+        media
+      });
+
+      expect(rooms.rooms.size).toBe(2);
+
+      // Graceful shutdown
+      await app.close();
+
+      expect(rooms.rooms.size).toBe(0);
+
+      expect(userStore.getSessionHistory(host1.user.id)[0]?.endedAt).toBeDefined();
+      expect(userStore.getSessionHistory(guest1.user.id)[0]?.endedAt).toBeDefined();
+      expect(userStore.getSessionHistory(host2.user.id)[0]?.endedAt).toBeDefined();
+      expect(userStore.getSessionHistory(guest2.user.id)[0]?.endedAt).toBeDefined();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+});
+
 
 
 
