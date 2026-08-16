@@ -905,6 +905,8 @@ describe('Session Access State & Centralized Authorization', () => {
     expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-12-31T23:59:59.123Z' })).not.toThrow();
     expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-12-31T18:00:00-05:00' })).not.toThrow();
     expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-12-31T23:59:59+02:00' })).not.toThrow();
+    // Valid leap year timestamp
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2024-02-29T23:59:59Z' })).not.toThrow();
 
     // Invalid formats: date-only
     expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-12-31' })).toThrow(/BETA_END_AT/i);
@@ -917,6 +919,101 @@ describe('Session Access State & Centralized Authorization', () => {
 
     // Invalid formats: random text
     expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: 'invalid-date-string' })).toThrow(/BETA_END_AT/i);
+
+    // Invalid formats: impossible calendar dates
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-02-31T00:00:00Z' })).toThrow(/BETA_END_AT/i);
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2025-02-29T00:00:00Z' })).toThrow(/BETA_END_AT/i);
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-04-31T12:00:00Z' })).toThrow(/BETA_END_AT/i);
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-06-31T12:00:00Z' })).toThrow(/BETA_END_AT/i);
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-09-31T12:00:00Z' })).toThrow(/BETA_END_AT/i);
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-11-31T12:00:00Z' })).toThrow(/BETA_END_AT/i);
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-13-01T00:00:00Z' })).toThrow(/BETA_END_AT/i);
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-00-01T00:00:00Z' })).toThrow(/BETA_END_AT/i);
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-01-00T00:00:00Z' })).toThrow(/BETA_END_AT/i);
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-01-32T00:00:00Z' })).toThrow(/BETA_END_AT/i);
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-01-01T24:00:00Z' })).toThrow(/BETA_END_AT/i);
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-01-01T12:60:00Z' })).toThrow(/BETA_END_AT/i);
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-01-01T12:00:00+25:00' })).toThrow(/BETA_END_AT/i);
+  });
+
+  it('migrates legacy accounts missing sessionAccess to beta and preserves tokens, sessions, and scheduledSessions on disk', async () => {
+    fs.mkdirSync(testDir, { recursive: true });
+    const accountsPath = path.join(testDir, 'jameet-accounts.json');
+
+    const legacyUser = {
+      id: 'legacy-user-1',
+      username: 'legacy_user',
+      email: 'legacy@example.com',
+      passwordHash: 'some_hash',
+      displayName: 'Legacy User',
+      createdAt: 1000,
+      updatedAt: 1000,
+      sessionsHostedCount: 5
+      // sessionAccess completely missing
+    };
+    const validToken = {
+      token: 'tok-legacy-123',
+      userId: 'legacy-user-1',
+      createdAt: Date.now() - 1000,
+      expiresAt: Date.now() + 1000000
+    };
+    const sessionHistory = {
+      id: 'ses-legacy-1',
+      code: 'ABCD2345',
+      userId: 'legacy-user-1',
+      role: 'host' as const,
+      projectId: null,
+      startedAt: 5000,
+      endedAt: 6000,
+      durationSeconds: 1000,
+      summary: {
+        totalParticipants: 2,
+        collaboratorNames: ['Legacy Collaborator'],
+        events: [],
+        chatMessagesCount: 3
+      }
+    };
+    const scheduledSession = {
+      id: 'sched-legacy-1',
+      code: 'SCHED123',
+      hostUserId: 'legacy-user-1',
+      hostDisplayName: 'Legacy User',
+      name: 'Legacy Jam',
+      scheduledStartTime: Date.now() + 500000,
+      projectId: null,
+      createdAt: Date.now()
+    };
+
+    const initialDb = {
+      version: 1,
+      users: [legacyUser],
+      tokens: [validToken],
+      sessions: [sessionHistory],
+      scheduledSessions: [scheduledSession]
+    };
+
+    fs.writeFileSync(accountsPath, JSON.stringify(initialDb, null, 2), 'utf-8');
+
+    // Instantiate UserStore to trigger loadFromDisk and migration
+    const store = new UserStore(testDir);
+
+    // In-memory verification
+    const migrated = store.getStoredUser('legacy-user-1');
+    expect(migrated?.sessionAccess).toBe('beta');
+    expect(store.verifyToken('tok-legacy-123')).not.toBeNull();
+    expect(store.getSessionHistory('legacy-user-1').length).toBe(1);
+    expect(store.listScheduledSessions().length).toBe(1);
+
+    // On-disk verification: verify migration was persisted without erasing other collections
+    const rawDisk = fs.readFileSync(accountsPath, 'utf-8');
+    const diskDb = JSON.parse(rawDisk);
+    expect(diskDb.users[0].sessionAccess).toBe('beta');
+    expect(diskDb.tokens.length).toBe(1);
+    expect(diskDb.tokens[0].token).toBe('tok-legacy-123');
+    expect(diskDb.sessions.length).toBe(1);
+    expect(diskDb.sessions[0].id).toBe('ses-legacy-1');
+    expect(diskDb.scheduledSessions.length).toBe(1);
+    expect(diskDb.scheduledSessions[0].id).toBe('sched-legacy-1');
   });
 });
 

@@ -152,8 +152,8 @@ export class UserStore {
     try {
       const raw = fs.readFileSync(this.dataFilePath, 'utf-8');
       const data = JSON.parse(raw) as DatabaseSchema;
+      let needsSave = false;
       if (Array.isArray(data.users)) {
-        let needsSave = false;
         for (const u of data.users) {
           if (u.sessionAccess === undefined || u.sessionAccess === null) {
             u.sessionAccess = 'beta';
@@ -162,13 +162,6 @@ export class UserStore {
           this.users.set(u.id, u);
           this.usernameIndex.set(u.username.toLowerCase(), u.id);
           this.emailIndex.set(u.email.toLowerCase(), u.id);
-        }
-        if (needsSave) {
-          try {
-            this.saveToDisk();
-          } catch (err) {
-            console.warn('Could not save migrated user access states to disk:', err);
-          }
         }
       }
       if (Array.isArray(data.tokens)) {
@@ -191,6 +184,13 @@ export class UserStore {
       if (Array.isArray(data.scheduledSessions)) {
         for (const s of data.scheduledSessions) {
           this.scheduledSessions.set(s.id, s);
+        }
+      }
+      if (needsSave) {
+        try {
+          this.saveToDisk();
+        } catch (err) {
+          console.warn('Could not save migrated user access states to disk:', err);
         }
       }
     } catch (err) {
