@@ -2,56 +2,23 @@
  * JaMeet Remote Voice Bridge (macOS AudioWorklet Integration)
  * 
  * Captures decoded remote collaborator Voice PCM pre-fader from remoteVoiceSourceNode,
- * batches the 48 kHz stereo Float32 audio into 10 ms (480-sample) quanta, and streams
+ * batches the 48 kHz stereo Float32 audio into 10 ms (480-frame) quanta, and streams
  * it via IPC into the JaMeet Remote producer bridge.
  */
 
-const WORKLET_PROCESSOR_CODE = `
-class JaMeetRemoteVoiceProcessor extends AudioWorkletProcessor {
-  constructor() {
-    super();
-    this.batchFrames = 480; // 10 ms at 48 kHz
-    this.batchSamples = this.batchFrames * 2; // Stereo interleaved
-    this.buffer = new Float32Array(this.batchSamples);
-    this.bufferOffset = 0;
-  }
-
-  process(inputs) {
-    const input = inputs[0];
-    if (!input || input.length === 0) {
-      return true;
-    }
-
-    const left = input[0];
-    const right = input.length > 1 ? input[1] : left;
-    const quantumFrames = left ? left.length : 0;
-    if (quantumFrames === 0) {
-      return true;
-    }
-
-    for (let i = 0; i < quantumFrames; i++) {
-      const l = left[i] || 0;
-      const r = right ? (right[i] || 0) : l;
-
-      this.buffer[this.bufferOffset++] = l;
-      this.buffer[this.bufferOffset++] = r;
-
-      if (this.bufferOffset >= this.batchSamples) {
-        const chunk = new Float32Array(this.buffer);
-        this.port.postMessage(chunk, [chunk.buffer]);
-        this.bufferOffset = 0;
-      }
-    }
-
-    return true;
-  }
-}
-
-registerProcessor('jameet-remote-voice-processor', JaMeetRemoteVoiceProcessor);
-`;
-
 let activeWorkletNode: AudioWorkletNode | null = null;
 let registeredAudioContexts = new WeakSet<AudioContext>();
+
+function getWorkletProcessorUrl(): string {
+  if (typeof window !== 'undefined' && window.location) {
+    try {
+      return new URL('remote-voice-processor.js', window.location.href).href;
+    } catch {
+      return './remote-voice-processor.js';
+    }
+  }
+  return './remote-voice-processor.js';
+}
 
 export async function startRemoteVoiceBridge(
   ctx: AudioContext,
@@ -71,20 +38,16 @@ export async function startRemoteVoiceBridge(
     }
 
     if (!registeredAudioContexts.has(ctx)) {
-      if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && URL.createObjectURL) {
-        const blob = new Blob([WORKLET_PROCESSOR_CODE], { type: 'application/javascript' });
-        const blobUrl = URL.createObjectURL(blob);
-        try {
-          await ctx.audioWorklet.addModule(blobUrl);
-          registeredAudioContexts.add(ctx);
-        } finally {
-          URL.revokeObjectURL(blobUrl);
-        }
-      }
+      const workletUrl = getWorkletProcessorUrl();
+      await ctx.audioWorklet.addModule(workletUrl);
+      registeredAudioContexts.add(ctx);
     }
 
     if (activeWorkletNode) {
-      try { activeWorkletNode.disconnect(); } catch {}
+      try {
+        activeWorkletNode.port.postMessage({ type: 'stop' });
+        activeWorkletNode.disconnect();
+      } catch {}
       activeWorkletNode.port.onmessage = null;
       activeWorkletNode = null;
     }
@@ -112,7 +75,10 @@ export async function startRemoteVoiceBridge(
 
 export function stopRemoteVoiceBridge(): void {
   if (activeWorkletNode) {
-    try { activeWorkletNode.disconnect(); } catch {}
+    try {
+      activeWorkletNode.port.postMessage({ type: 'stop' });
+      activeWorkletNode.disconnect();
+    } catch {}
     activeWorkletNode.port.onmessage = null;
     activeWorkletNode = null;
   }

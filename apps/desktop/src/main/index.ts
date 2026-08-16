@@ -44,20 +44,13 @@ function stopRemoteVoiceProducer(): void {
       proc.stdout?.removeAllListeners();
       proc.stderr?.removeAllListeners();
       proc.removeAllListeners();
-      if (proc.stdin && !proc.stdin.destroyed) {
-        const stopPacket = Buffer.allocUnsafe(12);
-        stopPacket.writeUInt32LE(JAMEET_PRODUCER_MAGIC, 0);
-        stopPacket.writeUInt32LE(JAMEET_CMD_STOP, 4);
-        stopPacket.writeUInt32LE(0, 8);
-        proc.stdin.write(stopPacket);
-        proc.stdin.end();
+      if (proc.stdin) {
+        try { proc.stdin.destroy(); } catch {}
       }
-    } catch {}
-    setTimeout(() => {
       try {
         if (!proc.killed) proc.kill('SIGTERM');
       } catch {}
-    }, 100);
+    } catch {}
   }
 }
 
@@ -1134,18 +1127,7 @@ else {
       if (!producer || !producer.stdin || producer.stdin.destroyed) return;
 
       if (!isVoiceActive) {
-        // Immediate route invalidation: bump generation & clear any pending queue
-        remoteVoiceRouteGeneration++;
-        pendingRemoteVoicePcmPacket = null;
-        isRemoteVoiceProducerDraining = false;
-        try {
-          const activePacket = Buffer.allocUnsafe(16);
-          activePacket.writeUInt32LE(JAMEET_PRODUCER_MAGIC, 0);
-          activePacket.writeUInt32LE(JAMEET_CMD_SET_ACTIVE, 4);
-          activePacket.writeUInt32LE(4, 8);
-          activePacket.writeUInt32LE(0, 12);
-          producer.stdin.write(activePacket);
-        } catch {}
+        stopRemoteVoiceProducer();
         return;
       }
 
