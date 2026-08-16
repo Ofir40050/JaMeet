@@ -127,7 +127,7 @@ KDEFERRED_ROUTINE WaveRTServicingDpcRoutine;
 /*
  * CMiniportWaveRTCaptureStream
  * Real-time WaveRT capture stream reading from nonpaged kernel shared segment
- * using PortCls IPortWaveRTStream buffer allocation model and high-precision cyclic servicing.
+ * using PortCls IPortWaveRTStream buffer allocation model and monotonic anchored servicing.
  */
 class CMiniportWaveRTCaptureStream : public IMiniportWaveRTStreamNotification, public CUnknown {
 private:
@@ -137,6 +137,7 @@ private:
     ULONG m_ulDmaBufferSize;
     ULONG m_ulNotificationCount;
     ULONG m_ulNotificationIntervalFrames;
+    ULONGLONG m_ullStreamStart100ns;
     ULONGLONG m_ullServicingCount;
     ULONG m_ulPosition;
     ULONGLONG m_ullLinearPosition;
@@ -162,6 +163,7 @@ public:
         m_ulDmaBufferSize = 0;
         m_ulNotificationCount = 2;
         m_ulNotificationIntervalFrames = 480; /* Default 10 ms @ 48 kHz */
+        m_ullStreamStart100ns = 0;
         m_ullServicingCount = 0;
         m_ulPosition = 0;
         m_ullLinearPosition = 0;
@@ -228,11 +230,15 @@ public:
         if (State == KSSTATE_RUN) {
             m_Consumer.active = TRUE;
             m_ullServicingCount = 0;
+            m_ullStreamStart100ns = KeQueryInterruptTime();
 
-            /* Schedule first servicing DPC with exact 100-ns precision matching 48 kHz clock */
-            LONGLONG step100ns = ((LONGLONG)m_ulNotificationIntervalFrames * 10000000LL) / 48000LL;
+            /* Schedule first servicing deadline anchored to monotonic stream start time */
+            ULONGLONG idealDeadline100ns = m_ullStreamStart100ns + (((ULONGLONG)1 * m_ulNotificationIntervalFrames * 10000000ULL) / 48000ULL);
+            ULONGLONG now100ns = KeQueryInterruptTime();
+            LONGLONG remaining100ns = (idealDeadline100ns > now100ns) ? (LONGLONG)(idealDeadline100ns - now100ns) : 1;
+
             LARGE_INTEGER dueTime;
-            dueTime.QuadPart = -step100ns;
+            dueTime.QuadPart = -remaining100ns;
             KeSetTimer(&m_Timer, dueTime, &m_Dpc);
         } else if (State == KSSTATE_STOP) {
             KeCancelTimer(&m_Timer);
@@ -240,6 +246,7 @@ public:
             m_Consumer.active = FALSE;
             m_ulPosition = 0;
             m_ullServicingCount = 0;
+            m_ullStreamStart100ns = 0;
         } else if (State == KSSTATE_PAUSE) {
             KeCancelTimer(&m_Timer);
             KeRemoveQueueDpc(&m_Dpc);
@@ -495,14 +502,15 @@ public:
         }
         KeReleaseSpinLock(&m_EventLock, oldIrql);
 
-        /* Re-arm timer for next servicing step with cumulative drift-free 100-ns precision */
+        /* Re-arm timer anchored to monotonic stream start time to eliminate cumulative scheduling drift */
         m_ullServicingCount++;
         if (m_StreamState == KSSTATE_RUN) {
-            LONGLONG nextTotal100ns = ((LONGLONG)(m_ullServicingCount + 1) * m_ulNotificationIntervalFrames * 10000000LL) / 48000LL;
-            LONGLONG currTotal100ns = ((LONGLONG)m_ullServicingCount * m_ulNotificationIntervalFrames * 10000000LL) / 48000LL;
-            LONGLONG step100ns = nextTotal100ns - currTotal100ns;
+            ULONGLONG idealDeadline100ns = m_ullStreamStart100ns + (((m_ullServicingCount + 1) * (ULONGLONG)m_ulNotificationIntervalFrames * 10000000ULL) / 48000ULL);
+            ULONGLONG now100ns = KeQueryInterruptTime();
+            LONGLONG remaining100ns = (idealDeadline100ns > now100ns) ? (LONGLONG)(idealDeadline100ns - now100ns) : 1;
+
             LARGE_INTEGER dueTime;
-            dueTime.QuadPart = -step100ns;
+            dueTime.QuadPart = -remaining100ns;
             KeSetTimer(&m_Timer, dueTime, &m_Dpc);
         }
     }
@@ -632,6 +640,9 @@ public:
         if (OutputBufferLength < formatSize) {
             return STATUS_BUFFER_TOO_SMALL;
         }
+
+        PKSDATARANGE_AUDIO pAudioRes = (PKSDATARANGE_AUDIO)ResultantFormat;
+        (void)pAudioRes;
 
         PKSDATAFORMAT_WAVEFORMATEXTENSIBLE pResFormat = (PKSDATAFORMAT_WAVEFORMATEXTENSIBLE)ResultantFormat;
         RtlZeroMemory(pResFormat, formatSize);
