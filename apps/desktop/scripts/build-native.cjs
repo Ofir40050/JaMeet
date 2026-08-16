@@ -50,7 +50,24 @@ if (process.platform === 'darwin') {
     }
   }
   console.log('[build-native] All macOS native binaries built successfully.');
+} else if (process.platform === 'win32') {
+  console.log('[build-native] Building Windows native binaries...');
+  try {
+    const bridgeDir = path.join(rootDir, 'src/main/bridge');
+    // Try clang, gcc, or cl if available
+    let buildCmd = `clang -O2 -I"${bridgeDir}" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_posix.c')}" -lcfgmgr32 -o bin/jameet-remote-producer.exe`;
+    try {
+      execSync(buildCmd, { cwd: rootDir, stdio: 'inherit' });
+    } catch {
+      // Fallback to gcc
+      buildCmd = `gcc -O2 -I"${bridgeDir}" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_posix.c')}" -lcfgmgr32 -o bin/jameet-remote-producer.exe`;
+      execSync(buildCmd, { cwd: rootDir, stdio: 'inherit' });
+    }
+    console.log('[build-native] Windows native binaries built successfully.');
+  } catch (err) {
+    console.warn('[build-native] Note: Windows native build skipped or requires Visual Studio / clang toolchain:', err.message);
+  }
 } else {
-  console.log('Skipping macOS-specific native compilation on ' + process.platform);
+  console.log('Skipping native compilation on ' + process.platform);
 }
 

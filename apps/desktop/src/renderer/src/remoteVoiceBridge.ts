@@ -27,7 +27,7 @@ export async function startRemoteVoiceBridge(
   if (typeof window === 'undefined' || !window.jameet?.remoteVoiceBridge) {
     return;
   }
-  if (window.jameet.platform !== 'darwin') {
+  if (window.jameet.platform !== 'darwin' && window.jameet.platform !== 'win32') {
     return;
   }
 

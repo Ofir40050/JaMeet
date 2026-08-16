@@ -1158,7 +1158,7 @@ else {
     }
 
     ipcMain.handle('start-remote-voice-bridge', async () => {
-      if (process.platform !== 'darwin') return false;
+      if (process.platform !== 'darwin' && process.platform !== 'win32') return false;
       if (remoteVoiceProducerProcess && !remoteVoiceProducerProcess.killed) return true;
 
       const { spawn, execSync } = await import('child_process');

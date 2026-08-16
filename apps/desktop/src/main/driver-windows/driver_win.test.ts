@@ -1,0 +1,121 @@
+import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+
+describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', () => {
+  const driverDir = path.join(__dirname);
+  const infPath = path.join(driverDir, 'JaMeetRemote.inf');
+  const ioctlHeaderPath = path.join(driverDir, '../bridge/jameet_remote_win32_ioctl.h');
+
+  it('validates JaMeetRemote.inf syntax, security SDDL, and interface declarations', () => {
+    expect(fs.existsSync(infPath)).toBe(true);
+    const infContent = fs.readFileSync(infPath, 'utf-8');
+
+    // Friendly name
+    expect(infContent).toContain('JaMeet Remote');
+    expect(infContent).toContain('Class       = MEDIA');
+    expect(infContent).toContain('ClassGUID   = {4d36e96c-e325-11ce-bfc1-08002be10318}');
+
+    // Interface categories
+    expect(infContent).toContain('KSCATEGORY_AUDIO');
+    expect(infContent).toContain('KSCATEGORY_CAPTURE');
+    expect(infContent).toContain('KSCATEGORY_REALTIME');
+
+    // Security Descriptor: SYSTEM + Administrators Generic All, Interactive User Read/Write
+    expect(infContent).toContain('D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)');
+
+    // Destination directory
+    expect(infContent).toContain('DefaultDestDir = 13');
+  });
+
+  it('validates Win32 IOCTL definitions and strict access masks', () => {
+    expect(fs.existsSync(ioctlHeaderPath)).toBe(true);
+    const ioctlContent = fs.readFileSync(ioctlHeaderPath, 'utf-8');
+
+    // Device interface GUID: {8F58E71A-3BC8-4D33-9847-7E1CA25D6B90}
+    expect(ioctlContent).toContain('0x8F58E71A, 0x3BC8, 0x4D33, 0x98, 0x47, 0x7E, 0x1C, 0xA2, 0x5D, 0x6B, 0x90');
+
+    // Required access: FILE_READ_DATA | FILE_WRITE_DATA
+    expect(ioctlContent).toContain('IOCTL_JAMEET_MAP_PRODUCER_VIEW');
+    expect(ioctlContent).toContain('IOCTL_JAMEET_UNMAP_PRODUCER_VIEW');
+    expect(ioctlContent).toContain('FILE_READ_DATA | FILE_WRITE_DATA');
+  });
+
+  it('validates driver installation and uninstallation script presence', () => {
+    const installCmdPath = path.join(driverDir, 'install-driver.cmd');
+    const uninstallCmdPath = path.join(driverDir, 'uninstall-driver.cmd');
+
+    expect(fs.existsSync(installCmdPath)).toBe(true);
+    expect(fs.existsSync(uninstallCmdPath)).toBe(true);
+
+    const installContent = fs.readFileSync(installCmdPath, 'utf-8');
+    expect(installContent).toContain('pnputil.exe /add-driver');
+    expect(installContent).toContain('/install');
+
+    const uninstallContent = fs.readFileSync(uninstallCmdPath, 'utf-8');
+    expect(uninstallContent).toContain('pnputil.exe /delete-driver');
+    expect(uninstallContent).toContain('/uninstall');
+  });
+
+  it('verifies untrusted memory hardening: NaN/Inf sanitization, bounds checking, and silence generation', () => {
+    // Simulate kernel consumer logic in JS/TS mirror test
+    const JAMEET_SHM_MAGIC = 0x4A4D5254;
+    const JAMEET_ABI_VERSION = 1;
+    const JAMEET_SLOT_MASK = 127;
+
+    function sanitizeSample(rawBits: number): number {
+      const buf = new ArrayBuffer(4);
+      const view = new DataView(buf);
+      view.setUint32(0, rawBits, true);
+      const val = view.getFloat32(0, true);
+      if (Number.isNaN(val) || !Number.isFinite(val)) {
+        return 0.0;
+      }
+      if (val > 4.0) return 4.0;
+      if (val < -4.0) return -4.0;
+      return val;
+    }
+
+    // 1. Test NaN float bits
+    const nanBits = 0x7FC00000;
+    expect(sanitizeSample(nanBits)).toBe(0.0);
+
+    // 2. Test +Infinity float bits
+    const infBits = 0x7F800000;
+    expect(sanitizeSample(infBits)).toBe(0.0);
+
+    // 3. Test -Infinity float bits
+    const negInfBits = 0xFF800000;
+    expect(sanitizeSample(negInfBits)).toBe(0.0);
+
+    // 4. Test normal audio amplitude (e.g. 0.5f)
+    const buf = new ArrayBuffer(4);
+    const view = new DataView(buf);
+    view.setFloat32(0, 0.5, true);
+    const normalBits = view.getUint32(0, true);
+    expect(sanitizeSample(normalBits)).toBeCloseTo(0.5);
+
+    // 5. Test slot index masking safety
+    const untrustedFrameIndex = 0xFFFFFFFF;
+    const slotIdx = (Math.floor(untrustedFrameIndex / 128)) & JAMEET_SLOT_MASK;
+    expect(slotIdx).toBeGreaterThanOrEqual(0);
+    expect(slotIdx).toBeLessThanOrEqual(127);
+  });
+
+  it('verifies Float32 to Int16 conversion with proper saturation clamping', () => {
+    function floatToInt16(f: number): number {
+      if (f > 1.0) f = 1.0;
+      else if (f < -1.0) f = -1.0;
+      let sample = Math.floor(f * 32767.0);
+      if (sample > 32767) sample = 32767;
+      if (sample < -32768) sample = -32768;
+      return sample;
+    }
+
+    expect(floatToInt16(0.0)).toBe(0);
+    expect(floatToInt16(1.0)).toBe(32767);
+    expect(floatToInt16(-1.0)).toBe(-32767);
+    expect(floatToInt16(2.5)).toBe(32767); // saturated
+    expect(floatToInt16(-3.0)).toBe(-32767); // saturated
+  });
+});

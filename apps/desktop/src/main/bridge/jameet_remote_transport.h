@@ -11,7 +11,8 @@ extern "C" {
 typedef enum JaMeetTransportKind {
     JAMEET_TRANSPORT_KIND_MEMORY = 0,
     JAMEET_TRANSPORT_KIND_POSIX_SHM = 1,
-    JAMEET_TRANSPORT_KIND_CUSTOM = 2
+    JAMEET_TRANSPORT_KIND_CUSTOM = 2,
+    JAMEET_TRANSPORT_KIND_WIN32_DRIVER = 3
 } JaMeetTransportKind;
 
 typedef struct JaMeetTransportConfig {
@@ -26,6 +27,7 @@ typedef struct JaMeetTransport {
     JaMeetSharedSegment* segment;
     size_t mappedSize;
     int fd;
+    void* handle; /* Win32 HANDLE or custom pointer */
     char shmName[128];
     bool isOwner;
     bool isReadOnly;
@@ -57,6 +59,12 @@ JaMeetTransport* JaMeetTransport_OpenPosixShmConfig(const JaMeetTransportConfig*
  * Legacy helper for POSIX Shared Memory transport.
  */
 JaMeetTransport* JaMeetTransport_OpenPosixShm(const char* name, bool createIfMissing, bool readOnly);
+
+/**
+ * Open Windows kernel-mode driver transport by dynamically querying GUID_DEVINTERFACE_JAMEET_REMOTE
+ * and mapping the driver-owned shared section view via IOCTL_JAMEET_MAP_PRODUCER_VIEW.
+ */
+JaMeetTransport* JaMeetTransport_OpenWin32Device(void);
 
 /**
  * Close and unmap the transport.
