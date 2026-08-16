@@ -44,7 +44,8 @@ describe('Native Binary Path Resolution', () => {
         'set-rate',
         'jameet-hardware-input',
         'jameet-app-audio-tap',
-        'jameet-screen-capture'
+        'jameet-screen-capture',
+        'jameet-remote-producer'
       ];
 
       for (const helper of expectedHelpers) {

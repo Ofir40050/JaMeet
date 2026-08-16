@@ -36,5 +36,9 @@
 			<string>B888494A-6E43-4217-88D1-3329D61E23B1</string>
 		</array>
 	</dict>
+	<key>AudioServerPlugIn_MachServices</key>
+	<array>
+		<string>com.jameet.audio.driver.JaMeetRemote.mach</string>
+	</array>
 </dict>
 </plist>

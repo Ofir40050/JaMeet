@@ -21,6 +21,7 @@ import { presenter } from './presenter';
 import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor } from './htmlSecurity';
 import { initActivityHistory, renderProjectActivities } from './activity';
 import { initSessionChat, resetChatUi } from './chat';
+import { startRemoteVoiceBridge, stopRemoteVoiceBridge } from './remoteVoiceBridge';
 import './style.css';
 
 export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
@@ -2008,6 +2009,7 @@ async function refreshRemoteAudio(): Promise<void> {
     try { remoteVoiceSourceNode?.disconnect(); } catch {}
     remoteVoiceSourceNode = ctx.createMediaStreamSource(voiceStream);
     if (remoteVoiceGain) remoteVoiceSourceNode.connect(remoteVoiceGain);
+    void startRemoteVoiceBridge(ctx, remoteVoiceSourceNode);
 
     if (!remoteVoiceMeter) {
       remoteVoiceMeter = new LevelMeter();
@@ -2017,6 +2019,7 @@ async function refreshRemoteAudio(): Promise<void> {
       checkActiveSpeaker();
     });
   } else {
+    stopRemoteVoiceBridge();
     try { remoteVoiceSourceNode?.disconnect(); } catch {}
     remoteVoiceSourceNode = undefined;
     if (remoteVoiceMeter) {
@@ -2110,6 +2113,7 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   $('voice-in-indicator')?.classList.remove('active');
   $('music-in-indicator')?.classList.remove('active');
   remoteAudioTracks.clear();
+  stopRemoteVoiceBridge();
   void refreshRemoteAudio();
   if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
     void remoteAudioCtx.close().catch(() => {});
@@ -4040,6 +4044,7 @@ window.addEventListener('beforeunload', () => {
   void presenter.stopNativeCapture();
   void presenter.exitPresenterMode();
   videoTrack?.stop();
+  stopRemoteVoiceBridge();
   for (const m of voiceMeters.values()) void m.stop();
   void musicMeter.stop();
 });

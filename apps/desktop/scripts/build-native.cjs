@@ -25,6 +25,10 @@ if (process.platform === 'darwin') {
       cmd: 'swiftc -O src/main/jameet-screen-capture.swift -o bin/jameet-screen-capture'
     },
     {
+      name: 'jameet-remote-producer',
+      cmd: 'clang -O2 -framework CoreFoundation -Isrc/main/bridge src/main/bridge/jameet-remote-producer.c src/main/bridge/jameet_remote_bridge.c src/main/bridge/jameet_remote_transport_posix.c -o bin/jameet-remote-producer'
+    },
+    {
       name: 'JaMeetRemote.driver',
       cmd: 'bash src/main/driver-macos/build-driver.sh src/main/driver-macos/dist',
       dest: path.join(rootDir, 'src/main/driver-macos/dist/JaMeetRemote.driver')

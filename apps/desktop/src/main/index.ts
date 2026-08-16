@@ -1055,6 +1055,148 @@ else {
       }
     });
 
+    // =========================================================================
+    // JaMeet Remote Bridge Producer Lifecycle & Bounded Flow Control (macOS)
+    // =========================================================================
+    let remoteVoiceProducerProcess: import('child_process').ChildProcess | null = null;
+    let isRemoteVoiceProducerDraining = false;
+    let pendingRemoteVoicePcmPacket: Buffer | null = null;
+
+    const JAMEET_PRODUCER_MAGIC = 0x4A4D5250;
+    const JAMEET_CMD_WRITE_FRAMES = 1;
+    const JAMEET_CMD_STOP = 3;
+
+    function writePcmToRemoteVoiceProducer(
+      producer: import('child_process').ChildProcess,
+      pcmFloat32: Float32Array,
+      isVoiceActive: boolean
+    ): void {
+      if (!producer || !producer.stdin || producer.stdin.destroyed) return;
+
+      const frameCount = Math.floor(pcmFloat32.length / 2);
+      const pcmBytes = pcmFloat32.byteLength;
+      const payloadSize = 8 + pcmBytes;
+      const packetSize = 12 + payloadSize;
+
+      const packet = Buffer.allocUnsafe(packetSize);
+      packet.writeUInt32LE(JAMEET_PRODUCER_MAGIC, 0);
+      packet.writeUInt32LE(JAMEET_CMD_WRITE_FRAMES, 4);
+      packet.writeUInt32LE(payloadSize, 8);
+      packet.writeUInt32LE(frameCount, 12);
+      packet.writeUInt32LE(isVoiceActive ? 1 : 0, 16);
+      Buffer.from(pcmFloat32.buffer, pcmFloat32.byteOffset, pcmFloat32.byteLength).copy(packet, 20);
+
+      if (isRemoteVoiceProducerDraining) {
+        // While waiting for drain, hold at most the single newest batch and discard older batches
+        pendingRemoteVoicePcmPacket = packet;
+        return;
+      }
+
+      const ok = producer.stdin.write(packet);
+      if (!ok) {
+        isRemoteVoiceProducerDraining = true;
+        producer.stdin.once('drain', () => {
+          isRemoteVoiceProducerDraining = false;
+          if (pendingRemoteVoicePcmPacket && remoteVoiceProducerProcess === producer && !producer.stdin.destroyed) {
+            const nextPacket = pendingRemoteVoicePcmPacket;
+            pendingRemoteVoicePcmPacket = null;
+            const writeOk = producer.stdin.write(nextPacket);
+            if (!writeOk) {
+              isRemoteVoiceProducerDraining = true;
+              producer.stdin.once('drain', () => {
+                isRemoteVoiceProducerDraining = false;
+              });
+            }
+          }
+        });
+      }
+    }
+
+    function stopRemoteVoiceProducer(): void {
+      pendingRemoteVoicePcmPacket = null;
+      isRemoteVoiceProducerDraining = false;
+      if (remoteVoiceProducerProcess) {
+        const proc = remoteVoiceProducerProcess;
+        remoteVoiceProducerProcess = null;
+        try {
+          if (proc.stdin && !proc.stdin.destroyed) {
+            const stopPacket = Buffer.allocUnsafe(12);
+            stopPacket.writeUInt32LE(JAMEET_PRODUCER_MAGIC, 0);
+            stopPacket.writeUInt32LE(JAMEET_CMD_STOP, 4);
+            stopPacket.writeUInt32LE(0, 8);
+            proc.stdin.write(stopPacket);
+            proc.stdin.end();
+          }
+        } catch {}
+        setTimeout(() => {
+          try { proc.kill('SIGTERM'); } catch {}
+        }, 100);
+      }
+    }
+
+    ipcMain.handle('start-remote-voice-bridge', async () => {
+      if (process.platform !== 'darwin') return false;
+      if (remoteVoiceProducerProcess && !remoteVoiceProducerProcess.killed) return true;
+
+      const { spawn, execSync } = await import('child_process');
+      const { join } = await import('path');
+      const { existsSync, chmodSync } = await import('fs');
+      const binPath = getNativeBinaryPath('jameet-remote-producer');
+      const srcPath = join(__dirname, '../../src/main/bridge/jameet-remote-producer.c');
+      const bridgeDir = join(__dirname, '../../src/main/bridge');
+
+      if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
+        try {
+          execSync(
+            `mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreFoundation -I"${bridgeDir}" "${srcPath}" "${join(bridgeDir, 'jameet_remote_bridge.c')}" "${join(bridgeDir, 'jameet_remote_transport_posix.c')}" -o "${binPath}"`
+          );
+        } catch (e) {
+          console.error('Failed to compile jameet-remote-producer:', e);
+        }
+      }
+
+      if (!existsSync(binPath)) {
+        console.error(`jameet-remote-producer binary not found: ${binPath}`);
+        return false;
+      }
+      try { chmodSync(binPath, 0o755); } catch {}
+
+      try {
+        const child = spawn(binPath, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+        remoteVoiceProducerProcess = child;
+        isRemoteVoiceProducerDraining = false;
+        pendingRemoteVoicePcmPacket = null;
+
+        child.stderr.on('data', (data: Buffer) => {
+          console.log('[JaMeetProducer]', data.toString().trim());
+        });
+
+        child.on('close', () => {
+          if (remoteVoiceProducerProcess === child) {
+            remoteVoiceProducerProcess = null;
+            pendingRemoteVoicePcmPacket = null;
+            isRemoteVoiceProducerDraining = false;
+          }
+        });
+
+        return true;
+      } catch (err) {
+        console.error('[JaMeetProducer] Spawn error:', err);
+        return false;
+      }
+    });
+
+    ipcMain.on('send-remote-voice-pcm', (_event, pcmData: Float32Array, isRouteActive: boolean) => {
+      if (remoteVoiceProducerProcess) {
+        writePcmToRemoteVoiceProducer(remoteVoiceProducerProcess, pcmData, isRouteActive);
+      }
+    });
+
+    ipcMain.handle('stop-remote-voice-bridge', async () => {
+      stopRemoteVoiceProducer();
+      return true;
+    });
+
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
@@ -1062,6 +1204,12 @@ else {
 
 app.on('before-quit', () => {
   stopActiveNativeScreenCapture();
+  if (process.platform === 'darwin') {
+    try {
+      const { execSync } = require('child_process');
+      execSync('killall jameet-remote-producer 2>/dev/null || true');
+    } catch {}
+  }
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

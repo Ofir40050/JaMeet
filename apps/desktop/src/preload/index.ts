@@ -102,6 +102,12 @@ const jameetApi = {
     ipcRenderer.on('scheduled-notification-clicked', handler);
     return () => ipcRenderer.removeListener('scheduled-notification-clicked', handler);
   },
+  remoteVoiceBridge: {
+    start: (): Promise<boolean> => ipcRenderer.invoke('start-remote-voice-bridge'),
+    sendPcm: (data: Float32Array, isRouteActive: boolean): void =>
+      ipcRenderer.send('send-remote-voice-pcm', data, isRouteActive),
+    stop: (): Promise<boolean> => ipcRenderer.invoke('stop-remote-voice-bridge')
+  },
   platform: process.platform
 };
 
