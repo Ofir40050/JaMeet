@@ -108,6 +108,7 @@ const jameetApi = {
       ipcRenderer.send('send-remote-voice-pcm', data, isRouteActive),
     stop: (): Promise<boolean> => ipcRenderer.invoke('stop-remote-voice-bridge')
   },
+  setMediaActive: (active: boolean): void => ipcRenderer.send('set-media-active', active),
   platform: process.platform
 };
 

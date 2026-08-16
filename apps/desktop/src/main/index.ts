@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, desktopCapturer, ipcMain, net, protocol, screen, session, safeStorage, Notification, Menu, Tray, nativeImage } from 'electron';
+import { app, BrowserWindow, clipboard, desktopCapturer, ipcMain, net, protocol, screen, session, safeStorage, Notification, Menu, Tray, nativeImage, dialog } from 'electron';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join, normalize, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -10,6 +10,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let isAppQuitting = false;
+let isRendererMediaActive = false;
 let mainWindow: BrowserWindow | null = null;
 let presenterToolbarWindow: BrowserWindow | null = null;
 let presenterVideoWindow: BrowserWindow | null = null;
@@ -271,8 +272,36 @@ function createWindow(): void {
   else void mainWindow.loadURL('jameet-app://bundle/index.html');
 
   mainWindow.on('close', (event) => {
-    if (!isAppQuitting) {
-      event.preventDefault();
+    if (isAppQuitting) {
+      return;
+    }
+    event.preventDefault();
+
+    const isMediaActive = Boolean(
+      isRendererMediaActive ||
+      activeNativeScreenCaptureProcess ||
+      activeAudioTapProcess ||
+      activeHardwareAudioProcess ||
+      remoteVoiceProducerProcess ||
+      isPresenterModeActive
+    );
+
+    if (isMediaActive) {
+      const choice = dialog.showMessageBoxSync(mainWindow!, {
+        type: 'info',
+        title: 'JaMeet',
+        message: 'JaMeet will continue running in the background.',
+        detail: 'Live media capture or transmission (such as microphone, camera, screen sharing, or session audio) is active and may continue while JaMeet is hidden in the background.\n\nWould you like to keep running in the background or return to JaMeet?',
+        buttons: ['Keep Running in Background', 'Return to JaMeet'],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true
+      });
+
+      if (choice === 0) {
+        mainWindow?.hide();
+      }
+    } else {
       mainWindow?.hide();
     }
   });
@@ -480,6 +509,10 @@ else {
         response.audio = 'loopback';
       }
       callback(response);
+    });
+
+    ipcMain.on('set-media-active', (_event, active: boolean) => {
+      isRendererMediaActive = Boolean(active);
     });
 
     ipcMain.handle('get-initial-deep-link', () => { const value = pendingDeepLink; pendingDeepLink = null; return value; });

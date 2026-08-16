@@ -46,6 +46,15 @@ export class LocalAudioSourceManager {
   get music(): AudioSourceConfig | undefined { return this.sources.get('music'); }
   get(id: string): AudioSourceConfig | undefined { return this.sources.get(id); }
 
+  hasActiveSources(): boolean {
+    for (const src of this.sources.values()) {
+      if (src.enabled && src.track && src.track.readyState === 'live') {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private async getOrCreateAudioContext(): Promise<AudioContext> {
     if (!this.audioContext || this.audioContext.state === 'closed') {
       this.audioContext = new AudioContext({ sampleRate: 48000 });

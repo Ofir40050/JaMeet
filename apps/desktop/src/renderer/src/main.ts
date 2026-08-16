@@ -2425,7 +2425,18 @@ bindSelect('call-camera-quality-select', (value) => changeCameraQuality(value as
 bindSelect('receive-quality-select', (value) => changeReceiveQuality(value as VideoQuality));
 bindSelect('call-receive-quality-select', (value) => changeReceiveQuality(value as VideoQuality));
 bindSelect('performance-select', (value) => changePerformanceMode(value as PerformanceMode));
-bindSelect('call-performance-select', (value) => changePerformanceMode(value as PerformanceMode));
+function syncMediaActiveState(): void {
+  const isMicLive = !muted && audio.hasActiveSources();
+  const isCamLive = Boolean(cameraEnabled && videoTrack && videoTrack.readyState === 'live');
+  const isScreenLive = Boolean(screenTrack && screenTrack.readyState === 'live');
+  const isSessionLive = inCall;
+  const isAnyLive = Boolean(isSessionLive || isCamLive || isScreenLive || isMicLive);
+  const desktopApi = (window as any).jameet || (window as any).musiczoom;
+  if (desktopApi?.setMediaActive) {
+    desktopApi.setMediaActive(isAnyLive);
+  }
+}
+setInterval(syncMediaActiveState, 500);
 
 function toggleMute(): void {
   muted = !muted;
@@ -2440,6 +2451,7 @@ function toggleMute(): void {
   }
   if (muted) $('voice-in-indicator')?.classList.remove('active');
   if (inCall) signaling.updateMedia(currentCode, metadata());
+  syncMediaActiveState();
 }
 
 for (const id of ['toggle-mic', 'mute-button']) $(id)?.addEventListener('click', toggleMute);
