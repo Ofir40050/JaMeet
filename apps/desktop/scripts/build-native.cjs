@@ -86,9 +86,18 @@ if (process.platform === 'darwin') {
     }
   }
 
-  // 2. Build WDK Driver Project
+  // 2. Build WDK Driver Project and Stage Package
   const packageDir = path.join(driverWinDir, 'package');
-  fs.mkdirSync(packageDir, { recursive: true });
+  if (fs.existsSync(packageDir)) {
+    for (const f of ['JaMeetRemote.sys', 'JaMeetRemote.cat', 'JaMeetRemote.inf']) {
+      const p = path.join(packageDir, f);
+      if (fs.existsSync(p)) {
+        fs.unlinkSync(p);
+      }
+    }
+  } else {
+    fs.mkdirSync(packageDir, { recursive: true });
+  }
 
   console.log('[build-native] Building WDK driver JaMeetRemote.sys...');
   try {
@@ -101,15 +110,18 @@ if (process.platform === 'darwin') {
     const builtCat = path.join(driverWinDir, 'dist/x64/Release/JaMeetRemote.cat');
     const srcInf = path.join(driverWinDir, 'JaMeetRemote.inf');
 
-    if (fs.existsSync(builtSys)) {
-      fs.copyFileSync(builtSys, path.join(packageDir, 'JaMeetRemote.sys'));
+    const missing = [];
+    if (!fs.existsSync(builtSys)) missing.push('JaMeetRemote.sys');
+    if (!fs.existsSync(builtCat)) missing.push('JaMeetRemote.cat');
+    if (!fs.existsSync(srcInf)) missing.push('JaMeetRemote.inf');
+
+    if (missing.length > 0) {
+      throw new Error(`WDK driver build completed but required package artifacts are missing: ${missing.join(', ')}`);
     }
-    if (fs.existsSync(builtCat)) {
-      fs.copyFileSync(builtCat, path.join(packageDir, 'JaMeetRemote.cat'));
-    }
-    if (fs.existsSync(srcInf)) {
-      fs.copyFileSync(srcInf, path.join(packageDir, 'JaMeetRemote.inf'));
-    }
+
+    fs.copyFileSync(builtSys, path.join(packageDir, 'JaMeetRemote.sys'));
+    fs.copyFileSync(builtCat, path.join(packageDir, 'JaMeetRemote.cat'));
+    fs.copyFileSync(srcInf, path.join(packageDir, 'JaMeetRemote.inf'));
   } catch (err) {
     console.error('[build-native] Error: WDK driver compilation failed:', err.message);
     process.exit(1);
@@ -119,4 +131,3 @@ if (process.platform === 'darwin') {
 } else {
   console.log('Skipping native compilation on ' + process.platform);
 }
-
