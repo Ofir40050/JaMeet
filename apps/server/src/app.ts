@@ -218,6 +218,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
   // REST Canonical Crash Report Ingestion Endpoint
   app.post('/api/crashes', {
+    bodyLimit: 64 * 1024,
     config: {
       rateLimit: {
         max: 30,

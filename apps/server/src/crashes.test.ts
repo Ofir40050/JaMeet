@@ -230,5 +230,34 @@ describe('Server Crash Report Ingestion & CrashReportStore', () => {
 
       await server.app.close();
     });
+
+    it('rejects oversized crash report payload exceeding 64 KB with HTTP 413', async () => {
+      const server = await createApp(getTestConfig());
+
+      // Create a payload larger than 64 KB (e.g. 70 KB of extra data in a string)
+      const hugeString = 'X'.repeat(70 * 1024);
+      const res = await server.app.inject({
+        method: 'POST',
+        url: '/api/crashes',
+        payload: {
+          reportId: 'oversized-crash',
+          timestamp: new Date().toISOString(),
+          process: 'renderer',
+          appVersion: '0.1.0',
+          platform: 'darwin',
+          arch: 'arm64',
+          reason: hugeString
+        }
+      });
+
+      expect(res.statusCode).toBe(413);
+      expect(JSON.parse(res.payload).ok).toBe(false);
+
+      // Verify no report was written to store
+      const onDisk = fs.existsSync(path.join(testDataDir, 'crash-reports.json'));
+      expect(onDisk).toBe(false);
+
+      await server.app.close();
+    });
   });
 });
