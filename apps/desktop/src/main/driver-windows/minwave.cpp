@@ -269,10 +269,9 @@ public:
         PHYSICAL_ADDRESS highAddress;
         highAddress.QuadPart = MAXULONG64;
 
-        PMDL pMdl = NULL;
-        NTSTATUS status = m_pPortStream->AllocatePagesForMdl(highAddress, bufferSize, &pMdl);
-        if (!NT_SUCCESS(status) || !pMdl) {
-            return status;
+        PMDL pMdl = m_pPortStream->AllocatePagesForMdl(highAddress, bufferSize);
+        if (!pMdl) {
+            return STATUS_INSUFFICIENT_RESOURCES;
         }
 
         PVOID pBuffer = m_pPortStream->MapAllocatedPages(pMdl, MmCached);
