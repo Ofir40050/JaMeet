@@ -292,13 +292,13 @@ function createWindow(): void {
         title: 'JaMeet',
         message: 'JaMeet will continue running in the background.',
         detail: 'Live media capture or transmission (such as microphone, camera, screen sharing, or session audio) is active and may continue while JaMeet is hidden in the background.\n\nWould you like to keep running in the background or return to JaMeet?',
-        buttons: ['Keep Running in Background', 'Return to JaMeet'],
+        buttons: ['Return to JaMeet', 'Keep Running in Background'],
         defaultId: 0,
-        cancelId: 1,
+        cancelId: 0,
         noLink: true
       });
 
-      if (choice === 0) {
+      if (choice === 1) {
         mainWindow?.hide();
       }
     } else {
