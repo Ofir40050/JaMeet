@@ -1081,10 +1081,10 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
           userStore.incrementHostedCount(identity.id);
         }
 
-        // Verify Project access if projectId provided by Host
+        // Verify Project modification permission if projectId provided by Host
         let verifiedProjectId: string | undefined = undefined;
         if (parsed.data.projectId && !identity.isGuest && identity.id) {
-          if (projectStore.hasAccess(parsed.data.projectId, identity.id)) {
+          if (projectStore.canModifyProject(parsed.data.projectId, identity.id)) {
             verifiedProjectId = parsed.data.projectId;
           }
         }

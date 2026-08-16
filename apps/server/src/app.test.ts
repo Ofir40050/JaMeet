@@ -4376,6 +4376,81 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('allows owner, collaborator, and editor to create project-linked sessions, but prevents viewer from linking sessions or mutating project state', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-sess-auth-int-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-sess-auth-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_sess_auth', 'beta', userStore);
+      const editorAuth = await createTestAccount(url, 'editor_sess_auth', 'beta', userStore);
+      const viewerAuth = await createTestAccount(url, 'viewer_sess_auth', 'beta', userStore);
+
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Session Auth Project' });
+      projectStore.addCollaborator(project.id, ownerAuth.user.id, editorAuth.user, 'editor');
+      projectStore.addCollaborator(project.id, ownerAuth.user.id, viewerAuth.user, 'viewer');
+
+      const viewerSocket = await connected(url);
+      const editorSocket = await connected(url);
+
+      // 1. Viewer attempts to create a session linked to the project
+      const beforeProjectState = JSON.parse(JSON.stringify(projectStore.getProject(project.id, ownerAuth.user.id)));
+
+      const viewerCreateRes = await ack(viewerSocket, 'meeting:create', {
+        participantId: '22222222-2222-4222-8222-222222222222',
+        authToken: viewerAuth.token,
+        media,
+        projectId: project.id
+      });
+
+      // Viewer CAN create a meeting session, but it is NOT linked to the project
+      expect(viewerCreateRes.ok).toBe(true);
+      expect(viewerCreateRes.projectId).toBeUndefined();
+
+      // Project state must not be modified in any way
+      const afterViewerProjectState = JSON.parse(JSON.stringify(projectStore.getProject(project.id, ownerAuth.user.id)));
+      expect(afterViewerProjectState.sessions.length).toBe(0);
+      expect(afterViewerProjectState.sessionCount).toBe(0);
+      expect(afterViewerProjectState.activities.length).toBe(beforeProjectState.activities.length);
+      expect(afterViewerProjectState.updatedAt).toBe(beforeProjectState.updatedAt);
+      expect(afterViewerProjectState.lastActivityAt).toBe(beforeProjectState.lastActivityAt);
+
+      // Viewer disconnects from call
+      viewerSocket.disconnect();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // 2. Editor creates a session linked to the project
+      const editorCreateRes = await ack(editorSocket, 'meeting:create', {
+        participantId: '33333333-3333-4333-8333-333333333333',
+        authToken: editorAuth.token,
+        media,
+        projectId: project.id
+      });
+
+      // Editor CAN create a meeting session and it IS linked to the project
+      expect(editorCreateRes.ok).toBe(true);
+      expect(editorCreateRes.projectId).toBe(project.id);
+
+      const afterEditorProjectState = projectStore.getProject(project.id, ownerAuth.user.id);
+      expect(afterEditorProjectState?.sessions.length).toBe(1);
+      expect(afterEditorProjectState?.sessionCount).toBe(1);
+      expect(afterEditorProjectState?.sessions[0].code).toBe(editorCreateRes.code);
+
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 
