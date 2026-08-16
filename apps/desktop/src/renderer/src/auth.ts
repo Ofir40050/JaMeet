@@ -178,7 +178,8 @@ export class AuthManager {
   }
 
   async login(req: LoginRequest): Promise<UserProfile> {
-    logger.info('auth_login_attempt', 'Attempting user login', { usernameOrEmail: req.usernameOrEmail });
+    const identifierType = req.usernameOrEmail?.includes('@') ? 'email' : 'username';
+    logger.info('auth_login_attempt', 'Attempting user login', { identifierType });
     let res: Response;
     try {
       res = await fetch(`${this.serverUrl}/api/auth/login`, {
@@ -187,7 +188,7 @@ export class AuthManager {
         body: JSON.stringify(req)
       });
     } catch (err) {
-      logger.warn('auth_login_failure', 'Login connection failed', { usernameOrEmail: req.usernameOrEmail }, err);
+      logger.warn('auth_login_failure', 'Login connection failed', { identifierType }, err);
       throw new Error('Unable to connect to the authentication server. Please check your connection.');
     }
 
@@ -195,13 +196,13 @@ export class AuthManager {
     try {
       data = (await res.json()) as { ok: boolean; token?: string; user?: UserProfile; message?: string };
     } catch (err) {
-      logger.warn('auth_login_failure', `Login response error (HTTP ${res.status})`, { usernameOrEmail: req.usernameOrEmail }, err);
+      logger.warn('auth_login_failure', `Login response error (HTTP ${res.status})`, { identifierType, status: res.status }, err);
       throw new Error(`Server returned status ${res.status}. Sign in could not be completed.`);
     }
 
     if (!res.ok || !data.ok || !data.token || !data.user) {
       const errMsg = data.message || 'Invalid username or password.';
-      logger.warn('auth_login_failure', 'Login authentication failed', { usernameOrEmail: req.usernameOrEmail, reason: errMsg });
+      logger.warn('auth_login_failure', 'Login authentication failed', { identifierType, status: res.status, reason: errMsg });
       throw new Error(errMsg);
     }
 

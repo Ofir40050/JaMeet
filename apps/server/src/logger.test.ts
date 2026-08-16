@@ -44,6 +44,8 @@ describe('Server Production Structured Logging & Error Handling', () => {
       reconnectToken: 'reconnect-uuid-999',
       turnSharedSecret: 'turn-secret-12345678',
       credential: 'turn-hmac-credential-987',
+      email: 'secret_artist@example.com',
+      usernameOrEmail: 'secret_artist@example.com',
       lyrics: 'Confidential verse 1 lyrics',
       notes: 'Private chord progression: Am - F - C - G',
       lyricsWorkspace: { title: 'Secret Song' },
@@ -60,6 +62,8 @@ describe('Server Production Structured Logging & Error Handling', () => {
     expect(sanitized.reconnectToken).toBe('[REDACTED]');
     expect(sanitized.turnSharedSecret).toBe('[REDACTED]');
     expect(sanitized.credential).toBe('[REDACTED]');
+    expect(sanitized.email).toBe('[REDACTED]');
+    expect(sanitized.usernameOrEmail).toBe('[REDACTED]');
     expect(sanitized.lyrics).toBe('[REDACTED]');
     expect(sanitized.notes).toBe('[REDACTED]');
     expect(sanitized.lyricsWorkspace).toBe('[REDACTED]');

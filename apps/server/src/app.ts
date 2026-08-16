@@ -237,6 +237,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       logger.warn('auth_login_failed', 'Login payload validation failed');
       return reply.code(400).send({ ok: false, message: 'Please enter your username/email and password.' });
     }
+    const identifierType = parsed.data.usernameOrEmail.includes('@') ? 'email' : 'username';
     try {
       const result = await userStore.login(parsed.data);
       logger.info('auth_login_success', 'User login successful', { userId: result.user.id, username: result.user.username });
@@ -244,8 +245,9 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Invalid credentials.';
       const isAuthFail = msg.includes('Invalid username or password');
-      logger.warn('auth_login_failed', 'User login failed', { identifier: parsed.data.usernameOrEmail, reason: msg });
-      return reply.code(isAuthFail ? 401 : 500).send({ ok: false, message: msg });
+      const statusCode = isAuthFail ? 401 : 500;
+      logger.warn('auth_login_failed', 'User login failed', { identifierType, statusCode, reason: msg });
+      return reply.code(statusCode).send({ ok: false, message: msg });
     }
   });
 

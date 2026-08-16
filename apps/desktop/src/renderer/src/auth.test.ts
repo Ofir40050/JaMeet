@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { AuthManager } from './auth';
+import { logger } from './logger';
 
 class MockLocalStorage {
   private store = new Map<string, string>();
@@ -246,5 +247,30 @@ describe('AuthManager', () => {
     await legacyAuth.init();
     expect(legacyAuth.getGuestName()).toBe('Legacy Musician');
     expect(legacyAuth.getEffectiveDisplayName()).toBe('Legacy Musician');
+  });
+
+  it('logs authentication attempts and failures with identifierType without leaking raw email addresses', async () => {
+    const loggerSpy = vi.spyOn(logger, 'info');
+    const loggerWarnSpy = vi.spyOn(logger, 'warn');
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ ok: false, message: 'Invalid username or password.' })
+    } as Response);
+
+    await expect(auth.login({ usernameOrEmail: 'private_musician@domain.com', password: 'badpassword' })).rejects.toThrow('Invalid username or password.');
+
+    const attemptCall = loggerSpy.mock.calls.find(([event]) => event === 'auth_login_attempt');
+    expect(attemptCall).toBeDefined();
+    expect(attemptCall?.[2]?.identifierType).toBe('email');
+    expect(attemptCall?.[2]?.usernameOrEmail).toBeUndefined();
+
+    const failCall = loggerWarnSpy.mock.calls.find(([event]) => event === 'auth_login_failure');
+    expect(failCall).toBeDefined();
+    expect(failCall?.[2]?.identifierType).toBe('email');
+    expect(failCall?.[2]?.status).toBe(401);
+    expect(failCall?.[2]?.usernameOrEmail).toBeUndefined();
+    expect(failCall?.[2]?.reason).toBe('Invalid username or password.');
   });
 });
