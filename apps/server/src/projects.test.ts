@@ -1049,7 +1049,7 @@ describe('ProjectStore & Workspace', () => {
       expect(projAfterDelete.workspace.lyrics.activeDocumentId).toBe('doc-main');
       expect(projAfterDelete.workspace.lyrics.content).toBe('Main verses text');
 
-      // 3. Delete all documents by passing empty documents array: fallback document must be restored
+      // 3. Delete all documents by passing empty documents array: fallback document must be restored with empty content
       const projAfterEmpty = store.updateWorkspace(project.id, owner, {
         lyrics: {
           documents: []
@@ -1058,7 +1058,9 @@ describe('ProjectStore & Workspace', () => {
 
       expect(projAfterEmpty.workspace.lyrics.documents.length).toBe(1);
       expect(projAfterEmpty.workspace.lyrics.documents[0].id).toBe('doc-main');
+      expect(projAfterEmpty.workspace.lyrics.documents[0].content).toBe('');
       expect(projAfterEmpty.workspace.lyrics.activeDocumentId).toBe('doc-main');
+      expect(projAfterEmpty.workspace.lyrics.content).toBe('');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

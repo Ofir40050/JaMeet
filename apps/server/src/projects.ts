@@ -444,7 +444,7 @@ export class ProjectStore {
         });
         if (curLyrics.documents.length === 0) {
           curLyrics.documents = [
-            { id: 'doc-main', title: 'Main Lyrics', content: curLyrics.content || '', updatedAt: now, updatedBy: user.id, updatedByName: user.displayName }
+            { id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now, updatedBy: user.id, updatedByName: user.displayName }
           ];
           curLyrics.activeDocumentId = 'doc-main';
         }
