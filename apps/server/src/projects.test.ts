@@ -595,6 +595,65 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(corruptDir, { recursive: true, force: true });
     }
   });
+
+  it('fails initialization when the projects datastore root is not an object or is an array', () => {
+    const corruptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-root-proj-'));
+    try {
+      const projectsPath = path.join(corruptDir, 'jameet-projects.json');
+
+      fs.writeFileSync(projectsPath, JSON.stringify([]), 'utf-8');
+      expect(() => new ProjectStore(corruptDir)).toThrow(/root must be an object/i);
+
+      fs.writeFileSync(projectsPath, JSON.stringify('plain-string'), 'utf-8');
+      expect(() => new ProjectStore(corruptDir)).toThrow(/root must be an object/i);
+
+      fs.writeFileSync(projectsPath, JSON.stringify(12345), 'utf-8');
+      expect(() => new ProjectStore(corruptDir)).toThrow(/root must be an object/i);
+
+      fs.writeFileSync(projectsPath, JSON.stringify(null), 'utf-8');
+      expect(() => new ProjectStore(corruptDir)).toThrow(/root must be an object/i);
+    } finally {
+      fs.rmSync(corruptDir, { recursive: true, force: true });
+    }
+  });
+
+  it('fails initialization when the projects field is missing or not an array', () => {
+    const corruptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-field-proj-'));
+    try {
+      const projectsPath = path.join(corruptDir, 'jameet-projects.json');
+
+      // Missing projects field
+      fs.writeFileSync(projectsPath, JSON.stringify({ version: 1 }), 'utf-8');
+      expect(() => new ProjectStore(corruptDir)).toThrow(/'projects' field must be an array/i);
+
+      // Invalid projects type: string
+      fs.writeFileSync(projectsPath, JSON.stringify({ projects: 'invalid' }), 'utf-8');
+      expect(() => new ProjectStore(corruptDir)).toThrow(/'projects' field must be an array/i);
+
+      // Invalid projects type: object
+      fs.writeFileSync(projectsPath, JSON.stringify({ projects: {} }), 'utf-8');
+      expect(() => new ProjectStore(corruptDir)).toThrow(/'projects' field must be an array/i);
+
+      // Invalid projects type: null
+      fs.writeFileSync(projectsPath, JSON.stringify({ projects: null }), 'utf-8');
+      expect(() => new ProjectStore(corruptDir)).toThrow(/'projects' field must be an array/i);
+    } finally {
+      fs.rmSync(corruptDir, { recursive: true, force: true });
+    }
+  });
+
+  it('loads successfully when projects datastore has valid projects array', () => {
+    const validDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-valid-proj-'));
+    try {
+      const projectsPath = path.join(validDir, 'jameet-projects.json');
+      fs.writeFileSync(projectsPath, JSON.stringify({ version: 1, projects: [] }), 'utf-8');
+
+      const store = new ProjectStore(validDir);
+      expect(store.listProjects('user-1')).toEqual([]);
+    } finally {
+      fs.rmSync(validDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

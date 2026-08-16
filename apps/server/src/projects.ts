@@ -42,38 +42,39 @@ export class ProjectStore {
     try {
       const raw = fs.readFileSync(this.dataFilePath, 'utf-8');
       const data = JSON.parse(raw) as ProjectDatabaseSchema;
-      if (!data || typeof data !== 'object') {
-        throw new Error(`Invalid project database structure in ${this.dataFilePath}`);
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        throw new Error(`Invalid project database structure in ${this.dataFilePath}: root must be an object`);
       }
-      if (Array.isArray(data.projects)) {
-        for (const p of data.projects) {
-          if (!Array.isArray(p.activities)) {
-            p.activities = [];
-          }
-          if (Array.isArray(p.collaborators)) {
-            for (const c of p.collaborators) {
-              if (!c.role || (c.role as string) === 'owner') {
-                c.role = 'collaborator';
-              }
-            }
-          }
-          if (!p.workspace) {
-            p.workspace = {
-              lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() }], content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() },
-              notes: { content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() },
-              structure: { sections: [], updatedAt: p.updatedAt || p.createdAt || Date.now() },
-              tasks: { tasks: [], updatedAt: p.updatedAt || p.createdAt || Date.now() }
-            };
-          } else {
-            if (!p.workspace.structure) {
-              p.workspace.structure = { sections: [], updatedAt: p.updatedAt || p.createdAt || Date.now() };
-            }
-            if (!p.workspace.tasks) {
-              p.workspace.tasks = { tasks: [], updatedAt: p.updatedAt || p.createdAt || Date.now() };
-            }
-          }
-          this.projects.set(p.id, p);
+      if (!Array.isArray(data.projects)) {
+        throw new Error(`Invalid project database structure in ${this.dataFilePath}: 'projects' field must be an array`);
+      }
+      for (const p of data.projects) {
+        if (!Array.isArray(p.activities)) {
+          p.activities = [];
         }
+        if (Array.isArray(p.collaborators)) {
+          for (const c of p.collaborators) {
+            if (!c.role || (c.role as string) === 'owner') {
+              c.role = 'collaborator';
+            }
+          }
+        }
+        if (!p.workspace) {
+          p.workspace = {
+            lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() }], content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() },
+            notes: { content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() },
+            structure: { sections: [], updatedAt: p.updatedAt || p.createdAt || Date.now() },
+            tasks: { tasks: [], updatedAt: p.updatedAt || p.createdAt || Date.now() }
+          };
+        } else {
+          if (!p.workspace.structure) {
+            p.workspace.structure = { sections: [], updatedAt: p.updatedAt || p.createdAt || Date.now() };
+          }
+          if (!p.workspace.tasks) {
+            p.workspace.tasks = { tasks: [], updatedAt: p.updatedAt || p.createdAt || Date.now() };
+          }
+        }
+        this.projects.set(p.id, p);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

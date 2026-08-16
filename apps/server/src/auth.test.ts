@@ -1096,6 +1096,68 @@ describe('Session Access State & Centralized Authorization', () => {
     // Verify the corrupted file was preserved untouched
     expect(fs.readFileSync(accountsPath, 'utf-8')).toBe(corruptContent);
   });
+
+  it('fails initialization when the accounts datastore root is not an object or is an array', () => {
+    const accountsPath = path.join(testDir, 'jameet-accounts.json');
+
+    fs.writeFileSync(accountsPath, JSON.stringify([]), 'utf-8');
+    expect(() => new UserStore(testDir)).toThrow(/root must be an object/i);
+
+    fs.writeFileSync(accountsPath, JSON.stringify('plain-string'), 'utf-8');
+    expect(() => new UserStore(testDir)).toThrow(/root must be an object/i);
+
+    fs.writeFileSync(accountsPath, JSON.stringify(12345), 'utf-8');
+    expect(() => new UserStore(testDir)).toThrow(/root must be an object/i);
+
+    fs.writeFileSync(accountsPath, JSON.stringify(null), 'utf-8');
+    expect(() => new UserStore(testDir)).toThrow(/root must be an object/i);
+  });
+
+  it('fails initialization when users or tokens fields are missing or not arrays', () => {
+    const accountsPath = path.join(testDir, 'jameet-accounts.json');
+
+    // Missing users
+    fs.writeFileSync(accountsPath, JSON.stringify({ tokens: [] }), 'utf-8');
+    expect(() => new UserStore(testDir)).toThrow(/'users' field must be an array/i);
+
+    // Invalid users type
+    fs.writeFileSync(accountsPath, JSON.stringify({ users: { id: 'bad' }, tokens: [] }), 'utf-8');
+    expect(() => new UserStore(testDir)).toThrow(/'users' field must be an array/i);
+
+    // Missing tokens
+    fs.writeFileSync(accountsPath, JSON.stringify({ users: [] }), 'utf-8');
+    expect(() => new UserStore(testDir)).toThrow(/'tokens' field must be an array/i);
+
+    // Invalid tokens type
+    fs.writeFileSync(accountsPath, JSON.stringify({ users: [], tokens: 'not-array' }), 'utf-8');
+    expect(() => new UserStore(testDir)).toThrow(/'tokens' field must be an array/i);
+  });
+
+  it('fails initialization when optional sessions or scheduledSessions fields are present with invalid types', () => {
+    const accountsPath = path.join(testDir, 'jameet-accounts.json');
+
+    // Invalid sessions type
+    fs.writeFileSync(accountsPath, JSON.stringify({ users: [], tokens: [], sessions: 'not-an-array' }), 'utf-8');
+    expect(() => new UserStore(testDir)).toThrow(/'sessions' field must be an array/i);
+
+    // Invalid scheduledSessions type
+    fs.writeFileSync(accountsPath, JSON.stringify({ users: [], tokens: [], scheduledSessions: { id: 'invalid' } }), 'utf-8');
+    expect(() => new UserStore(testDir)).toThrow(/'scheduledSessions' field must be an array/i);
+  });
+
+  it('loads successfully when accounts datastore has valid top-level structure with or without optional fields', () => {
+    const accountsPath = path.join(testDir, 'jameet-accounts.json');
+
+    // Minimal valid structure (sessions and scheduledSessions omitted)
+    fs.writeFileSync(accountsPath, JSON.stringify({ users: [], tokens: [] }), 'utf-8');
+    const store1 = new UserStore(testDir);
+    expect(store1.findByUsernameOrEmail('test')).toBeNull();
+
+    // Full valid structure with empty arrays
+    fs.writeFileSync(accountsPath, JSON.stringify({ users: [], tokens: [], sessions: [], scheduledSessions: [] }), 'utf-8');
+    const store2 = new UserStore(testDir);
+    expect(store2.findByUsernameOrEmail('test')).toBeNull();
+  });
 });
 
 

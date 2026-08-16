@@ -152,29 +152,37 @@ export class UserStore {
     try {
       const raw = fs.readFileSync(this.dataFilePath, 'utf-8');
       const data = JSON.parse(raw) as DatabaseSchema;
-      if (!data || typeof data !== 'object') {
-        throw new Error(`Invalid account database structure in ${this.dataFilePath}`);
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        throw new Error(`Invalid account database structure in ${this.dataFilePath}: root must be an object`);
+      }
+      if (!Array.isArray(data.users)) {
+        throw new Error(`Invalid account database structure in ${this.dataFilePath}: 'users' field must be an array`);
+      }
+      if (!Array.isArray(data.tokens)) {
+        throw new Error(`Invalid account database structure in ${this.dataFilePath}: 'tokens' field must be an array`);
+      }
+      if (data.sessions !== undefined && !Array.isArray(data.sessions)) {
+        throw new Error(`Invalid account database structure in ${this.dataFilePath}: 'sessions' field must be an array`);
+      }
+      if (data.scheduledSessions !== undefined && !Array.isArray(data.scheduledSessions)) {
+        throw new Error(`Invalid account database structure in ${this.dataFilePath}: 'scheduledSessions' field must be an array`);
       }
       let needsSave = false;
-      if (Array.isArray(data.users)) {
-        for (const u of data.users) {
-          if (u.sessionAccess === undefined || u.sessionAccess === null) {
-            u.sessionAccess = 'beta';
-            needsSave = true;
-          }
-          this.users.set(u.id, u);
-          this.usernameIndex.set(u.username.toLowerCase(), u.id);
-          this.emailIndex.set(u.email.toLowerCase(), u.id);
+      for (const u of data.users) {
+        if (u.sessionAccess === undefined || u.sessionAccess === null) {
+          u.sessionAccess = 'beta';
+          needsSave = true;
         }
+        this.users.set(u.id, u);
+        this.usernameIndex.set(u.username.toLowerCase(), u.id);
+        this.emailIndex.set(u.email.toLowerCase(), u.id);
       }
-      if (Array.isArray(data.tokens)) {
-        const now = Date.now();
-        for (const t of data.tokens) {
-          if (t.expiresAt > now) {
-            const user = this.users.get(t.userId);
-            if (!user?.passwordChangedAt || t.createdAt >= user.passwordChangedAt) {
-              this.tokens.set(t.token, t);
-            }
+      const now = Date.now();
+      for (const t of data.tokens) {
+        if (t.expiresAt > now) {
+          const user = this.users.get(t.userId);
+          if (!user?.passwordChangedAt || t.createdAt >= user.passwordChangedAt) {
+            this.tokens.set(t.token, t);
           }
         }
       }
