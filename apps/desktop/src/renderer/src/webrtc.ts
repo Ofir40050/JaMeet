@@ -4,6 +4,7 @@ import { LocalAudioSourceManager } from './audioSources';
 import { applyOpusPolicy } from './opus';
 import { SignalingClient } from './signaling';
 import { lowerQuality, VIDEO_QUALITY } from './videoQuality';
+import { logger } from './logger';
 
 export class WebRtcSession {
   private pc?: RTCPeerConnection;
@@ -108,6 +109,9 @@ export class WebRtcSession {
       this.onRemoteStream(this.remoteStream);
     };
     pc.onconnectionstatechange = () => this.handleConnectionState();
+    pc.oniceconnectionstatechange = () => {
+      logger.info('webrtc_ice_state_changed', `ICE connection state: ${pc.iceConnectionState}`, { iceConnectionState: pc.iceConnectionState }, { sessionCode: this.code });
+    };
     return pc;
   }
 
@@ -254,6 +258,7 @@ export class WebRtcSession {
       await pc.setLocalDescription(description);
       this.signaling.sendDescription(this.code, description);
     } catch (err) {
+      logger.warn('webrtc_negotiation_failure', 'WebRTC negotiation failed', { code: this.code, role: this.role }, err, { sessionCode: this.code });
       console.warn('Negotiation error:', err);
     } finally {
       this.isNegotiating = false;
@@ -289,6 +294,7 @@ export class WebRtcSession {
   private handleConnectionState(): void {
     const state = this.pc?.connectionState;
     if (!state) return;
+    logger.info('webrtc_connection_state_changed', `WebRTC connection state: ${state}`, { connectionState: state }, { sessionCode: this.code });
     if (state === 'connected') {
       if (this.disconnectTimer) window.clearTimeout(this.disconnectTimer);
       this.iceRestarted = false;
@@ -302,6 +308,7 @@ export class WebRtcSession {
 
   private async tryIceRestart(): Promise<void> {
     this.disconnectTimer = undefined;
+    logger.info('webrtc_ice_restart_attempt', 'Attempting WebRTC ICE restart reconnect', { code: this.code, alreadyRestarted: this.iceRestarted }, { sessionCode: this.code });
     if (this.iceRestarted) { this.onStatus('Connection failed — check your network'); return; }
     this.iceRestarted = true;
     if (this.role === 'host') await this.negotiate(true);

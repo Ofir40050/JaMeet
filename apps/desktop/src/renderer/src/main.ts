@@ -22,6 +22,7 @@ import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor } from './htmlSecurity'
 import { initActivityHistory, renderProjectActivities } from './activity';
 import { initSessionChat, resetChatUi } from './chat';
 import { startRemoteVoiceBridge, stopRemoteVoiceBridge } from './remoteVoiceBridge';
+import { logger } from './logger';
 import './style.css';
 
 export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
@@ -55,6 +56,9 @@ scheduledNotifications.onSessionClick((sessionId) => {
 });
 const participantId = sessionStorage.getItem('jameet-participant') ?? sessionStorage.getItem('musiczoom-participant') ?? crypto.randomUUID();
 sessionStorage.setItem('jameet-participant', participantId);
+
+logger.initGlobalErrorHandling();
+logger.info('renderer_startup', 'JaMeet renderer application initialized', { participantId });
 
 const auth = new AuthManager(signalingUrl);
 let myIdentity: ParticipantIdentity | null = null;
@@ -682,6 +686,7 @@ async function syncAllVoiceMics(mode = prefs.mode): Promise<void> {
         }
       }
     } catch (error) {
+      logger.warn('audio_init_failure', `Failed to acquire microphone ${mic.id}`, { micId: mic.id, deviceId: mic.deviceId, sampleRate: prefs.sampleRate }, error);
       console.warn(`Failed to acquire microphone ${mic.id}:`, error);
     }
   }
@@ -809,7 +814,8 @@ async function replaceMusicInput(): Promise<void> {
           const el = document.getElementById(statusId);
           if (el) el.textContent = `Capturing ${prefs.musicAppName || 'App'} · Stereo 48 kHz (Native)`;
         }
-      } catch {
+      } catch (err) {
+        logger.warn('audio_init_failure', 'Failed to acquire application audio output', { type: 'app', pid, appName: prefs.musicAppName }, err);
         await musicMeter.stop();
         await audio.remove('music');
         for (const statusId of ['music-app-status', 'call-music-app-status']) {
@@ -830,7 +836,8 @@ async function replaceMusicInput(): Promise<void> {
       } else {
         await musicMeter.start(source.track, renderMusicLevel, meterInterval());
       }
-    } catch {
+    } catch (err) {
+      logger.warn('audio_init_failure', 'Failed to acquire system computer audio', { type: 'system' }, err);
       await musicMeter.stop();
       await audio.remove('music');
       $('music-in-indicator')?.classList.remove('active');
@@ -854,7 +861,8 @@ async function replaceMusicInput(): Promise<void> {
       } else {
         await musicMeter.start(source.track, renderMusicLevel, meterInterval());
       }
-    } catch {
+    } catch (err) {
+      logger.warn('audio_init_failure', 'Failed to acquire audio interface for music', { type: 'interface', targetUID }, err);
       await musicMeter.stop();
       await audio.remove('music');
       $('music-in-indicator')?.classList.remove('active');
@@ -1949,6 +1957,7 @@ async function enterSession(): Promise<void> {
     }
     if (ack.waiting) {
       currentCode = ack.code;
+      logger.setSessionContext(ack.code);
       hostIdentity = ack.hostIdentity;
       myIdentity = ack.identity;
       setText('waiting-host-name', ack.hostIdentity?.displayName || 'Host Musician');
@@ -1956,6 +1965,7 @@ async function enterSession(): Promise<void> {
       showView('waiting-view');
       return;
     }
+    logger.setSessionContext(ack.code);
     await initializeActiveCall(ack);
   } finally { setBusy(false); }
 }
@@ -2098,6 +2108,8 @@ function setCallStatus(status: string): void { setText('call-status', status); }
 
 async function leaveSession(endedMessage?: string): Promise<void> {
   stopSessionTimer();
+  logger.info('session_leave', 'Left session', { code: currentCode }, { sessionCode: currentCode });
+  logger.setSessionContext(undefined);
   if (inCall) signaling.leave();
   inCall = false;
   rtc.dispose();

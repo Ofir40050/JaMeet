@@ -1,5 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { MediaMetadata, MeetingAck, SessionChatMessage } from '@jameet/shared';
+import { logger } from './logger';
 
 type Listener = (...args: any[]) => void;
 
@@ -10,13 +11,23 @@ export class SignalingClient {
 
   constructor(url: string) {
     this.socket = io(url, { autoConnect: false, reconnection: true, reconnectionDelayMax: 4000 });
+    
     this.socket.on('connect', () => {
+      logger.info('signaling_connected', 'Signaling socket connected', { socketId: this.socket.id });
       if (this.resume) {
+        logger.info('session_auto_reconnect_attempt', 'Attempting auto-reconnect after socket reconnection', { code: this.resume.code, participantId: this.resume.participantId }, { sessionCode: this.resume.code });
         this.emitWithAck('meeting:join', this.resume).then((res) => {
-          if (res?.ok && res.reconnectToken && this.resume) {
-            this.resume.reconnectToken = res.reconnectToken;
+          if (res?.ok) {
+            logger.info('session_auto_reconnect_success', 'Auto-reconnected to session successfully', { code: res.code }, { sessionCode: res.code });
+            if (res.reconnectToken && this.resume) {
+              this.resume.reconnectToken = res.reconnectToken;
+            }
+          } else {
+            logger.warn('session_auto_reconnect_failure', 'Auto-reconnect failed', { code: this.resume?.code, reason: res?.message }, { sessionCode: this.resume?.code });
           }
-        }).catch(() => undefined);
+        }).catch((err) => {
+          logger.warn('session_auto_reconnect_error', 'Auto-reconnect error', { code: this.resume?.code }, err, { sessionCode: this.resume?.code });
+        });
       }
       if (this.activeProjectWorkspace) {
         this.socket.emit('project:workspace:join', this.activeProjectWorkspace, (_err: Error | null, res: any) => {
@@ -28,6 +39,22 @@ export class SignalingClient {
           }
         });
       }
+    });
+
+    this.socket.on('disconnect', (reason) => {
+      logger.info('signaling_disconnected', `Signaling socket disconnected: ${reason}`, { reason });
+    });
+
+    this.socket.io?.on?.('reconnect_attempt', (attempt: number) => {
+      logger.info('signaling_reconnect_attempt', `Signaling socket reconnect attempt #${attempt}`, { attempt });
+    });
+
+    this.socket.io?.on?.('reconnect', (attempt: number) => {
+      logger.info('signaling_reconnected', `Signaling socket reconnected after ${attempt} attempts`, { attempt });
+    });
+
+    this.socket.io?.on?.('reconnect_error', (err: Error) => {
+      logger.warn('signaling_reconnect_error', 'Signaling socket reconnect error', undefined, err);
     });
   }
 
@@ -64,15 +91,39 @@ export class SignalingClient {
   }
 
   async create(participantId: string, media: MediaMetadata, authToken?: string, guestDisplayName?: string, projectId?: string, waitingRoomEnabled?: boolean): Promise<MeetingAck> {
-    const ack = await this.emitWithAck('meeting:create', { participantId, media, authToken, guestDisplayName, projectId, waitingRoomEnabled });
-    if (ack.ok) this.resume = { code: ack.code, participantId, media, authToken, guestDisplayName, reconnectToken: ack.reconnectToken };
-    return ack;
+    logger.info('session_create_attempt', 'Attempting to create session', { participantId, projectId, waitingRoomEnabled: Boolean(waitingRoomEnabled) });
+    try {
+      const ack = await this.emitWithAck('meeting:create', { participantId, media, authToken, guestDisplayName, projectId, waitingRoomEnabled });
+      if (ack.ok) {
+        logger.info('session_create_success', 'Session created successfully', { code: ack.code, role: ack.role, projectId }, { sessionCode: ack.code });
+        this.resume = { code: ack.code, participantId, media, authToken, guestDisplayName, reconnectToken: ack.reconnectToken };
+      } else {
+        logger.warn('session_create_failure', 'Session creation failed', { code: ack.code, reason: ack.message });
+      }
+      return ack;
+    } catch (err) {
+      logger.error('session_create_error', 'Unexpected error creating session', { participantId }, err);
+      throw err;
+    }
   }
+
   async join(code: string, participantId: string, media: MediaMetadata, authToken?: string, guestDisplayName?: string): Promise<MeetingAck> {
-    const ack = await this.emitWithAck('meeting:join', { code, participantId, media, authToken, guestDisplayName });
-    if (ack.ok) this.resume = { code: ack.code, participantId, media, authToken, guestDisplayName, reconnectToken: ack.reconnectToken };
-    return ack;
+    logger.info('session_join_attempt', 'Attempting to join session', { code, participantId }, { sessionCode: code });
+    try {
+      const ack = await this.emitWithAck('meeting:join', { code, participantId, media, authToken, guestDisplayName });
+      if (ack.ok) {
+        logger.info('session_join_success', 'Joined session successfully', { code: ack.code, role: ack.role, waiting: ack.waiting, peerPresent: ack.peerPresent }, { sessionCode: ack.code });
+        this.resume = { code: ack.code, participantId, media, authToken, guestDisplayName, reconnectToken: ack.reconnectToken };
+      } else {
+        logger.warn('session_join_failure', 'Session join failed', { code, reason: (ack as any).code || (ack as any).reason, message: ack.message }, { sessionCode: code });
+      }
+      return ack;
+    } catch (err) {
+      logger.error('session_join_error', 'Unexpected error joining session', { code, participantId }, err, { sessionCode: code });
+      throw err;
+    }
   }
+
   setResume(code: string, participantId: string, media: MediaMetadata, authToken?: string, guestDisplayName?: string, reconnectToken?: string): void {
     this.resume = { code, participantId, media, authToken, guestDisplayName, reconnectToken };
   }

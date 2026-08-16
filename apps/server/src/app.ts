@@ -24,6 +24,7 @@ import { createIceServers } from './turn.js';
 import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from './rate-limiter.js';
 import { updateAccountSessionAccess, writeAdminRuntimeFile, cleanupAdminRuntimeFile } from './admin-access.js';
 import { acquireDatastoreLock, type DatastoreLock } from './datastore-lock.js';
+import { logger } from './logger.js';
 
 type SocketData = { code?: string; participantId?: string; identity?: ParticipantIdentity; isWaiting?: boolean; limiter?: SocketRateLimiter };
 
@@ -102,6 +103,28 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     credentials: true
   });
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
+
+  app.setErrorHandler((error: any, request, reply) => {
+    const statusCode = error.statusCode || 500;
+    if (statusCode >= 500) {
+      logger.error('server_request_error', `HTTP ${statusCode} internal error on ${request.method} ${request.url}`, {
+        method: request.method,
+        url: request.url,
+        statusCode
+      }, error);
+    } else {
+      logger.warn('server_client_error', `HTTP ${statusCode} on ${request.method} ${request.url}`, {
+        method: request.method,
+        url: request.url,
+        statusCode,
+        message: error.message
+      });
+    }
+    return reply.code(statusCode).send({
+      ok: false,
+      message: statusCode >= 500 ? 'Internal server error.' : error.message
+    });
+  });
   
   const dataDir = config.DATA_DIR ?? path.join(process.cwd(), 'data');
   const datastoreLock = acquireDatastoreLock(dataDir, 'server');
@@ -193,14 +216,17 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   app.post('/api/auth/register', async (request, reply) => {
     const parsed = registerRequestSchema.safeParse(request.body);
     if (!parsed.success) {
+      logger.warn('auth_register_failed', 'Registration payload validation failed', { reason: parsed.error.issues[0]?.message });
       return reply.code(400).send({ ok: false, message: parsed.error.issues[0]?.message || 'Invalid registration data.' });
     }
     try {
       const result = await userStore.register(parsed.data);
+      logger.info('auth_register_success', 'User registration successful', { userId: result.user.id, username: result.user.username });
       return reply.code(201).send({ ok: true, token: result.token, user: result.user });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Registration failed.';
       const isConflict = msg.includes('already taken') || msg.includes('already exists');
+      logger.warn('auth_register_failed', 'User registration failed', { username: parsed.data.username, reason: msg });
       return reply.code(isConflict ? 409 : 500).send({ ok: false, message: msg });
     }
   });
@@ -208,14 +234,17 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   app.post('/api/auth/login', async (request, reply) => {
     const parsed = loginRequestSchema.safeParse(request.body);
     if (!parsed.success) {
+      logger.warn('auth_login_failed', 'Login payload validation failed');
       return reply.code(400).send({ ok: false, message: 'Please enter your username/email and password.' });
     }
     try {
       const result = await userStore.login(parsed.data);
+      logger.info('auth_login_success', 'User login successful', { userId: result.user.id, username: result.user.username });
       return reply.send({ ok: true, token: result.token, user: result.user });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Invalid credentials.';
       const isAuthFail = msg.includes('Invalid username or password');
+      logger.warn('auth_login_failed', 'User login failed', { identifier: parsed.data.usernameOrEmail, reason: msg });
       return reply.code(isAuthFail ? 401 : 500).send({ ok: false, message: msg });
     }
   });
@@ -892,6 +921,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       
       const authResult = authorizeSessionAccess(userStore, parsed.data.authToken, config, true);
       if (!authResult.ok) {
+        logger.warn('session_create_failed', 'Session creation unauthorized', { reason: authResult.message, errorCode: authResult.code });
         return ack(failure(authResult.code, authResult.message));
       }
 
@@ -931,6 +961,16 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
         Object.assign(socketData, { code: createdRoom.code, participantId: parsed.data.participantId, identity, isWaiting: false });
         void socket.join(createdRoom.code);
+
+        logger.info('session_created', 'Session created successfully', {
+          code: createdRoom.code,
+          sessionId: createdRoom.sessionId,
+          role: 'host',
+          isGuest: identity.isGuest,
+          userId: identity.isGuest ? undefined : identity.id,
+          projectId: createdRoom.projectId,
+          waitingRoom: Boolean(parsed.data.waitingRoomEnabled)
+        }, { sessionCode: createdRoom.code, sessionId: createdRoom.sessionId });
 
         ack({
           ok: true,
@@ -977,6 +1017,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       
       const authResult = authorizeSessionAccess(userStore, parsed.data.authToken, config, false);
       if (!authResult.ok) {
+        logger.warn('session_join_failed', 'Session join unauthorized', { code: parsed.data.code, reason: authResult.message, errorCode: authResult.code }, { sessionCode: parsed.data.code });
         return ack(failure(authResult.code, authResult.message));
       }
 
@@ -990,6 +1031,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
             : joined.reason === 'ROOM_FULL'
               ? 'This session already has two people'
               : 'Session not found';
+        logger.warn('session_join_failed', `Session join rejected (${joined.reason})`, { code: parsed.data.code, reason: joined.reason }, { sessionCode: parsed.data.code });
         return ack(failure(joined.reason, message));
       }
 
@@ -1051,6 +1093,15 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
         Object.assign(socketData, { code: parsed.data.code, participantId: joined.participant.id, identity: joined.participant.identity, isWaiting: false });
         void socket.join(parsed.data.code);
+
+        logger.info('session_joined', 'Participant joined session', {
+          code: parsed.data.code,
+          role: joined.participant.role,
+          isWaiting: false,
+          reconnected: Boolean(joined.reconnected),
+          isGuest: identity.isGuest,
+          userId: identity.isGuest ? undefined : identity.id
+        }, { sessionCode: parsed.data.code });
 
         ack({
           ok: true,

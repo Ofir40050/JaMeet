@@ -53,6 +53,11 @@ export interface JaMeetDesktopApi {
     sendPcm(data: Float32Array, isRouteActive: boolean): void;
     stop(): Promise<boolean>;
   };
+  logger: {
+    log(entry: unknown): void;
+    crash(crashData: unknown): Promise<unknown>;
+    getLogPaths(): Promise<{ logDir: string; logFilePath: string; crashFilePath: string }>;
+  };
   platform: string;
   [key: string]: any;
 }

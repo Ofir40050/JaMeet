@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join, normalize, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { getNativeBinaryPath } from './binaryUtils';
+import { logger } from './logger';
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'jameet-app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
@@ -120,6 +121,8 @@ if (instanceId) {
   }
 }
 
+logger.setupGlobalHandlers();
+
 function getAppIconPath(): string | undefined {
   if (process.platform === 'win32') {
     const icoPackaged = join(process.resourcesPath, 'icon.ico');
@@ -234,6 +237,8 @@ function createWindow(): void {
       backgroundThrottling: false
     }
   });
+
+  logger.trackWebContents(mainWindow.webContents, 'mainWindow');
 
   // Content protection disabled to allow normal screenshots and screen recordings
   try {
@@ -364,6 +369,8 @@ function createOrGetPresenterToolbarWindow(): BrowserWindow {
     }
   });
 
+  logger.trackWebContents(presenterToolbarWindow.webContents, 'presenterToolbarWindow');
+
   try {
     presenterToolbarWindow.setContentProtection(false);
     presenterToolbarWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -429,6 +436,8 @@ function createOrGetPresenterVideoWindow(): BrowserWindow {
     }
   });
 
+  logger.trackWebContents(presenterVideoWindow.webContents, 'presenterVideoWindow');
+
   try {
     presenterVideoWindow.setContentProtection(false);
     presenterVideoWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -467,6 +476,12 @@ else {
   app.on('open-url', (event, url) => { event.preventDefault(); deliverDeepLink(url); });
 
   void app.whenReady().then(() => {
+    logger.info('app_startup', 'JaMeet desktop application ready', {
+      instanceId: instanceId || undefined,
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch
+    });
     registerDeepLinkHandler();
     pendingDeepLink = findDeepLink(process.argv);
 
@@ -1390,6 +1405,7 @@ else {
 }
 
 app.on('before-quit', () => {
+  logger.info('app_quitting', 'JaMeet desktop application shutting down');
   isAppQuitting = true;
   stopActiveNativeScreenCapture();
   stopRemoteVoiceProducer();

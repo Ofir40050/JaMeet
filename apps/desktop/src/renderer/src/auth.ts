@@ -1,4 +1,5 @@
 import type { UserProfile, RegisterRequest, LoginRequest, UpdateProfileRequest, SessionHistoryItem } from '@jameet/shared';
+import { logger } from './logger';
 
 export type AuthStateListener = (user: UserProfile | null, guestName?: string) => void;
 
@@ -44,6 +45,12 @@ export class AuthManager {
   }
 
   private notify(): void {
+    logger.debug('auth_state_changed', 'Authentication state updated', {
+      userId: this.currentUser?.id,
+      isGuest: this.currentUser?.isGuest ?? true,
+      hasUser: Boolean(this.currentUser),
+      guestName: this.currentGuestName ? '[SET]' : undefined
+    });
     for (const l of this.listeners) {
       try {
         l(this.currentUser, this.currentGuestName);
@@ -118,6 +125,7 @@ export class AuthManager {
           const data = (await res.json()) as { ok: boolean; user?: UserProfile };
           if (data.ok && data.user) {
             this.currentUser = data.user;
+            logger.info('auth_session_restored', 'Session restored successfully', { userId: data.user.id, username: data.user.username });
             await this.persistSession(saved.token, data.user);
           } else {
             await this.logout();
@@ -134,6 +142,7 @@ export class AuthManager {
   }
 
   async register(req: RegisterRequest): Promise<UserProfile> {
+    logger.info('auth_register_attempt', 'Attempting user registration', { username: req.username });
     let res: Response;
     try {
       res = await fetch(`${this.serverUrl}/api/auth/register`, {
@@ -141,29 +150,35 @@ export class AuthManager {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(req)
       });
-    } catch {
+    } catch (err) {
+      logger.warn('auth_register_failure', 'Registration connection failed', { username: req.username }, err);
       throw new Error('Unable to connect to the authentication server. Please check your connection.');
     }
 
     let data: { ok: boolean; token?: string; user?: UserProfile; message?: string };
     try {
       data = (await res.json()) as { ok: boolean; token?: string; user?: UserProfile; message?: string };
-    } catch {
+    } catch (err) {
+      logger.warn('auth_register_failure', `Registration response error (HTTP ${res.status})`, { username: req.username }, err);
       throw new Error(`Server returned status ${res.status}. Registration could not be completed.`);
     }
 
     if (!res.ok || !data.ok || !data.token || !data.user) {
-      throw new Error(data.message || 'Registration failed.');
+      const errMsg = data.message || 'Registration failed.';
+      logger.warn('auth_register_failure', 'Registration failed', { username: req.username, reason: errMsg });
+      throw new Error(errMsg);
     }
 
     this.currentToken = data.token;
     this.currentUser = data.user;
+    logger.info('auth_register_success', 'User registration successful', { userId: data.user.id, username: data.user.username });
     await this.persistSession(data.token, data.user);
     this.notify();
     return data.user;
   }
 
   async login(req: LoginRequest): Promise<UserProfile> {
+    logger.info('auth_login_attempt', 'Attempting user login', { usernameOrEmail: req.usernameOrEmail });
     let res: Response;
     try {
       res = await fetch(`${this.serverUrl}/api/auth/login`, {
@@ -171,23 +186,28 @@ export class AuthManager {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(req)
       });
-    } catch {
+    } catch (err) {
+      logger.warn('auth_login_failure', 'Login connection failed', { usernameOrEmail: req.usernameOrEmail }, err);
       throw new Error('Unable to connect to the authentication server. Please check your connection.');
     }
 
     let data: { ok: boolean; token?: string; user?: UserProfile; message?: string };
     try {
       data = (await res.json()) as { ok: boolean; token?: string; user?: UserProfile; message?: string };
-    } catch {
+    } catch (err) {
+      logger.warn('auth_login_failure', `Login response error (HTTP ${res.status})`, { usernameOrEmail: req.usernameOrEmail }, err);
       throw new Error(`Server returned status ${res.status}. Sign in could not be completed.`);
     }
 
     if (!res.ok || !data.ok || !data.token || !data.user) {
-      throw new Error(data.message || 'Invalid username or password.');
+      const errMsg = data.message || 'Invalid username or password.';
+      logger.warn('auth_login_failure', 'Login authentication failed', { usernameOrEmail: req.usernameOrEmail, reason: errMsg });
+      throw new Error(errMsg);
     }
 
     this.currentToken = data.token;
     this.currentUser = data.user;
+    logger.info('auth_login_success', 'User login successful', { userId: data.user.id, username: data.user.username });
     await this.persistSession(data.token, data.user);
     this.notify();
     return data.user;
@@ -235,8 +255,10 @@ export class AuthManager {
 
   async logout(): Promise<void> {
     const token = this.currentToken;
+    const hadUser = Boolean(this.currentUser);
     this.currentToken = null;
     this.currentUser = null;
+    logger.info('auth_logout', 'User logged out', { wasLoggedIn: hadUser });
     await this.clearPersistedSession();
     if (token) {
       try {
@@ -252,6 +274,7 @@ export class AuthManager {
     }
     this.notify();
   }
+
 
   async getRecentSessions(): Promise<SessionHistoryItem[]> {
     if (!this.currentToken) return [];

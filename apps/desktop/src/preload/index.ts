@@ -109,6 +109,11 @@ const jameetApi = {
     stop: (): Promise<boolean> => ipcRenderer.invoke('stop-remote-voice-bridge')
   },
   setMediaActive: (active: boolean): void => ipcRenderer.send('set-media-active', active),
+  logger: {
+    log: (entry: unknown): void => ipcRenderer.send('logger:log', entry),
+    crash: (crashData: unknown): Promise<unknown> => ipcRenderer.invoke('logger:crash', crashData),
+    getLogPaths: (): Promise<{ logDir: string; logFilePath: string; crashFilePath: string }> => ipcRenderer.invoke('logger:get-log-paths')
+  },
   platform: process.platform
 };
 
