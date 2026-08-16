@@ -654,6 +654,106 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(validDir, { recursive: true, force: true });
     }
   });
+
+  it('omits email address when creating or adding collaborators to projects', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-collab-email-test-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'owner-1',
+        displayName: 'Owner User',
+        username: 'owner',
+        email: 'owner@music.com',
+        avatarColor: '#6366f1',
+        isGuest: false,
+        createdAt: Date.now()
+      };
+      const collab: UserProfile = {
+        id: 'collab-1',
+        displayName: 'Collab User',
+        username: 'collab',
+        email: 'private_collab@music.com',
+        avatarColor: '#06b6d4',
+        isGuest: false,
+        createdAt: Date.now()
+      };
+
+      const project = store.createProject(owner, { name: 'Email Privacy Song' }, [collab]);
+      expect(project.collaborators[0].userId).toBe('collab-1');
+      expect((project.collaborators[0] as any).email).toBeUndefined();
+      expect('email' in project.collaborators[0]).toBe(false);
+
+      const addedMember: UserProfile = {
+        id: 'collab-2',
+        displayName: 'Added Member',
+        username: 'addedmember',
+        email: 'another_secret@music.com',
+        avatarColor: '#10b981',
+        isGuest: false,
+        createdAt: Date.now()
+      };
+      const updated = store.addCollaborator(project.id, owner.id, addedMember, 'editor');
+      expect(updated).not.toBeNull();
+      const addedCollab = updated!.collaborators.find((c) => c.userId === 'collab-2')!;
+      expect(addedCollab).toBeDefined();
+      expect((addedCollab as any).email).toBeUndefined();
+      expect('email' in addedCollab).toBe(false);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('normalizes and strips legacy collaborator email addresses when loading existing datastores from disk', () => {
+    const legacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-legacy-email-proj-'));
+    try {
+      const projectsPath = path.join(legacyDir, 'jameet-projects.json');
+      const legacyData = {
+        version: 1,
+        projects: [
+          {
+            id: 'legacy-proj-1',
+            name: 'Legacy Project',
+            ownerId: 'owner-1',
+            ownerDisplayName: 'Owner',
+            ownerUsername: 'owner',
+            ownerAvatarColor: '#6366f1',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            lastActivityAt: Date.now(),
+            archived: false,
+            collaborators: [
+              {
+                userId: 'collab-1',
+                displayName: 'Collaborator One',
+                username: 'collab1',
+                email: 'exposed_legacy@music.com',
+                avatarColor: '#06b6d4',
+                role: 'editor',
+                addedAt: Date.now()
+              }
+            ],
+            sessions: [],
+            sessionCount: 0,
+            activities: []
+          }
+        ]
+      };
+      fs.writeFileSync(projectsPath, JSON.stringify(legacyData), 'utf-8');
+
+      const store = new ProjectStore(legacyDir);
+      const loaded = store.getProject('legacy-proj-1', 'owner-1');
+      expect(loaded).not.toBeNull();
+      expect(loaded!.collaborators.length).toBe(1);
+      expect(loaded!.collaborators[0].userId).toBe('collab-1');
+      expect(loaded!.collaborators[0].displayName).toBe('Collaborator One');
+      expect(loaded!.collaborators[0].username).toBe('collab1');
+      expect(loaded!.collaborators[0].role).toBe('editor');
+      expect((loaded!.collaborators[0] as any).email).toBeUndefined();
+      expect('email' in loaded!.collaborators[0]).toBe(false);
+    } finally {
+      fs.rmSync(legacyDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

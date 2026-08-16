@@ -4201,6 +4201,72 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('does not expose collaborator emails in project REST responses when added by email or queried by members', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-email-priv-int-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-email-priv-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_email_priv', 'beta', userStore);
+      const collabAuth = await createTestAccount(url, 'collab_email_priv', 'beta', userStore);
+
+      const createProjRes = await fetch(`${url}/api/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({ name: 'Email Privacy Song' })
+      });
+      const createProjData = (await createProjRes.json()) as { ok: boolean; project: any };
+      const projectId = createProjData.project.id;
+
+      // Owner adds collaborator using collaborator's email address
+      const addCollabRes = await fetch(`${url}/api/projects/${projectId}/collaborators`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({ usernameOrEmail: collabAuth.user.email, role: 'editor' })
+      });
+      expect(addCollabRes.status).toBe(200);
+      const addCollabData = (await addCollabRes.json()) as { ok: boolean; project: any };
+      expect(addCollabData.project.collaborators.length).toBe(1);
+      const addedCollab = addCollabData.project.collaborators[0];
+      expect(addedCollab.userId).toBe(collabAuth.user.id);
+      expect(addedCollab.displayName).toBe(collabAuth.user.displayName);
+      expect(addedCollab.role).toBe('editor');
+      expect(addedCollab.email).toBeUndefined();
+      expect('email' in addedCollab).toBe(false);
+
+      // Collaborator queries project list
+      const listRes = await fetch(`${url}/api/projects`, {
+        headers: { Authorization: `Bearer ${collabAuth.token}` }
+      });
+      expect(listRes.status).toBe(200);
+      const listData = (await listRes.json()) as { ok: boolean; projects: any[] };
+      expect(listData.projects[0].collaborators[0].email).toBeUndefined();
+      expect('email' in listData.projects[0].collaborators[0]).toBe(false);
+
+      // Collaborator queries project details
+      const getRes = await fetch(`${url}/api/projects/${projectId}`, {
+        headers: { Authorization: `Bearer ${collabAuth.token}` }
+      });
+      expect(getRes.status).toBe(200);
+      const getData = (await getRes.json()) as { ok: boolean; project: any };
+      expect(getData.project.collaborators[0].email).toBeUndefined();
+      expect('email' in getData.project.collaborators[0]).toBe(false);
+
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

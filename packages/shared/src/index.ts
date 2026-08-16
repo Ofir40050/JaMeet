@@ -171,7 +171,6 @@ export const projectCollaboratorSchema = z.object({
   userId: z.string(),
   displayName: z.string(),
   username: z.string(),
-  email: z.string().optional(),
   avatarColor: z.string().default('#06b6d4'),
   role: projectCollaboratorRoleSchema.default('collaborator'),
   addedAt: z.number()

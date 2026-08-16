@@ -54,6 +54,7 @@ export class ProjectStore {
         }
         if (Array.isArray(p.collaborators)) {
           for (const c of p.collaborators) {
+            delete (c as any).email;
             if (!c.role || (c.role as string) === 'owner') {
               c.role = 'collaborator';
             }
@@ -689,7 +690,6 @@ export class ProjectStore {
         userId: collaborator.id,
         displayName: collaborator.displayName,
         username: collaborator.username,
-        email: collaborator.email,
         avatarColor: collaborator.avatarColor || '#06b6d4',
         role,
         addedAt: now
