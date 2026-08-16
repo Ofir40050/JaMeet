@@ -31,7 +31,7 @@ export class DesktopLogger {
   private arch: string;
   private osRelease: string;
   private isInitialized = false;
-  private isFlushingPending = false;
+  private activeFlushPromise: Promise<void> | null = null;
 
   constructor(customLogDir?: string, customInstanceId?: string) {
     this.platform = process.platform;
@@ -192,51 +192,69 @@ export class DesktopLogger {
   }
 
   public async flushPendingCrashes(): Promise<void> {
-    if (this.isFlushingPending) return;
+    if (this.activeFlushPromise) {
+      return this.activeFlushPromise;
+    }
     try {
       if (app?.isReady && !app.isReady()) {
         return;
       }
     } catch {}
 
-    this.isFlushingPending = true;
-    try {
-      const pending = this.loadPendingQueue();
-      if (!pending.length) return;
+    this.activeFlushPromise = (async () => {
+      try {
+        const pending = this.loadPendingQueue();
+        if (!pending.length) return;
 
-      const serverUrl = this.getTrustedServerUrl();
-      const endpoint = `${serverUrl}/api/crashes`;
+        const serverUrl = this.getTrustedServerUrl();
+        const endpoint = `${serverUrl}/api/crashes`;
 
-      for (const report of pending) {
-        if (!report.reportId) {
-          continue;
-        }
+        for (const report of pending) {
+          if (!report.reportId) {
+            continue;
+          }
 
-        try {
-          const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(report),
-            signal: AbortSignal.timeout(5000)
-          });
+          try {
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(report),
+              signal: AbortSignal.timeout(5000)
+            });
 
-          if (res.status === 200 || res.status === 201) {
-            this.dequeuePendingCrash(report.reportId);
-          } else if (res.status === 400) {
-            // Malformed/unacceptable report, remove from queue so it does not loop forever
-            this.dequeuePendingCrash(report.reportId);
-          } else {
-            // Server error (e.g. 500) or temporary issue, retain and retry on next startup/flusher run
+            if (res.status === 200 || res.status === 201) {
+              let isValidAck = false;
+              try {
+                const data = (await res.json()) as any;
+                if (data && typeof data === 'object' && data.ok === true && data.reportId === report.reportId) {
+                  isValidAck = true;
+                }
+              } catch {}
+
+              if (isValidAck) {
+                this.dequeuePendingCrash(report.reportId);
+              } else {
+                // Unconfirmed or malformed acknowledgement, retain in queue for future retry
+                break;
+              }
+            } else if (res.status === 400) {
+              // Malformed/unacceptable report, remove from queue so it does not loop forever
+              this.dequeuePendingCrash(report.reportId);
+            } else {
+              // Server error (e.g. 500) or temporary issue, retain and retry on next startup/flusher run
+              break;
+            }
+          } catch {
+            // Network failure, offline, or timeout - keep pending and retry later
             break;
           }
-        } catch {
-          // Network failure, offline, or timeout - keep pending and retry later
-          break;
         }
+      } finally {
+        this.activeFlushPromise = null;
       }
-    } finally {
-      this.isFlushingPending = false;
-    }
+    })();
+
+    return this.activeFlushPromise;
   }
 
   public checkNativeCrashDumps(customCrashDumpsDir?: string): void {

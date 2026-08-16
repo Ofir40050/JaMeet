@@ -367,11 +367,11 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
     });
 
     it('flushes pending queue and removes acknowledged reports on successful delivery', async () => {
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => ({
         status: 201,
         ok: true,
         json: async () => ({ ok: true, reportId: 'crash-rem-1', duplicate: false })
-      } as any);
+      } as any));
 
       testLogger.recordCrash({
         reportId: 'crash-rem-1',
@@ -395,6 +395,59 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
       expect(testLogger.loadPendingQueue()).toHaveLength(0);
 
       fetchSpy.mockRestore();
+    });
+
+    it('does not remove pending report if server returns success status but mismatched reportId or ok !== true', async () => {
+      // 1. Mismatched reportId
+      const fetchSpyMismatch = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: async () => ({ ok: true, reportId: 'different-report-id' })
+      } as any);
+
+      testLogger.recordCrash({
+        reportId: 'crash-validate-1',
+        process: 'renderer',
+        reason: 'Crash 1'
+      });
+
+      await testLogger.flushPendingCrashes();
+      expect(testLogger.loadPendingQueue()).toHaveLength(1);
+      expect(testLogger.loadPendingQueue()[0].reportId).toBe('crash-validate-1');
+      fetchSpyMismatch.mockRestore();
+
+      // 2. ok is false or missing
+      const fetchSpyNotOk = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: async () => ({ ok: false, reportId: 'crash-validate-1' })
+      } as any);
+
+      await testLogger.flushPendingCrashes();
+      expect(testLogger.loadPendingQueue()).toHaveLength(1);
+      fetchSpyNotOk.mockRestore();
+
+      // 3. Response body is malformed / non-JSON
+      const fetchSpyMalformed = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: async () => { throw new Error('Invalid JSON'); }
+      } as any);
+
+      await testLogger.flushPendingCrashes();
+      expect(testLogger.loadPendingQueue()).toHaveLength(1);
+      fetchSpyMalformed.mockRestore();
+
+      // 4. Proper matching acknowledgement removes the pending report
+      const fetchSpyValid = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: async () => ({ ok: true, reportId: 'crash-validate-1', duplicate: true })
+      } as any);
+
+      await testLogger.flushPendingCrashes();
+      expect(testLogger.loadPendingQueue()).toHaveLength(0);
+      fetchSpyValid.mockRestore();
     });
 
     it('retains report in pending queue if delivery fails or server is unreachable', async () => {
