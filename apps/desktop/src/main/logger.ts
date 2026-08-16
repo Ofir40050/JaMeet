@@ -242,19 +242,13 @@ export class DesktopLogger {
     if (this.isInitialized) return;
     this.isInitialized = true;
 
-    process.on('uncaughtException', (err) => {
+    // Use uncaughtExceptionMonitor to observe and persist fatal crashes
+    // without altering Node's normal fatal error behavior or swallowing fatal exceptions.
+    process.on('uncaughtExceptionMonitor', (err, origin) => {
       this.recordCrash({
         process: 'main',
-        reason: 'uncaughtException',
+        reason: origin ? `uncaughtException (${origin})` : 'uncaughtException',
         error: serializeError(err)
-      });
-    });
-
-    process.on('unhandledRejection', (reason) => {
-      this.recordCrash({
-        process: 'main',
-        reason: 'unhandledRejection',
-        error: serializeError(reason)
       });
     });
 
@@ -274,6 +268,7 @@ export class DesktopLogger {
 
   private setupIpcHandlers(): void {
     try {
+      if (!ipcMain?.on) return;
       ipcMain.on('logger:log', (_event, entry: Partial<StructuredLogEntry>) => {
         if (!entry || typeof entry !== 'object') return;
         this.log({

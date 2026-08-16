@@ -139,4 +139,27 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
     expect(isSensitiveKey('participantId')).toBe(false);
     expect(isSensitiveKey('sampleRate')).toBe(false);
   });
+
+  it('observes fatal crashes via uncaughtExceptionMonitor without intercepting fatal exit', () => {
+    const originalListeners = process.listeners('uncaughtExceptionMonitor');
+    testLogger.setupGlobalHandlers();
+
+    // Verify uncaughtExceptionMonitor was registered
+    const currentListeners = process.listeners('uncaughtExceptionMonitor');
+    expect(currentListeners.length).toBeGreaterThan(originalListeners.length);
+
+    // Verify triggering the monitor records the crash to disk
+    const fatalError = new Error('Fatal native memory corruption');
+    const latestListener = currentListeners[currentListeners.length - 1];
+    (latestListener as any)(fatalError, 'uncaughtException');
+
+    const crashContent = readFileSync(testLogger.getLogPaths().crashFilePath, 'utf8');
+    const parsedCrash = JSON.parse(crashContent.trim());
+    expect(parsedCrash.process).toBe('main');
+    expect(parsedCrash.reason).toContain('uncaughtException');
+    expect(parsedCrash.error?.message).toBe('Fatal native memory corruption');
+
+    // Clean up test listener
+    process.removeListener('uncaughtExceptionMonitor', latestListener);
+  });
 });
