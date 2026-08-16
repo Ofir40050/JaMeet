@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, desktopCapturer, ipcMain, net, protocol, screen, session, safeStorage, Notification } from 'electron';
+import { app, BrowserWindow, clipboard, desktopCapturer, ipcMain, net, protocol, screen, session, safeStorage, Notification, Menu, Tray, nativeImage } from 'electron';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join, normalize, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -134,6 +134,83 @@ function getAppIconPath(): string | undefined {
   const pngBuild = join(__dirname, '../../build/icon.png');
   if (existsSync(pngBuild)) return pngBuild;
   return undefined;
+}
+
+let appTray: Tray | null = null;
+
+function getTrayIcon(): Electron.NativeImage | string | undefined {
+  if (process.platform === 'darwin') {
+    const templatePackaged = join(process.resourcesPath, 'trayTemplate.png');
+    const templateDev = join(__dirname, '../../resources/trayTemplate.png');
+    const templateBuild = join(__dirname, '../../build/trayTemplate.png');
+    const candidate = existsSync(templatePackaged) ? templatePackaged : existsSync(templateDev) ? templateDev : existsSync(templateBuild) ? templateBuild : undefined;
+    if (candidate) {
+      const nImg = nativeImage.createFromPath(candidate);
+      nImg.setTemplateImage(true);
+      return nImg;
+    }
+  } else if (process.platform === 'win32') {
+    const icoPackaged = join(process.resourcesPath, 'tray.ico');
+    if (existsSync(icoPackaged)) return icoPackaged;
+    const icoDev = join(__dirname, '../../resources/tray.ico');
+    if (existsSync(icoDev)) return icoDev;
+    const icoBuild = join(__dirname, '../../build/tray.ico');
+    if (existsSync(icoBuild)) return icoBuild;
+  } else {
+    const pngPackaged = join(process.resourcesPath, 'icon.png');
+    if (existsSync(pngPackaged)) return pngPackaged;
+    const pngDev = join(__dirname, '../../resources/icon.png');
+    if (existsSync(pngDev)) return pngDev;
+    const pngBuild = join(__dirname, '../../build/icon.png');
+    if (existsSync(pngBuild)) return pngBuild;
+  }
+  return undefined;
+}
+
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function createTray(): void {
+  if (appTray && !appTray.isDestroyed()) return;
+  try {
+    const trayIcon = getTrayIcon();
+    if (!trayIcon) return;
+    appTray = new Tray(trayIcon);
+    appTray.setToolTip('JaMeet');
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Open JaMeet',
+        click: () => {
+          showMainWindow();
+        }
+      },
+      {
+        label: 'Quit JaMeet',
+        click: () => {
+          app.quit();
+        }
+      }
+    ]);
+
+    appTray.setContextMenu(contextMenu);
+
+    appTray.on('click', () => {
+      showMainWindow();
+    });
+    appTray.on('double-click', () => {
+      showMainWindow();
+    });
+  } catch (err) {
+    console.warn('Could not create system tray:', err);
+  }
 }
 
 function createWindow(): void {
@@ -1265,6 +1342,7 @@ else {
       }
     }
 
+    createTray();
     createWindow();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
