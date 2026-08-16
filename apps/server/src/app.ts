@@ -609,6 +609,20 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     }
   }
 
+  function ensureRoomProjectAccess(room: Room): boolean {
+    if (!room.projectId) return false;
+    if (room.hostIdentity.isGuest || !room.hostIdentity.id) {
+      delete room.projectId;
+      return false;
+    }
+    const canModify = projectStore.canModifyProject(room.projectId, room.hostIdentity.id);
+    if (!canModify) {
+      delete room.projectId;
+      return false;
+    }
+    return true;
+  }
+
   app.post<{ Params: { id: string } }>('/api/projects/:id/collaborators', async (request, reply) => {
     const authHeader = request.headers.authorization;
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
@@ -748,6 +762,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   });
 
   function endRoomDueToAccessLoss(room: Room, reason: string) {
+    ensureRoomProjectAccess(room);
     const project = room.projectId && room.hostIdentity.id
       ? projectStore.getProject(room.projectId, room.hostIdentity.id)
       : null;
@@ -825,6 +840,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     rooms.removeParticipant(room.code, participant.id);
 
     if (!participant.identity.isGuest && participant.identity.id) {
+      ensureRoomProjectAccess(room);
       const project = room.projectId && room.hostIdentity.id
         ? projectStore.getProject(room.projectId, room.hostIdentity.id)
         : null;
@@ -865,6 +881,8 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
   function revalidateActiveSessions(now: number = Date.now()) {
     for (const room of Array.from(rooms.rooms.values())) {
+      ensureRoomProjectAccess(room);
+
       // 1. Validate host access
       if (!room.hostIdentity.isGuest && room.hostIdentity.id) {
         const hostAuth = validateStoredUserSessionAccess(userStore, room.hostIdentity.id, config, true, now);
@@ -905,6 +923,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       const activeRooms = Array.from(rooms.rooms.values());
       for (const room of activeRooms) {
         try {
+          ensureRoomProjectAccess(room);
           const project = room.projectId && room.hostIdentity.id
             ? projectStore.getProject(room.projectId, room.hostIdentity.id)
             : null;
@@ -1034,7 +1053,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       // If this mutation originated during an active session for this project, record the verified events
       if (socketData.code) {
         const room = rooms.rooms.get(socketData.code);
-        if (room && room.projectId === raw.projectId) {
+        if (room && ensureRoomProjectAccess(room) && room.projectId === raw.projectId) {
           const project = projectStore.getProject(raw.projectId, user.id);
           if (project?.activities) {
             const recent = project.activities.filter((a) => a.createdAt >= room.startedAt);
@@ -1217,8 +1236,8 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         if (peer) {
           if (!joined.reconnected) {
             userStore.recordCollaboratorJoined(joined.room.sessionId, parsed.data.code, joined.room.hostIdentity, joined.participant.identity);
-            if (joined.room.projectId) {
-              projectStore.recordProjectSession(joined.room.projectId, {
+            if (ensureRoomProjectAccess(joined.room)) {
+              projectStore.recordProjectSession(joined.room.projectId!, {
                 id: `${joined.room.hostIdentity.id}_${parsed.data.code}`,
                 code: parsed.data.code,
                 startedAt: Date.now(),
@@ -1349,8 +1368,8 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
       try {
         userStore.recordCollaboratorJoined(admitted.room.sessionId, admitted.room.code, admitted.room.hostIdentity, admitted.participant.identity);
-        if (admitted.room.projectId) {
-          projectStore.recordProjectSession(admitted.room.projectId, {
+        if (ensureRoomProjectAccess(admitted.room)) {
+          projectStore.recordProjectSession(admitted.room.projectId!, {
             id: `${admitted.room.hostIdentity.id}_${admitted.room.code}`,
             code: admitted.room.code,
             startedAt: Date.now(),
@@ -1506,6 +1525,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
 
       if (!removed.removed.identity.isGuest && removed.removed.identity.id) {
+        ensureRoomProjectAccess(room);
         const project = room.projectId && room.hostIdentity.id
           ? projectStore.getProject(room.projectId, room.hostIdentity.id)
           : null;
@@ -1713,6 +1733,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         const roomBefore = rooms.rooms.get(code);
         const result = rooms.leave(code, participantId, socket.id);
         if (roomBefore) {
+          ensureRoomProjectAccess(roomBefore);
           const project = roomBefore.projectId && roomBefore.hostIdentity.id
             ? projectStore.getProject(roomBefore.projectId, roomBefore.hostIdentity.id)
             : null;
@@ -1757,6 +1778,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         rooms.disconnect(code, participantId, (role, expiredPeer, expiredParticipant) => {
           const currentRoom = rooms.rooms.get(code) || room;
           if (currentRoom) {
+            ensureRoomProjectAccess(currentRoom);
             const project = currentRoom.projectId && currentRoom.hostIdentity.id
               ? projectStore.getProject(currentRoom.projectId, currentRoom.hostIdentity.id)
               : null;

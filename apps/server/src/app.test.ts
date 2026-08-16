@@ -4451,6 +4451,85 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('detaches active room from project when host loses project modification permission during an active session', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-stale-sess-auth-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-stale-sess-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_stale_host', 'beta', userStore);
+      const hostAuth = await createTestAccount(url, 'host_editor_user', 'beta', userStore);
+      const participantAuth = await createTestAccount(url, 'part_stale_user', 'beta', userStore);
+
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Active Session Stale Test' });
+      // Add host as editor
+      projectStore.addCollaborator(project.id, ownerAuth.user.id, hostAuth.user, 'editor');
+
+      const hostSocket = await connected(url);
+      const participantSocket = await connected(url);
+
+      // 1. Host creates a project-linked meeting while authorized as editor
+      const hostCreateRes = await ack(hostSocket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        authToken: hostAuth.token,
+        media,
+        projectId: project.id
+      });
+      expect(hostCreateRes.ok).toBe(true);
+      expect(hostCreateRes.projectId).toBe(project.id);
+
+      // Initial project session count is 1 (the host session start)
+      const projectBefore = projectStore.getProject(project.id, ownerAuth.user.id);
+      expect(projectBefore?.sessions.length).toBe(1);
+      const initialProjectSessionCount = projectBefore?.sessions.length || 1;
+
+      // 2. Owner demotes Host to viewer while the meeting is live
+      const demoteRes = await fetch(`${url}/api/projects/${project.id}/collaborators`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({ usernameOrEmail: hostAuth.user.email, role: 'viewer' })
+      });
+      expect(demoteRes.status).toBe(200);
+
+      // 3. Participant joins the call
+      const joinRes = await ack(participantSocket, 'meeting:join', {
+        code: hostCreateRes.code,
+        participantId: '22222222-2222-4222-8222-222222222222',
+        authToken: participantAuth.token,
+        media
+      });
+      expect(joinRes.ok).toBe(true);
+      // Join response reflects detached project
+      expect(joinRes.projectId).toBeUndefined();
+
+      // Ensure no new participant session was added to the project
+      const projectAfterJoin = projectStore.getProject(project.id, ownerAuth.user.id);
+      expect(projectAfterJoin?.sessions.length).toBe(initialProjectSessionCount);
+
+      // 4. Host leaves the meeting - call ends normally
+      hostSocket.disconnect();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Check that the final session close record for host does not contain the detached project
+      const hostHistory = userStore.getSessionHistory(hostAuth.user.id);
+      expect(hostHistory.length).toBe(1);
+      expect(hostHistory[0]?.summary?.projectId).toBeUndefined();
+
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 
