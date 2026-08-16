@@ -60,8 +60,10 @@ static int install_device(const wchar_t* infPath) {
     )) {
         DWORD err = GetLastError();
         if (err != ERROR_FILE_EXISTS) {
-            fwprintf(stderr, L"[JaMeetInstaller] Warning: SetupCopyOEMInfW returned: 0x%08X\n", err);
+            fwprintf(stderr, L"[JaMeetInstaller] Error: SetupCopyOEMInfW staging failed: 0x%08X\n", err);
+            return (int)err;
         }
+        wprintf(L"[JaMeetInstaller] Driver package already exists in DriverStore.\n");
     } else {
         wprintf(L"[JaMeetInstaller] Staged driver in DriverStore as: %s\n", destinationInfFileName);
     }
@@ -76,16 +78,27 @@ static int install_device(const wchar_t* infPath) {
 
     if (devInfoSet == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
-        fwprintf(stderr, L"[JaMeetInstaller] Error: SetupDiGetClassDevs failed: 0x%08X\n", err);
+        fwprintf(stderr, L"[JaMeetInstaller] Error: SetupDiGetClassDevsW failed: 0x%08X\n", err);
         return (int)err;
     }
 
     SP_DEVINFO_DATA devInfoData;
-    memset(&devInfoData, 0, sizeof(devInfoData));
-    devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
     bool deviceFound = false;
 
-    for (DWORD idx = 0; SetupDiEnumDeviceInfo(devInfoSet, idx, &devInfoData); idx++) {
+    for (DWORD idx = 0; ; idx++) {
+        memset(&devInfoData, 0, sizeof(devInfoData));
+        devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+
+        if (!SetupDiEnumDeviceInfo(devInfoSet, idx, &devInfoData)) {
+            DWORD err = GetLastError();
+            if (err == ERROR_NO_MORE_ITEMS) {
+                break; /* Normal enumeration completion */
+            }
+            fwprintf(stderr, L"[JaMeetInstaller] Error: SetupDiEnumDeviceInfo failed at index %u: 0x%08X\n", idx, err);
+            SetupDiDestroyDeviceInfoList(devInfoSet);
+            return (int)err;
+        }
+
         WCHAR hwId[MAX_PATH] = { 0 };
         if (SetupDiGetDeviceRegistryPropertyW(
             devInfoSet,
@@ -101,9 +114,19 @@ static int install_device(const wchar_t* infPath) {
                 deviceFound = true;
                 break;
             }
+        } else {
+            DWORD propErr = GetLastError();
+            /* Devices that legitimately do not expose SPDRP_HARDWAREID continue normally */
+            if (propErr != ERROR_INVALID_DATA && propErr != ERROR_NOT_FOUND &&
+                propErr != ERROR_NO_SUCH_DEVINST && propErr != ERROR_FILE_NOT_FOUND) {
+                fwprintf(stderr, L"[JaMeetInstaller] Error: SetupDiGetDeviceRegistryPropertyW failed: 0x%08X\n", propErr);
+                SetupDiDestroyDeviceInfoList(devInfoSet);
+                return (int)propErr;
+            }
         }
     }
 
+    bool newlyCreatedDevice = false;
     if (!deviceFound) {
         SetupDiDestroyDeviceInfoList(devInfoSet);
 
@@ -157,9 +180,9 @@ static int install_device(const wchar_t* infPath) {
             SetupDiDestroyDeviceInfoList(devInfoSet);
             return (int)err;
         }
-    }
 
-    SetupDiDestroyDeviceInfoList(devInfoSet);
+        newlyCreatedDevice = true;
+    }
 
     /* 3. Install driver package onto the device instance */
     BOOL rebootRequired = FALSE;
@@ -172,8 +195,18 @@ static int install_device(const wchar_t* infPath) {
     )) {
         DWORD err = GetLastError();
         fwprintf(stderr, L"[JaMeetInstaller] Error: UpdateDriverForPlugAndPlayDevices failed: 0x%08X\n", err);
+
+        /* Roll back newly created device instance if binding fails */
+        if (newlyCreatedDevice) {
+            wprintf(L"[JaMeetInstaller] Rolling back newly created device instance after driver binding failure...\n");
+            SetupDiCallClassInstaller(DIF_REMOVE, devInfoSet, &devInfoData);
+        }
+
+        SetupDiDestroyDeviceInfoList(devInfoSet);
         return (int)err;
     }
+
+    SetupDiDestroyDeviceInfoList(devInfoSet);
 
     wprintf(L"[JaMeetInstaller] JaMeet Remote device installed successfully.%s\n", rebootRequired ? L" (Reboot required)" : L"");
     return 0;
