@@ -460,6 +460,76 @@ describe('Admin Session Access CLI & Management Tool', () => {
     }
   });
 
+  it('safely recovers from an abandoned claim file left by a crashed recovery process', () => {
+    const lockPath = getDatastoreLockPath(testDir);
+    const staleCreatedAt = Date.now() - 10000;
+    // Write stale lock with dead PID 9999999
+    fs.writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: 9999999, owner: 'server', createdAt: staleCreatedAt }),
+      { mode: 0o600, encoding: 'utf-8' }
+    );
+
+    // Simulate an abandoned claim file from a crashed recovery process (dead PID 8888888)
+    const claimPath = path.join(testDir, `.account-datastore.lock.claim.9999999.${staleCreatedAt}`);
+    fs.writeFileSync(
+      claimPath,
+      JSON.stringify({
+        recoveringPid: 8888888,
+        targetPid: 9999999,
+        targetCreatedAt: staleCreatedAt,
+        createdAt: Date.now() - 5000
+      }),
+      { mode: 0o600, encoding: 'utf-8' }
+    );
+
+    // New process should detect the claim owner is dead, remove abandoned claim, and successfully acquire lock
+    const lock = acquireDatastoreLock(testDir, 'server');
+    expect(lock).toBeDefined();
+
+    try {
+      const currentInfo = readDatastoreLockInfo(testDir);
+      expect(currentInfo?.pid).toBe(process.pid);
+      expect(currentInfo?.owner).toBe('server');
+      // Verify claim path was cleaned up
+      expect(fs.existsSync(claimPath)).toBe(false);
+    } finally {
+      lock.release();
+    }
+  });
+
+  it('preserves an active claim file from a live recovery process and fails closed', () => {
+    const lockPath = getDatastoreLockPath(testDir);
+    const staleCreatedAt = Date.now() - 10000;
+    // Write stale lock with dead PID 9999999
+    fs.writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: 9999999, owner: 'server', createdAt: staleCreatedAt }),
+      { mode: 0o600, encoding: 'utf-8' }
+    );
+
+    // Write an active claim file belonging to current live process PID
+    const claimPath = path.join(testDir, `.account-datastore.lock.claim.9999999.${staleCreatedAt}`);
+    fs.writeFileSync(
+      claimPath,
+      JSON.stringify({
+        recoveringPid: process.pid,
+        targetPid: 9999999,
+        targetCreatedAt: staleCreatedAt,
+        createdAt: Date.now()
+      }),
+      { mode: 0o600, encoding: 'utf-8' }
+    );
+
+    try {
+      // Attempting to acquire lock while live claim exists must fail closed and preserve claim
+      expect(() => acquireDatastoreLock(testDir, 'server')).toThrow(DatastoreLockError);
+      expect(fs.existsSync(claimPath)).toBe(true);
+    } finally {
+      try { fs.unlinkSync(claimPath); } catch {}
+    }
+  });
+
   it('enforces 0o600 permissions on runtime admin file even when replacing an existing file', () => {
     writeAdminRuntimeFile(testDir, {
       pid: process.pid,
