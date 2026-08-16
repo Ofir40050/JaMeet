@@ -304,22 +304,15 @@ export class DesktopLogger {
       ipcMain.on('logger:log', (_event, entry: Partial<StructuredLogEntry>) => {
         if (!entry || typeof entry !== 'object') return;
         this.log({
-          process: 'renderer',
-          level: entry.level || 'info',
-          event: entry.event || 'renderer_event',
-          message: entry.message || '',
-          sessionId: entry.sessionId,
-          sessionCode: entry.sessionCode,
-          attemptId: entry.attemptId,
-          meta: entry.meta,
-          error: entry.error
+          ...entry,
+          process: 'renderer'
         });
       });
 
       ipcMain.handle('logger:crash', async (_event, crashData: Partial<CrashReport>) => {
         return this.recordCrash({
-          process: 'renderer',
-          ...crashData
+          ...crashData,
+          process: 'renderer'
         });
       });
 

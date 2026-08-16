@@ -1,9 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { ipcMain } from 'electron';
 import { existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DesktopLogger } from './logger';
 import { sanitizeLogData, isSensitiveKey } from '@jameet/shared';
+
+vi.mock('electron', () => ({
+  app: {
+    getVersion: () => '0.1.0',
+    getPath: (name: string) => `/tmp/jameet-mock-${name}`
+  },
+  crashReporter: {
+    start: vi.fn()
+  },
+  ipcMain: {
+    on: vi.fn(),
+    handle: vi.fn()
+  }
+}));
 
 describe('Desktop Production Crash Reporting & Structured Logging', () => {
   let testLogDir: string;
@@ -227,6 +242,36 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
     // Should safely invoke without error
     const initialized = testLogger.initNativeCrashReporter();
     expect(typeof initialized).toBe('boolean');
+  });
+
+  it('enforces renderer process attribution when crash reports arrive via logger:crash IPC', async () => {
+    let crashHandler: Function | undefined;
+    const originalOn = (ipcMain as any)?.on;
+    const originalHandle = (ipcMain as any)?.handle;
+
+    (ipcMain as any).on = vi.fn();
+    (ipcMain as any).handle = vi.fn((channel: string, handler: Function) => {
+      if (channel === 'logger:crash') {
+        crashHandler = handler;
+      }
+    });
+
+    const freshLogger = new DesktopLogger(testLogDir, 'test-instance-2');
+    freshLogger.setupGlobalHandlers();
+
+    expect(crashHandler).toBeDefined();
+    const result = await crashHandler!({}, {
+      process: 'main', // Attempt to spoof or override as main process
+      reason: 'renderer_syntax_error',
+      sessionCode: 'XYZ12345'
+    });
+
+    expect(result.process).toBe('renderer');
+    expect(result.sessionCode).toBe('XYZ12345');
+    expect(result.reason).toBe('renderer_syntax_error');
+
+    (ipcMain as any).on = originalOn;
+    (ipcMain as any).handle = originalHandle;
   });
 
   it('preserves non-sensitive diagnostic messages, technical identifiers, and error details', () => {
