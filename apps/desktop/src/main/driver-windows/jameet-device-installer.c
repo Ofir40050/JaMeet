@@ -190,6 +190,7 @@ static int uninstall_device(const wchar_t* infPath) {
     WCHAR discoveredOemInfs[8][MAX_PATH] = { 0 };
     DWORD discoveredOemCount = 0;
     DWORD devicesFound = 0;
+    DWORD discoveryFailures = 0;
     DWORD removalFailures = 0;
 
     /* 1. Find all ROOT\JaMeetRemote device instances, extract their published OEM INF names, and remove them */
@@ -200,71 +201,86 @@ static int uninstall_device(const wchar_t* infPath) {
         DIGCF_ALLCLASSES
     );
 
-    if (devInfoSet != INVALID_HANDLE_VALUE) {
-        SP_DEVINFO_DATA devInfoData;
-        memset(&devInfoData, 0, sizeof(devInfoData));
-        devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+    if (devInfoSet == INVALID_HANDLE_VALUE) {
+        DWORD err = GetLastError();
+        fwprintf(stderr, L"[JaMeetInstaller] Error: SetupDiGetClassDevsW failed: 0x%08X\n", err);
+        return (int)err;
+    }
 
-        for (DWORD idx = 0; SetupDiEnumDeviceInfo(devInfoSet, idx, &devInfoData); idx++) {
-            WCHAR hwId[MAX_PATH] = { 0 };
-            if (SetupDiGetDeviceRegistryPropertyW(
-                devInfoSet,
-                &devInfoData,
-                SPDRP_HARDWAREID,
-                NULL,
-                (PBYTE)hwId,
-                sizeof(hwId),
-                NULL
-            )) {
-                if (_wcsicmp(hwId, JAMEET_HARDWARE_ID) == 0) {
-                    devicesFound++;
-                    wprintf(L"[JaMeetInstaller] Found JaMeet Remote device instance (index %u).\n", idx);
+    SP_DEVINFO_DATA devInfoData;
+    memset(&devInfoData, 0, sizeof(devInfoData));
+    devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
 
-                    /* Query published DriverInfPath property (e.g. oemNN.inf) */
-                    WCHAR oemInfName[MAX_PATH] = { 0 };
-                    DEVPROPTYPE propType = 0;
-                    if (SetupDiGetDevicePropertyW(
-                        devInfoSet,
-                        &devInfoData,
-                        &DEVPKEY_Device_DriverInfPath,
-                        &propType,
-                        (PBYTE)oemInfName,
-                        sizeof(oemInfName),
-                        NULL,
-                        0
-                    ) && oemInfName[0] != L'\0') {
-                        wprintf(L"[JaMeetInstaller] Discovered published driver INF: %s\n", oemInfName);
+    for (DWORD idx = 0; SetupDiEnumDeviceInfo(devInfoSet, idx, &devInfoData); idx++) {
+        WCHAR hwId[MAX_PATH] = { 0 };
+        if (SetupDiGetDeviceRegistryPropertyW(
+            devInfoSet,
+            &devInfoData,
+            SPDRP_HARDWAREID,
+            NULL,
+            (PBYTE)hwId,
+            sizeof(hwId),
+            NULL
+        )) {
+            if (_wcsicmp(hwId, JAMEET_HARDWARE_ID) == 0) {
+                devicesFound++;
+                wprintf(L"[JaMeetInstaller] Found JaMeet Remote device instance (index %u).\n", idx);
 
-                        /* Add to unique discovered list */
-                        bool alreadyAdded = false;
-                        for (DWORD d = 0; d < discoveredOemCount; d++) {
-                            if (_wcsicmp(discoveredOemInfs[d], oemInfName) == 0) {
-                                alreadyAdded = true;
-                                break;
-                            }
-                        }
-                        if (!alreadyAdded && discoveredOemCount < 8) {
-                            wcscpy_s(discoveredOemInfs[discoveredOemCount++], MAX_PATH, oemInfName);
+                /* Query published DriverInfPath property (e.g. oemNN.inf) */
+                WCHAR oemInfName[MAX_PATH] = { 0 };
+                DEVPROPTYPE propType = 0;
+                if (!SetupDiGetDevicePropertyW(
+                    devInfoSet,
+                    &devInfoData,
+                    &DEVPKEY_Device_DriverInfPath,
+                    &propType,
+                    (PBYTE)oemInfName,
+                    sizeof(oemInfName),
+                    NULL,
+                    0
+                ) || oemInfName[0] == L'\0') {
+                    DWORD err = GetLastError();
+                    if (err != ERROR_NOT_FOUND && err != ERROR_FILE_NOT_FOUND) {
+                        fwprintf(stderr, L"[JaMeetInstaller] Error: Failed to resolve DriverInfPath for device instance: 0x%08X\n", err);
+                        discoveryFailures++;
+                    }
+                } else {
+                    wprintf(L"[JaMeetInstaller] Discovered published driver INF: %s\n", oemInfName);
+
+                    /* Add to unique discovered list */
+                    bool alreadyAdded = false;
+                    for (DWORD d = 0; d < discoveredOemCount; d++) {
+                        if (_wcsicmp(discoveredOemInfs[d], oemInfName) == 0) {
+                            alreadyAdded = true;
+                            break;
                         }
                     }
+                    if (!alreadyAdded && discoveredOemCount < 8) {
+                        wcscpy_s(discoveredOemInfs[discoveredOemCount++], MAX_PATH, oemInfName);
+                    }
+                }
 
-                    /* Remove device instance */
-                    wprintf(L"[JaMeetInstaller] Removing device instance...\n");
-                    if (!SetupDiCallClassInstaller(DIF_REMOVE, devInfoSet, &devInfoData)) {
-                        DWORD err = GetLastError();
-                        if (err != ERROR_NO_SUCH_DEVINST && err != ERROR_FILE_NOT_FOUND) {
-                            fwprintf(stderr, L"[JaMeetInstaller] Error: Failed to remove device instance: 0x%08X\n", err);
-                            removalFailures++;
-                        }
+                /* Remove device instance */
+                wprintf(L"[JaMeetInstaller] Removing device instance...\n");
+                if (!SetupDiCallClassInstaller(DIF_REMOVE, devInfoSet, &devInfoData)) {
+                    DWORD err = GetLastError();
+                    if (err != ERROR_NO_SUCH_DEVINST && err != ERROR_FILE_NOT_FOUND) {
+                        fwprintf(stderr, L"[JaMeetInstaller] Error: Failed to remove device instance: 0x%08X\n", err);
+                        removalFailures++;
                     }
                 }
             }
         }
-        SetupDiDestroyDeviceInfoList(devInfoSet);
     }
+    SetupDiDestroyDeviceInfoList(devInfoSet);
 
     if (devicesFound == 0) {
         wprintf(L"[JaMeetInstaller] No installed JaMeet Remote device instances found.\n");
+    }
+
+    if (discoveryFailures > 0) {
+        fwprintf(stderr, L"[JaMeetInstaller] Error: Failed to resolve driver INF for %u device instance(s).\n", discoveryFailures);
+        return 1;
     }
 
     if (removalFailures > 0) {
@@ -296,7 +312,8 @@ static int uninstall_device(const wchar_t* infPath) {
         if (!DiUninstallDriverW(NULL, infPath, 0, &rebootRequired)) {
             DWORD err = GetLastError();
             if (err != ERROR_FILE_NOT_FOUND && err != ERROR_PATH_NOT_FOUND && err != ERROR_NOT_FOUND) {
-                fwprintf(stderr, L"[JaMeetInstaller] Warning: DiUninstallDriverW returned: 0x%08X\n", err);
+                fwprintf(stderr, L"[JaMeetInstaller] Error: DiUninstallDriverW failed: 0x%08X\n", err);
+                packageFailures++;
             }
         } else {
             wprintf(L"[JaMeetInstaller] Driver package uninstalled from DriverStore.%s\n", rebootRequired ? L" (Reboot required)" : L"");
