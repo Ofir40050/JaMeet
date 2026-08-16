@@ -15,6 +15,7 @@
     "@fastify/cors": "^11.1.0",
     "@fastify/rate-limit": "^10.3.0",
     "@jameet/shared": "0.1.0",
+    "@types/proper-lockfile": "^4.1.4",
     "dotenv": "^17.2.2",
     "fastify": "^5.5.0",
     "proper-lockfile": "^4.1.2",
@@ -23,7 +24,6 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
-    "@types/proper-lockfile": "^4.1.4",
     "socket.io-client": "^4.8.1",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
