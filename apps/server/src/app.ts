@@ -610,6 +610,17 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     transports: ['websocket', 'polling']
   });
 
+  app.addHook('preClose', async () => {
+    try {
+      io.disconnectSockets(true);
+      await new Promise<void>((resolve) => {
+        io.close(() => resolve());
+      });
+    } catch {
+      // ignore
+    }
+  });
+
   function failure(code: MeetingErrorCode, message: string): MeetingAck {
     return { ok: false, code, message };
   }

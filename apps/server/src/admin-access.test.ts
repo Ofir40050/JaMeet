@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { io as ioc, type Socket as ClientSocket } from 'socket.io-client';
 import { UserStore } from './auth.js';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
@@ -455,5 +456,44 @@ describe('Admin Session Access CLI & Management Tool', () => {
 
     // Additional calls to app.close() must be safe and idempotent
     await expect(app.close()).resolves.not.toThrow();
+  });
+
+  it('closes active Socket.IO connections on graceful shutdown and releases datastore lock without hanging', async () => {
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      DATA_DIR: testDir,
+      TURN_SHARED_SECRET: 'test-secret-123456789'
+    });
+
+    const { app } = await createApp(config);
+    await app.listen({ host: '127.0.0.1', port: 0 });
+
+    const addr = app.server.address() as any;
+    const url = `http://127.0.0.1:${addr.port}`;
+
+    const lockPath = getDatastoreLockPath(testDir);
+    expect(fs.existsSync(lockPath)).toBe(true);
+
+    // Connect active Socket.IO client
+    const socket: ClientSocket = ioc(url, { transports: ['websocket'] });
+    await new Promise<void>((resolve) => {
+      socket.on('connect', () => resolve());
+    });
+    expect(socket.connected).toBe(true);
+
+    // Trigger graceful shutdown while Socket.IO client is connected
+    const closePromise = app.close();
+
+    // Verify shutdown resolves cleanly
+    await expect(closePromise).resolves.not.toThrow();
+
+    // Socket.IO client must be disconnected
+    expect(socket.connected).toBe(false);
+
+    // Lock and runtime file must be released
+    expect(fs.existsSync(lockPath)).toBe(false);
+    expect(fs.existsSync(getAdminRuntimeFilePath(testDir))).toBe(false);
+
+    socket.disconnect();
   });
 });
