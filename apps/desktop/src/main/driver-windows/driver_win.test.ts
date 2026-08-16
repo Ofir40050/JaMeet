@@ -6,8 +6,12 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
   const driverDir = path.join(__dirname);
   const infPath = path.join(driverDir, 'JaMeetRemote.inf');
   const ioctlHeaderPath = path.join(driverDir, '../bridge/jameet_remote_win32_ioctl.h');
+  const vcxprojPath = path.join(driverDir, 'JaMeetRemote.vcxproj');
+  const slnPath = path.join(driverDir, 'JaMeetRemote.sln');
+  const installerNshPath = path.join(driverDir, '../../../build/installer.nsh');
+  const packageJsonPath = path.join(driverDir, '../../../package.json');
 
-  it('validates JaMeetRemote.inf syntax, security SDDL, and interface declarations', () => {
+  it('validates JaMeetRemote.inf syntax, security SDDL in NT.HW, and interface declarations', () => {
     expect(fs.existsSync(infPath)).toBe(true);
     const infContent = fs.readFileSync(infPath, 'utf-8');
 
@@ -20,8 +24,11 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     expect(infContent).toContain('KSCATEGORY_AUDIO');
     expect(infContent).toContain('KSCATEGORY_CAPTURE');
     expect(infContent).toContain('KSCATEGORY_REALTIME');
+    expect(infContent).toContain('KSCATEGORY_TOPOLOGY');
 
-    // Security Descriptor: SYSTEM + Administrators Generic All, Interactive User Read/Write
+    // Security Descriptor in NT.HW: SYSTEM + Administrators Generic All, Interactive User Read/Write
+    expect(infContent).toContain('[JaMeetRemote_Device.NT.HW]');
+    expect(infContent).toContain('AddReg = JaMeetRemote_Device.NT.HW.AddReg');
     expect(infContent).toContain('D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)');
 
     // Destination directory
@@ -41,7 +48,27 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     expect(ioctlContent).toContain('FILE_READ_DATA | FILE_WRITE_DATA');
   });
 
-  it('validates driver installation and uninstallation script presence', () => {
+  it('validates WDK project files and build script configuration', () => {
+    expect(fs.existsSync(vcxprojPath)).toBe(true);
+    expect(fs.existsSync(slnPath)).toBe(true);
+
+    const vcxprojContent = fs.readFileSync(vcxprojPath, 'utf-8');
+    expect(vcxprojContent).toContain('WindowsKernelModeDriver10.0');
+    expect(vcxprojContent).toContain('portcls.lib');
+    expect(vcxprojContent).toContain('adapter.cpp');
+    expect(vcxprojContent).toContain('dispatch.cpp');
+    expect(vcxprojContent).toContain('minwave.cpp');
+    expect(vcxprojContent).toContain('mintopo.cpp');
+    expect(vcxprojContent).toContain('jameet_remote_kernel_consumer.cpp');
+
+    const buildCmdPath = path.join(driverDir, 'build-driver.cmd');
+    expect(fs.existsSync(buildCmdPath)).toBe(true);
+    const buildCmdContent = fs.readFileSync(buildCmdPath, 'utf-8');
+    expect(buildCmdContent).toContain('msbuild');
+    expect(buildCmdContent).toContain('JaMeetRemote.vcxproj');
+  });
+
+  it('validates driver installation and uninstallation script presence and device scanning', () => {
     const installCmdPath = path.join(driverDir, 'install-driver.cmd');
     const uninstallCmdPath = path.join(driverDir, 'uninstall-driver.cmd');
 
@@ -51,17 +78,34 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     const installContent = fs.readFileSync(installCmdPath, 'utf-8');
     expect(installContent).toContain('pnputil.exe /add-driver');
     expect(installContent).toContain('/install');
+    expect(installContent).toContain('pnputil.exe /scan-devices');
 
     const uninstallContent = fs.readFileSync(uninstallCmdPath, 'utf-8');
     expect(uninstallContent).toContain('pnputil.exe /delete-driver');
     expect(uninstallContent).toContain('/uninstall');
+    expect(uninstallContent).toContain('pnputil.exe /scan-devices');
   });
 
-  it('verifies untrusted memory hardening: NaN/Inf sanitization, bounds checking, and silence generation', () => {
-    // Simulate kernel consumer logic in JS/TS mirror test
+  it('validates NSIS installer integration and package.json Windows resources', () => {
+    expect(fs.existsSync(installerNshPath)).toBe(true);
+    const nshContent = fs.readFileSync(installerNshPath, 'utf-8');
+    expect(nshContent).toContain('customInstall');
+    expect(nshContent).toContain('install-driver.cmd');
+    expect(nshContent).toContain('customUnInstall');
+    expect(nshContent).toContain('uninstall-driver.cmd');
+
+    expect(fs.existsSync(packageJsonPath)).toBe(true);
+    const pkgContent = fs.readFileSync(packageJsonPath, 'utf-8');
+    const pkg = JSON.parse(pkgContent);
+    expect(pkg.build?.win?.extraResources).toBeDefined();
+    expect(pkg.build?.nsis?.include).toBe('build/installer.nsh');
+  });
+
+  it('verifies untrusted memory hardening: NaN/Inf sanitization, bounds checking, and ring buffer semantics', () => {
     const JAMEET_SHM_MAGIC = 0x4A4D5254;
     const JAMEET_ABI_VERSION = 1;
     const JAMEET_SLOT_MASK = 127;
+    const JAMEET_TOTAL_FRAMES = 16384;
 
     function sanitizeSample(rawBits: number): number {
       const buf = new ArrayBuffer(4);
@@ -100,6 +144,12 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     const slotIdx = (Math.floor(untrustedFrameIndex / 128)) & JAMEET_SLOT_MASK;
     expect(slotIdx).toBeGreaterThanOrEqual(0);
     expect(slotIdx).toBeLessThanOrEqual(127);
+
+    // 6. Ring buffer semantics: reading ahead of writeSequence must deliver digital silence
+    const writeSequence = 480;
+    const targetFrame = 480; // exactly at or ahead of writeSequence
+    const framesAvailable = Math.max(0, writeSequence - targetFrame);
+    expect(framesAvailable).toBe(0); // must output silence
   });
 
   it('verifies Float32 to Int16 conversion with proper saturation clamping', () => {

@@ -1,3 +1,7 @@
+#ifdef _WIN32
+#define INITGUID
+#endif
+
 #include "adapter.h"
 #include "dispatch.h"
 #include "minwave.h"
@@ -5,6 +9,7 @@
 
 #ifdef _WIN32
 
+static PDEVICE_OBJECT gPhysicalDeviceObject = NULL;
 static UNICODE_STRING gDeviceInterfaceName = { 0, 0, NULL };
 
 static NTSTATUS StartDevice(
@@ -13,20 +18,74 @@ static NTSTATUS StartDevice(
     IN PRESOURCELIST ResourceList
 ) {
     (void)Irp;
-    (void)ResourceList;
 
     if (!DeviceObject) return STATUS_INVALID_PARAMETER;
 
-    /* Register dynamic device interface GUID_DEVINTERFACE_JAMEET_REMOTE */
-    NTSTATUS status = IoRegisterDeviceInterface(
-        DeviceObject,
-        &GUID_DEVINTERFACE_JAMEET_REMOTE,
-        NULL,
-        &gDeviceInterfaceName
-    );
+    NTSTATUS status;
+    PPORTWAVERT pPortWave = NULL;
+    PUNKNOWN pMiniWave = NULL;
+    PPORTTOPOLOGY pPortTopo = NULL;
+    PUNKNOWN pMiniTopo = NULL;
 
-    if (NT_SUCCESS(status) && gDeviceInterfaceName.Buffer != NULL) {
-        IoSetDeviceInterfaceState(&gDeviceInterfaceName, TRUE);
+    /* 1. Create and register PortWaveRT subdevice */
+    status = PcNewPort((PPORT*)&pPortWave, CLSID_PortWaveRT);
+    if (NT_SUCCESS(status)) {
+        status = CreateMiniportWaveRT(&pMiniWave, CLSID_PortWaveRT, NULL, NonPagedPoolNx);
+        if (NT_SUCCESS(status)) {
+            status = pPortWave->Init(DeviceObject, Irp, pMiniWave, NULL, ResourceList);
+            if (NT_SUCCESS(status)) {
+                status = PcRegisterSubdevice(DeviceObject, L"Wave", pPortWave);
+            }
+        }
+    }
+
+    if (!NT_SUCCESS(status)) {
+        if (pMiniWave) pMiniWave->Release();
+        if (pPortWave) pPortWave->Release();
+        return status;
+    }
+
+    /* 2. Create and register PortTopology subdevice */
+    status = PcNewPort((PPORT*)&pPortTopo, CLSID_PortTopology);
+    if (NT_SUCCESS(status)) {
+        status = CreateMiniportTopology(&pMiniTopo, CLSID_PortTopology, NULL, NonPagedPoolNx);
+        if (NT_SUCCESS(status)) {
+            status = pPortTopo->Init(DeviceObject, Irp, pMiniTopo, NULL, ResourceList);
+            if (NT_SUCCESS(status)) {
+                status = PcRegisterSubdevice(DeviceObject, L"Topology", pPortTopo);
+            }
+        }
+    }
+
+    if (!NT_SUCCESS(status)) {
+        if (pMiniTopo) pMiniTopo->Release();
+        if (pPortTopo) pPortTopo->Release();
+        if (pMiniWave) pMiniWave->Release();
+        if (pPortWave) pPortWave->Release();
+        return status;
+    }
+
+    /* 3. Register physical connection between Topology and WaveRT */
+    status = PcRegisterPhysicalConnection(DeviceObject, pPortTopo, 0, pPortWave, 1);
+
+    /* Release temporary references (PortCls retains registered subdevices) */
+    if (pMiniTopo) pMiniTopo->Release();
+    if (pPortTopo) pPortTopo->Release();
+    if (pMiniWave) pMiniWave->Release();
+    if (pPortWave) pPortWave->Release();
+
+    /* 4. Register dynamic device interface on the Physical Device Object (PDO) */
+    if (gPhysicalDeviceObject != NULL) {
+        NTSTATUS ifStatus = IoRegisterDeviceInterface(
+            gPhysicalDeviceObject,
+            &GUID_DEVINTERFACE_JAMEET_REMOTE,
+            NULL,
+            &gDeviceInterfaceName
+        );
+
+        if (NT_SUCCESS(ifStatus) && gDeviceInterfaceName.Buffer != NULL) {
+            IoSetDeviceInterfaceState(&gDeviceInterfaceName, TRUE);
+        }
     }
 
     return STATUS_SUCCESS;
@@ -36,6 +95,8 @@ NTSTATUS AddDevice(
     IN PDRIVER_OBJECT DriverObject,
     IN PDEVICE_OBJECT PhysicalDeviceObject
 ) {
+    gPhysicalDeviceObject = PhysicalDeviceObject;
+
     return PcAddAdapterDevice(
         DriverObject,
         PhysicalDeviceObject,

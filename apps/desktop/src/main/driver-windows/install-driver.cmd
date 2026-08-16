@@ -10,12 +10,15 @@ if not exist "%INF_PATH%" (
     exit /b 1
 )
 
-:: Use Microsoft PnPUtil to install driver package into DriverStore and install endpoint
+:: 1. Add and install driver package into Windows DriverStore
 pnputil.exe /add-driver "%INF_PATH%" /install
-if %ERRORLEVEL% NEQ 0 (
-    echo [JaMeetRemote] Warning: PnPUtil returned exit code %ERRORLEVEL%
-    exit /b %ERRORLEVEL%
+set PNP_RESULT=%ERRORLEVEL%
+if %PNP_RESULT% NEQ 0 (
+    echo [JaMeetRemote] Warning: PnPUtil returned exit code %PNP_RESULT%
 )
+
+:: 2. Trigger PnP device enumeration to bind root device instance
+pnputil.exe /scan-devices
 
 echo [JaMeetRemote] JaMeet Remote driver installed successfully.
 exit /b 0

@@ -170,24 +170,6 @@ void JaMeetTransport_Close(JaMeetTransport* transport, bool unlinkShm) {
         if (unlinkShm && transport->isOwner && transport->isNewlyCreated && transport->shmName[0] != '\0') {
             shm_unlink(transport->shmName);
         }
-#ifdef _WIN32
-    } else if (transport->kind == JAMEET_TRANSPORT_KIND_WIN32_DRIVER) {
-        if (transport->handle != NULL && transport->handle != INVALID_HANDLE_VALUE) {
-            DWORD unmapReturned = 0;
-            DeviceIoControl(
-                (HANDLE)transport->handle,
-                IOCTL_JAMEET_UNMAP_PRODUCER_VIEW,
-                NULL,
-                0,
-                NULL,
-                0,
-                &unmapReturned,
-                NULL
-            );
-            CloseHandle((HANDLE)transport->handle);
-            transport->handle = NULL;
-        }
-#endif
     }
 
     free(transport);

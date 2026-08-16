@@ -44,6 +44,12 @@ HKR,Drivers\mixer\wdmaud.drv,Driver,,wdmaud.drv
 HKR,Drivers\wave\wdmaud.drv,Description,,%JaMeetRemote.DeviceDesc%
 HKR,Drivers\mixer\wdmaud.drv,Description,,%JaMeetRemote.DeviceDesc%
 
+[JaMeetRemote_Device.NT.HW]
+AddReg = JaMeetRemote_Device.NT.HW.AddReg
+
+[JaMeetRemote_Device.NT.HW.AddReg]
+HKR,,Security,,"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)"
+
 [JaMeetRemote_Device.NT.Interfaces]
 AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_Wave%, JaMeetRemote.Interface.Wave
 AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_Wave%, JaMeetRemote.Interface.Wave
@@ -75,10 +81,6 @@ ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
 ServiceBinary  = %13%\JaMeetRemote.sys
 
 [JaMeetRemote_Logging_Install]
-
-; Security Descriptor: SYSTEM and Administrators have Generic All; Interactive Users have Read/Write
-[JaMeetRemote_Device.NT.Security]
-"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)"
 
 [Strings]
 ManufacturerName          = "JaMeet"

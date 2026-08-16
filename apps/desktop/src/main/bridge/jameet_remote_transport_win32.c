@@ -128,6 +128,38 @@ JaMeetTransport* JaMeetTransport_OpenWin32Device(void) {
     return transport;
 }
 
+void JaMeetTransport_Close(JaMeetTransport* transport, bool unlinkShm) {
+    (void)unlinkShm;
+    if (!transport) return;
+
+    if (transport->kind == JAMEET_TRANSPORT_KIND_WIN32_DRIVER) {
+        if (transport->handle != NULL && transport->handle != INVALID_HANDLE_VALUE) {
+            DWORD unmapReturned = 0;
+            DeviceIoControl(
+                (HANDLE)transport->handle,
+                IOCTL_JAMEET_UNMAP_PRODUCER_VIEW,
+                NULL,
+                0,
+                NULL,
+                0,
+                &unmapReturned,
+                NULL
+            );
+            CloseHandle((HANDLE)transport->handle);
+            transport->handle = NULL;
+        }
+        /* Note: transport->segment is a mapped section view; do NOT free it */
+        transport->segment = NULL;
+    } else if (transport->kind == JAMEET_TRANSPORT_KIND_MEMORY) {
+        if (transport->segment) {
+            free(transport->segment);
+            transport->segment = NULL;
+        }
+    }
+
+    free(transport);
+}
+
 #else
 
 JaMeetTransport* JaMeetTransport_OpenWin32Device(void) {

@@ -81,6 +81,26 @@
       }
     },
     "win": {
+      "extraResources": [
+        {
+          "from": "bin",
+          "to": "bin",
+          "filter": [
+            "**/*.exe"
+          ]
+        },
+        {
+          "from": "src/main/driver-windows",
+          "to": "driver-windows",
+          "filter": [
+            "*.inf",
+            "*.cat",
+            "*.sys",
+            "*.cmd",
+            "dist/**/*"
+          ]
+        }
+      ],
       "target": [
         {
           "target": "nsis",
@@ -95,7 +115,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "JaMeet"
+      "shortcutName": "JaMeet",
+      "include": "build/installer.nsh"
     },
     "linux": {
       "target": [

@@ -151,11 +151,8 @@ int main(int argc, char* argv[]) {
     uint64_t initialEpoch = (uint64_t)time(NULL);
 #ifdef _WIN32
     uint32_t pid = (uint32_t)GetCurrentProcessId();
-    HANDLE heartbeatThread = (HANDLE)_beginthreadex(NULL, 0, heartbeat_worker, NULL, 0, NULL);
 #else
     uint32_t pid = (uint32_t)getpid();
-    pthread_t heartbeatThread;
-    pthread_create(&heartbeatThread, NULL, heartbeat_worker, NULL);
 #endif
 
     if (!JaMeetProducer_Attach(&gProducer, gTransport->segment, initialEpoch, pid)) {
@@ -163,6 +160,13 @@ int main(int argc, char* argv[]) {
         JaMeetTransport_Close(gTransport, false);
         return 1;
     }
+
+#ifdef _WIN32
+    HANDLE heartbeatThread = (HANDLE)_beginthreadex(NULL, 0, heartbeat_worker, NULL, 0, NULL);
+#else
+    pthread_t heartbeatThread;
+    pthread_create(&heartbeatThread, NULL, heartbeat_worker, NULL);
+#endif
 
     float* pcmBuffer = NULL;
     size_t pcmBufferSize = 0;

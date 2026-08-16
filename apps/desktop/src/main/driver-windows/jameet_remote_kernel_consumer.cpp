@@ -1,6 +1,5 @@
 #include "jameet_remote_kernel_consumer.h"
 #include <string.h>
-#include <math.h>
 
 #define JAMEET_MAX_SEQLOCK_RETRIES      3
 #define JAMEET_MAX_HEARTBEAT_AGE_MS     500ULL
@@ -24,7 +23,9 @@ static inline float sanitize_sample(uint32_t rawBits) {
         return 0.0f; /* NaN or Infinity -> clamp to silence */
     }
 #else
-    if (isnan(conv.f) || isinf(conv.f)) {
+    /* Non-kernel test environment */
+    uint32_t exp = (rawBits >> 23) & 0xFF;
+    if (exp == 0xFF) {
         return 0.0f;
     }
 #endif
@@ -56,7 +57,11 @@ uint32_t JaMeetKernelConsumer_ReadFloatFrames(
 
     if (segment->header.magic != JAMEET_SHM_MAGIC ||
         segment->header.abiVersion != JAMEET_ABI_VERSION ||
-        segment->header.totalFrames != JAMEET_TOTAL_FRAMES ||
+        segment->header.headerSizeBytes != sizeof(JaMeetSharedHeader) ||
+        segment->header.totalSizeBytes != sizeof(JaMeetSharedSegment) ||
+        segment->header.totalCapacityFrames != JAMEET_TOTAL_FRAMES ||
+        segment->header.framesPerSlot != JAMEET_SLOT_FRAMES ||
+        segment->header.slotCount != JAMEET_SLOT_COUNT ||
         segment->header.channels != JAMEET_CHANNELS ||
         segment->header.sampleRate != JAMEET_SAMPLE_RATE) {
         memset(outFloatPcm, 0, totalSamples * sizeof(float));
@@ -64,12 +69,13 @@ uint32_t JaMeetKernelConsumer_ReadFloatFrames(
     }
 
     /* 2. Heartbeat & Inactivity Verification */
-    uint64_t lastHeartbeat = segment->header.lastHeartbeatMs;
+    uint64_t lastHeartbeat = segment->header.heartbeatMs;
     uint32_t isVoiceActive = segment->header.isVoiceActive;
-    uint64_t currentEpoch = segment->header.producerGeneration;
+    uint64_t currentGeneration = segment->header.producerGeneration;
+    uint64_t writeSequence = segment->header.writeSequence;
 
     bool isHeartbeatValid = (nowMs >= lastHeartbeat) && ((nowMs - lastHeartbeat) <= JAMEET_MAX_HEARTBEAT_AGE_MS);
-    if (!isVoiceActive || !isHeartbeatValid || currentEpoch == 0) {
+    if (!isVoiceActive || !isHeartbeatValid || currentGeneration == 0 || writeSequence == 0) {
         memset(outFloatPcm, 0, totalSamples * sizeof(float));
         if (consumer) {
             consumer->active = false;
@@ -77,22 +83,43 @@ uint32_t JaMeetKernelConsumer_ReadFloatFrames(
         return frameCount;
     }
 
-    /* 3. Epoch Synchronization */
+    /* 3. Generation / Epoch Synchronization */
     if (consumer) {
-        if (!consumer->initialized || consumer->lastObservedGeneration != currentEpoch) {
-            consumer->lastObservedGeneration = currentEpoch;
+        if (!consumer->initialized || consumer->lastObservedGeneration != currentGeneration) {
+            consumer->lastObservedGeneration = currentGeneration;
             consumer->initialized = true;
             consumer->active = true;
-            uint64_t prodFrames = segment->header.totalProducedFrames;
-            consumer->lastConsumerFrame = (prodFrames > JAMEET_SLOT_FRAMES) ? (prodFrames - JAMEET_SLOT_FRAMES) : 0;
+            consumer->lastConsumerFrame = (writeSequence > JAMEET_SLOT_FRAMES) ? (writeSequence - JAMEET_SLOT_FRAMES) : 0;
         }
     }
 
-    /* 4. Slot Reading with Seqlock Parity and Index Bitmasking */
+    /* 4. Bound Requested Target Range Against Ring Geometry */
+    uint64_t targetFrame = consumer ? consumer->lastConsumerFrame : (writeSequence > frameCount ? writeSequence - frameCount : 0);
+
+    /* If target is ahead of produced audio, clamp to silence */
+    if (targetFrame >= writeSequence) {
+        memset(outFloatPcm, 0, totalSamples * sizeof(float));
+        return frameCount;
+    }
+
+    /* If target has been overwritten (lagged beyond ring buffer capacity), fast-forward */
+    if (targetFrame + JAMEET_TOTAL_FRAMES < writeSequence) {
+        targetFrame = (writeSequence > JAMEET_TOTAL_FRAMES) ? (writeSequence - JAMEET_TOTAL_FRAMES / 2) : 0;
+    }
+
+    /* 5. Slot Reading with Seqlock Parity and Untrusted Value Hardening */
     uint32_t framesDelivered = 0;
-    uint64_t targetFrame = consumer ? consumer->lastConsumerFrame : (segment->header.totalProducedFrames > frameCount ? segment->header.totalProducedFrames - frameCount : 0);
 
     while (framesDelivered < frameCount) {
+        /* Check if we've reached current produced writeSequence */
+        if (targetFrame >= writeSequence) {
+            /* Remaining frames are not produced yet -> exact digital silence */
+            uint32_t remainingFrames = frameCount - framesDelivered;
+            memset(&outFloatPcm[framesDelivered * JAMEET_CHANNELS], 0, remainingFrames * JAMEET_CHANNELS * sizeof(float));
+            framesDelivered = frameCount;
+            break;
+        }
+
         uint32_t slotIdx = (uint32_t)((targetFrame / JAMEET_SLOT_FRAMES) & JAMEET_SLOT_MASK);
         const JaMeetAudioSlot* slot = &segment->slots[slotIdx];
 
@@ -113,9 +140,20 @@ uint32_t JaMeetKernelConsumer_ReadFloatFrames(
                 continue; /* Writer in progress */
             }
 
+            /* Verify slot belongs to the current active generation */
+            if (slot->producerGeneration != currentGeneration) {
+                break;
+            }
+
+            /* Verify slot covers the target frame */
+            uint64_t slotStart = slot->slotStartFrame;
             uint32_t validFrames = slot->validFrames;
             if (validFrames > JAMEET_SLOT_FRAMES) {
                 validFrames = JAMEET_SLOT_FRAMES; /* Clamp untrusted validFrames */
+            }
+
+            if (targetFrame < slotStart || targetFrame >= slotStart + validFrames) {
+                break; /* Target frame outside valid produced range in this slot */
             }
 
             uint32_t samplesToRead = framesToCopy * JAMEET_CHANNELS;

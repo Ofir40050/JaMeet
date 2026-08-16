@@ -6,7 +6,7 @@ static HANDLE gSectionHandle = NULL;
 static JaMeetSharedSegment* gKernelSharedSegment = NULL;
 static SIZE_T gKernelViewSize = 0;
 
-static KSPIN_LOCK gProducerLock;
+static FAST_MUTEX gProducerMutex;
 static PEPROCESS gProducerProcess = NULL;
 static HANDLE gProducerProcessHandle = NULL;
 static PFILE_OBJECT gActiveProducerFileObject = NULL;
@@ -23,7 +23,7 @@ JaMeetSharedSegment* JaMeetDispatch_GetKernelSharedSegment(void) {
 }
 
 NTSTATUS JaMeetDispatch_InitSection(void) {
-    KeInitializeSpinLock(&gProducerLock);
+    ExInitializeFastMutex(&gProducerMutex);
 
     LARGE_INTEGER sectionSize;
     sectionSize.QuadPart = sizeof(JaMeetSharedSegment);
@@ -63,25 +63,23 @@ NTSTATUS JaMeetDispatch_InitSection(void) {
         return status;
     }
 
-    /* Initialize shared segment format with zero initial generation */
+    /* Initialize shared segment format with exact authoritative ABI fields */
     memset(gKernelSharedSegment, 0, sizeof(JaMeetSharedSegment));
     gKernelSharedSegment->header.magic = JAMEET_SHM_MAGIC;
     gKernelSharedSegment->header.abiVersion = JAMEET_ABI_VERSION;
     gKernelSharedSegment->header.headerSizeBytes = sizeof(JaMeetSharedHeader);
-    gKernelSharedSegment->header.slotSizeBytes = sizeof(JaMeetAudioSlot);
-    gKernelSharedSegment->header.totalSegmentSizeBytes = sizeof(JaMeetSharedSegment);
-    gKernelSharedSegment->header.slotCount = JAMEET_SLOT_COUNT;
-    gKernelSharedSegment->header.slotFrames = JAMEET_SLOT_FRAMES;
-    gKernelSharedSegment->header.totalFrames = JAMEET_TOTAL_FRAMES;
+    gKernelSharedSegment->header.totalSizeBytes = sizeof(JaMeetSharedSegment);
     gKernelSharedSegment->header.sampleRate = JAMEET_SAMPLE_RATE;
     gKernelSharedSegment->header.channels = JAMEET_CHANNELS;
+    gKernelSharedSegment->header.slotCount = JAMEET_SLOT_COUNT;
+    gKernelSharedSegment->header.framesPerSlot = JAMEET_SLOT_FRAMES;
+    gKernelSharedSegment->header.totalCapacityFrames = JAMEET_TOTAL_FRAMES;
 
     return STATUS_SUCCESS;
 }
 
 void JaMeetDispatch_TeardownSection(void) {
-    KIRQL oldIrql;
-    KeAcquireSpinLock(&gProducerLock, &oldIrql);
+    ExAcquireFastMutex(&gProducerMutex);
 
     if (gProducerProcessHandle != NULL && gUserViewBaseAddress != NULL) {
         ZwUnmapViewOfSection(gProducerProcessHandle, gUserViewBaseAddress);
@@ -95,7 +93,7 @@ void JaMeetDispatch_TeardownSection(void) {
     }
     gActiveProducerFileObject = NULL;
 
-    KeReleaseSpinLock(&gProducerLock, oldIrql);
+    ExReleaseFastMutex(&gProducerMutex);
 
     if (gKernelSharedSegment != NULL) {
         ZwUnmapViewOfSection(ZwCurrentProcess(), (PVOID)gKernelSharedSegment);
@@ -131,12 +129,11 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
             return STATUS_INVALID_PARAMETER;
         }
 
-        KIRQL oldIrql;
-        KeAcquireSpinLock(&gProducerLock, &oldIrql);
+        ExAcquireFastMutex(&gProducerMutex);
 
         /* Single producer mutual exclusion: reject second writer */
         if (gActiveProducerFileObject != NULL || gProducerProcessHandle != NULL) {
-            KeReleaseSpinLock(&gProducerLock, oldIrql);
+            ExReleaseFastMutex(&gProducerMutex);
             Irp->IoStatus.Status = STATUS_DEVICE_BUSY;
             Irp->IoStatus.Information = 0;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -164,7 +161,7 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
         if (!NT_SUCCESS(status)) {
             ObDereferenceObject(gProducerProcess);
             gProducerProcess = NULL;
-            KeReleaseSpinLock(&gProducerLock, oldIrql);
+            ExReleaseFastMutex(&gProducerMutex);
             Irp->IoStatus.Status = status;
             Irp->IoStatus.Information = 0;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -192,7 +189,7 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
             gProducerProcessHandle = NULL;
             ObDereferenceObject(gProducerProcess);
             gProducerProcess = NULL;
-            KeReleaseSpinLock(&gProducerLock, oldIrql);
+            ExReleaseFastMutex(&gProducerMutex);
             Irp->IoStatus.Status = status;
             Irp->IoStatus.Information = 0;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -206,15 +203,14 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
         resp->viewBase = (uint64_t)(uintptr_t)gUserViewBaseAddress;
         resp->viewSize = (uint64_t)gUserViewSize;
 
-        KeReleaseSpinLock(&gProducerLock, oldIrql);
+        ExReleaseFastMutex(&gProducerMutex);
 
         Irp->IoStatus.Status = STATUS_SUCCESS;
         Irp->IoStatus.Information = sizeof(JaMeetMapProducerViewResponse);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_SUCCESS;
     } else if (ioctlCode == IOCTL_JAMEET_UNMAP_PRODUCER_VIEW) {
-        KIRQL oldIrql;
-        KeAcquireSpinLock(&gProducerLock, &oldIrql);
+        ExAcquireFastMutex(&gProducerMutex);
 
         if (irpSp->FileObject == gActiveProducerFileObject && gProducerProcessHandle != NULL && gUserViewBaseAddress != NULL) {
             ZwUnmapViewOfSection(gProducerProcessHandle, gUserViewBaseAddress);
@@ -231,7 +227,7 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
             }
         }
 
-        KeReleaseSpinLock(&gProducerLock, oldIrql);
+        ExReleaseFastMutex(&gProducerMutex);
 
         Irp->IoStatus.Status = STATUS_SUCCESS;
         Irp->IoStatus.Information = 0;
@@ -248,15 +244,14 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
         JaMeetDriverStatusResponse* resp = (JaMeetDriverStatusResponse*)Irp->AssociatedIrp.SystemBuffer;
         memset(resp, 0, sizeof(JaMeetDriverStatusResponse));
 
-        KIRQL oldIrql;
-        KeAcquireSpinLock(&gProducerLock, &oldIrql);
+        ExAcquireFastMutex(&gProducerMutex);
         resp->isProducerConnected = (gActiveProducerFileObject != NULL) ? 1 : 0;
         if (gKernelSharedSegment != NULL) {
             resp->isVoiceActive = gKernelSharedSegment->header.isVoiceActive;
-            resp->lastHeartbeatMs = gKernelSharedSegment->header.lastHeartbeatMs;
+            resp->lastHeartbeatMs = gKernelSharedSegment->header.heartbeatMs;
         }
         resp->sampleRate = JAMEET_SAMPLE_RATE;
-        KeReleaseSpinLock(&gProducerLock, oldIrql);
+        ExReleaseFastMutex(&gProducerMutex);
 
         Irp->IoStatus.Status = STATUS_SUCCESS;
         Irp->IoStatus.Information = sizeof(JaMeetDriverStatusResponse);
@@ -278,8 +273,7 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
 static NTSTATUS JaMeetDispatch_HandleCleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
 
-    KIRQL oldIrql;
-    KeAcquireSpinLock(&gProducerLock, &oldIrql);
+    ExAcquireFastMutex(&gProducerMutex);
 
     if (irpSp->FileObject == gActiveProducerFileObject) {
         /* Process-specific user memory unmapping using retained kernel handle */
@@ -299,7 +293,7 @@ static NTSTATUS JaMeetDispatch_HandleCleanup(PDEVICE_OBJECT DeviceObject, PIRP I
         }
     }
 
-    KeReleaseSpinLock(&gProducerLock, oldIrql);
+    ExReleaseFastMutex(&gProducerMutex);
 
     /* Forward to PortCls cleanup handler */
     if (gPortClsCleanup) {

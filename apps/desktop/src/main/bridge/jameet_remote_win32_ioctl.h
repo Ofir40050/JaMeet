@@ -2,7 +2,7 @@
 #define JAMEET_REMOTE_WIN32_IOCTL_H
 
 #ifdef _WIN32
-#include <initguid.h>
+#include <guiddef.h>
 #else
 #include <stdint.h>
 #include <stdbool.h>
@@ -10,8 +10,12 @@
 
 /* Device Interface GUID for JaMeet Remote Control: {8F58E71A-3BC8-4D33-9847-7E1CA25D6B90} */
 #ifdef DEFINE_GUID
+#ifdef INITGUID
 DEFINE_GUID(GUID_DEVINTERFACE_JAMEET_REMOTE,
     0x8F58E71A, 0x3BC8, 0x4D33, 0x98, 0x47, 0x7E, 0x1C, 0xA2, 0x5D, 0x6B, 0x90);
+#else
+EXTERN_C const GUID GUID_DEVINTERFACE_JAMEET_REMOTE;
+#endif
 #endif
 
 #define JAMEET_DEVICE_TYPE              0x8542U
@@ -48,7 +52,7 @@ typedef struct JaMeetMapProducerViewResponse {
     uint32_t status;        /* 0 = success, non-zero = error */
     uint32_t abiVersion;    /* JAMEET_ABI_VERSION (1) */
     uint64_t viewBase;      /* User-mode base address where section is mapped */
-    uint64_t viewSize;      /* Mapped section size in bytes */
+    uint64_t viewSize;      /* Mapped section size in bytes (139392) */
 } JaMeetMapProducerViewResponse;
 
 typedef struct JaMeetDriverStatusResponse {

@@ -2,8 +2,94 @@
 
 #ifdef _WIN32
 
-static const PHYSICALCONNECTIONTABLE TopologyPhysicalConnections[] = {
-    { 0, NULL, 0, NULL }
+static const KSDATARANGE PinDataRangesBridge[] = {
+    {
+        sizeof(KSDATARANGE),
+        0,
+        0,
+        0,
+        STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
+        STATICGUIDOF(KSDATAFORMAT_SUBTYPE_ANALOG),
+        STATICGUIDOF(KSDATAFORMAT_SPECIFIER_NONE)
+    }
+};
+
+static const PKSDATARANGE PinDataRangeBridgePointers[] = {
+    (PKSDATARANGE)&PinDataRangesBridge[0]
+};
+
+/*
+ * Topology Pins:
+ * Pin 0: Bridge Pin (connected to WaveRT pin 1)
+ * Pin 1: Physical Pin (Mic / Recording source endpoint)
+ */
+static const PCPIN_DESCRIPTOR TopoPins[] = {
+    {
+        0, 0, 0,
+        NULL,
+        {
+            0, NULL,
+            0, NULL,
+            SIZEOF_ARRAY(PinDataRangeBridgePointers),
+            PinDataRangeBridgePointers,
+            KSPIN_DATAFLOW_OUT,
+            KSPIN_COMMUNICATION_NONE,
+            (GUID*)&KSCATEGORY_AUDIO,
+            NULL,
+            0
+        }
+    },
+    {
+        0, 0, 0,
+        NULL,
+        {
+            0, NULL,
+            0, NULL,
+            SIZEOF_ARRAY(PinDataRangeBridgePointers),
+            PinDataRangeBridgePointers,
+            KSPIN_DATAFLOW_IN,
+            KSPIN_COMMUNICATION_NONE,
+            (GUID*)&KSCATEGORY_AUDIO,
+            (GUID*)&KSNODETYPE_MICROPHONE,
+            0
+        }
+    }
+};
+
+static const PCNODE_DESCRIPTOR TopoNodes[] = {
+    {
+        0,
+        NULL,
+        (GUID*)&KSNODETYPE_ADC,
+        NULL
+    }
+};
+
+static const PCCONNECTION_DESCRIPTOR TopoConnections[] = {
+    { PCFILTER_NODE, 1, 0, 1 },
+    { 0, 0, PCFILTER_NODE, 0 }
+};
+
+static const GUID TopoCategories[] = {
+    STATICGUIDOF(KSCATEGORY_AUDIO),
+    STATICGUIDOF(KSCATEGORY_CAPTURE),
+    STATICGUIDOF(KSCATEGORY_TOPOLOGY)
+};
+
+static const PCFILTER_DESCRIPTOR TopoFilterDescriptor = {
+    0,
+    NULL,
+    sizeof(PCPIN_DESCRIPTOR),
+    SIZEOF_ARRAY(TopoPins),
+    TopoPins,
+    sizeof(PCNODE_DESCRIPTOR),
+    SIZEOF_ARRAY(TopoNodes),
+    TopoNodes,
+    sizeof(PCCONNECTION_DESCRIPTOR),
+    SIZEOF_ARRAY(TopoConnections),
+    TopoConnections,
+    SIZEOF_ARRAY(TopoCategories),
+    TopoCategories
 };
 
 class CMiniportTopology : public IMiniportTopology, public CUnknown {
@@ -35,7 +121,7 @@ public:
 
     STDMETHODIMP GetDescription(OUT PPCFILTER_DESCRIPTOR* Description) {
         if (!Description) return STATUS_INVALID_PARAMETER;
-        *Description = NULL;
+        *Description = (PPCFILTER_DESCRIPTOR)&TopoFilterDescriptor;
         return STATUS_SUCCESS;
     }
 
