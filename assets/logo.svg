@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Background gradient: deep navy with subtle radial highlight -->
+    <radialGradient id="bgGrad" cx="50%" cy="35%" r="70%" fx="50%" fy="25%">
+      <stop offset="0%" stop-color="#1a3a9e"/>
+      <stop offset="60%" stop-color="#0e2070"/>
+      <stop offset="100%" stop-color="#091550"/>
+    </radialGradient>
+
+    <!-- Outer glow / drop shadow for the card -->
+    <filter id="outerGlow" x="-12%" y="-12%" width="124%" height="124%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="28" result="blur"/>
+      <feFlood flood-color="#4466ff" flood-opacity="0.35" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Soft drop shadow for the J letter -->
+    <filter id="jShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="6" dy="8" stdDeviation="12" flood-color="#07104a" flood-opacity="0.55"/>
+    </filter>
+
+    <!-- Glow filter for the waveform bars -->
+    <filter id="waveGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Wave bar gradient: cyan to blue -->
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00e5ff"/>
+      <stop offset="100%" stop-color="#1a7aff"/>
+    </linearGradient>
+
+    <!-- Clip to rounded square -->
+    <clipPath id="roundedClip">
+      <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224"/>
+    </clipPath>
+  </defs>
+
+  <!-- === CARD BACKGROUND === -->
+  <g filter="url(#outerGlow)">
+    <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#bgGrad)"/>
+  </g>
+
+  <!-- === INNER HIGHLIGHT (top subtle sheen) === -->
+  <ellipse cx="512" cy="160" rx="340" ry="120" fill="white" opacity="0.06"/>
+
+  <!-- === J LETTER – shadow/depth layer (slightly offset, darker) === -->
+  <g clip-path="url(#roundedClip)">
+    <!-- Back shadow layer of J -->
+    <g opacity="0.45" transform="translate(16, 14)">
+      <path
+        d="M 590 150 C 590 150 620 150 620 180 L 620 615 C 620 730 540 820 420 820 C 300 820 220 745 210 650 L 210 610 C 210 580 235 558 265 560 C 295 562 318 586 318 616 L 318 642 C 322 700 362 730 420 730 C 490 730 520 688 520 615 L 520 245 L 380 245 C 350 245 326 221 326 191 C 326 161 350 137 380 137 L 590 137 Z"
+        fill="#b0bfe8"
+      />
+    </g>
+
+    <!-- Main J letter -->
+    <g filter="url(#jShadow)">
+      <path
+        d="M 590 150 C 590 150 620 150 620 180 L 620 615 C 620 730 540 820 420 820 C 300 820 220 745 210 650 L 210 610 C 210 580 235 558 265 560 C 295 562 318 586 318 616 L 318 642 C 322 700 362 730 420 730 C 490 730 520 688 520 615 L 520 245 L 380 245 C 350 245 326 221 326 191 C 326 161 350 137 380 137 L 590 137 Z"
+        fill="#c8d8f4"
+      />
+    </g>
+
+    <!-- === AUDIO WAVEFORM BARS === -->
+    <g filter="url(#waveGlow)" fill="url(#waveGrad)">
+      <!-- Bar 1 - far left, short -->
+      <rect x="198" y="430" width="42" height="110" rx="21" ry="21"/>
+      <!-- Bar 2 - second left, medium -->
+      <rect x="264" y="370" width="42" height="230" rx="21" ry="21"/>
+      <!-- Bar 3 - center, tallest -->
+      <rect x="330" y="310" width="44" height="350" rx="22" ry="22"/>
+      <!-- Bar 4 - second right, tall -->
+      <rect x="398" y="345" width="44" height="280" rx="22" ry="22"/>
+      <!-- Bar 5 - far right, short -->
+      <rect x="466" y="430" width="42" height="110" rx="21" ry="21"/>
+    </g>
+  </g>
+</svg>
