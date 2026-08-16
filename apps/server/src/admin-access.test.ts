@@ -3,10 +3,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { UserStore } from './auth.js';
+import { createApp } from './app.js';
+import { loadConfig } from './config.js';
 import {
   updateAccountSessionAccess,
   parseCliArgs,
   runCli,
+  writeAdminRuntimeFile,
+  getAdminRuntimeFilePath,
+  cleanupAdminRuntimeFile,
   ALLOWED_SESSION_ACCESS_STATES
 } from './admin-access.js';
 
@@ -157,7 +162,7 @@ describe('Admin Session Access CLI & Management Tool', () => {
     });
   });
 
-  it('executes runCli successfully and handles error cases cleanly', async () => {
+  it('executes runCli offline and safely acquires lockfile', async () => {
     const store = new UserStore(testDir);
     await store.register({
       username: 'cli_artist',
@@ -170,7 +175,7 @@ describe('Admin Session Access CLI & Management Tool', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     try {
-      // 1. Success execution
+      // 1. Success execution offline
       const exitCode1 = await runCli(['cli_artist', 'beta', '--data-dir', testDir]);
       expect(exitCode1).toBe(0);
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Updated session access successfully'));
@@ -197,6 +202,178 @@ describe('Admin Session Access CLI & Management Tool', () => {
       const exitCodeNoArgs = await runCli([]);
       expect(exitCodeNoArgs).toBe(1);
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('JaMeet Admin Session Access Tool'));
+    } finally {
+      consoleLogSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('executes runCli against a live running server process, updating server in-memory state and disk', async () => {
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      DATA_DIR: testDir,
+      TURN_SHARED_SECRET: 'test-secret-123456789'
+    });
+
+    const { app, userStore, runtimeAdminToken } = await createApp(config);
+    await app.listen({ host: '127.0.0.1', port: 0 });
+
+    try {
+      // Register account on the running server
+      const reg = await userStore.register({
+        username: 'live_producer',
+        email: 'live@example.com',
+        password: 'LivePassword123!',
+        displayName: 'Live Producer'
+      });
+
+      expect(userStore.getStoredUser(reg.user.id)?.sessionAccess).toBe('blocked');
+
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        // Run CLI pointing to testDir where the live server runtime file exists
+        const exitCode = await runCli(['live_producer', 'paid', '--data-dir', testDir]);
+        expect(exitCode).toBe(0);
+        expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Updated session access successfully'));
+        expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('New Access: paid'));
+
+        // Crucial test: verify the live server's in-memory UserStore immediately has 'paid'
+        expect(userStore.getStoredUser(reg.user.id)?.sessionAccess).toBe('paid');
+
+        // And verify persisted to disk
+        const raw = fs.readFileSync(path.join(testDir, 'jameet-accounts.json'), 'utf-8');
+        const diskDb = JSON.parse(raw);
+        expect(diskDb.users[0].sessionAccess).toBe('paid');
+      } finally {
+        consoleLogSpy.mockRestore();
+        consoleErrorSpy.mockRestore();
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('strictly rejects unauthorized, invalid, or remote requests on internal admin route', async () => {
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      DATA_DIR: testDir,
+      TURN_SHARED_SECRET: 'test-secret-123456789'
+    });
+
+    const { app, userStore, runtimeAdminToken } = await createApp(config);
+
+    try {
+      await userStore.register({
+        username: 'target_user',
+        email: 'target@example.com',
+        password: 'Password123!',
+        displayName: 'Target'
+      });
+
+      // 1. Missing Authorization header -> 401
+      const resNoAuth = await app.inject({
+        method: 'POST',
+        url: '/api/internal/admin/session-access',
+        payload: { identifier: 'target_user', access: 'beta' }
+      });
+      expect(resNoAuth.statusCode).toBe(401);
+
+      // 2. Invalid token -> 401
+      const resBadAuth = await app.inject({
+        method: 'POST',
+        url: '/api/internal/admin/session-access',
+        headers: { authorization: 'Bearer bad-token' },
+        payload: { identifier: 'target_user', access: 'beta' }
+      });
+      expect(resBadAuth.statusCode).toBe(401);
+
+      // 3. Invalid payload / missing fields -> 400
+      const resBadPayload = await app.inject({
+        method: 'POST',
+        url: '/api/internal/admin/session-access',
+        headers: { authorization: `Bearer ${runtimeAdminToken}` },
+        payload: { access: 'beta' }
+      });
+      expect(resBadPayload.statusCode).toBe(400);
+
+      // 4. Invalid sessionAccess state -> 400
+      const resInvalidState = await app.inject({
+        method: 'POST',
+        url: '/api/internal/admin/session-access',
+        headers: { authorization: `Bearer ${runtimeAdminToken}` },
+        payload: { identifier: 'target_user', access: 'unlimited' }
+      });
+      expect(resInvalidState.statusCode).toBe(400);
+
+      // 5. Non-existent account -> 404
+      const resNotFound = await app.inject({
+        method: 'POST',
+        url: '/api/internal/admin/session-access',
+        headers: { authorization: `Bearer ${runtimeAdminToken}` },
+        payload: { identifier: 'unknown_account', access: 'beta' }
+      });
+      expect(resNotFound.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('recovers from stale runtime file when server process is dead', async () => {
+    const store = new UserStore(testDir);
+    await store.register({
+      username: 'offline_user',
+      email: 'offline@example.com',
+      password: 'Password123!',
+      displayName: 'Offline User'
+    });
+
+    // Write a fake stale runtime file with a dead PID (e.g. 9999999)
+    writeAdminRuntimeFile(testDir, {
+      pid: 9999999,
+      port: 59999,
+      adminToken: 'dead-token',
+      dataDir: testDir
+    });
+
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      const exitCode = await runCli(['offline_user', 'beta', '--data-dir', testDir]);
+      expect(exitCode).toBe(0);
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Updated session access successfully'));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('New Access: beta'));
+
+      // Verify stale runtime file was removed
+      expect(fs.existsSync(getAdminRuntimeFilePath(testDir))).toBe(false);
+    } finally {
+      consoleLogSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('fails safely when an offline lock collision occurs', async () => {
+    const store = new UserStore(testDir);
+    await store.register({
+      username: 'lock_user',
+      email: 'lock@example.com',
+      password: 'Password123!',
+      displayName: 'Lock User'
+    });
+
+    // Create active offline lock
+    const lockFile = path.join(testDir, '.admin-offline.lock');
+    fs.writeFileSync(lockFile, JSON.stringify({ pid: 12345, createdAt: Date.now() }), 'utf-8');
+
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      const exitCode = await runCli(['lock_user', 'beta', '--data-dir', testDir]);
+      expect(exitCode).toBe(1);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Another administration process is currently modifying the database'));
     } finally {
       consoleLogSpy.mockRestore();
       consoleErrorSpy.mockRestore();

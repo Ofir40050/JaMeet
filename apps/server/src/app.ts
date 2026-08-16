@@ -22,6 +22,7 @@ import { UserStore, authorizeSessionAccess } from './auth.js';
 import { ProjectStore } from './projects.js';
 import { createIceServers } from './turn.js';
 import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from './rate-limiter.js';
+import { updateAccountSessionAccess, writeAdminRuntimeFile, cleanupAdminRuntimeFile } from './admin-access.js';
 
 type SocketData = { code?: string; participantId?: string; identity?: ParticipantIdentity; isWaiting?: boolean; limiter?: SocketRateLimiter };
 
@@ -105,6 +106,57 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   const userStore = new UserStore(dataDir);
   const projectStore = new ProjectStore(dataDir);
   const rooms = new RoomStore(config.DISCONNECT_GRACE_MS, config.EMPTY_ROOM_TTL_MS);
+  const runtimeAdminToken = randomUUID();
+
+  // Internal Loopback-Only Administration Endpoint
+  app.post('/api/internal/admin/session-access', async (request, reply) => {
+    const remoteIp = request.socket.remoteAddress || request.ip;
+    const isLoopback = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
+    if (!isLoopback) {
+      return reply.code(403).send({ ok: false, message: 'Forbidden: administration is only available via local loopback.' });
+    }
+
+    const authHeader = request.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    if (!token || token !== runtimeAdminToken) {
+      return reply.code(401).send({ ok: false, message: 'Unauthorized: invalid or missing administration token.' });
+    }
+
+    const body = request.body as any;
+    if (!body || typeof body !== 'object' || !body.identifier || !body.access) {
+      return reply.code(400).send({ ok: false, message: 'Missing required identifier or access state.' });
+    }
+
+    try {
+      const result = updateAccountSessionAccess(userStore, body.identifier, body.access);
+      return reply.send({ ok: true, ...result });
+    } catch (err: any) {
+      const isNotFound = err.message?.includes('Account not found');
+      const isInvalid = err.message?.includes('Invalid sessionAccess') || err.message?.includes('identifier is required');
+      return reply.code(isNotFound ? 404 : (isInvalid ? 400 : 500)).send({ ok: false, message: err.message || 'Failed to update session access.' });
+    }
+  });
+
+  const syncRuntimeInfo = () => {
+    const address = app.server.address();
+    const port = typeof address === 'object' && address ? address.port : config.PORT;
+    writeAdminRuntimeFile(dataDir, {
+      pid: process.pid,
+      port,
+      adminToken: runtimeAdminToken,
+      dataDir
+    });
+  };
+
+  if (app.server.listening) {
+    syncRuntimeInfo();
+  } else {
+    app.server.once('listening', syncRuntimeInfo);
+  }
+
+  app.addHook('onClose', async () => {
+    cleanupAdminRuntimeFile(dataDir);
+  });
 
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/health', async () => ({ ok: true }));
@@ -1314,6 +1366,6 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     socket.on('disconnect', () => leave(false));
   });
 
-  return { app, io, rooms, userStore, projectStore };
+  return { app, io, rooms, userStore, projectStore, runtimeAdminToken };
 }
 

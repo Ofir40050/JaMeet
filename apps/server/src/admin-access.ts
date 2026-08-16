@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import 'dotenv/config';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { UserStore, type SessionAccessState } from './auth.js';
@@ -12,6 +13,42 @@ export interface AdminAccessResult {
   email: string;
   previousAccess: SessionAccessState;
   newAccess: SessionAccessState;
+}
+
+export interface AdminRuntimeInfo {
+  pid: number;
+  port: number;
+  adminToken: string;
+  dataDir: string;
+  createdAt: number;
+}
+
+export function getAdminRuntimeFilePath(dataDir: string): string {
+  return path.join(dataDir, '.admin-runtime.json');
+}
+
+export function writeAdminRuntimeFile(dataDir: string, info: Omit<AdminRuntimeInfo, 'createdAt'>): void {
+  try {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    const filePath = getAdminRuntimeFilePath(dataDir);
+    const content: AdminRuntimeInfo = { ...info, createdAt: Date.now() };
+    fs.writeFileSync(filePath, JSON.stringify(content, null, 2), { mode: 0o600, encoding: 'utf-8' });
+  } catch {
+    // Non-fatal if filesystem is unwritable in test fixtures
+  }
+}
+
+export function cleanupAdminRuntimeFile(dataDir: string): void {
+  try {
+    const filePath = getAdminRuntimeFilePath(dataDir);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch {
+    // ignore
+  }
 }
 
 export function updateAccountSessionAccess(
@@ -107,8 +144,100 @@ Examples:
     return options.help ? 0 : 1;
   }
 
+  const dataDir = options.dataDir ?? process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
+  const runtimeFilePath = getAdminRuntimeFilePath(dataDir);
+
+  let isServerRunning = false;
+  let runtimeInfo: AdminRuntimeInfo | null = null;
+
+  if (fs.existsSync(runtimeFilePath)) {
+    try {
+      const raw = fs.readFileSync(runtimeFilePath, 'utf-8');
+      runtimeInfo = JSON.parse(raw);
+      if (runtimeInfo && runtimeInfo.pid && runtimeInfo.port && runtimeInfo.adminToken) {
+        try {
+          process.kill(runtimeInfo.pid, 0);
+          isServerRunning = true;
+        } catch {
+          isServerRunning = false;
+          cleanupAdminRuntimeFile(dataDir);
+        }
+      }
+    } catch {
+      isServerRunning = false;
+    }
+  }
+
+  if (isServerRunning && runtimeInfo) {
+    // Execute via live running server
+    try {
+      const url = `http://127.0.0.1:${runtimeInfo.port}/api/internal/admin/session-access`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${runtimeInfo.adminToken}`
+        },
+        body: JSON.stringify({
+          identifier: options.identifier,
+          access: options.access
+        })
+      });
+
+      const data = (await response.json()) as any;
+      if (!response.ok || !data.ok) {
+        console.error(`Error: ${data.message || `Server administration error (${response.status})`}`);
+        return 1;
+      }
+
+      console.log(`Updated session access successfully:`);
+      console.log(`  Account: ${data.email} (Username: ${data.username})`);
+      console.log(`  User ID: ${data.userId}`);
+      console.log(`  Previous Access: ${data.previousAccess}`);
+      console.log(`  New Access: ${data.newAccess}`);
+      return 0;
+    } catch (err: any) {
+      if (err.code === 'ECONNREFUSED' || err.cause?.code === 'ECONNREFUSED') {
+        cleanupAdminRuntimeFile(dataDir);
+      } else {
+        console.error(`Error communicating with live server: ${err.message || err}`);
+        return 1;
+      }
+    }
+  }
+
+  // Explicit safe offline mode: acquire single-writer offline lock
+  if (!fs.existsSync(dataDir)) {
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+    } catch {}
+  }
+  const lockFilePath = path.join(dataDir, '.admin-offline.lock');
+  let lockFd: number | null = null;
   try {
-    const dataDir = options.dataDir ?? process.env.DATA_DIR;
+    lockFd = fs.openSync(lockFilePath, 'wx');
+    fs.writeFileSync(lockFd, JSON.stringify({ pid: process.pid, createdAt: Date.now() }), 'utf-8');
+  } catch (err: any) {
+    if (err.code === 'EEXIST') {
+      console.error(`Error: Another administration process is currently modifying the database (${lockFilePath}).`);
+      return 1;
+    }
+  }
+
+  try {
+    // Verify server did not start up while acquiring lock
+    if (fs.existsSync(runtimeFilePath)) {
+      try {
+        const raw = fs.readFileSync(runtimeFilePath, 'utf-8');
+        const info = JSON.parse(raw);
+        if (info?.pid) {
+          process.kill(info.pid, 0);
+          console.error('Error: JaMeet server started concurrently. Please re-run the command to execute via the live server.');
+          return 1;
+        }
+      } catch {}
+    }
+
     const userStore = new UserStore(dataDir);
     const result = updateAccountSessionAccess(userStore, options.identifier, options.access);
 
@@ -121,6 +250,15 @@ Examples:
   } catch (err: any) {
     console.error(`Error: ${err.message || err}`);
     return 1;
+  } finally {
+    if (lockFd !== null) {
+      try {
+        fs.closeSync(lockFd);
+        if (fs.existsSync(lockFilePath)) {
+          fs.unlinkSync(lockFilePath);
+        }
+      } catch {}
+    }
   }
 }
 
