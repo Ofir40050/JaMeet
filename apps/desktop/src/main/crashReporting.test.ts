@@ -450,6 +450,37 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
       fetchSpyValid.mockRestore();
     });
 
+    it('reliably clears activeFlushPromise on empty queue flush so subsequent crash deliveries are not blocked', async () => {
+      // 1. Flush on empty queue
+      expect(testLogger.loadPendingQueue()).toHaveLength(0);
+      await testLogger.flushPendingCrashes();
+
+      // 2. Mock fetch for subsequent crash delivery
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => ({
+        status: 201,
+        ok: true,
+        json: async () => ({ ok: true, reportId: 'subsequent-crash-1', duplicate: false })
+      } as any));
+
+      // 3. Record new crash after empty flush
+      testLogger.recordCrash({
+        reportId: 'subsequent-crash-1',
+        process: 'main',
+        reason: 'Crash after empty flush'
+      });
+
+      // 4. Flush must execute and not be blocked by a stale activeFlushPromise
+      await testLogger.flushPendingCrashes();
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/api/crashes'),
+        expect.objectContaining({ method: 'POST' })
+      );
+      expect(testLogger.loadPendingQueue()).toHaveLength(0);
+
+      fetchSpy.mockRestore();
+    });
+
     it('retains report in pending queue if delivery fails or server is unreachable', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED: Server unreachable'));
 

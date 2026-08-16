@@ -201,58 +201,58 @@ export class DesktopLogger {
       }
     } catch {}
 
-    this.activeFlushPromise = (async () => {
-      try {
-        const pending = this.loadPendingQueue();
-        if (!pending.length) return;
+    const flushTask = (async () => {
+      const pending = this.loadPendingQueue();
+      if (!pending.length) return;
 
-        const serverUrl = this.getTrustedServerUrl();
-        const endpoint = `${serverUrl}/api/crashes`;
+      const serverUrl = this.getTrustedServerUrl();
+      const endpoint = `${serverUrl}/api/crashes`;
 
-        for (const report of pending) {
-          if (!report.reportId) {
-            continue;
-          }
+      for (const report of pending) {
+        if (!report.reportId) {
+          continue;
+        }
 
-          try {
-            const res = await fetch(endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(report),
-              signal: AbortSignal.timeout(5000)
-            });
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(report),
+            signal: AbortSignal.timeout(5000)
+          });
 
-            if (res.status === 200 || res.status === 201) {
-              let isValidAck = false;
-              try {
-                const data = (await res.json()) as any;
-                if (data && typeof data === 'object' && data.ok === true && data.reportId === report.reportId) {
-                  isValidAck = true;
-                }
-              } catch {}
-
-              if (isValidAck) {
-                this.dequeuePendingCrash(report.reportId);
-              } else {
-                // Unconfirmed or malformed acknowledgement, retain in queue for future retry
-                break;
+          if (res.status === 200 || res.status === 201) {
+            let isValidAck = false;
+            try {
+              const data = (await res.json()) as any;
+              if (data && typeof data === 'object' && data.ok === true && data.reportId === report.reportId) {
+                isValidAck = true;
               }
-            } else if (res.status === 400) {
-              // Malformed/unacceptable report, remove from queue so it does not loop forever
+            } catch {}
+
+            if (isValidAck) {
               this.dequeuePendingCrash(report.reportId);
             } else {
-              // Server error (e.g. 500) or temporary issue, retain and retry on next startup/flusher run
+              // Unconfirmed or malformed acknowledgement, retain in queue for future retry
               break;
             }
-          } catch {
-            // Network failure, offline, or timeout - keep pending and retry later
+          } else if (res.status === 400) {
+            // Malformed/unacceptable report, remove from queue so it does not loop forever
+            this.dequeuePendingCrash(report.reportId);
+          } else {
+            // Server error (e.g. 500) or temporary issue, retain and retry on next startup/flusher run
             break;
           }
+        } catch {
+          // Network failure, offline, or timeout - keep pending and retry later
+          break;
         }
-      } finally {
-        this.activeFlushPromise = null;
       }
     })();
+
+    this.activeFlushPromise = flushTask.finally(() => {
+      this.activeFlushPromise = null;
+    });
 
     return this.activeFlushPromise;
   }
