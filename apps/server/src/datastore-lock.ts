@@ -3,6 +3,7 @@ import path from 'node:path';
 import lockfile from 'proper-lockfile';
 
 export const DATASTORE_LOCK_FILENAME = '.account-datastore.lock';
+export const DATASTORE_PROPER_LOCK_FILENAME = '.account-datastore.proper.lock';
 
 export interface DatastoreLockInfo {
   pid: number;
@@ -24,6 +25,10 @@ export function getDatastoreLockPath(dataDir: string): string {
   return path.join(dataDir, DATASTORE_LOCK_FILENAME);
 }
 
+export function getDatastoreProperLockPath(dataDir: string): string {
+  return path.join(dataDir, DATASTORE_PROPER_LOCK_FILENAME);
+}
+
 export function isProcessAlive(pid: number): boolean {
   if (typeof pid !== 'number' || isNaN(pid) || pid <= 0) return false;
   try {
@@ -39,10 +44,12 @@ export function isProcessAlive(pid: number): boolean {
 }
 
 export function isDatastoreLocked(dataDir: string): boolean {
-  const lockFilePath = getDatastoreLockPath(dataDir);
   try {
-    if (!fs.existsSync(lockFilePath)) return false;
-    return lockfile.checkSync(lockFilePath, { realpath: false });
+    if (!fs.existsSync(dataDir)) return false;
+    return lockfile.checkSync(dataDir, {
+      lockfilePath: getDatastoreProperLockPath(dataDir),
+      realpath: false
+    });
   } catch {
     return false;
   }
@@ -76,44 +83,13 @@ export function acquireDatastoreLock(dataDir: string, owner: 'server' | 'admin-c
   }
 
   const lockFilePath = getDatastoreLockPath(dataDir);
+  const properLockPath = getDatastoreProperLockPath(dataDir);
 
-  if (fs.existsSync(lockFilePath)) {
-    const raw = fs.readFileSync(lockFilePath, 'utf-8');
-    if (raw && raw.trim()) {
-      let parsed: any = null;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {}
-      if (!parsed || typeof parsed.pid !== 'number' || typeof parsed.owner !== 'string') {
-        throw new DatastoreLockError(
-          `Account datastore lock at ${lockFilePath} is present but lock ownership could not be safely established.`
-        );
-      }
-      if (isProcessAlive(parsed.pid) && parsed.pid !== process.pid) {
-        throw new DatastoreLockError(
-          `Account datastore lock is already held by live ${parsed.owner} (PID ${parsed.pid}) at ${lockFilePath}.`,
-          parsed as DatastoreLockInfo
-        );
-      }
-    } else {
-      // Empty or initializing file without parseable metadata: fail closed
-      throw new DatastoreLockError(
-        `Account datastore lock at ${lockFilePath} is present but lock ownership could not be safely established.`
-      );
-    }
-  } else {
-    try {
-      fs.writeFileSync(lockFilePath, '', { mode: 0o600, flag: 'wx' });
-    } catch (err: any) {
-      if (err.code !== 'EEXIST') {
-        throw new DatastoreLockError(`Failed to initialize datastore lock file at ${lockFilePath}: ${err.message || err}`);
-      }
-    }
-  }
-
+  // 1. Acquire exclusive ownership via proper-lockfile first without pre-creating any metadata file
   let releaseLock: () => void;
   try {
-    releaseLock = lockfile.lockSync(lockFilePath, {
+    releaseLock = lockfile.lockSync(dataDir, {
+      lockfilePath: properLockPath,
       stale: 10000,
       update: 3000,
       retries: 0,
@@ -121,6 +97,7 @@ export function acquireDatastoreLock(dataDir: string, owner: 'server' | 'admin-c
     });
   } catch (err: any) {
     if (err.code === 'ELOCKED') {
+      // Read informational metadata if available to improve the error message
       const lockInfo = readDatastoreLockInfo(dataDir);
       throw new DatastoreLockError(
         `Account datastore lock is already held by live ${lockInfo?.owner || 'process'} (PID ${lockInfo?.pid || 'unknown'}) at ${lockFilePath}.`,
@@ -130,6 +107,7 @@ export function acquireDatastoreLock(dataDir: string, owner: 'server' | 'admin-c
     throw new DatastoreLockError(`Failed to acquire datastore lock at ${lockFilePath}: ${err.message || err}`);
   }
 
+  // 2. Write informational metadata only after exclusive ownership has been successfully acquired
   const payload: DatastoreLockInfo = {
     pid: process.pid,
     owner,
@@ -147,16 +125,15 @@ export function acquireDatastoreLock(dataDir: string, owner: 'server' | 'admin-c
   const release = () => {
     if (released) return;
     released = true;
-    try {
-      releaseLock();
-    } catch {}
+    // Clean up informational metadata while exclusive ownership is still held
     try {
       if (fs.existsSync(lockFilePath)) {
-        const info = readDatastoreLockInfo(dataDir);
-        if (info?.pid === process.pid) {
-          fs.unlinkSync(lockFilePath);
-        }
+        fs.unlinkSync(lockFilePath);
       }
+    } catch {}
+    // Release library lock
+    try {
+      releaseLock();
     } catch {}
   };
 

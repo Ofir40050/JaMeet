@@ -407,70 +407,12 @@ describe('Admin Session Access CLI & Management Tool', () => {
     }
   });
 
-  it('refuses to treat a newly created initializing lock file as stale and fails closed', () => {
+  it('acquires lock and recovers safely even if an empty or unparseable metadata file was left on disk', () => {
     const lockPath = getDatastoreLockPath(testDir);
-    // Create an empty lock file as if process A just called openSync('wx')
-    fs.writeFileSync(lockPath, '', { mode: 0o600 });
-
-    // Process B attempting to acquire lock must fail closed rather than deleting the initializing lock
-    expect(() => acquireDatastoreLock(testDir, 'server')).toThrow(DatastoreLockError);
-
-    // Initializing lock file must still exist untouched
-    expect(fs.existsSync(lockPath)).toBe(true);
-  });
-
-  it('fails closed and does not delete lock file when lock ownership cannot be safely established', () => {
-    const lockPath = getDatastoreLockPath(testDir);
-    // Create an unparseable lock file with mtime in the past
+    // Simulate an empty or corrupted metadata file left by a previous crash
     fs.writeFileSync(lockPath, 'corrupted{data', { mode: 0o600 });
-    const pastTime = new Date(Date.now() - 10000);
-    fs.utimesSync(lockPath, pastTime, pastTime);
 
-    // Process attempting to acquire lock must fail closed rather than deleting unverified lock
-    expect(() => acquireDatastoreLock(testDir, 'server')).toThrow(DatastoreLockError);
-
-    // Unverified lock file must still exist untouched
-    expect(fs.existsSync(lockPath)).toBe(true);
-    expect(fs.readFileSync(lockPath, 'utf-8')).toBe('corrupted{data');
-  });
-
-  it('guarantees exactly one owner when concurrent processes race to recover a stale lock', () => {
-    const lockPath = getDatastoreLockPath(testDir);
-    // Write a stale lock with confirmed dead PID (9999999)
-    fs.writeFileSync(
-      lockPath,
-      JSON.stringify({ pid: 9999999, owner: 'server', createdAt: Date.now() - 5000 }),
-      { mode: 0o600, encoding: 'utf-8' }
-    );
-
-    // Process 1 acquires lock recovering the stale lock
-    const lock1 = acquireDatastoreLock(testDir, 'server');
-    expect(lock1).toBeDefined();
-
-    try {
-      // Process 2 attempting to acquire lock must observe Process 1's live lock and fail closed
-      expect(() => acquireDatastoreLock(testDir, 'server')).toThrow(DatastoreLockError);
-
-      // Process 1's live lock must remain intact and valid
-      const currentInfo = readDatastoreLockInfo(testDir);
-      expect(currentInfo?.pid).toBe(process.pid);
-      expect(currentInfo?.owner).toBe('server');
-    } finally {
-      lock1.release();
-    }
-  });
-
-  it('safely recovers from a confirmed stale lock file with a dead PID', () => {
-    const lockPath = getDatastoreLockPath(testDir);
-    const staleCreatedAt = Date.now() - 10000;
-    // Write stale lock with dead PID 9999999
-    fs.writeFileSync(
-      lockPath,
-      JSON.stringify({ pid: 9999999, owner: 'server', createdAt: staleCreatedAt }),
-      { mode: 0o600, encoding: 'utf-8' }
-    );
-
-    // New process should detect recorded process is dead, remove stale lock, and acquire lock
+    // Proper lockfile is the sole authority for ownership and must successfully acquire the lock
     const lock = acquireDatastoreLock(testDir, 'server');
     expect(lock).toBeDefined();
 
@@ -483,22 +425,13 @@ describe('Admin Session Access CLI & Management Tool', () => {
     }
   });
 
-  it('guarantees exactly one owner when concurrent processes race to recover a stale lock', () => {
-    const lockPath = getDatastoreLockPath(testDir);
-    const staleCreatedAt = Date.now() - 10000;
-    // Write stale lock with dead PID 9999999
-    fs.writeFileSync(
-      lockPath,
-      JSON.stringify({ pid: 9999999, owner: 'server', createdAt: staleCreatedAt }),
-      { mode: 0o600, encoding: 'utf-8' }
-    );
-
-    // Process 1 acquires lock recovering the stale lock
+  it('guarantees exactly one owner when concurrent processes attempt to acquire datastore lock', () => {
+    // Process 1 acquires lock
     const lock1 = acquireDatastoreLock(testDir, 'server');
     expect(lock1).toBeDefined();
 
     try {
-      // Process 2 attempting acquisition must observe Process 1's live lock and fail closed
+      // Process 2 attempting acquisition must observe Process 1's lock and fail closed
       expect(() => acquireDatastoreLock(testDir, 'server')).toThrow(DatastoreLockError);
 
       const currentInfo = readDatastoreLockInfo(testDir);
@@ -506,6 +439,29 @@ describe('Admin Session Access CLI & Management Tool', () => {
       expect(currentInfo?.owner).toBe('server');
     } finally {
       lock1.release();
+    }
+  });
+
+  it('safely recovers from a stale metadata file with a dead PID', () => {
+    const lockPath = getDatastoreLockPath(testDir);
+    const staleCreatedAt = Date.now() - 10000;
+    // Write stale metadata with dead PID 9999999
+    fs.writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: 9999999, owner: 'server', createdAt: staleCreatedAt }),
+      { mode: 0o600, encoding: 'utf-8' }
+    );
+
+    // New process should acquire lock and overwrite metadata
+    const lock = acquireDatastoreLock(testDir, 'server');
+    expect(lock).toBeDefined();
+
+    try {
+      const currentInfo = readDatastoreLockInfo(testDir);
+      expect(currentInfo?.pid).toBe(process.pid);
+      expect(currentInfo?.owner).toBe('server');
+    } finally {
+      lock.release();
     }
   });
 
