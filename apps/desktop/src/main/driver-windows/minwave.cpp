@@ -348,21 +348,62 @@ public:
         OUT ULONG* OffsetFromFirstPage,
         OUT MEMORY_CACHING_TYPE* CacheType
     ) {
-        NTSTATUS status = AllocateAudioBuffer(RequestedSize, AudioBufferMdl, ActualSize, OffsetFromFirstPage, CacheType);
-        if (NT_SUCCESS(status)) {
-            m_ulNotificationCount = (NotificationCount > 0) ? NotificationCount : 10;
-            ULONG bytesPerFrame = m_bFloatFormat ? (sizeof(float) * 2) : (sizeof(int16_t) * 2);
-            ULONG bytesPerNotification = m_ulDmaBufferSize / m_ulNotificationCount;
-            m_ulNotificationIntervalFrames = bytesPerNotification / bytesPerFrame;
-            if (m_ulNotificationIntervalFrames == 0) {
-                m_ulNotificationIntervalFrames = 480;
-            }
-            m_ulNotificationPeriodMs = (m_ulNotificationIntervalFrames * 1000) / 48000;
-            if (m_ulNotificationPeriodMs == 0) {
-                m_ulNotificationPeriodMs = 1;
-            }
+        if (!AudioBufferMdl || !ActualSize || !OffsetFromFirstPage || !CacheType || !m_pPortStream) {
+            return STATUS_INVALID_PARAMETER;
         }
-        return status;
+
+        /* Support only valid PortCls notification counts (1 or 2 events per cyclic buffer) */
+        if (NotificationCount < 1 || NotificationCount > 2) {
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        ULONG bytesPerFrame = m_bFloatFormat ? (sizeof(float) * 2) : (sizeof(int16_t) * 2);
+        if (RequestedSize < bytesPerFrame * NotificationCount) {
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        /* Align requested size strictly to audio format block align and ensure equal notification segments */
+        ULONG notificationSegmentBytes = RequestedSize / NotificationCount;
+        ULONG framesPerSegment = notificationSegmentBytes / bytesPerFrame;
+        if (framesPerSegment == 0) {
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        ULONG bufferSize = framesPerSegment * bytesPerFrame * NotificationCount;
+        ULONG physicalAllocationSize = (ULONG)ROUND_TO_PAGES(bufferSize);
+
+        PHYSICAL_ADDRESS highAddress;
+        highAddress.QuadPart = MAXULONG64;
+
+        PMDL pMdl = m_pPortStream->AllocatePagesForMdl(highAddress, physicalAllocationSize);
+        if (!pMdl) {
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        PVOID pBuffer = m_pPortStream->MapAllocatedPages(pMdl, MmCached);
+        if (!pBuffer) {
+            m_pPortStream->FreePagesFromMdl(pMdl);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        RtlZeroMemory(pBuffer, physicalAllocationSize);
+
+        m_pDmaBuffer = pBuffer;
+        m_pAudioBufferMdl = pMdl;
+        m_ulDmaBufferSize = bufferSize;
+        m_ulNotificationCount = NotificationCount;
+        m_ulNotificationIntervalFrames = framesPerSegment;
+        m_ulNotificationPeriodMs = (framesPerSegment * 1000) / 48000;
+        if (m_ulNotificationPeriodMs == 0) {
+            m_ulNotificationPeriodMs = 1;
+        }
+
+        *AudioBufferMdl = pMdl;
+        *ActualSize = bufferSize;
+        *OffsetFromFirstPage = 0;
+        *CacheType = MmCached;
+
+        return STATUS_SUCCESS;
     }
 
     STDMETHODIMP FreeBufferWithNotification(IN PMDL AudioBufferMdl, IN ULONG BufferSize) {
