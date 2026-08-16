@@ -110,6 +110,25 @@ public:
         }
     }
 
+    /* NonDelegatingQueryInterface implementing SysVAD COM pattern */
+    STDMETHODIMP NonDelegatingQueryInterface(REFIID Interface, PVOID* Object) {
+        if (!Object) return STATUS_INVALID_PARAMETER;
+
+        if (IsEqualGUID(Interface, IID_IUnknown)) {
+            *Object = (PUNKNOWN)(PMINIPORTTOPOLOGY)this;
+        } else if (IsEqualGUID(Interface, IID_IMiniport)) {
+            *Object = (PMINIPORT)this;
+        } else if (IsEqualGUID(Interface, IID_IMiniportTopology)) {
+            *Object = (PMINIPORTTOPOLOGY)this;
+        } else {
+            *Object = NULL;
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        ((PUNKNOWN)*Object)->AddRef();
+        return STATUS_SUCCESS;
+    }
+
     STDMETHODIMP Init(IN PUNKNOWN UnknownAdapter, IN PRESOURCELIST ResourceList, IN PPORTTOPOLOGY Port) {
         (void)UnknownAdapter;
         (void)ResourceList;

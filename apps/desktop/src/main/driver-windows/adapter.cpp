@@ -74,17 +74,29 @@ static NTSTATUS StartDevice(
     if (pMiniWave) pMiniWave->Release();
     if (pPortWave) pPortWave->Release();
 
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
     /* 4. Register dynamic device interface on the Physical Device Object (PDO) */
     if (gPhysicalDeviceObject != NULL) {
-        NTSTATUS ifStatus = IoRegisterDeviceInterface(
+        status = IoRegisterDeviceInterface(
             gPhysicalDeviceObject,
             &GUID_DEVINTERFACE_JAMEET_REMOTE,
             NULL,
             &gDeviceInterfaceName
         );
 
-        if (NT_SUCCESS(ifStatus) && gDeviceInterfaceName.Buffer != NULL) {
-            IoSetDeviceInterfaceState(&gDeviceInterfaceName, TRUE);
+        if (!NT_SUCCESS(status)) {
+            return status;
+        }
+
+        if (gDeviceInterfaceName.Buffer != NULL) {
+            status = IoSetDeviceInterfaceState(&gDeviceInterfaceName, TRUE);
+            if (!NT_SUCCESS(status)) {
+                RtlFreeUnicodeString(&gDeviceInterfaceName);
+                return status;
+            }
         }
     }
 
@@ -106,13 +118,28 @@ NTSTATUS AddDevice(
     );
 }
 
+VOID DriverUnload(IN PDRIVER_OBJECT DriverObject) {
+    (void)DriverObject;
+
+    if (gDeviceInterfaceName.Buffer != NULL) {
+        IoSetDeviceInterfaceState(&gDeviceInterfaceName, FALSE);
+        RtlFreeUnicodeString(&gDeviceInterfaceName);
+        gDeviceInterfaceName.Buffer = NULL;
+    }
+
+    JaMeetDispatch_TeardownSection();
+}
+
 extern "C" NTSTATUS DriverEntry(
     IN PDRIVER_OBJECT DriverObject,
     IN PUNICODE_STRING RegistryPath
 ) {
     if (!DriverObject || !RegistryPath) return STATUS_INVALID_PARAMETER;
 
-    /* 1. Initialize kernel shared memory section */
+    /* Set unload routine */
+    DriverObject->DriverUnload = DriverUnload;
+
+    /* 1. Initialize kernel shared memory section and synchronization */
     NTSTATUS status = JaMeetDispatch_InitSection();
     if (!NT_SUCCESS(status)) {
         return status;

@@ -52,21 +52,49 @@ if (process.platform === 'darwin') {
   console.log('[build-native] All macOS native binaries built successfully.');
 } else if (process.platform === 'win32') {
   console.log('[build-native] Building Windows native binaries...');
-  try {
-    const bridgeDir = path.join(rootDir, 'src/main/bridge');
-    // Try clang, gcc, or cl if available
-    let buildCmd = `clang -O2 -I"${bridgeDir}" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_posix.c')}" -lcfgmgr32 -o bin/jameet-remote-producer.exe`;
-    try {
-      execSync(buildCmd, { cwd: rootDir, stdio: 'inherit' });
-    } catch {
-      // Fallback to gcc
-      buildCmd = `gcc -O2 -I"${bridgeDir}" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_posix.c')}" -lcfgmgr32 -o bin/jameet-remote-producer.exe`;
-      execSync(buildCmd, { cwd: rootDir, stdio: 'inherit' });
+  const bridgeDir = path.join(rootDir, 'src/main/bridge');
+  const driverWinDir = path.join(rootDir, 'src/main/driver-windows');
+
+  const winBuilds = [
+    {
+      name: 'jameet-remote-producer.exe',
+      cmd: `clang -O2 -I"${bridgeDir}" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" -lcfgmgr32 -o bin/jameet-remote-producer.exe`,
+      fallbackCmd: `gcc -O2 -I"${bridgeDir}" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" -lcfgmgr32 -o bin/jameet-remote-producer.exe`
+    },
+    {
+      name: 'jameet-device-installer.exe',
+      cmd: `clang -O2 -I"${driverWinDir}" "${path.join(driverWinDir, 'jameet-device-installer.c')}" -lsetupapi -lnewdev -lcfgmgr32 -ladvapi32 -o bin/jameet-device-installer.exe`,
+      fallbackCmd: `gcc -O2 -I"${driverWinDir}" "${path.join(driverWinDir, 'jameet-device-installer.c')}" -lsetupapi -lnewdev -lcfgmgr32 -ladvapi32 -o bin/jameet-device-installer.exe`
     }
-    console.log('[build-native] Windows native binaries built successfully.');
-  } catch (err) {
-    console.warn('[build-native] Note: Windows native build skipped or requires Visual Studio / clang toolchain:', err.message);
+  ];
+
+  for (const build of winBuilds) {
+    try {
+      console.log(`[build-native] Compiling ${build.name}...`);
+      try {
+        execSync(build.cmd, { cwd: rootDir, stdio: 'inherit' });
+      } catch {
+        execSync(build.fallbackCmd, { cwd: rootDir, stdio: 'inherit' });
+      }
+      const dest = path.join(binDir, build.name);
+      if (!fs.existsSync(dest)) {
+        throw new Error(`Binary ${build.name} was not found at ${dest} after compilation`);
+      }
+    } catch (err) {
+      console.error(`[build-native] Error: Failed to compile ${build.name}:`, err.message);
+      process.exit(1);
+    }
   }
+
+  // Stage driver package files into package directory
+  const packageDir = path.join(driverWinDir, 'package');
+  fs.mkdirSync(packageDir, { recursive: true });
+  const srcInf = path.join(driverWinDir, 'JaMeetRemote.inf');
+  if (fs.existsSync(srcInf)) {
+    fs.copyFileSync(srcInf, path.join(packageDir, 'JaMeetRemote.inf'));
+  }
+
+  console.log('[build-native] All Windows native binaries built and staged successfully.');
 } else {
   console.log('Skipping native compilation on ' + process.platform);
 }

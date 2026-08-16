@@ -18,9 +18,9 @@ static const KSDATARANGE_AUDIO PinDataRangesAudio[] = {
             STATICGUIDOF(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT),
             STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
         },
-        2,  /* Maximum channels */
-        32, /* Minimum bits per sample */
-        32, /* Maximum bits per sample */
+        2,     /* Maximum channels */
+        32,    /* Minimum bits per sample */
+        32,    /* Maximum bits per sample */
         48000, /* Minimum sample frequency */
         48000  /* Maximum sample frequency */
     },
@@ -34,9 +34,9 @@ static const KSDATARANGE_AUDIO PinDataRangesAudio[] = {
             STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
             STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
         },
-        2,  /* Maximum channels */
-        16, /* Minimum bits per sample */
-        16, /* Maximum bits per sample */
+        2,     /* Maximum channels */
+        16,    /* Minimum bits per sample */
+        16,    /* Maximum bits per sample */
         48000, /* Minimum sample frequency */
         48000  /* Maximum sample frequency */
     }
@@ -121,27 +121,27 @@ static const PCFILTER_DESCRIPTOR WaveFilterDescriptor = {
     WaveCategories
 };
 
-/*
- * Forward declaration of DPC routine
- */
+/* Forward declaration of DPC routine */
 KDEFERRED_ROUTINE WaveRTServicingDpcRoutine;
 
 /*
  * CMiniportWaveRTCaptureStream
- * Real-time WaveRT capture stream reading from mapped kernel shared segment
- * with periodic timer servicing and notification delivery.
+ * Real-time WaveRT capture stream reading from nonpaged kernel shared segment
+ * with periodic timer servicing, cyclic buffer wrap-around, and notification delivery.
  */
 class CMiniportWaveRTCaptureStream : public IMiniportWaveRTStreamNotification, public CUnknown {
 private:
     PVOID m_pDmaBuffer;
     ULONG m_ulDmaBufferSize;
-    ULONG m_ulNotificationIntervalMs;
+    ULONG m_ulNotificationCount;
+    ULONG m_ulNotificationIntervalFrames;
     ULONG m_ulPosition;
     ULONGLONG m_ullLinearPosition;
     JaMeetKernelConsumer m_Consumer;
     BOOLEAN m_bFloatFormat;
     KTIMER m_Timer;
     KDPC m_Dpc;
+    KSPIN_LOCK m_EventLock;
     PKEVENT m_pNotificationEvents[2];
     ULONG m_ulNotificationEventCount;
     KSSTATE m_StreamState;
@@ -152,7 +152,8 @@ public:
     CMiniportWaveRTCaptureStream(PUNKNOWN pUnknownOuter) : CUnknown(pUnknownOuter) {
         m_pDmaBuffer = NULL;
         m_ulDmaBufferSize = 0;
-        m_ulNotificationIntervalMs = 10; /* Default 10 ms quantum (480 frames) */
+        m_ulNotificationCount = 10;
+        m_ulNotificationIntervalFrames = 480; /* Default 10 ms @ 48 kHz */
         m_ulPosition = 0;
         m_ullLinearPosition = 0;
         m_bFloatFormat = TRUE;
@@ -162,16 +163,37 @@ public:
         m_StreamState = KSSTATE_STOP;
 
         JaMeetKernelConsumer_Init(&m_Consumer);
+        KeInitializeSpinLock(&m_EventLock);
         KeInitializeTimer(&m_Timer);
         KeInitializeDpc(&m_Dpc, WaveRTServicingDpcRoutine, this);
     }
 
     ~CMiniportWaveRTCaptureStream() {
         KeCancelTimer(&m_Timer);
+        KeFlushQueuedDpcs();
         if (m_pDmaBuffer) {
-            ExFreePool(m_pDmaBuffer);
+            ExFreePoolWithTag(m_pDmaBuffer, 'TMJR');
             m_pDmaBuffer = NULL;
         }
+    }
+
+    /* NonDelegatingQueryInterface implementing SysVAD COM pattern */
+    STDMETHODIMP NonDelegatingQueryInterface(REFIID Interface, PVOID* Object) {
+        if (!Object) return STATUS_INVALID_PARAMETER;
+
+        if (IsEqualGUID(Interface, IID_IUnknown)) {
+            *Object = (PUNKNOWN)(PMINIPORTWAVERTSTREAMNOTIFICATION)this;
+        } else if (IsEqualGUID(Interface, IID_IMiniportWaveRTStream)) {
+            *Object = (PMINIPORTWAVERTSTREAM)this;
+        } else if (IsEqualGUID(Interface, IID_IMiniportWaveRTStreamNotification)) {
+            *Object = (PMINIPORTWAVERTSTREAMNOTIFICATION)this;
+        } else {
+            *Object = NULL;
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        ((PUNKNOWN)*Object)->AddRef();
+        return STATUS_SUCCESS;
     }
 
     /* IMiniportWaveRTStream methods */
@@ -181,14 +203,16 @@ public:
             m_Consumer.active = TRUE;
             /* Start periodic timer servicing every 10 ms */
             LARGE_INTEGER dueTime;
-            dueTime.QuadPart = -100000LL; /* 10 ms relative due time */
+            dueTime.QuadPart = -100000LL; /* 10 ms relative */
             KeSetTimerEx(&m_Timer, dueTime, 10 /* 10 ms period */, &m_Dpc);
         } else if (State == KSSTATE_STOP) {
             KeCancelTimer(&m_Timer);
+            KeFlushQueuedDpcs();
             m_Consumer.active = FALSE;
             m_ulPosition = 0;
         } else if (State == KSSTATE_PAUSE) {
             KeCancelTimer(&m_Timer);
+            KeFlushQueuedDpcs();
         }
         return STATUS_SUCCESS;
     }
@@ -211,19 +235,18 @@ public:
             return STATUS_INVALID_PARAMETER;
         }
 
-        ULONG bufferSize = RequestedSize;
-        if (bufferSize < 4800 * sizeof(float) * 2) {
-            bufferSize = 4800 * sizeof(float) * 2; /* 100 ms buffer */
-        }
+        ULONG bytesPerFrame = m_bFloatFormat ? (sizeof(float) * 2) : (sizeof(int16_t) * 2);
+        ULONG minSize = 4800 * bytesPerFrame; /* 100 ms buffer */
+        ULONG bufferSize = (RequestedSize >= minSize) ? RequestedSize : minSize;
 
         PVOID pBuffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, bufferSize, 'TMJR');
         if (!pBuffer) return STATUS_INSUFFICIENT_RESOURCES;
 
-        memset(pBuffer, 0, bufferSize);
+        RtlZeroMemory(pBuffer, bufferSize);
 
         PMDL pMdl = IoAllocateMdl(pBuffer, bufferSize, FALSE, FALSE, NULL);
         if (!pMdl) {
-            ExFreePool(pBuffer);
+            ExFreePoolWithTag(pBuffer, 'TMJR');
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
@@ -246,7 +269,7 @@ public:
             IoFreeMdl(AudioBufferMdl);
         }
         if (m_pDmaBuffer) {
-            ExFreePool(m_pDmaBuffer);
+            ExFreePoolWithTag(m_pDmaBuffer, 'TMJR');
             m_pDmaBuffer = NULL;
         }
         return STATUS_SUCCESS;
@@ -272,8 +295,10 @@ public:
 
     STDMETHODIMP SetFormat(IN PKSDATAFORMAT DataFormat) {
         if (!DataFormat) return STATUS_INVALID_PARAMETER;
-        PWAVEFORMATEXTENSIBLE pWfe = (PWAVEFORMATEXTENSIBLE)(DataFormat + 1);
-        if (IsEqualGUID(pWfe->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) {
+        PWAVEFORMATEX pWfx = (PWAVEFORMATEX)(DataFormat + 1);
+        if (pWfx->wFormatTag == WAVE_FORMAT_IEEE_FLOAT ||
+            (pWfx->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
+             IsEqualGUID(((PWAVEFORMATEXTENSIBLE)pWfx)->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT))) {
             m_bFloatFormat = TRUE;
         } else {
             m_bFloatFormat = FALSE;
@@ -290,11 +315,17 @@ public:
         OUT ULONG* OffsetFromFirstPage,
         OUT MEMORY_CACHING_TYPE* CacheType
     ) {
-        if (NotificationCount > 0) {
-            m_ulNotificationIntervalMs = 100 / NotificationCount;
-            if (m_ulNotificationIntervalMs == 0) m_ulNotificationIntervalMs = 10;
+        NTSTATUS status = AllocateAudioBuffer(RequestedSize, AudioBufferMdl, ActualSize, OffsetFromFirstPage, CacheType);
+        if (NT_SUCCESS(status)) {
+            m_ulNotificationCount = (NotificationCount > 0) ? NotificationCount : 10;
+            ULONG bytesPerFrame = m_bFloatFormat ? (sizeof(float) * 2) : (sizeof(int16_t) * 2);
+            ULONG bytesPerNotification = m_ulDmaBufferSize / m_ulNotificationCount;
+            m_ulNotificationIntervalFrames = bytesPerNotification / bytesPerFrame;
+            if (m_ulNotificationIntervalFrames == 0) {
+                m_ulNotificationIntervalFrames = 480;
+            }
         }
-        return AllocateAudioBuffer(RequestedSize, AudioBufferMdl, ActualSize, OffsetFromFirstPage, CacheType);
+        return status;
     }
 
     STDMETHODIMP FreeBufferWithNotification(IN PMDL AudioBufferMdl, IN ULONG BufferSize) {
@@ -303,58 +334,88 @@ public:
 
     STDMETHODIMP RegisterNotificationEvent(IN PKEVENT NotificationEvent) {
         if (!NotificationEvent) return STATUS_INVALID_PARAMETER;
+        KIRQL oldIrql;
+        KeAcquireSpinLock(&m_EventLock, &oldIrql);
         if (m_ulNotificationEventCount < SIZEOF_ARRAY(m_pNotificationEvents)) {
             m_pNotificationEvents[m_ulNotificationEventCount++] = NotificationEvent;
+            KeReleaseSpinLock(&m_EventLock, oldIrql);
             return STATUS_SUCCESS;
         }
+        KeReleaseSpinLock(&m_EventLock, oldIrql);
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     STDMETHODIMP UnregisterNotificationEvent(IN PKEVENT NotificationEvent) {
+        if (!NotificationEvent) return STATUS_INVALID_PARAMETER;
+        KIRQL oldIrql;
+        KeAcquireSpinLock(&m_EventLock, &oldIrql);
         for (ULONG i = 0; i < m_ulNotificationEventCount; i++) {
             if (m_pNotificationEvents[i] == NotificationEvent) {
                 m_pNotificationEvents[i] = m_pNotificationEvents[m_ulNotificationEventCount - 1];
                 m_ulNotificationEventCount--;
+                KeReleaseSpinLock(&m_EventLock, oldIrql);
                 return STATUS_SUCCESS;
             }
         }
+        KeReleaseSpinLock(&m_EventLock, oldIrql);
         return STATUS_NOT_FOUND;
     }
 
-    /* Real-time DPC servicing: transfers frames and signals notification events */
+    /* Real-time DPC servicing: transfers frames into cyclic buffer with wrap-around support */
     void ServicePeriodicTransfer(void) {
-        if (m_StreamState != KSSTATE_RUN || !m_pDmaBuffer) return;
+        if (m_StreamState != KSSTATE_RUN || !m_pDmaBuffer || m_ulDmaBufferSize == 0) return;
 
-        ULONG framesToRead = 480; /* 10 ms @ 48 kHz */
+        ULONG framesToRead = m_ulNotificationIntervalFrames;
         JaMeetSharedSegment* seg = JaMeetDispatch_GetKernelSharedSegment();
         ULONG bytesPerFrame = m_bFloatFormat ? (sizeof(float) * 2) : (sizeof(int16_t) * 2);
+        ULONG totalBytesToTransfer = framesToRead * bytesPerFrame;
         ULONG writeOffset = m_ulPosition;
-
-        if (writeOffset + (framesToRead * bytesPerFrame) > m_ulDmaBufferSize) {
-            framesToRead = (m_ulDmaBufferSize - writeOffset) / bytesPerFrame;
-        }
 
         LARGE_INTEGER tickCount;
         KeQueryTickCount(&tickCount);
         ULONGLONG nowMs = (tickCount.QuadPart * KeQueryTimeIncrement()) / 10000;
 
-        if (m_bFloatFormat) {
-            float* pOut = (float*)((PUCHAR)m_pDmaBuffer + writeOffset);
-            JaMeetKernelConsumer_ReadFloatFrames(&m_Consumer, seg, pOut, framesToRead, nowMs);
+        /* Check if transfer wraps around cyclic buffer */
+        if (writeOffset + totalBytesToTransfer <= m_ulDmaBufferSize) {
+            /* Single contiguous span */
+            if (m_bFloatFormat) {
+                float* pOut = (float*)((PUCHAR)m_pDmaBuffer + writeOffset);
+                JaMeetKernelConsumer_ReadFloatFrames(&m_Consumer, seg, pOut, framesToRead, nowMs);
+            } else {
+                int16_t* pOut = (int16_t*)((PUCHAR)m_pDmaBuffer + writeOffset);
+                JaMeetKernelConsumer_ReadInt16Frames(&m_Consumer, seg, pOut, framesToRead, nowMs);
+            }
         } else {
-            int16_t* pOut = (int16_t*)((PUCHAR)m_pDmaBuffer + writeOffset);
-            JaMeetKernelConsumer_ReadInt16Frames(&m_Consumer, seg, pOut, framesToRead, nowMs);
+            /* Two spans: Span 1 to end of buffer, Span 2 from beginning */
+            ULONG span1Bytes = m_ulDmaBufferSize - writeOffset;
+            ULONG span1Frames = span1Bytes / bytesPerFrame;
+            ULONG span2Frames = framesToRead - span1Frames;
+
+            if (m_bFloatFormat) {
+                float* pOut1 = (float*)((PUCHAR)m_pDmaBuffer + writeOffset);
+                JaMeetKernelConsumer_ReadFloatFrames(&m_Consumer, seg, pOut1, span1Frames, nowMs);
+                float* pOut2 = (float*)m_pDmaBuffer;
+                JaMeetKernelConsumer_ReadFloatFrames(&m_Consumer, seg, pOut2, span2Frames, nowMs);
+            } else {
+                int16_t* pOut1 = (int16_t*)((PUCHAR)m_pDmaBuffer + writeOffset);
+                JaMeetKernelConsumer_ReadInt16Frames(&m_Consumer, seg, pOut1, span1Frames, nowMs);
+                int16_t* pOut2 = (int16_t*)m_pDmaBuffer;
+                JaMeetKernelConsumer_ReadInt16Frames(&m_Consumer, seg, pOut2, span2Frames, nowMs);
+            }
         }
 
-        m_ulPosition = (writeOffset + (framesToRead * bytesPerFrame)) % m_ulDmaBufferSize;
+        m_ulPosition = (writeOffset + totalBytesToTransfer) % m_ulDmaBufferSize;
         m_ullLinearPosition += framesToRead;
 
-        /* Signal registered notification events */
+        /* Signal registered notification events under lock */
+        KIRQL oldIrql;
+        KeAcquireSpinLock(&m_EventLock, &oldIrql);
         for (ULONG i = 0; i < m_ulNotificationEventCount; i++) {
             if (m_pNotificationEvents[i]) {
                 KeSetEvent(m_pNotificationEvents[i], 0, FALSE);
             }
         }
+        KeReleaseSpinLock(&m_EventLock, oldIrql);
     }
 };
 
@@ -395,6 +456,25 @@ public:
         }
     }
 
+    /* NonDelegatingQueryInterface implementing SysVAD COM pattern */
+    STDMETHODIMP NonDelegatingQueryInterface(REFIID Interface, PVOID* Object) {
+        if (!Object) return STATUS_INVALID_PARAMETER;
+
+        if (IsEqualGUID(Interface, IID_IUnknown)) {
+            *Object = (PUNKNOWN)(PMINIPORTWAVERT)this;
+        } else if (IsEqualGUID(Interface, IID_IMiniport)) {
+            *Object = (PMINIPORT)this;
+        } else if (IsEqualGUID(Interface, IID_IMiniportWaveRT)) {
+            *Object = (PMINIPORTWAVERT)this;
+        } else {
+            *Object = NULL;
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        ((PUNKNOWN)*Object)->AddRef();
+        return STATUS_SUCCESS;
+    }
+
     STDMETHODIMP Init(IN PUNKNOWN UnknownAdapter, IN PRESOURCELIST ResourceList, IN PPORTWAVERT Port) {
         (void)UnknownAdapter;
         (void)ResourceList;
@@ -418,13 +498,63 @@ public:
         OUT PVOID ResultantFormat OPTIONAL,
         OUT PULONG ResultantFormatLength
     ) {
-        (void)PinId;
-        (void)DataRange;
-        (void)MatchingDataRange;
-        (void)OutputBufferLength;
-        (void)ResultantFormat;
-        (void)ResultantFormatLength;
-        return STATUS_NOT_IMPLEMENTED;
+        if (!DataRange || !MatchingDataRange || !ResultantFormatLength) {
+            return STATUS_INVALID_PARAMETER;
+        }
+        if (PinId != 0) {
+            return STATUS_NOT_SUPPORTED;
+        }
+
+        PKSDATARANGE_AUDIO pDataRangeAudio = (PKSDATARANGE_AUDIO)DataRange;
+        PKSDATARANGE_AUDIO pMatchingAudio = (PKSDATARANGE_AUDIO)MatchingDataRange;
+
+        if (!IsEqualGUID(pDataRangeAudio->DataRange.MajorFormat, KSDATAFORMAT_TYPE_AUDIO) ||
+            !IsEqualGUID(pMatchingAudio->DataRange.MajorFormat, KSDATAFORMAT_TYPE_AUDIO)) {
+            return STATUS_NO_MATCH;
+        }
+
+        BOOLEAN isFloat = IsEqualGUID(pDataRangeAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) &&
+                          IsEqualGUID(pMatchingAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+        BOOLEAN isPcm = IsEqualGUID(pDataRangeAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_PCM) &&
+                        IsEqualGUID(pMatchingAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_PCM);
+
+        if (!isFloat && !isPcm) {
+            return STATUS_NO_MATCH;
+        }
+
+        ULONG formatSize = sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE);
+        *ResultantFormatLength = formatSize;
+
+        if (OutputBufferLength == 0) {
+            return STATUS_BUFFER_OVERFLOW;
+        }
+        if (OutputBufferLength < formatSize) {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+
+        PKSDATAFORMAT_WAVEFORMATEXTENSIBLE pResFormat = (PKSDATAFORMAT_WAVEFORMATEXTENSIBLE)ResultantFormat;
+        RtlZeroMemory(pResFormat, formatSize);
+
+        pResFormat->DataFormat.FormatSize = formatSize;
+        pResFormat->DataFormat.Flags = 0;
+        pResFormat->DataFormat.SampleSize = isFloat ? 8 : 4;
+        pResFormat->DataFormat.Reserved = 0;
+        pResFormat->DataFormat.MajorFormat = KSDATAFORMAT_TYPE_AUDIO;
+        pResFormat->DataFormat.SubFormat = isFloat ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
+        pResFormat->DataFormat.Specifier = KSDATAFORMAT_SPECIFIER_WAVEFORMATEX;
+
+        pResFormat->WaveFormatExt.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+        pResFormat->WaveFormatExt.Format.nChannels = 2;
+        pResFormat->WaveFormatExt.Format.nSamplesPerSec = 48000;
+        pResFormat->WaveFormatExt.Format.wBitsPerSample = isFloat ? 32 : 16;
+        pResFormat->WaveFormatExt.Format.nBlockAlign = (pResFormat->WaveFormatExt.Format.nChannels * pResFormat->WaveFormatExt.Format.wBitsPerSample) / 8;
+        pResFormat->WaveFormatExt.Format.nAvgBytesPerSec = pResFormat->WaveFormatExt.Format.nSamplesPerSec * pResFormat->WaveFormatExt.Format.nBlockAlign;
+        pResFormat->WaveFormatExt.Format.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
+        pResFormat->WaveFormatExt.Samples.wValidBitsPerSample = pResFormat->WaveFormatExt.Format.wBitsPerSample;
+        pResFormat->WaveFormatExt.dwChannelMask = KSAUDIO_SPEAKER_STEREO;
+        pResFormat->WaveFormatExt.SubFormat = isFloat ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
+
+        return STATUS_SUCCESS;
     }
 
     STDMETHODIMP GetDeviceDescription(OUT PDEVICE_DESCRIPTION DeviceDescription) {
@@ -445,8 +575,31 @@ public:
         IN PKSDATAFORMAT DataFormat
     ) {
         (void)PortStream;
-        (void)Pin;
-        if (!Stream || !DataFormat || !Capture) return STATUS_INVALID_PARAMETER;
+        if (!Stream || !DataFormat || !Capture || Pin != 0) return STATUS_INVALID_PARAMETER;
+
+        /* Validate requested format strictly: 48 kHz stereo 32-bit Float or 16-bit PCM */
+        PWAVEFORMATEX pWfx = (PWAVEFORMATEX)(DataFormat + 1);
+        if (pWfx->nSamplesPerSec != 48000 || pWfx->nChannels != 2) {
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        BOOLEAN isFloat = FALSE;
+        if (pWfx->wFormatTag == WAVE_FORMAT_IEEE_FLOAT && pWfx->wBitsPerSample == 32) {
+            isFloat = TRUE;
+        } else if (pWfx->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+            PWAVEFORMATEXTENSIBLE pWfe = (PWAVEFORMATEXTENSIBLE)pWfx;
+            if (IsEqualGUID(pWfe->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) && pWfe->Format.wBitsPerSample == 32) {
+                isFloat = TRUE;
+            } else if (IsEqualGUID(pWfe->SubFormat, KSDATAFORMAT_SUBTYPE_PCM) && pWfe->Format.wBitsPerSample == 16) {
+                isFloat = FALSE;
+            } else {
+                return STATUS_INVALID_PARAMETER;
+            }
+        } else if (pWfx->wFormatTag == WAVE_FORMAT_PCM && pWfx->wBitsPerSample == 16) {
+            isFloat = FALSE;
+        } else {
+            return STATUS_INVALID_PARAMETER;
+        }
 
         CMiniportWaveRTCaptureStream* pStream = new (POOL_FLAG_NON_PAGED, 'TMJR') CMiniportWaveRTCaptureStream(NULL);
         if (!pStream) return STATUS_INSUFFICIENT_RESOURCES;

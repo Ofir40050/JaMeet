@@ -17,12 +17,12 @@ extern "C" {
 #endif
 
 /**
- * Initialize kernel-owned shared section and map permanent kernel view.
+ * Initialize nonpaged kernel shared memory buffer, MDL, and PASSIVE_LEVEL synchronization event.
  */
 NTSTATUS JaMeetDispatch_InitSection(void);
 
 /**
- * Teardown kernel shared section and unmap views.
+ * Teardown kernel shared memory buffer, MDL, unmap user views, and release process references.
  */
 void JaMeetDispatch_TeardownSection(void);
 
@@ -32,7 +32,7 @@ void JaMeetDispatch_TeardownSection(void);
 NTSTATUS JaMeetDispatch_InstallPortClsHooks(PDRIVER_OBJECT DriverObject);
 
 /**
- * Get the permanent kernel-mapped shared segment pointer (for real-time WaveRT engine).
+ * Get the permanently resident nonpaged system-mapped shared segment pointer (safe at DISPATCH_LEVEL for WaveRT DPC).
  */
 JaMeetSharedSegment* JaMeetDispatch_GetKernelSharedSegment(void);
 

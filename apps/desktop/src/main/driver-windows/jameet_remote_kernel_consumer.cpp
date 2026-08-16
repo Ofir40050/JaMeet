@@ -1,6 +1,14 @@
 #include "jameet_remote_kernel_consumer.h"
 #include <string.h>
 
+#if defined(__cplusplus)
+#include <atomic>
+#define JAMEET_ATOMIC_LOAD_U64(ptr) std::atomic_load_explicit((const std::atomic<uint64_t>*)(ptr), std::memory_order_acquire)
+#else
+#include <stdatomic.h>
+#define JAMEET_ATOMIC_LOAD_U64(ptr) atomic_load_explicit((const _Atomic(uint64_t)*)(ptr), memory_order_acquire)
+#endif
+
 #define JAMEET_MAX_SEQLOCK_RETRIES      3
 #define JAMEET_MAX_HEARTBEAT_AGE_MS     500ULL
 
@@ -16,19 +24,11 @@ static inline float sanitize_sample(uint32_t rawBits) {
     } conv;
     conv.u = rawBits;
 
-#if defined(__KERNEL__) || defined(_NTDDK_) || defined(_NTIFS_)
-    /* In kernel mode, check IEEE 754 float exponent bits for NaN/Inf */
+    /* Check IEEE 754 float exponent bits for NaN/Inf */
     uint32_t exp = (rawBits >> 23) & 0xFF;
     if (exp == 0xFF) {
         return 0.0f; /* NaN or Infinity -> clamp to silence */
     }
-#else
-    /* Non-kernel test environment */
-    uint32_t exp = (rawBits >> 23) & 0xFF;
-    if (exp == 0xFF) {
-        return 0.0f;
-    }
-#endif
 
     /* Clamp extreme float amplitudes to [-4.0, 4.0] for safety */
     if (conv.f > 4.0f) return 4.0f;
@@ -123,19 +123,18 @@ uint32_t JaMeetKernelConsumer_ReadFloatFrames(
         uint32_t slotIdx = (uint32_t)((targetFrame / JAMEET_SLOT_FRAMES) & JAMEET_SLOT_MASK);
         const JaMeetAudioSlot* slot = &segment->slots[slotIdx];
 
-        uint32_t slotOffset = (uint32_t)(targetFrame % JAMEET_SLOT_FRAMES);
-        uint32_t framesAvailableInSlot = JAMEET_SLOT_FRAMES - slotOffset;
         uint32_t framesToCopy = frameCount - framesDelivered;
-        if (framesToCopy > framesAvailableInSlot) {
-            framesToCopy = framesAvailableInSlot;
+        if (framesToCopy > JAMEET_SLOT_FRAMES) {
+            framesToCopy = JAMEET_SLOT_FRAMES;
         }
 
-        /* Seqlock read loop */
+        /* Seqlock read loop with atomic acquire semantics */
         bool readSuccess = false;
+        uint32_t actualFramesCopied = 0;
         uint32_t tempBits[JAMEET_SLOT_SAMPLES];
 
         for (int retry = 0; retry < JAMEET_MAX_SEQLOCK_RETRIES; retry++) {
-            uint64_t seq1 = slot->publishSequence;
+            uint64_t seq1 = JAMEET_ATOMIC_LOAD_U64(&slot->publishSequence);
             if (seq1 & 1) {
                 continue; /* Writer in progress */
             }
@@ -145,7 +144,7 @@ uint32_t JaMeetKernelConsumer_ReadFloatFrames(
                 break;
             }
 
-            /* Verify slot covers the target frame */
+            /* Verify slot covers targetFrame */
             uint64_t slotStart = slot->slotStartFrame;
             uint32_t validFrames = slot->validFrames;
             if (validFrames > JAMEET_SLOT_FRAMES) {
@@ -156,23 +155,35 @@ uint32_t JaMeetKernelConsumer_ReadFloatFrames(
                 break; /* Target frame outside valid produced range in this slot */
             }
 
-            uint32_t samplesToRead = framesToCopy * JAMEET_CHANNELS;
-            uint32_t sampleStart = slotOffset * JAMEET_CHANNELS;
+            uint32_t slotRelativeOffset = (uint32_t)(targetFrame - slotStart);
+            uint32_t validRemainingInSlot = (slotRelativeOffset < validFrames) ? (validFrames - slotRelativeOffset) : 0;
+            if (validRemainingInSlot == 0) {
+                break;
+            }
+
+            uint32_t chunkFrames = (framesToCopy < validRemainingInSlot) ? framesToCopy : validRemainingInSlot;
+            uint32_t samplesToRead = chunkFrames * JAMEET_CHANNELS;
+            uint32_t sampleStart = slotRelativeOffset * JAMEET_CHANNELS;
 
             for (uint32_t i = 0; i < samplesToRead; i++) {
                 tempBits[i] = slot->pcmBits[sampleStart + i];
             }
 
-            uint64_t seq2 = slot->publishSequence;
+            uint64_t seq2 = JAMEET_ATOMIC_LOAD_U64(&slot->publishSequence);
             if (seq1 == seq2) {
                 readSuccess = true;
+                actualFramesCopied = chunkFrames;
                 break;
             }
         }
 
-        if (readSuccess) {
-            for (uint32_t i = 0; i < framesToCopy * JAMEET_CHANNELS; i++) {
+        if (readSuccess && actualFramesCopied > 0) {
+            for (uint32_t i = 0; i < actualFramesCopied * JAMEET_CHANNELS; i++) {
                 outFloatPcm[(framesDelivered * JAMEET_CHANNELS) + i] = sanitize_sample(tempBits[i]);
+            }
+            if (actualFramesCopied < framesToCopy) {
+                /* Fill remainder with silence */
+                memset(&outFloatPcm[(framesDelivered + actualFramesCopied) * JAMEET_CHANNELS], 0, (framesToCopy - actualFramesCopied) * JAMEET_CHANNELS * sizeof(float));
             }
         } else {
             /* Fallback to exact digital silence for this quantum */

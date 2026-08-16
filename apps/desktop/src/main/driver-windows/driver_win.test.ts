@@ -10,6 +10,7 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
   const slnPath = path.join(driverDir, 'JaMeetRemote.sln');
   const installerNshPath = path.join(driverDir, '../../../build/installer.nsh');
   const packageJsonPath = path.join(driverDir, '../../../package.json');
+  const deviceInstallerPath = path.join(driverDir, 'jameet-device-installer.c');
 
   it('validates JaMeetRemote.inf syntax, security SDDL in NT.HW, and interface declarations', () => {
     expect(fs.existsSync(infPath)).toBe(true);
@@ -68,7 +69,14 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     expect(buildCmdContent).toContain('JaMeetRemote.vcxproj');
   });
 
-  it('validates driver installation and uninstallation script presence and device scanning', () => {
+  it('validates native device installer utility and installation scripts with error propagation', () => {
+    expect(fs.existsSync(deviceInstallerPath)).toBe(true);
+    const installerSrc = fs.readFileSync(deviceInstallerPath, 'utf-8');
+    expect(installerSrc).toContain('ROOT\\JaMeetRemote');
+    expect(installerSrc).toContain('SetupDiCreateDeviceInfoW');
+    expect(installerSrc).toContain('UpdateDriverForPlugAndPlayDevicesW');
+    expect(installerSrc).toContain('DIF_REMOVE');
+
     const installCmdPath = path.join(driverDir, 'install-driver.cmd');
     const uninstallCmdPath = path.join(driverDir, 'uninstall-driver.cmd');
 
@@ -76,14 +84,12 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     expect(fs.existsSync(uninstallCmdPath)).toBe(true);
 
     const installContent = fs.readFileSync(installCmdPath, 'utf-8');
-    expect(installContent).toContain('pnputil.exe /add-driver');
-    expect(installContent).toContain('/install');
-    expect(installContent).toContain('pnputil.exe /scan-devices');
+    expect(installContent).toContain('jameet-device-installer.exe');
+    expect(installContent).toContain('pnputil.exe');
 
     const uninstallContent = fs.readFileSync(uninstallCmdPath, 'utf-8');
-    expect(uninstallContent).toContain('pnputil.exe /delete-driver');
-    expect(uninstallContent).toContain('/uninstall');
-    expect(uninstallContent).toContain('pnputil.exe /scan-devices');
+    expect(uninstallContent).toContain('jameet-device-installer.exe');
+    expect(uninstallContent).toContain('pnputil.exe');
   });
 
   it('validates NSIS installer integration and package.json Windows resources', () => {

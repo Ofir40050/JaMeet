@@ -2,16 +2,13 @@
 
 #ifdef _WIN32
 
-static HANDLE gSectionHandle = NULL;
 static JaMeetSharedSegment* gKernelSharedSegment = NULL;
-static SIZE_T gKernelViewSize = 0;
+static PMDL gSharedMdl = NULL;
 
-static FAST_MUTEX gProducerMutex;
+static KEVENT gProducerMutexEvent;
 static PEPROCESS gProducerProcess = NULL;
-static HANDLE gProducerProcessHandle = NULL;
 static PFILE_OBJECT gActiveProducerFileObject = NULL;
 static PVOID gUserViewBaseAddress = NULL;
-static SIZE_T gUserViewSize = 0;
 
 static PDRIVER_DISPATCH gPortClsDeviceControl = NULL;
 static PDRIVER_DISPATCH gPortClsCleanup = NULL;
@@ -23,48 +20,22 @@ JaMeetSharedSegment* JaMeetDispatch_GetKernelSharedSegment(void) {
 }
 
 NTSTATUS JaMeetDispatch_InitSection(void) {
-    ExInitializeFastMutex(&gProducerMutex);
+    KeInitializeEvent(&gProducerMutexEvent, SynchronizationEvent, TRUE);
 
-    LARGE_INTEGER sectionSize;
-    sectionSize.QuadPart = sizeof(JaMeetSharedSegment);
-
-    OBJECT_ATTRIBUTES objAttr;
-    InitializeObjectAttributes(&objAttr, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
-
-    NTSTATUS status = ZwCreateSection(
-        &gSectionHandle,
-        SECTION_ALL_ACCESS,
-        &objAttr,
-        &sectionSize,
-        PAGE_READWRITE,
-        SEC_COMMIT,
-        NULL
-    );
-    if (!NT_SUCCESS(status)) {
-        return status;
-    }
-
-    gKernelViewSize = sizeof(JaMeetSharedSegment);
-    status = ZwMapViewOfSection(
-        gSectionHandle,
-        ZwCurrentProcess(),
-        (PVOID*)&gKernelSharedSegment,
-        0,
+    /* Allocate permanent nonpaged shared memory segment resident at DISPATCH_LEVEL */
+    gKernelSharedSegment = (JaMeetSharedSegment*)ExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
         sizeof(JaMeetSharedSegment),
-        NULL,
-        &gKernelViewSize,
-        ViewUnmap,
-        0,
-        PAGE_READWRITE
+        'TMJR'
     );
-    if (!NT_SUCCESS(status)) {
-        ZwClose(gSectionHandle);
-        gSectionHandle = NULL;
-        return status;
+    if (!gKernelSharedSegment) {
+        return STATUS_INSUFFICIENT_RESOURCES;
     }
+
+    /* Zero all shared pages before exposure */
+    RtlZeroMemory(gKernelSharedSegment, sizeof(JaMeetSharedSegment));
 
     /* Initialize shared segment format with exact authoritative ABI fields */
-    memset(gKernelSharedSegment, 0, sizeof(JaMeetSharedSegment));
     gKernelSharedSegment->header.magic = JAMEET_SHM_MAGIC;
     gKernelSharedSegment->header.abiVersion = JAMEET_ABI_VERSION;
     gKernelSharedSegment->header.headerSizeBytes = sizeof(JaMeetSharedHeader);
@@ -75,34 +46,46 @@ NTSTATUS JaMeetDispatch_InitSection(void) {
     gKernelSharedSegment->header.framesPerSlot = JAMEET_SLOT_FRAMES;
     gKernelSharedSegment->header.totalCapacityFrames = JAMEET_TOTAL_FRAMES;
 
+    /* Build MDL to allow mapping into user mode */
+    gSharedMdl = IoAllocateMdl(gKernelSharedSegment, sizeof(JaMeetSharedSegment), FALSE, FALSE, NULL);
+    if (!gSharedMdl) {
+        ExFreePoolWithTag(gKernelSharedSegment, 'TMJR');
+        gKernelSharedSegment = NULL;
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    MmBuildMdlForNonPagedPool(gSharedMdl);
+
     return STATUS_SUCCESS;
 }
 
 void JaMeetDispatch_TeardownSection(void) {
-    ExAcquireFastMutex(&gProducerMutex);
+    KeWaitForSingleObject(&gProducerMutexEvent, Executive, KernelMode, FALSE, NULL);
 
-    if (gProducerProcessHandle != NULL && gUserViewBaseAddress != NULL) {
-        ZwUnmapViewOfSection(gProducerProcessHandle, gUserViewBaseAddress);
-        ZwClose(gProducerProcessHandle);
-        gProducerProcessHandle = NULL;
+    if (gUserViewBaseAddress != NULL && gSharedMdl != NULL) {
+        __try {
+            MmUnmapLockedPages(gUserViewBaseAddress, gSharedMdl);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        }
         gUserViewBaseAddress = NULL;
     }
+
     if (gProducerProcess != NULL) {
         ObDereferenceObject(gProducerProcess);
         gProducerProcess = NULL;
     }
     gActiveProducerFileObject = NULL;
 
-    ExReleaseFastMutex(&gProducerMutex);
+    KeSetEvent(&gProducerMutexEvent, IO_NO_INCREMENT, FALSE);
 
-    if (gKernelSharedSegment != NULL) {
-        ZwUnmapViewOfSection(ZwCurrentProcess(), (PVOID)gKernelSharedSegment);
-        gKernelSharedSegment = NULL;
+    if (gSharedMdl != NULL) {
+        IoFreeMdl(gSharedMdl);
+        gSharedMdl = NULL;
     }
 
-    if (gSectionHandle != NULL) {
-        ZwClose(gSectionHandle);
-        gSectionHandle = NULL;
+    if (gKernelSharedSegment != NULL) {
+        ExFreePoolWithTag(gKernelSharedSegment, 'TMJR');
+        gKernelSharedSegment = NULL;
     }
 }
 
@@ -129,11 +112,12 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
             return STATUS_INVALID_PARAMETER;
         }
 
-        ExAcquireFastMutex(&gProducerMutex);
+        /* PASSIVE_LEVEL synchronization */
+        KeWaitForSingleObject(&gProducerMutexEvent, Executive, KernelMode, FALSE, NULL);
 
         /* Single producer mutual exclusion: reject second writer */
-        if (gActiveProducerFileObject != NULL || gProducerProcessHandle != NULL) {
-            ExReleaseFastMutex(&gProducerMutex);
+        if (gActiveProducerFileObject != NULL || gUserViewBaseAddress != NULL) {
+            KeSetEvent(&gProducerMutexEvent, IO_NO_INCREMENT, FALSE);
             Irp->IoStatus.Status = STATUS_DEVICE_BUSY;
             Irp->IoStatus.Information = 0;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -145,89 +129,70 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
             requestorProcess = PsGetCurrentProcess();
         }
 
+        PVOID userMappedAddress = NULL;
+        NTSTATUS status = STATUS_SUCCESS;
+
+        __try {
+            /* Safely map the nonpaged shared memory MDL into the requestor process space */
+            userMappedAddress = MmMapLockedPagesSpecifyCache(
+                gSharedMdl,
+                UserMode,
+                MmCached,
+                NULL,
+                FALSE,
+                NormalPagePriority | MdlMappingNoExecute
+            );
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            status = GetExceptionCode();
+            userMappedAddress = NULL;
+        }
+
+        if (!userMappedAddress || !NT_SUCCESS(status)) {
+            KeSetEvent(&gProducerMutexEvent, IO_NO_INCREMENT, FALSE);
+            Irp->IoStatus.Status = (status != STATUS_SUCCESS) ? status : STATUS_INSUFFICIENT_RESOURCES;
+            Irp->IoStatus.Information = 0;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return Irp->IoStatus.Status;
+        }
+
         ObReferenceObject(requestorProcess);
         gProducerProcess = requestorProcess;
-
-        NTSTATUS status = ObOpenObjectByPointer(
-            requestorProcess,
-            OBJ_KERNEL_HANDLE,
-            NULL,
-            PROCESS_VM_OPERATION,
-            *PsProcessType,
-            KernelMode,
-            &gProducerProcessHandle
-        );
-
-        if (!NT_SUCCESS(status)) {
-            ObDereferenceObject(gProducerProcess);
-            gProducerProcess = NULL;
-            ExReleaseFastMutex(&gProducerMutex);
-            Irp->IoStatus.Status = status;
-            Irp->IoStatus.Information = 0;
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return status;
-        }
-
-        gUserViewSize = sizeof(JaMeetSharedSegment);
-        gUserViewBaseAddress = NULL;
-
-        status = ZwMapViewOfSection(
-            gSectionHandle,
-            gProducerProcessHandle,
-            &gUserViewBaseAddress,
-            0,
-            sizeof(JaMeetSharedSegment),
-            NULL,
-            &gUserViewSize,
-            ViewUnmap,
-            0,
-            PAGE_READWRITE
-        );
-
-        if (!NT_SUCCESS(status)) {
-            ZwClose(gProducerProcessHandle);
-            gProducerProcessHandle = NULL;
-            ObDereferenceObject(gProducerProcess);
-            gProducerProcess = NULL;
-            ExReleaseFastMutex(&gProducerMutex);
-            Irp->IoStatus.Status = status;
-            Irp->IoStatus.Information = 0;
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return status;
-        }
-
+        gUserViewBaseAddress = userMappedAddress;
         gActiveProducerFileObject = irpSp->FileObject;
 
         resp->status = 0;
         resp->abiVersion = JAMEET_ABI_VERSION;
         resp->viewBase = (uint64_t)(uintptr_t)gUserViewBaseAddress;
-        resp->viewSize = (uint64_t)gUserViewSize;
+        resp->viewSize = (uint64_t)sizeof(JaMeetSharedSegment);
 
-        ExReleaseFastMutex(&gProducerMutex);
+        KeSetEvent(&gProducerMutexEvent, IO_NO_INCREMENT, FALSE);
 
         Irp->IoStatus.Status = STATUS_SUCCESS;
         Irp->IoStatus.Information = sizeof(JaMeetMapProducerViewResponse);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_SUCCESS;
     } else if (ioctlCode == IOCTL_JAMEET_UNMAP_PRODUCER_VIEW) {
-        ExAcquireFastMutex(&gProducerMutex);
+        KeWaitForSingleObject(&gProducerMutexEvent, Executive, KernelMode, FALSE, NULL);
 
-        if (irpSp->FileObject == gActiveProducerFileObject && gProducerProcessHandle != NULL && gUserViewBaseAddress != NULL) {
-            ZwUnmapViewOfSection(gProducerProcessHandle, gUserViewBaseAddress);
-            ZwClose(gProducerProcessHandle);
-            gProducerProcessHandle = NULL;
+        if (irpSp->FileObject == gActiveProducerFileObject && gUserViewBaseAddress != NULL) {
+            __try {
+                MmUnmapLockedPages(gUserViewBaseAddress, gSharedMdl);
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+            }
             gUserViewBaseAddress = NULL;
+
             if (gProducerProcess != NULL) {
                 ObDereferenceObject(gProducerProcess);
                 gProducerProcess = NULL;
             }
             gActiveProducerFileObject = NULL;
+
             if (gKernelSharedSegment != NULL) {
                 gKernelSharedSegment->header.isVoiceActive = 0;
             }
         }
 
-        ExReleaseFastMutex(&gProducerMutex);
+        KeSetEvent(&gProducerMutexEvent, IO_NO_INCREMENT, FALSE);
 
         Irp->IoStatus.Status = STATUS_SUCCESS;
         Irp->IoStatus.Information = 0;
@@ -244,14 +209,14 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
         JaMeetDriverStatusResponse* resp = (JaMeetDriverStatusResponse*)Irp->AssociatedIrp.SystemBuffer;
         memset(resp, 0, sizeof(JaMeetDriverStatusResponse));
 
-        ExAcquireFastMutex(&gProducerMutex);
+        KeWaitForSingleObject(&gProducerMutexEvent, Executive, KernelMode, FALSE, NULL);
         resp->isProducerConnected = (gActiveProducerFileObject != NULL) ? 1 : 0;
         if (gKernelSharedSegment != NULL) {
             resp->isVoiceActive = gKernelSharedSegment->header.isVoiceActive;
             resp->lastHeartbeatMs = gKernelSharedSegment->header.heartbeatMs;
         }
         resp->sampleRate = JAMEET_SAMPLE_RATE;
-        ExReleaseFastMutex(&gProducerMutex);
+        KeSetEvent(&gProducerMutexEvent, IO_NO_INCREMENT, FALSE);
 
         Irp->IoStatus.Status = STATUS_SUCCESS;
         Irp->IoStatus.Information = sizeof(JaMeetDriverStatusResponse);
@@ -273,27 +238,27 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
 static NTSTATUS JaMeetDispatch_HandleCleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
 
-    ExAcquireFastMutex(&gProducerMutex);
+    KeWaitForSingleObject(&gProducerMutexEvent, Executive, KernelMode, FALSE, NULL);
 
-    if (irpSp->FileObject == gActiveProducerFileObject) {
-        /* Process-specific user memory unmapping using retained kernel handle */
-        if (gProducerProcessHandle != NULL && gUserViewBaseAddress != NULL) {
-            ZwUnmapViewOfSection(gProducerProcessHandle, gUserViewBaseAddress);
-            ZwClose(gProducerProcessHandle);
-            gProducerProcessHandle = NULL;
-            gUserViewBaseAddress = NULL;
+    if (irpSp->FileObject == gActiveProducerFileObject && gUserViewBaseAddress != NULL) {
+        __try {
+            MmUnmapLockedPages(gUserViewBaseAddress, gSharedMdl);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
         }
+        gUserViewBaseAddress = NULL;
+
         if (gProducerProcess != NULL) {
             ObDereferenceObject(gProducerProcess);
             gProducerProcess = NULL;
         }
         gActiveProducerFileObject = NULL;
+
         if (gKernelSharedSegment != NULL) {
             gKernelSharedSegment->header.isVoiceActive = 0;
         }
     }
 
-    ExReleaseFastMutex(&gProducerMutex);
+    KeSetEvent(&gProducerMutexEvent, IO_NO_INCREMENT, FALSE);
 
     /* Forward to PortCls cleanup handler */
     if (gPortClsCleanup) {
