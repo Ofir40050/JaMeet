@@ -404,70 +404,114 @@ export class ProjectStore {
       }
 
       if (updates.lyrics.documents) {
-        curLyrics.documents = updates.lyrics.documents;
+        const oldDocs = new Map((curLyrics.documents || []).map((d) => [d.id, { ...d }]));
+        curLyrics.documents = updates.lyrics.documents.map((incDoc) => {
+          const existing = oldDocs.get(incDoc.id);
+          if (existing) {
+            const hasTitleUpdate = incDoc.title !== undefined && incDoc.title.trim().length > 0;
+            const newTitle = hasTitleUpdate ? incDoc.title.trim() : existing.title;
+            const newContent = incDoc.content !== undefined ? incDoc.content : existing.content;
+            const titleChanged = newTitle !== existing.title;
+            const contentChanged = newContent !== existing.content;
+
+            if (titleChanged || contentChanged) {
+              return {
+                id: incDoc.id,
+                title: newTitle,
+                content: newContent,
+                updatedAt: now,
+                updatedBy: user.id,
+                updatedByName: user.displayName
+              };
+            }
+            return {
+              id: incDoc.id,
+              title: existing.title,
+              content: existing.content,
+              updatedAt: existing.updatedAt,
+              updatedBy: existing.updatedBy,
+              updatedByName: existing.updatedByName
+            };
+          }
+          return {
+            id: incDoc.id,
+            title: incDoc.title ? incDoc.title.trim() : 'Untitled Lyrics',
+            content: incDoc.content || '',
+            updatedAt: now,
+            updatedBy: user.id,
+            updatedByName: user.displayName
+          };
+        });
       }
 
       if (updates.lyrics.activeDocumentId) {
         curLyrics.activeDocumentId = updates.lyrics.activeDocumentId;
       }
 
-      // Target document ID
-      const targetDocId = updates.lyrics.documentId || curLyrics.activeDocumentId || curLyrics.documents[0]?.id || 'doc-main';
-      let doc = curLyrics.documents.find((d) => d.id === targetDocId);
+      if (updates.lyrics.documentId !== undefined || updates.lyrics.title !== undefined || updates.lyrics.content !== undefined) {
+        // Target document ID
+        const targetDocId = updates.lyrics.documentId || curLyrics.activeDocumentId || curLyrics.documents[0]?.id || 'doc-main';
+        let doc = curLyrics.documents.find((d) => d.id === targetDocId);
 
-      if (!doc) {
-        doc = {
-          id: targetDocId,
-          title: updates.lyrics.title || 'Untitled Lyrics',
-          content: updates.lyrics.content || '',
-          updatedAt: now,
-          updatedBy: user.id,
-          updatedByName: user.displayName
-        };
-        curLyrics.documents.push(doc);
-        this.recordActivity(
-          projectId,
-          user,
-          'lyrics_doc_created',
-          `${user.displayName} created lyrics draft "${doc.title}"`,
-          doc.title,
-          undefined,
-          false
-        );
-      } else {
-        const oldTitle = doc.title;
-        const oldContent = doc.content;
-        if (updates.lyrics.title !== undefined && updates.lyrics.title.trim().length > 0) {
-          doc.title = updates.lyrics.title.trim();
-          if (doc.title !== oldTitle) {
-            this.recordActivity(
-              projectId,
-              user,
-              'lyrics_doc_renamed',
-              `${user.displayName} renamed lyrics draft to "${doc.title}"`,
-              doc.title,
-              undefined,
-              false
-            );
+        if (!doc) {
+          doc = {
+            id: targetDocId,
+            title: updates.lyrics.title || 'Untitled Lyrics',
+            content: updates.lyrics.content || '',
+            updatedAt: now,
+            updatedBy: user.id,
+            updatedByName: user.displayName
+          };
+          curLyrics.documents.push(doc);
+          this.recordActivity(
+            projectId,
+            user,
+            'lyrics_doc_created',
+            `${user.displayName} created lyrics draft "${doc.title}"`,
+            doc.title,
+            undefined,
+            false
+          );
+        } else if (updates.lyrics.title !== undefined || updates.lyrics.content !== undefined) {
+          const oldTitle = doc.title;
+          const oldContent = doc.content;
+          let changed = false;
+          if (updates.lyrics.title !== undefined && updates.lyrics.title.trim().length > 0) {
+            doc.title = updates.lyrics.title.trim();
+            if (doc.title !== oldTitle) {
+              changed = true;
+              this.recordActivity(
+                projectId,
+                user,
+                'lyrics_doc_renamed',
+                `${user.displayName} renamed lyrics draft to "${doc.title}"`,
+                doc.title,
+                undefined,
+                false
+              );
+            }
+          }
+          if (updates.lyrics.content !== undefined) {
+            doc.content = updates.lyrics.content;
+            if (doc.content !== oldContent) {
+              changed = true;
+              this.recordActivity(
+                projectId,
+                user,
+                'lyrics_edited',
+                `${user.displayName} edited ${doc.title}`,
+                doc.title,
+                undefined,
+                false
+              );
+            }
+          }
+          if (changed) {
+            doc.updatedAt = now;
+            doc.updatedBy = user.id;
+            doc.updatedByName = user.displayName;
           }
         }
-        if (updates.lyrics.content !== undefined) {
-          doc.content = updates.lyrics.content;
-          if (doc.content !== oldContent) {
-            this.recordActivity(
-              projectId,
-              user,
-              'lyrics_edited',
-              `${user.displayName} edited ${doc.title}`,
-              doc.title,
-              undefined,
-              false
-            );
-          }
-        }
-        doc.updatedAt = now;
-        doc.updatedBy = user.id;
-        doc.updatedByName = user.displayName;
       }
 
       // Sync active document content to top-level content for backwards compatibility

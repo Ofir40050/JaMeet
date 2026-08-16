@@ -886,6 +886,119 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('enforces server-authoritative attribution metadata for lyrics documents array updates', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-lyrics-attrib-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'owner-lyr-1',
+        displayName: 'Owner Alice',
+        username: 'alice',
+        email: 'alice@music.com',
+        avatarColor: '#6366f1',
+        isGuest: false,
+        createdAt: 1000
+      };
+      const editor: UserProfile = {
+        id: 'editor-lyr-1',
+        displayName: 'Editor Bob',
+        username: 'bob',
+        email: 'bob@music.com',
+        avatarColor: '#10b981',
+        isGuest: false,
+        createdAt: 2000
+      };
+
+      const project = store.createProject(owner, { name: 'Lyrics Attrib Song' }, [editor]);
+
+      // Initial doc created by owner
+      const initialDoc = project.workspace.lyrics.documents[0];
+      const initialUpdatedAt = initialDoc.updatedAt;
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      // Editor creates doc-2
+      const createdDoc2 = store.updateWorkspace(project.id, editor, {
+        lyrics: {
+          documentId: 'doc-2',
+          title: 'Bridge Draft',
+          content: 'Original bridge words'
+        }
+      });
+      const doc2Before = createdDoc2?.workspace.lyrics.documents.find((d) => d.id === 'doc-2')!;
+      expect(doc2Before.updatedBy).toBe(editor.id);
+      expect(doc2Before.updatedByName).toBe(editor.displayName);
+      const doc2UpdatedAt = doc2Before.updatedAt;
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      // Editor sends documents array with:
+      // 1. doc-main UNCHANGED with spoofed metadata
+      // 2. doc-2 MODIFIED content with spoofed metadata
+      // 3. doc-3 NEW with spoofed metadata
+      const updateTime = Date.now();
+      const updatedWorkspace = store.updateWorkspace(project.id, editor, {
+        lyrics: {
+          documents: [
+            {
+              id: 'doc-main',
+              title: 'Main Lyrics',
+              content: '',
+              updatedAt: 99999999,
+              updatedBy: 'spoofed-hacker-id',
+              updatedByName: 'Spoofed Hacker'
+            },
+            {
+              id: 'doc-2',
+              title: 'Bridge Draft',
+              content: 'Brand new bridge lines',
+              updatedAt: 88888888,
+              updatedBy: 'spoofed-hacker-id',
+              updatedByName: 'Spoofed Hacker'
+            },
+            {
+              id: 'doc-3',
+              title: 'Outro Draft',
+              content: 'Fade out chords and vocal adlibs',
+              updatedAt: 77777777,
+              updatedBy: 'spoofed-hacker-id',
+              updatedByName: 'Spoofed Hacker'
+            }
+          ]
+        }
+      });
+
+      expect(updatedWorkspace).not.toBeNull();
+      const docs = updatedWorkspace!.workspace.lyrics.documents;
+      expect(docs.length).toBe(3);
+
+      // doc-main is unchanged: must PRESERVE original server metadata
+      const doc1After = docs.find((d) => d.id === 'doc-main')!;
+      expect(doc1After.updatedAt).toBe(initialUpdatedAt);
+      expect(doc1After.updatedBy).toBe(initialDoc.updatedBy);
+      expect(doc1After.updatedByName).toBe(initialDoc.updatedByName);
+
+      // doc-2 was modified: must derive metadata from editor and server time >= updateTime
+      const doc2After = docs.find((d) => d.id === 'doc-2')!;
+      expect(doc2After.content).toBe('Brand new bridge lines');
+      expect(doc2After.updatedBy).toBe(editor.id);
+      expect(doc2After.updatedByName).toBe(editor.displayName);
+      expect(doc2After.updatedAt).toBeGreaterThanOrEqual(updateTime);
+      expect(doc2After.updatedAt).not.toBe(88888888);
+
+      // doc-3 was newly introduced: must derive metadata from editor and server time >= updateTime
+      const doc3After = docs.find((d) => d.id === 'doc-3')!;
+      expect(doc3After.title).toBe('Outro Draft');
+      expect(doc3After.content).toBe('Fade out chords and vocal adlibs');
+      expect(doc3After.updatedBy).toBe(editor.id);
+      expect(doc3After.updatedByName).toBe(editor.displayName);
+      expect(doc3After.updatedAt).toBeGreaterThanOrEqual(updateTime);
+      expect(doc3After.updatedAt).not.toBe(77777777);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

@@ -4530,6 +4530,83 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('enforces server-authoritative lyrics document attribution across REST workspace updates', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-lyrics-rest-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-lyr-rest-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_lyr_rest', 'beta', userStore);
+      const editorAuth = await createTestAccount(url, 'editor_lyr_rest', 'beta', userStore);
+
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Lyrics Rest Test' }, [editorAuth.user]);
+      const initialDoc = project.workspace.lyrics.documents[0];
+      const initialDocUpdatedAt = initialDoc.updatedAt;
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const updateStartTime = Date.now();
+      const updateRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${editorAuth.token}` },
+        body: JSON.stringify({
+          lyrics: {
+            documents: [
+              {
+                id: 'doc-main',
+                title: 'Main Lyrics',
+                content: '',
+                updatedAt: 12345,
+                updatedBy: 'fake_user_id',
+                updatedByName: 'Fake User Name'
+              },
+              {
+                id: 'doc-verse2',
+                title: 'Verse Two Draft',
+                content: 'Second verse lines',
+                updatedAt: 67890,
+                updatedBy: 'fake_user_id',
+                updatedByName: 'Fake User Name'
+              }
+            ]
+          }
+        })
+      });
+      expect(updateRes.status).toBe(200);
+      const updateData = (await updateRes.json()) as { ok: boolean; project: any };
+      const returnedDocs = updateData.project.workspace.lyrics.documents;
+      expect(returnedDocs.length).toBe(2);
+
+      // doc-main is unchanged: preserves server metadata
+      const mainDoc = returnedDocs.find((d: any) => d.id === 'doc-main');
+      expect(mainDoc.updatedAt).toBe(initialDocUpdatedAt);
+      expect(mainDoc.updatedBy).toBe(initialDoc.updatedBy);
+      expect(mainDoc.updatedByName).toBe(initialDoc.updatedByName);
+
+      // doc-verse2 is new: derives server metadata from editor
+      const v2Doc = returnedDocs.find((d: any) => d.id === 'doc-verse2');
+      expect(v2Doc.title).toBe('Verse Two Draft');
+      expect(v2Doc.content).toBe('Second verse lines');
+      expect(v2Doc.updatedBy).toBe(editorAuth.user.id);
+      expect(v2Doc.updatedByName).toBe(editorAuth.user.displayName);
+      expect(v2Doc.updatedAt).toBeGreaterThanOrEqual(updateStartTime);
+      expect(v2Doc.updatedAt).not.toBe(67890);
+
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 
