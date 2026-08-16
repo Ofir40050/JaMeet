@@ -278,7 +278,8 @@ public:
         bufferSize = (ULONG)ROUND_TO_PAGES(bufferSize);
 
         PHYSICAL_ADDRESS highAddress;
-        highAddress.QuadPart = MAXULONG64;
+        highAddress.LowPart = MAXULONG;
+        highAddress.HighPart = 0;
 
         PMDL pMdl = m_pPortStream->AllocatePagesForMdl(highAddress, bufferSize);
         if (!pMdl) {
@@ -384,7 +385,8 @@ public:
         ULONG physicalAllocationSize = (ULONG)ROUND_TO_PAGES(bufferSize);
 
         PHYSICAL_ADDRESS highAddress;
-        highAddress.QuadPart = MAXULONG64;
+        highAddress.LowPart = MAXULONG;
+        highAddress.HighPart = 0;
 
         PMDL pMdl = m_pPortStream->AllocatePagesForMdl(highAddress, physicalAllocationSize);
         if (!pMdl) {
@@ -692,6 +694,7 @@ public:
         DeviceDescription->ScatterGather = TRUE;
         DeviceDescription->Dma32BitAddresses = TRUE;
         DeviceDescription->InterfaceType = Internal;
+        DeviceDescription->MaximumLength = 0xFFFFFFFF;
         return STATUS_SUCCESS;
     }
 
