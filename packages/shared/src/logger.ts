@@ -59,6 +59,7 @@ const SENSITIVE_KEY_PATTERNS = [
   /jwt/i,
   /authorization/i,
   /cookie/i,
+  /credential/i,
   /lyrics/i,
   /notes/i,
   /privatedata/i,
@@ -92,15 +93,15 @@ export function sanitizeLogString(input: string): string {
   // 3. Redact JSON Web Tokens (3 base64url segments starting with eyJ)
   str = str.replace(/\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_.-]*/g, '[REDACTED_TOKEN]');
 
-  // 4. Redact JSON-style key-values: "password": "...", "authToken": "...", etc.
+  // 4. Redact JSON-style key-values: "password": "...", "credential": "...", "authToken": "...", etc.
   str = str.replace(
-    /"((?:password|passphrase|currentPassword|newPassword|secret|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token))"\s*:\s*("(?:[^"\\]|\\.)*"|[^\s,}\]]+)/gi,
+    /"((?:password|passphrase|currentPassword|newPassword|secret|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token|credential|credentials))"\s*:\s*("(?:[^"\\]|\\.)*"|[^\s,}\]]+)/gi,
     '"$1":"[REDACTED]"'
   );
 
   // 5. Redact Key-Value patterns in text, query strings, headers, error messages:
   str = str.replace(
-    /((?:password|passphrase|currentPassword|newPassword|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token))\s*([:=])\s*("(?:[^"\\]|\\.)*"|'[^']*'|[^\s,;&'"}]+)/gi,
+    /((?:password|passphrase|currentPassword|newPassword|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token|credential|credentials))\s*([:=])\s*("(?:[^"\\]|\\.)*"|'[^']*'|[^\s,;&'"}]+)/gi,
     '$1$2[REDACTED]'
   );
 

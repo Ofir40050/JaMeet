@@ -133,11 +133,15 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
     expect(isSensitiveKey('authToken')).toBe(true);
     expect(isSensitiveKey('reconnect_token')).toBe(true);
     expect(isSensitiveKey('turnSharedSecret')).toBe(true);
+    expect(isSensitiveKey('credential')).toBe(true);
+    expect(isSensitiveKey('credentials')).toBe(true);
     expect(isSensitiveKey('lyricsDocs')).toBe(true);
     expect(isSensitiveKey('notes')).toBe(true);
     expect(isSensitiveKey('sessionCode')).toBe(false);
     expect(isSensitiveKey('participantId')).toBe(false);
     expect(isSensitiveKey('sampleRate')).toBe(false);
+    expect(isSensitiveKey('username')).toBe(false);
+    expect(isSensitiveKey('urls')).toBe(false);
   });
 
   it('observes fatal crashes via uncaughtExceptionMonitor without intercepting fatal exit', () => {
@@ -166,27 +170,57 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
   it('sanitizes sensitive credentials embedded inside top-level log messages and crash reasons', () => {
     const logEntry = testLogger.info(
       'network_error',
-      'Failed connecting to https://admin_user:super_secret_pwd@signaling.jameet.app:3000/ws?authToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgN&reconnectToken=rec-999-xyz with password: "RawPasswordHere!" and turnSharedSecret=turn-secret-123'
+      'Failed connecting to https://admin_user:super_secret_pwd@signaling.jameet.app:3000/ws?authToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgN&reconnectToken=rec-999-xyz with password: "RawPasswordHere!" and turnSharedSecret=turn-secret-123 and credential=turnPass789'
     );
 
     expect(logEntry.message).not.toContain('super_secret_pwd');
     expect(logEntry.message).not.toContain('RawPasswordHere!');
     expect(logEntry.message).not.toContain('rec-999-xyz');
     expect(logEntry.message).not.toContain('turn-secret-123');
+    expect(logEntry.message).not.toContain('turnPass789');
     expect(logEntry.message).toContain('https://admin_user:[REDACTED]@signaling.jameet.app:3000/ws?authToken=[REDACTED]');
     expect(logEntry.message).toContain('password:[REDACTED]');
     expect(logEntry.message).toContain('turnSharedSecret=[REDACTED]');
+    expect(logEntry.message).toContain('credential=[REDACTED]');
 
     const crashReport = testLogger.recordCrash({
       process: 'main',
-      reason: 'Fatal crash during handshake with token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEyMyJ9.sig and password=SecretCrashPassword',
+      reason: 'Fatal crash during handshake with token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEyMyJ9.sig and password=SecretCrashPassword and credential: "turnSecretKey"',
       error: new Error('Uncaught exception in auth: reconnectToken: "reconnect-secret-token"')
     });
 
     expect(crashReport.reason).not.toContain('SecretCrashPassword');
+    expect(crashReport.reason).not.toContain('turnSecretKey');
     expect(crashReport.reason).toContain('[REDACTED_TOKEN]');
+    expect(crashReport.reason).toContain('credential:[REDACTED]');
     expect(crashReport.error?.message).not.toContain('reconnect-secret-token');
     expect(crashReport.error?.message).toContain('reconnectToken:[REDACTED]');
+  });
+
+  it('redacts TURN credentials in structured IceServerConfig while preserving usernames and server URLs', () => {
+    const iceServers = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      {
+        urls: ['turn:turn.jameet.app:3478?transport=udp', 'turns:turn.jameet.app:5349?transport=tcp'],
+        username: '1786914300:participant-123',
+        credential: 'superSecretTurnHMACPassword'
+      }
+    ];
+
+    const sanitized = sanitizeLogData(iceServers) as any;
+    expect(sanitized[0].urls).toBe('stun:stun.l.google.com:19302');
+    expect(sanitized[1].urls).toEqual(['turn:turn.jameet.app:3478?transport=udp', 'turns:turn.jameet.app:5349?transport=tcp']);
+    expect(sanitized[1].username).toBe('1786914300:participant-123');
+    expect(sanitized[1].credential).toBe('[REDACTED]');
+
+    const logWithIce = testLogger.info('webrtc_turn_configured', 'Configured TURN ice servers', {
+      iceServers
+    }, { sessionCode: 'ABC12345' });
+
+    expect(logWithIce.meta?.iceServers).toBeDefined();
+    const loggedIce = (logWithIce.meta?.iceServers as any)[1];
+    expect(loggedIce.username).toBe('1786914300:participant-123');
+    expect(loggedIce.credential).toBe('[REDACTED]');
   });
 
   it('preserves non-sensitive diagnostic messages, technical identifiers, and error details', () => {

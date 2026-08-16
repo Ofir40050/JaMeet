@@ -43,6 +43,7 @@ describe('Server Production Structured Logging & Error Handling', () => {
       authToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEyMyJ9.sig',
       reconnectToken: 'reconnect-uuid-999',
       turnSharedSecret: 'turn-secret-12345678',
+      credential: 'turn-hmac-credential-987',
       lyrics: 'Confidential verse 1 lyrics',
       notes: 'Private chord progression: Am - F - C - G',
       lyricsWorkspace: { title: 'Secret Song' },
@@ -58,6 +59,7 @@ describe('Server Production Structured Logging & Error Handling', () => {
     expect(sanitized.authToken).toBe('[REDACTED]');
     expect(sanitized.reconnectToken).toBe('[REDACTED]');
     expect(sanitized.turnSharedSecret).toBe('[REDACTED]');
+    expect(sanitized.credential).toBe('[REDACTED]');
     expect(sanitized.lyrics).toBe('[REDACTED]');
     expect(sanitized.notes).toBe('[REDACTED]');
     expect(sanitized.lyricsWorkspace).toBe('[REDACTED]');
@@ -69,15 +71,31 @@ describe('Server Production Structured Logging & Error Handling', () => {
   it('sanitizes credentials and tokens embedded in arbitrary server log messages', () => {
     const entry = serverLogger.info(
       'auth_failure',
-      'Signaling client failed auth with authToken=rec-123 and standalone token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c3JfMSJ9.sig and password="mySecretPassword123" at url https://admin:superSecretPass@turn.jameet.app:3478'
+      'Signaling client failed auth with authToken=rec-123 and standalone token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c3JfMSJ9.sig and password="mySecretPassword123" at url https://admin:superSecretPass@turn.jameet.app:3478 with credential=turnPass456'
     );
 
     expect(entry.message).not.toContain('superSecretPass');
     expect(entry.message).not.toContain('mySecretPassword123');
     expect(entry.message).not.toContain('rec-123');
+    expect(entry.message).not.toContain('turnPass456');
     expect(entry.message).toContain('https://admin:[REDACTED]@turn.jameet.app:3478');
     expect(entry.message).toContain('authToken=[REDACTED]');
     expect(entry.message).toContain('[REDACTED_TOKEN]');
     expect(entry.message).toContain('password=[REDACTED]');
+    expect(entry.message).toContain('credential=[REDACTED]');
+  });
+
+  it('redacts TURN credential in iceServers while preserving username and urls', () => {
+    const entry = serverLogger.info('session_ice_created', 'Ice servers created for participant', {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'turn:turn.jameet.app:3478', username: '1786914300:part-99', credential: 'turnSecretPass' }
+      ]
+    }, { sessionCode: 'ABC12345' });
+
+    const ice = (entry.meta?.iceServers as any)[1];
+    expect(ice.urls).toBe('turn:turn.jameet.app:3478');
+    expect(ice.username).toBe('1786914300:part-99');
+    expect(ice.credential).toBe('[REDACTED]');
   });
 });
