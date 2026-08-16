@@ -9,8 +9,12 @@ import type {
   UpdateProfileRequest,
   ScheduledSession,
   FactualSessionSummary,
-  SessionSummaryEvent
+  SessionSummaryEvent,
+  MeetingErrorCode
 } from '@jameet/shared';
+import { type ServerConfig, parseBetaEndAt } from './config.js';
+
+export type SessionAccessState = 'beta' | 'paid' | 'blocked';
 
 export interface StoredUser {
   id: string;
@@ -18,6 +22,7 @@ export interface StoredUser {
   email: string;
   displayName: string;
   passwordHash: string; // salt:hashHex
+  sessionAccess: SessionAccessState;
   avatarColor: string;
   avatarUrl?: string;
   location?: string;
@@ -148,10 +153,22 @@ export class UserStore {
       const raw = fs.readFileSync(this.dataFilePath, 'utf-8');
       const data = JSON.parse(raw) as DatabaseSchema;
       if (Array.isArray(data.users)) {
+        let needsSave = false;
         for (const u of data.users) {
+          if (u.sessionAccess === undefined || u.sessionAccess === null) {
+            u.sessionAccess = 'beta';
+            needsSave = true;
+          }
           this.users.set(u.id, u);
           this.usernameIndex.set(u.username.toLowerCase(), u.id);
           this.emailIndex.set(u.email.toLowerCase(), u.id);
+        }
+        if (needsSave) {
+          try {
+            this.saveToDisk();
+          } catch (err) {
+            console.warn('Could not save migrated user access states to disk:', err);
+          }
         }
       }
       if (Array.isArray(data.tokens)) {
@@ -255,6 +272,9 @@ export class UserStore {
 
     if (Array.isArray(data.users)) {
       for (const u of data.users) {
+        if (u.sessionAccess === undefined || u.sessionAccess === null) {
+          u.sessionAccess = 'beta';
+        }
         this.users.set(u.id, u);
         this.usernameIndex.set(u.username.toLowerCase(), u.id);
         this.emailIndex.set(u.email.toLowerCase(), u.id);
@@ -355,6 +375,7 @@ export class UserStore {
         email: req.email,
         displayName: req.displayName,
         passwordHash,
+        sessionAccess: 'blocked',
         avatarColor: randomAvatarColor(),
         createdAt: now,
         updatedAt: now,
@@ -801,6 +822,23 @@ export class UserStore {
     return true;
   }
 
+  setSessionAccess(userId: string, access: SessionAccessState): boolean {
+    const user = this.users.get(userId);
+    if (!user) return false;
+    const prevAccess = user.sessionAccess;
+    const prevUpdatedAt = user.updatedAt;
+    user.sessionAccess = access;
+    user.updatedAt = Date.now();
+    try {
+      this.saveToDisk();
+      return true;
+    } catch (err) {
+      user.sessionAccess = prevAccess;
+      user.updatedAt = prevUpdatedAt;
+      throw err;
+    }
+  }
+
   private toProfile(stored: StoredUser): UserProfile {
     return {
       id: stored.id,
@@ -822,3 +860,101 @@ export class UserStore {
     };
   }
 }
+
+export type SessionAuthResult =
+  | {
+      ok: true;
+      user: StoredUser;
+      identity: ParticipantIdentity;
+    }
+  | {
+      ok: false;
+      code: MeetingErrorCode;
+      message: string;
+    };
+
+export function authorizeSessionAccess(
+  userStore: UserStore,
+  authToken: string | undefined,
+  config: ServerConfig,
+  isHost: boolean,
+  now: number = Date.now()
+): SessionAuthResult {
+  if (!authToken || typeof authToken !== 'string' || !authToken.trim()) {
+    return {
+      ok: false,
+      code: 'AUTH_REQUIRED',
+      message: 'Authentication required to create or join a session.'
+    };
+  }
+
+  const verifiedProfile = userStore.verifyToken(authToken);
+  if (!verifiedProfile || !verifiedProfile.id) {
+    return {
+      ok: false,
+      code: 'AUTH_REQUIRED',
+      message: 'Authentication required to create or join a session.'
+    };
+  }
+
+  const storedUser = userStore.getStoredUser(verifiedProfile.id);
+  if (!storedUser) {
+    return {
+      ok: false,
+      code: 'AUTH_REQUIRED',
+      message: 'Authentication required to create or join a session.'
+    };
+  }
+
+  // Session authorization must fail closed.
+  // Only explicit stored sessionAccess value of 'beta' or 'paid' may authorize a live session.
+  if (storedUser.sessionAccess === 'blocked') {
+    return {
+      ok: false,
+      code: 'ACCESS_DENIED',
+      message: 'Your account does not currently have access to JaMeet sessions.'
+    };
+  }
+
+  if (storedUser.sessionAccess === 'beta') {
+    if (config.BETA_END_AT && config.BETA_END_AT.trim()) {
+      const betaEndMs = parseBetaEndAt(config.BETA_END_AT);
+      if (betaEndMs !== null && now >= betaEndMs) {
+        return {
+          ok: false,
+          code: 'BETA_ENDED',
+          message: 'JaMeet Beta has ended. A JaMeet subscription will be required to continue creating or joining sessions.'
+        };
+      }
+    }
+  } else if (storedUser.sessionAccess === 'paid') {
+    // Paid access authorized (bypasses BETA_END_AT)
+  } else {
+    // Unknown, malformed, or unsupported sessionAccess value -> fail closed with ACCESS_DENIED
+    return {
+      ok: false,
+      code: 'ACCESS_DENIED',
+      message: 'Your account does not currently have access to JaMeet sessions.'
+    };
+  }
+
+  const identity: ParticipantIdentity = {
+    id: storedUser.id,
+    displayName: storedUser.displayName,
+    username: storedUser.username,
+    isGuest: false,
+    isHost,
+    avatarColor: storedUser.avatarColor,
+    avatarUrl: storedUser.avatarUrl,
+    role: storedUser.role,
+    location: storedUser.location,
+    primaryDaw: storedUser.primaryDaw
+  };
+
+  return {
+    ok: true,
+    user: storedUser,
+    identity
+  };
+}
+

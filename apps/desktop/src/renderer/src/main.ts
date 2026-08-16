@@ -1934,7 +1934,19 @@ async function enterSession(): Promise<void> {
     const ack: MeetingAck = pending.type === 'create'
       ? await signaling.create(participantId, metadata(), token, guestName, activeProjectId, waitingRoomEnabled)
       : await signaling.join(pending.code, participantId, metadata(), token, guestName);
-    if (!ack.ok) throw new Error(ack.message);
+    if (!ack.ok) {
+      if (ack.code === 'AUTH_REQUIRED') {
+        setMessage('setup-status', 'Authentication required to create or join a session.', true);
+        openAuthView('login');
+      } else if (ack.code === 'ACCESS_DENIED') {
+        setMessage('setup-status', 'Your account does not currently have access to JaMeet sessions.', true);
+      } else if (ack.code === 'BETA_ENDED') {
+        setMessage('setup-status', 'JaMeet Beta has ended.\nA JaMeet subscription will be required to continue creating or joining sessions.', true);
+      } else {
+        setMessage('setup-status', ack.message, true);
+      }
+      return;
+    }
     if (ack.waiting) {
       currentCode = ack.code;
       hostIdentity = ack.hostIdentity;
@@ -2266,7 +2278,13 @@ async function fullscreenRemote(requireShare: boolean): Promise<void> {
   if (tile && document.fullscreenElement !== tile) await tile.requestFullscreen();
 }
 
-$('create-button').addEventListener('click', () => void prepareStudio({ type: 'create' }));
+$('create-button').addEventListener('click', () => {
+  if (!auth.getUser()) {
+    openAuthView('login');
+    return;
+  }
+  void prepareStudio({ type: 'create' });
+});
 $('home-settings-button')?.addEventListener('click', async () => {
   try {
     await enumerateAndPopulate();
@@ -2279,9 +2297,9 @@ $('join-button').addEventListener('click', () => {
   const code = normalizeMeetingCode($<HTMLInputElement>('join-code').value);
   const parsed = meetingCodeSchema.safeParse(code);
   if (!parsed.success) return setMessage('home-error', 'Enter a valid 8-character session code.', true);
-  if (!auth.getUser() && !auth.getGuestName()) {
+  if (!auth.getUser()) {
     pendingJoinCode = code;
-    $<HTMLDialogElement>('guest-join-dialog')?.showModal();
+    openAuthView('login');
     return;
   }
   void prepareStudio({ type: 'join', code });
@@ -3608,7 +3626,13 @@ $('btn-view-submit-login')?.addEventListener('click', async () => {
       submitBtn.innerHTML = '<span>Signing In…</span>';
     }
     await auth.login({ usernameOrEmail: identifier, password });
-    showView('home-view');
+    if (pendingJoinCode) {
+      const code = pendingJoinCode;
+      pendingJoinCode = '';
+      void prepareStudio({ type: 'join', code });
+    } else {
+      showView('home-view');
+    }
   } catch (err: unknown) {
     if (errEl) {
       errEl.textContent = err instanceof Error ? err.message : 'Login failed.';
@@ -4063,9 +4087,9 @@ async function handleDeepLink(url: string): Promise<void> {
     if (joinInput) {
       joinInput.value = code;
     }
-    if (!auth.getUser() && !auth.getGuestName()) {
+    if (!auth.getUser()) {
       pendingJoinCode = code;
-      $<HTMLDialogElement>('guest-join-dialog')?.showModal();
+      openAuthView('login');
     } else {
       await prepareStudio({ type: 'join', code });
     }

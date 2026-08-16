@@ -451,7 +451,17 @@ export const mediaUpdateSchema = z.object({ code: meetingCodeSchema, media: medi
 
 export type MeetingRole = 'host' | 'guest';
 export type IceServerConfig = { urls: string | string[]; username?: string; credential?: string };
-export type MeetingErrorCode = 'INVALID_CODE' | 'ROOM_FULL' | 'ROOM_LOCKED' | 'NOT_IN_ROOM' | 'BAD_REQUEST' | 'SERVER_ERROR' | 'UNAUTHORIZED';
+export type MeetingErrorCode =
+  | 'INVALID_CODE'
+  | 'ROOM_FULL'
+  | 'ROOM_LOCKED'
+  | 'NOT_IN_ROOM'
+  | 'BAD_REQUEST'
+  | 'SERVER_ERROR'
+  | 'UNAUTHORIZED'
+  | 'AUTH_REQUIRED'
+  | 'ACCESS_DENIED'
+  | 'BETA_ENDED';
 
 export type MeetingAck =
   | {

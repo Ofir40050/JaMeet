@@ -18,7 +18,7 @@ import {
 } from '@jameet/shared';
 import type { ServerConfig } from './config.js';
 import { RoomStore, type Room } from './rooms.js';
-import { UserStore } from './auth.js';
+import { UserStore, authorizeSessionAccess } from './auth.js';
 import { ProjectStore } from './projects.js';
 import { createIceServers } from './turn.js';
 import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from './rate-limiter.js';
@@ -624,7 +624,12 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       if (!parsed.success) return ack(failure('BAD_REQUEST', 'Invalid session request'));
       if (socketData.code) return ack(failure('BAD_REQUEST', 'Already in a session'));
       
-      const identity = userStore.getTrustedIdentity(parsed.data.authToken, parsed.data.guestDisplayName, true);
+      const authResult = authorizeSessionAccess(userStore, parsed.data.authToken, config, true);
+      if (!authResult.ok) {
+        return ack(failure(authResult.code, authResult.message));
+      }
+
+      const identity = authResult.identity;
       const userSnapshot = userStore.createSnapshot();
       const projectSnapshot = projectStore.createSnapshot();
       let createdRoom: Room | undefined;
@@ -704,7 +709,12 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       const parsed = joinMeetingSchema.safeParse(raw);
       if (!parsed.success) return ack(failure('BAD_REQUEST', 'Invalid session code or participant'));
       
-      const identity = userStore.getTrustedIdentity(parsed.data.authToken, parsed.data.guestDisplayName, false);
+      const authResult = authorizeSessionAccess(userStore, parsed.data.authToken, config, false);
+      if (!authResult.ok) {
+        return ack(failure(authResult.code, authResult.message));
+      }
+
+      const identity = authResult.identity;
       const joined = rooms.join(parsed.data.code, parsed.data.participantId, socket.id, parsed.data.media, identity, parsed.data.reconnectToken);
       if (!joined.ok) {
         const message = joined.reason === 'UNAUTHORIZED'

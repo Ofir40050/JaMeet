@@ -22,26 +22,54 @@ function ack(socket: Socket, event: string, payload: unknown): Promise<MeetingAc
   return new Promise((resolve) => socket.emit(event, payload, resolve));
 }
 
+async function createTestAccount(url: string, username: string, access: 'beta' | 'paid' | 'blocked' = 'beta', userStore?: UserStore) {
+  const suffix = `${Date.now().toString(36).slice(-4)}_${Math.random().toString(36).slice(2, 6)}`;
+  const cleanPrefix = username.slice(0, 12);
+  const uName = `${cleanPrefix}_${suffix}`;
+  const uEmail = `${cleanPrefix}_${suffix}@test.com`;
+  const res = await fetch(`${url}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: uName,
+      email: uEmail,
+      password: 'StrongPassword123!',
+      displayName: `User ${username}`
+    })
+  });
+  const data = await res.json() as any;
+  if (!data.user) {
+    throw new Error(`Failed to create test account ${uName}: ${JSON.stringify(data)}`);
+  }
+  if (access !== 'blocked' && userStore) {
+    userStore.setSessionAccess(data.user.id, access);
+  }
+  return { token: data.token as string, user: data.user };
+}
+
 describe('signaling integration', () => {
   afterEach(() => { for (const socket of sockets.splice(0)) socket.disconnect(); });
 
   it('creates, joins, relays signaling, rejects a third person, and handles leave', async () => {
-    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
     try {
+      const hostUser = await createTestAccount(url, 'host_u1', 'beta', userStore);
+      const guestUser = await createTestAccount(url, 'guest_u1', 'beta', userStore);
+      const thirdUser = await createTestAccount(url, 'third_u1', 'beta', userStore);
       const host = await connected(url);
       const guest = await connected(url);
       const third = await connected(url);
-      const created = await ack(host, 'meeting:create', { participantId: '11111111-1111-4111-8111-111111111111', media });
+      const created = await ack(host, 'meeting:create', { participantId: '11111111-1111-4111-8111-111111111111', authToken: hostUser.token, media });
       expect(created.ok).toBe(true);
       if (!created.ok) return;
       const peerReady = new Promise<{ media: typeof media }>((resolve) => host.once('peer:ready', resolve));
-      const joined = await ack(guest, 'meeting:join', { code: created.code, participantId: '22222222-2222-4222-8222-222222222222', media });
+      const joined = await ack(guest, 'meeting:join', { code: created.code, participantId: '22222222-2222-4222-8222-222222222222', authToken: guestUser.token, media });
       expect(joined).toMatchObject({ ok: true, role: 'guest', peerPresent: true });
       expect((await peerReady).media.audioSources[0]?.mode).toBe('music');
-      expect(await ack(third, 'meeting:join', { code: created.code, participantId: '33333333-3333-4333-8333-333333333333', media })).toMatchObject({ ok: false, code: 'ROOM_FULL' });
+      expect(await ack(third, 'meeting:join', { code: created.code, participantId: '33333333-3333-4333-8333-333333333333', authToken: thirdUser.token, media })).toMatchObject({ ok: false, code: 'ROOM_FULL' });
 
       const description = new Promise<{ type: string; sdp: string }>((resolve) => guest.once('signal:description', resolve));
       host.emit('signal:description', { code: created.code, description: { type: 'offer', sdp: 'v=0' } });
@@ -64,11 +92,13 @@ describe('signaling integration', () => {
   });
 
   it('isolates waiting room participant until host admits them', async () => {
-    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
     try {
+      const hostUser = await createTestAccount(url, 'host_w1', 'beta', userStore);
+      const guestUser = await createTestAccount(url, 'guest_w1', 'beta', userStore);
       const host = await connected(url);
       const guest = await connected(url);
       const guestId = '22222222-2222-4222-8222-222222222222';
@@ -76,6 +106,7 @@ describe('signaling integration', () => {
       // 1. Host creates room with Waiting Room enabled
       const created = await ack(host, 'meeting:create', {
         participantId: '11111111-1111-4111-8111-111111111111',
+        authToken: hostUser.token,
         media,
         waitingRoomEnabled: true
       });
@@ -84,7 +115,7 @@ describe('signaling integration', () => {
 
       // 2. Guest joins - should receive waiting: true
       const waitingUpdatePromise = new Promise<any[]>((resolve) => host.once('waiting:update', resolve));
-      const joined = await ack(guest, 'meeting:join', { code: created.code, participantId: guestId, media });
+      const joined = await ack(guest, 'meeting:join', { code: created.code, participantId: guestId, authToken: guestUser.token, media });
       expect(joined).toMatchObject({ ok: true, waiting: true, role: 'guest' });
 
       // 3. Host receives waiting list notification with guest
@@ -133,11 +164,14 @@ describe('signaling integration', () => {
   });
 
   it('handles locking and unlocking session with server-side authorization and reconnects', async () => {
-    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
     try {
+      const hostUser = await createTestAccount(url, 'host_lock', 'beta', userStore);
+      const guestUser = await createTestAccount(url, 'guest_lock', 'beta', userStore);
+      const thirdUser = await createTestAccount(url, 'third_lock', 'beta', userStore);
       const host = await connected(url);
       const guest = await connected(url);
       const third = await connected(url);
@@ -146,12 +180,12 @@ describe('signaling integration', () => {
       const thirdId = '33333333-3333-4333-8333-333333333333';
 
       // 1. Host creates room
-      const created = await ack(host, 'meeting:create', { participantId: hostId, media, waitingRoomEnabled: true });
+      const created = await ack(host, 'meeting:create', { participantId: hostId, authToken: hostUser.token, media, waitingRoomEnabled: true });
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
       // 2. Guest joins and is in waiting room
-      const guestWaiting = await ack(guest, 'meeting:join', { code: created.code, participantId: guestId, media });
+      const guestWaiting = await ack(guest, 'meeting:join', { code: created.code, participantId: guestId, authToken: guestUser.token, media });
       expect(guestWaiting).toMatchObject({ ok: true, waiting: true });
 
       // 3. Host locks session
@@ -168,7 +202,7 @@ describe('signaling integration', () => {
       expect(unauthorizedUnlock.ok).toBe(false);
 
       // 5. New participant (third) tries to join while locked -> rejected with ROOM_LOCKED
-      const thirdJoin = await ack(third, 'meeting:join', { code: created.code, participantId: thirdId, media });
+      const thirdJoin = await ack(third, 'meeting:join', { code: created.code, participantId: thirdId, authToken: thirdUser.token, media });
       expect(thirdJoin).toMatchObject({ ok: false, code: 'ROOM_LOCKED' });
 
       // 6. Already waiting guest can still be admitted while locked
@@ -187,6 +221,7 @@ describe('signaling integration', () => {
       const rejoinAck = await ack(guestReconnected, 'meeting:join', {
         code: created.code,
         participantId: guestId,
+        authToken: guestUser.token,
         media,
         reconnectToken: (admittedAck as any).reconnectToken
       });
@@ -204,23 +239,25 @@ describe('signaling integration', () => {
   });
 
   it('handles host removing participant, revoking reconnect bypass, and notifying remaining peers', async () => {
-    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
     try {
+      const hostUser = await createTestAccount(url, 'host_rem', 'beta', userStore);
+      const guestUser = await createTestAccount(url, 'guest_rem', 'beta', userStore);
       const host = await connected(url);
       const guest = await connected(url);
       const hostId = '11111111-1111-4111-8111-111111111111';
       const guestId = '22222222-2222-4222-8222-222222222222';
 
       // 1. Host creates room with Waiting Room enabled
-      const created = await ack(host, 'meeting:create', { participantId: hostId, media, waitingRoomEnabled: true });
+      const created = await ack(host, 'meeting:create', { participantId: hostId, authToken: hostUser.token, media, waitingRoomEnabled: true });
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
       // 2. Guest joins and is admitted by host
-      await ack(guest, 'meeting:join', { code: created.code, participantId: guestId, media });
+      await ack(guest, 'meeting:join', { code: created.code, participantId: guestId, authToken: guestUser.token, media });
       const admittedPromise = new Promise<MeetingAck>((resolve) => guest.once('waiting:admitted', resolve));
       await new Promise<{ ok: boolean }>((resolve) => {
         host.emit('waiting:admit', { code: created.code, participantId: guestId }, resolve);
@@ -261,7 +298,7 @@ describe('signaling integration', () => {
       expect(chatRes.ok).toBe(false);
 
       // 8. Removed guest attempts to reconnect -> NOT treated as reconnected bypass; enters waiting room as fresh join
-      const guestRejoin = await ack(guest, 'meeting:join', { code: created.code, participantId: guestId, media });
+      const guestRejoin = await ack(guest, 'meeting:join', { code: created.code, participantId: guestId, authToken: guestUser.token, media });
       expect(guestRejoin).toMatchObject({ ok: true, waiting: true });
     } finally {
       io.close();
@@ -618,11 +655,14 @@ describe('signaling integration', () => {
   });
 
   it('prevents role hijacking via participantId and enforces server-authoritative reconnect identity', async () => {
-    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
     try {
+      const hostUser = await createTestAccount(url, 'host_rec', 'beta', userStore);
+      const guestUser = await createTestAccount(url, 'guest_rec', 'beta', userStore);
+      const attackerUser = await createTestAccount(url, 'attacker_rec', 'beta', userStore);
       const host = await connected(url);
       const guest = await connected(url);
       const attacker = await connected(url);
@@ -632,7 +672,7 @@ describe('signaling integration', () => {
       const attackerId = '99999999-9999-4999-8999-999999999999';
 
       // 1. Host creates session
-      const hostCreated = await ack(host, 'meeting:create', { participantId: hostId, media });
+      const hostCreated = await ack(host, 'meeting:create', { participantId: hostId, authToken: hostUser.token, media });
       expect(hostCreated.ok).toBe(true);
       if (!hostCreated.ok) return;
       expect(hostCreated.role).toBe('host');
@@ -641,7 +681,7 @@ describe('signaling integration', () => {
 
       // 2. Guest joins session
       const guestPeerReadyPromise = new Promise<any>((resolve) => host.once('peer:ready', resolve));
-      const guestJoined = await ack(guest, 'meeting:join', { code: hostCreated.code, participantId: guestId, media });
+      const guestJoined = await ack(guest, 'meeting:join', { code: hostCreated.code, participantId: guestId, authToken: guestUser.token, media });
       expect(guestJoined.ok).toBe(true);
       if (!guestJoined.ok) return;
       expect(guestJoined.role).toBe('guest');
@@ -656,6 +696,7 @@ describe('signaling integration', () => {
       const hijackHostNoToken = await ack(attacker, 'meeting:join', {
         code: hostCreated.code,
         participantId: hostId,
+        authToken: attackerUser.token,
         media
       });
       expect(hijackHostNoToken).toMatchObject({ ok: false, code: 'UNAUTHORIZED' });
@@ -664,6 +705,7 @@ describe('signaling integration', () => {
       const hijackHostBogusToken = await ack(attacker, 'meeting:join', {
         code: hostCreated.code,
         participantId: hostId,
+        authToken: attackerUser.token,
         media,
         reconnectToken: 'bogus-token-1234'
       });
@@ -673,6 +715,7 @@ describe('signaling integration', () => {
       const hijackGuestNoToken = await ack(attacker, 'meeting:join', {
         code: hostCreated.code,
         participantId: guestId,
+        authToken: attackerUser.token,
         media
       });
       expect(hijackGuestNoToken).toMatchObject({ ok: false, code: 'UNAUTHORIZED' });
@@ -684,6 +727,7 @@ describe('signaling integration', () => {
       const hijackHostDuringDisconnect = await ack(attacker, 'meeting:join', {
         code: hostCreated.code,
         participantId: hostId,
+        authToken: attackerUser.token,
         media
       });
       expect(hijackHostDuringDisconnect).toMatchObject({ ok: false, code: 'UNAUTHORIZED' });
@@ -693,6 +737,7 @@ describe('signaling integration', () => {
       const hostRejoin = await ack(hostReconnected, 'meeting:join', {
         code: hostCreated.code,
         participantId: hostId,
+        authToken: hostUser.token,
         media,
         reconnectToken: hostReconnectToken
       });
@@ -705,6 +750,7 @@ describe('signaling integration', () => {
       const hijackGuestDuringDisconnect = await ack(attacker, 'meeting:join', {
         code: hostCreated.code,
         participantId: guestId,
+        authToken: attackerUser.token,
         media
       });
       expect(hijackGuestDuringDisconnect).toMatchObject({ ok: false, code: 'UNAUTHORIZED' });
@@ -714,6 +760,7 @@ describe('signaling integration', () => {
       const guestRejoin = await ack(guestReconnected, 'meeting:join', {
         code: hostCreated.code,
         participantId: guestId,
+        authToken: guestUser.token,
         media,
         reconnectToken: guestReconnectToken
       });
@@ -903,22 +950,24 @@ describe('signaling integration', () => {
   });
 
   it('relays signal:renegotiate from guest to host and rejects unauthorized renegotiation', async () => {
-    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
     try {
+      const hostUser = await createTestAccount(url, 'host_reneg', 'beta', userStore);
+      const guestUser = await createTestAccount(url, 'guest_reneg', 'beta', userStore);
       const host = await connected(url);
       const guest = await connected(url);
       const outsider = await connected(url);
       const hostId = '11111111-1111-4111-8111-111111111111';
       const guestId = '22222222-2222-4222-8222-222222222222';
 
-      const created = await ack(host, 'meeting:create', { participantId: hostId, media });
+      const created = await ack(host, 'meeting:create', { participantId: hostId, authToken: hostUser.token, media });
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      const joined = await ack(guest, 'meeting:join', { code: created.code, participantId: guestId, media });
+      const joined = await ack(guest, 'meeting:join', { code: created.code, participantId: guestId, authToken: guestUser.token, media });
       expect(joined.ok).toBe(true);
 
       // Outsider emits signal:renegotiate -> host does not receive it
@@ -951,12 +1000,14 @@ describe('signaling integration', () => {
         password: 'password123',
         displayName: 'Alice In Studio'
       });
+      userStore.setSessionAccess(hostUser.user.id, 'beta');
       const guestUser = await userStore.register({
         username: `guitarist_bob_${suffix}`,
         email: `bob_${suffix}@test.com`,
         password: 'password123',
         displayName: 'Bob The Guitarist'
       });
+      userStore.setSessionAccess(guestUser.user.id, 'beta');
 
       const hostSocket = await connected(url);
       const guestSocket = await connected(url);
@@ -1080,7 +1131,7 @@ describe('signaling integration', () => {
     }
   });
 
-  it('preserves unauthenticated guest custom display name across reconnections', async () => {
+  it('rejects unauthenticated meeting creation and joins with AUTH_REQUIRED', async () => {
     const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
@@ -1091,53 +1142,22 @@ describe('signaling integration', () => {
       const hostId = '11111111-1111-4111-8111-111111111111';
       const guestId = '22222222-2222-4222-8222-222222222222';
 
-      // 1. Host creates meeting as guest with custom name
+      // 1. Anonymous create attempt is rejected
       const created = await ack(hostSocket, 'meeting:create', {
         participantId: hostId,
         guestDisplayName: 'Host Maestro',
         media
       });
-      expect(created.ok).toBe(true);
-      if (!created.ok) return;
-      const initialHostIdentityId = created.identity.id;
-      expect(created.identity.displayName).toBe('Host Maestro');
-      expect(created.identity.isHost).toBe(true);
-      expect(created.identity.isGuest).toBe(true);
+      expect(created).toMatchObject({ ok: false, code: 'AUTH_REQUIRED' });
 
-      // 2. Guest joins meeting with custom name
+      // 2. Anonymous join attempt is rejected
       const joined = await ack(guestSocket, 'meeting:join', {
-        code: created.code,
+        code: 'ABC2DEF3',
         participantId: guestId,
         guestDisplayName: 'Session Drummer',
         media
       });
-      expect(joined.ok).toBe(true);
-      if (!joined.ok) return;
-      const initialGuestIdentityId = joined.identity.id;
-      expect(joined.identity.displayName).toBe('Session Drummer');
-      expect(joined.identity.isGuest).toBe(true);
-
-      // 3. Guest reconnects with guestDisplayName and reconnectToken
-      guestSocket.disconnect();
-      const guestReconnected = await connected(url);
-      const hostPeerReadyPromise = new Promise<any>((resolve) => hostSocket.once('peer:ready', resolve));
-      const rejoinAck = await ack(guestReconnected, 'meeting:join', {
-        code: created.code,
-        participantId: guestId,
-        guestDisplayName: 'Session Drummer',
-        reconnectToken: joined.reconnectToken,
-        media
-      });
-      expect(rejoinAck.ok).toBe(true);
-      if (!rejoinAck.ok) return;
-      expect(rejoinAck.identity.id).toBe(initialGuestIdentityId); // Preserves original guest UUID
-      expect(rejoinAck.identity.displayName).toBe('Session Drummer'); // Not downgraded to "Guest Musician"
-      expect(rejoinAck.identity.isGuest).toBe(true);
-      expect(rejoinAck.identity.isHost).toBe(false);
-
-      const peerReady = await hostPeerReadyPromise;
-      expect(peerReady.identity.displayName).toBe('Session Drummer');
-      expect(peerReady.identity.id).toBe(initialGuestIdentityId);
+      expect(joined).toMatchObject({ ok: false, code: 'AUTH_REQUIRED' });
     } finally {
       io.close();
       await app.close();
@@ -1367,6 +1387,7 @@ describe('signaling integration', () => {
           password: 'Password123!',
           displayName: 'Host Creator'
         });
+        userStore.setSessionAccess(reg.user.id, 'beta');
 
         // Now break persistence on userStore by creating a regular file blocker
         const blockerFile = path.join(tmpDataDir, 'blocker');
@@ -1421,12 +1442,14 @@ describe('signaling integration', () => {
           password: 'Password123!',
           displayName: 'Host Musician'
         });
+        userStore.setSessionAccess(hostReg.user.id, 'beta');
         const guestReg = await userStore.register({
           username: 'guest_musician',
           email: 'guest@example.com',
           password: 'Password123!',
           displayName: 'Guest Musician'
         });
+        userStore.setSessionAccess(guestReg.user.id, 'beta');
 
         const hostSocket = await connected(url);
         const guestSocket = await connected(url);
@@ -1500,12 +1523,14 @@ describe('signaling integration', () => {
           password: 'Password123!',
           displayName: 'Admit Host'
         });
+        userStore.setSessionAccess(hostReg.user.id, 'beta');
         const guestReg = await userStore.register({
           username: 'guest_waiting',
           email: 'admit_guest@example.com',
           password: 'Password123!',
           displayName: 'Admit Guest'
         });
+        userStore.setSessionAccess(guestReg.user.id, 'beta');
 
         const hostSocket = await connected(url);
         const guestSocket = await connected(url);
@@ -1585,6 +1610,14 @@ describe('signaling integration', () => {
           password: 'Password123!',
           displayName: 'Leave Host'
         });
+        userStore.setSessionAccess(hostReg.user.id, 'beta');
+        const peerReg = await userStore.register({
+          username: 'peer_leaving',
+          email: 'leave_peer@example.com',
+          password: 'Password123!',
+          displayName: 'Leave Peer'
+        });
+        userStore.setSessionAccess(peerReg.user.id, 'beta');
 
         const hostSocket = await connected(url);
         const peerSocket = await connected(url);
@@ -1602,6 +1635,7 @@ describe('signaling integration', () => {
         await ack(peerSocket, 'meeting:join', {
           code: created.code,
           participantId: peerId,
+          authToken: peerReg.token,
           media
         });
 
@@ -1648,6 +1682,7 @@ describe('signaling integration', () => {
           password: 'Password123!',
           displayName: 'Project Host'
         });
+        userStore.setSessionAccess(hostReg.user.id, 'beta');
         const project = projectStore.createProject(hostReg.user, { name: 'Consistency Test Project' });
 
         expect(userStore.getStoredUser(hostReg.user.id)?.sessionsHostedCount).toBe(0);
@@ -1715,12 +1750,14 @@ describe('signaling integration', () => {
           password: 'Password123!',
           displayName: 'Cross Host'
         });
+        userStore.setSessionAccess(hostReg.user.id, 'beta');
         const guestReg = await userStore.register({
           username: 'cross_guest',
           email: 'cross_guest@example.com',
           password: 'Password123!',
           displayName: 'Cross Guest'
         });
+        userStore.setSessionAccess(guestReg.user.id, 'beta');
         const project = projectStore.createProject(hostReg.user, { name: 'Cross Join Project' });
 
         const hostSocket = await connected(url);
@@ -1796,6 +1833,7 @@ describe('signaling integration', () => {
           password: 'Password123!',
           displayName: 'Rollback Host'
         });
+        userStore.setSessionAccess(hostReg.user.id, 'beta');
 
         // Test direct restoreSnapshot throw behavior
         const snapshot = userStore.createSnapshot();
@@ -1836,11 +1874,15 @@ describe('signaling integration', () => {
   });
 
   it('handles waiting room participant reconnect securely, allows reconnect when locked, and admits into call', async () => {
-    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
     try {
+      const hostUser = await createTestAccount(url, 'host_waitrec', 'beta', userStore);
+      const waitingUser = await createTestAccount(url, 'wait_waitrec', 'beta', userStore);
+      const attackerUser = await createTestAccount(url, 'att_waitrec', 'beta', userStore);
+
       const hostSocket = await connected(url);
       const waitingSocket = await connected(url);
       const attackerSocket = await connected(url);
@@ -1851,7 +1893,7 @@ describe('signaling integration', () => {
       // 1. Host creates meeting with waiting room enabled
       const created = await ack(hostSocket, 'meeting:create', {
         participantId: hostId,
-        guestDisplayName: 'Host Maestro',
+        authToken: hostUser.token,
         waitingRoomEnabled: true,
         media
       });
@@ -1862,7 +1904,7 @@ describe('signaling integration', () => {
       const waitingJoinAck = await ack(waitingSocket, 'meeting:join', {
         code: created.code,
         participantId: waitingId,
-        guestDisplayName: 'Waiting Vocalist',
+        authToken: waitingUser.token,
         media
       });
       expect(waitingJoinAck.ok).toBe(true);
@@ -1881,7 +1923,7 @@ describe('signaling integration', () => {
       const attackerBogus = await ack(attackerSocket, 'meeting:join', {
         code: created.code,
         participantId: waitingId,
-        guestDisplayName: 'Attacker',
+        authToken: attackerUser.token,
         reconnectToken: 'bogus-attacker-token',
         media
       });
@@ -1891,7 +1933,7 @@ describe('signaling integration', () => {
       const attackerNoToken = await ack(attackerSocket, 'meeting:join', {
         code: created.code,
         participantId: waitingId,
-        guestDisplayName: 'Attacker',
+        authToken: attackerUser.token,
         media
       });
       expect(attackerNoToken).toMatchObject({ ok: false, code: 'UNAUTHORIZED' });
@@ -1904,14 +1946,14 @@ describe('signaling integration', () => {
       const rejoinAck = await ack(reconnectedWaitingSocket, 'meeting:join', {
         code: created.code,
         participantId: waitingId,
-        guestDisplayName: 'Waiting Vocalist',
+        authToken: waitingUser.token,
         reconnectToken: serverIssuedWaitingToken,
         media
       });
       expect(rejoinAck.ok).toBe(true);
       if (!rejoinAck.ok || !rejoinAck.waiting) return;
       expect(rejoinAck.waiting).toBe(true);
-      expect(rejoinAck.identity.displayName).toBe('Waiting Vocalist');
+      expect(rejoinAck.identity.displayName).toBe('User wait_waitrec');
 
       // 8. Host admits the waiting participant
       const admittedPromise = new Promise<MeetingAck>((resolve) => reconnectedWaitingSocket.once('waiting:admitted', resolve));
@@ -1934,11 +1976,14 @@ describe('signaling integration', () => {
   });
 
   it('rejects privileged actions and signaling from stale replaced socket and prevents stale disconnect from affecting participant', async () => {
-    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
     try {
+      const hostUser = await createTestAccount(url, 'host_stale', 'beta', userStore);
+      const guestUser = await createTestAccount(url, 'guest_stale', 'beta', userStore);
+
       const hostSocket1 = await connected(url);
       const guestSocket = await connected(url);
 
@@ -1948,7 +1993,7 @@ describe('signaling integration', () => {
       // 1. Host creates meeting
       const created = await ack(hostSocket1, 'meeting:create', {
         participantId: hostId,
-        guestDisplayName: 'Host Maestro',
+        authToken: hostUser.token,
         media
       });
       expect(created.ok).toBe(true);
@@ -1958,7 +2003,7 @@ describe('signaling integration', () => {
       const guestJoined = await ack(guestSocket, 'meeting:join', {
         code: created.code,
         participantId: guestId,
-        guestDisplayName: 'Guest Musician',
+        authToken: guestUser.token,
         media
       });
       expect(guestJoined.ok).toBe(true);
@@ -1968,7 +2013,7 @@ describe('signaling integration', () => {
       const hostReconnected = await ack(hostSocket2, 'meeting:join', {
         code: created.code,
         participantId: hostId,
-        guestDisplayName: 'Host Maestro',
+        authToken: hostUser.token,
         reconnectToken: created.reconnectToken,
         media
       });
@@ -2317,7 +2362,7 @@ describe('signaling integration', () => {
   });
 
   it('enforces chat rate limiting without corrupting room state or affecting other participants', async () => {
-    const { app, io, rooms } = await createApp(
+    const { app, io, rooms, userStore } = await createApp(
       loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }),
       { chat: { capacity: 3, refillRate: 1 } }
     );
@@ -2325,13 +2370,15 @@ describe('signaling integration', () => {
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
     try {
+      const hostUser = await createTestAccount(url, 'host_chatrate', 'beta', userStore);
+      const guestUser = await createTestAccount(url, 'guest_chatrate', 'beta', userStore);
       const host = await connected(url);
       const guest = await connected(url);
-      const created = await ack(host, 'meeting:create', { participantId: '11111111-1111-4111-8111-111111111111', media });
+      const created = await ack(host, 'meeting:create', { participantId: '11111111-1111-4111-8111-111111111111', authToken: hostUser.token, media });
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      await ack(guest, 'meeting:join', { code: created.code, participantId: '22222222-2222-4222-8222-222222222222', media });
+      await ack(guest, 'meeting:join', { code: created.code, participantId: '22222222-2222-4222-8222-222222222222', authToken: guestUser.token, media });
 
       const guestReceivedMessages: string[] = [];
       guest.on('chat:message', (msg: { text: string }) => {
@@ -2469,7 +2516,7 @@ describe('signaling integration', () => {
   });
 
   it('allows realistic bursts of WebRTC ICE candidates and legitimate media updates while dropping excessive spam', async () => {
-    const { app, io } = await createApp(
+    const { app, io, userStore } = await createApp(
       loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }),
       { ice: { capacity: 20, refillRate: 5 }, media: { capacity: 5, refillRate: 2 } }
     );
@@ -2477,13 +2524,15 @@ describe('signaling integration', () => {
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
     try {
+      const hostUser = await createTestAccount(url, 'host_iceburst', 'beta', userStore);
+      const guestUser = await createTestAccount(url, 'guest_iceburst', 'beta', userStore);
       const host = await connected(url);
       const guest = await connected(url);
-      const created = await ack(host, 'meeting:create', { participantId: '11111111-1111-4111-8111-111111111111', media });
+      const created = await ack(host, 'meeting:create', { participantId: '11111111-1111-4111-8111-111111111111', authToken: hostUser.token, media });
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      await ack(guest, 'meeting:join', { code: created.code, participantId: '22222222-2222-4222-8222-222222222222', media });
+      await ack(guest, 'meeting:join', { code: created.code, participantId: '22222222-2222-4222-8222-222222222222', authToken: guestUser.token, media });
 
       const guestReceivedCandidates: any[] = [];
       guest.on('signal:candidate', (cand) => {
@@ -2539,7 +2588,7 @@ describe('signaling integration', () => {
   });
 
   it('enforces rate limiting on session actions and lifecycle controls', async () => {
-    const { app, io } = await createApp(
+    const { app, io, userStore } = await createApp(
       loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }),
       { session: { capacity: 2, refillRate: 1 } }
     );
@@ -2547,10 +2596,11 @@ describe('signaling integration', () => {
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
     try {
+      const hostUser = await createTestAccount(url, 'host_sessrate', 'beta', userStore);
       const socket = await connected(url);
 
       // 1. First session create succeeds
-      const created = await ack(socket, 'meeting:create', { participantId: '11111111-1111-4111-8111-111111111111', media });
+      const created = await ack(socket, 'meeting:create', { participantId: '11111111-1111-4111-8111-111111111111', authToken: hostUser.token, media });
       expect(created.ok).toBe(true);
 
       // 2. Second session control succeeds
@@ -2591,12 +2641,14 @@ describe('signaling integration', () => {
           password: 'Password123!',
           displayName: 'Dan Host'
         });
+        userStore.setSessionAccess(hostReg.user.id, 'beta');
         const guestReg = await userStore.register({
           username: 'guest_sarah',
           email: 'guest_sarah@example.com',
           password: 'Password123!',
           displayName: 'Sarah Guest'
         });
+        userStore.setSessionAccess(guestReg.user.id, 'beta');
         const project = projectStore.createProject(hostReg.user, { name: 'EP Production' });
 
         const hostSocket = await connected(url);
@@ -2719,12 +2771,14 @@ describe('signaling integration', () => {
           password: 'Password123!',
           displayName: 'Host Kick'
         });
+        userStore.setSessionAccess(hostReg.user.id, 'beta');
         const guestReg = await userStore.register({
           username: 'guest_kicked',
           email: 'guest_kicked@example.com',
           password: 'Password123!',
           displayName: 'Guest Kicked'
         });
+        userStore.setSessionAccess(guestReg.user.id, 'beta');
         const project = projectStore.createProject(hostReg.user, { name: 'Kicked Test EP' });
 
         const hostSocket = await connected(url);
@@ -2806,12 +2860,14 @@ describe('signaling integration', () => {
           password: 'Password123!',
           displayName: 'Host Disc Exp'
         });
+        userStore.setSessionAccess(hostReg.user.id, 'beta');
         const guestReg = await userStore.register({
           username: 'guest_disc_exp',
           email: 'guest_disc_exp@example.com',
           password: 'Password123!',
           displayName: 'Guest Disc Exp'
         });
+        userStore.setSessionAccess(guestReg.user.id, 'beta');
 
         const hostSocket = await connected(url);
         const guestSocket = await connected(url);
@@ -2888,12 +2944,14 @@ describe('signaling integration', () => {
           password: 'Password123!',
           displayName: 'Host Reconn'
         });
+        userStore.setSessionAccess(hostReg.user.id, 'beta');
         const guestReg = await userStore.register({
           username: 'guest_reconn',
           email: 'guest_reconn@example.com',
           password: 'Password123!',
           displayName: 'Guest Reconn'
         });
+        userStore.setSessionAccess(guestReg.user.id, 'beta');
 
         const hostSocket = await connected(url);
         const guestSocket1 = await connected(url);
@@ -2929,7 +2987,7 @@ describe('signaling integration', () => {
 
         // Guest reconnects with new socket before grace period expires
         const guestSocket2 = await connected(url);
-        const hostPeerReadyPromise = new Promise<void>((resolve) => hostSocket.once('peer:ready', () => resolve()));
+        const hostPeerReadyPromise = new Promise<void>((resolve) => hostSocket.once('peer:ready', resolve));
         const joined2 = await ack(guestSocket2, 'meeting:join', {
           code: created.code,
           participantId: guestId,
@@ -2968,6 +3026,252 @@ describe('signaling integration', () => {
     }
   });
 });
+
+describe('Server Enforced Session Access & Entitlement Foundation', () => {
+  afterEach(() => { for (const socket of sockets.splice(0)) socket.disconnect(); });
+
+  it('strictly denies unauthenticated meeting:create and meeting:join with AUTH_REQUIRED and zero side effects', async () => {
+    const { app, io, rooms, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      const socket = await connected(url);
+
+      // 1. Anonymous create attempt
+      const createRes = await ack(socket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        guestDisplayName: 'Anonymous Host',
+        media
+      });
+      expect(createRes).toEqual({
+        ok: false,
+        code: 'AUTH_REQUIRED',
+        message: 'Authentication required to create or join a session.'
+      });
+      // Zero side effects: no room created in memory
+      expect(rooms.rooms.size).toBe(0);
+
+      // 2. Anonymous join attempt
+      const joinRes = await ack(socket, 'meeting:join', {
+        code: 'ABC2DEF3',
+        participantId: '22222222-2222-4222-8222-222222222222',
+        guestDisplayName: 'Anonymous Guest',
+        media
+      });
+      expect(joinRes).toEqual({
+        ok: false,
+        code: 'AUTH_REQUIRED',
+        message: 'Authentication required to create or join a session.'
+      });
+
+      // 3. Invalid/malformed auth token attempt
+      const invalidTokenRes = await ack(socket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        authToken: 'malicious-invalid-token-here',
+        media
+      });
+      expect(invalidTokenRes).toEqual({
+        ok: false,
+        code: 'AUTH_REQUIRED',
+        message: 'Authentication required to create or join a session.'
+      });
+      expect(rooms.rooms.size).toBe(0);
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+
+  it('strictly denies blocked accounts from creating or joining sessions with ACCESS_DENIED and zero side effects', async () => {
+    const { app, io, rooms, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      // Newly registered accounts default to blocked
+      const blockedUser = await createTestAccount(url, 'blocked_artist', 'blocked', userStore);
+      const validHost = await createTestAccount(url, 'valid_host', 'beta', userStore);
+
+      const blockedSocket = await connected(url);
+      const hostSocket = await connected(url);
+
+      // 1. Blocked account cannot create session
+      const createRes = await ack(blockedSocket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        authToken: blockedUser.token,
+        media
+      });
+      expect(createRes).toEqual({
+        ok: false,
+        code: 'ACCESS_DENIED',
+        message: 'Your account does not currently have access to JaMeet sessions.'
+      });
+      expect(rooms.rooms.size).toBe(0);
+      expect(userStore.getStoredUser(blockedUser.user.id)?.sessionsHostedCount).toBe(0);
+
+      // 2. Valid beta host creates a session
+      const hostCreated = await ack(hostSocket, 'meeting:create', {
+        participantId: '22222222-2222-4222-8222-222222222222',
+        authToken: validHost.token,
+        media
+      });
+      expect(hostCreated.ok).toBe(true);
+      if (!hostCreated.ok) return;
+
+      // 3. Blocked account cannot join session
+      const joinRes = await ack(blockedSocket, 'meeting:join', {
+        code: hostCreated.code,
+        participantId: '33333333-3333-4333-8333-333333333333',
+        authToken: blockedUser.token,
+        media
+      });
+      expect(joinRes).toEqual({
+        ok: false,
+        code: 'ACCESS_DENIED',
+        message: 'Your account does not currently have access to JaMeet sessions.'
+      });
+
+      // Verify room only contains host and collaborator session was not recorded
+      const room = rooms.rooms.get(hostCreated.code);
+      expect(room?.participants.size).toBe(1);
+      expect(userStore.getSessionHistory(blockedUser.user.id).length).toBe(0);
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+
+  it('allows blocked users to log in, view/update profile, and manage projects, but denies live sessions', async () => {
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      const blockedAcct = await createTestAccount(url, 'acct_only', 'blocked', userStore);
+      const token = blockedAcct.token;
+
+      // 1. Can log in and fetch me profile
+      const meRes = await fetch(`${url}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const meData = await meRes.json() as any;
+      expect(meRes.status).toBe(200);
+      expect(meData.user.id).toBe(blockedAcct.user.id);
+
+      // 2. Can create a project
+      const projRes = await fetch(`${url}/api/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: 'Solo Project' })
+      });
+      const projData = await projRes.json() as any;
+      expect(projRes.status).toBe(201);
+      expect(projData.project.name).toBe('Solo Project');
+
+      // 3. Socket session creation is denied with ACCESS_DENIED
+      const socket = await connected(url);
+      const createRes = await ack(socket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        authToken: token,
+        media
+      });
+      expect(createRes).toEqual({
+        ok: false,
+        code: 'ACCESS_DENIED',
+        message: 'Your account does not currently have access to JaMeet sessions.'
+      });
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+
+  it('rejects beta users with BETA_ENDED when BETA_END_AT is expired, but allows paid users', async () => {
+    const betaEndIso = '2026-06-01T00:00:00Z';
+    const { app, io, userStore } = await createApp(loadConfig({
+      NODE_ENV: 'test',
+      TURN_SHARED_SECRET: 'a-secure-test-secret',
+      BETA_END_AT: betaEndIso
+    }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      const betaUser = await createTestAccount(url, 'beta_exp_user', 'beta', userStore);
+      const paidUser = await createTestAccount(url, 'paid_subscriber', 'paid', userStore);
+
+      const betaSocket = await connected(url);
+      const paidSocket = await connected(url);
+
+      // 1. Beta user is rejected with BETA_ENDED
+      const betaCreateRes = await ack(betaSocket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        authToken: betaUser.token,
+        media
+      });
+      expect(betaCreateRes).toEqual({
+        ok: false,
+        code: 'BETA_ENDED',
+        message: 'JaMeet Beta has ended. A JaMeet subscription will be required to continue creating or joining sessions.'
+      });
+
+      // 2. Paid subscriber creates session successfully even with expired BETA_END_AT
+      const paidCreateRes = await ack(paidSocket, 'meeting:create', {
+        participantId: '22222222-2222-4222-8222-222222222222',
+        authToken: paidUser.token,
+        media
+      });
+      expect(paidCreateRes.ok).toBe(true);
+      if (!paidCreateRes.ok) return;
+      expect(paidCreateRes.identity.username).toBe(paidUser.user.username);
+      expect(paidCreateRes.identity.isGuest).toBe(false);
+
+      // 3. Beta user trying to join paid session is also rejected with BETA_ENDED
+      const betaJoinRes = await ack(betaSocket, 'meeting:join', {
+        code: paidCreateRes.code,
+        participantId: '33333333-3333-4333-8333-333333333333',
+        authToken: betaUser.token,
+        media
+      });
+      expect(betaJoinRes).toEqual({
+        ok: false,
+        code: 'BETA_ENDED',
+        message: 'JaMeet Beta has ended. A JaMeet subscription will be required to continue creating or joining sessions.'
+      });
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+
+  it('fails closed if sessionAccess in storage contains unknown or malformed value', async () => {
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+      const user = await createTestAccount(url, 'corrupted_state_user', 'beta', userStore);
+      userStore.setSessionAccess(user.user.id, 'unrecognized_tier' as any);
+
+      const socket = await connected(url);
+      const createRes = await ack(socket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        authToken: user.token,
+        media
+      });
+      expect(createRes).toEqual({
+        ok: false,
+        code: 'ACCESS_DENIED',
+        message: 'Your account does not currently have access to JaMeet sessions.'
+      });
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+});
+
 
 
 

@@ -656,6 +656,271 @@ describe('UserStore & Password Hashing', () => {
   });
 });
 
+describe('Session Access State & Centralized Authorization', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-access-test-'));
+  });
+
+  afterEach(() => {
+    if (testDir && fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it('defaults newly registered accounts to blocked sessionAccess', async () => {
+    const store = new UserStore(testDir);
+    const reg = await store.register({
+      username: 'new_artist',
+      email: 'artist@example.com',
+      password: 'StrongPassword123!',
+      displayName: 'New Artist'
+    });
+
+    const stored = store.getStoredUser(reg.user.id);
+    expect(stored).not.toBeNull();
+    expect(stored?.sessionAccess).toBe('blocked');
+  });
+
+  it('safely migrates existing stored accounts without sessionAccess to beta on load', async () => {
+    const dataFilePath = path.join(testDir, 'jameet-accounts.json');
+    const legacyData = {
+      version: 1,
+      users: [
+        {
+          id: 'user-legacy-1',
+          username: 'legacy_user',
+          email: 'legacy@example.com',
+          displayName: 'Legacy Musician',
+          passwordHash: 'salt:hash',
+          avatarColor: '#06b6d4',
+          createdAt: 1000,
+          updatedAt: 1000,
+          sessionsHostedCount: 0
+        }
+      ],
+      tokens: [],
+      sessions: []
+    };
+    fs.writeFileSync(dataFilePath, JSON.stringify(legacyData, null, 2), 'utf-8');
+
+    const store = new UserStore(testDir);
+    const stored = store.getStoredUser('user-legacy-1');
+    expect(stored).not.toBeNull();
+    expect(stored?.sessionAccess).toBe('beta');
+
+    // Verify migration was saved to disk
+    const saved = JSON.parse(fs.readFileSync(dataFilePath, 'utf-8'));
+    expect(saved.users[0]?.sessionAccess).toBe('beta');
+  });
+
+  it('allows updating sessionAccess via setSessionAccess and persists changes', async () => {
+    const store = new UserStore(testDir);
+    const reg = await store.register({
+      username: 'upgraded_user',
+      email: 'upgraded@example.com',
+      password: 'StrongPassword123!',
+      displayName: 'Upgraded User'
+    });
+
+    expect(store.getStoredUser(reg.user.id)?.sessionAccess).toBe('blocked');
+    const updated = store.setSessionAccess(reg.user.id, 'paid');
+    expect(updated).toBe(true);
+    expect(store.getStoredUser(reg.user.id)?.sessionAccess).toBe('paid');
+
+    // Reinstantiate to verify persistence
+    const store2 = new UserStore(testDir);
+    expect(store2.getStoredUser(reg.user.id)?.sessionAccess).toBe('paid');
+  });
+
+  it('denies unauthenticated or invalid tokens with AUTH_REQUIRED', async () => {
+    const store = new UserStore(testDir);
+    const { loadConfig } = await import('./config.js');
+    const { authorizeSessionAccess } = await import('./auth.js');
+    const config = loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'test-secret-at-least-16-chars' });
+
+    expect(authorizeSessionAccess(store, undefined, config, true)).toEqual({
+      ok: false,
+      code: 'AUTH_REQUIRED',
+      message: 'Authentication required to create or join a session.'
+    });
+
+    expect(authorizeSessionAccess(store, '', config, true)).toEqual({
+      ok: false,
+      code: 'AUTH_REQUIRED',
+      message: 'Authentication required to create or join a session.'
+    });
+
+    expect(authorizeSessionAccess(store, 'invalid-random-token', config, false)).toEqual({
+      ok: false,
+      code: 'AUTH_REQUIRED',
+      message: 'Authentication required to create or join a session.'
+    });
+  });
+
+  it('denies blocked users with ACCESS_DENIED', async () => {
+    const store = new UserStore(testDir);
+    const { loadConfig } = await import('./config.js');
+    const { authorizeSessionAccess } = await import('./auth.js');
+    const config = loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'test-secret-at-least-16-chars' });
+
+    const reg = await store.register({
+      username: 'blocked_user',
+      email: 'blocked@example.com',
+      password: 'Password123!',
+      displayName: 'Blocked Musician'
+    });
+    // New accounts default to blocked
+
+    const result = authorizeSessionAccess(store, reg.token, config, true);
+    expect(result).toEqual({
+      ok: false,
+      code: 'ACCESS_DENIED',
+      message: 'Your account does not currently have access to JaMeet sessions.'
+    });
+  });
+
+  it('denies unsupported or malformed sessionAccess values with ACCESS_DENIED (fail closed)', async () => {
+    const store = new UserStore(testDir);
+    const { loadConfig } = await import('./config.js');
+    const { authorizeSessionAccess } = await import('./auth.js');
+    const config = loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'test-secret-at-least-16-chars' });
+
+    const reg = await store.register({
+      username: 'malformed_user',
+      email: 'malformed@example.com',
+      password: 'Password123!',
+      displayName: 'Malformed Musician'
+    });
+    store.setSessionAccess(reg.user.id, 'unsupported_state' as any);
+
+    const result = authorizeSessionAccess(store, reg.token, config, true);
+    expect(result).toEqual({
+      ok: false,
+      code: 'ACCESS_DENIED',
+      message: 'Your account does not currently have access to JaMeet sessions.'
+    });
+  });
+
+  it('authorizes active beta users when BETA_END_AT is unset', async () => {
+    const store = new UserStore(testDir);
+    const { loadConfig } = await import('./config.js');
+    const { authorizeSessionAccess } = await import('./auth.js');
+    const config = loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'test-secret-at-least-16-chars' });
+
+    const reg = await store.register({
+      username: 'beta_user',
+      email: 'beta@example.com',
+      password: 'Password123!',
+      displayName: 'Beta Musician'
+    });
+    store.setSessionAccess(reg.user.id, 'beta');
+
+    const result = authorizeSessionAccess(store, reg.token, config, true);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.user.username).toBe('beta_user');
+      expect(result.identity.isGuest).toBe(false);
+      expect(result.identity.isHost).toBe(true);
+      expect(result.identity.displayName).toBe('Beta Musician');
+    }
+  });
+
+  it('authorizes beta users before BETA_END_AT and denies them with BETA_ENDED after expiration', async () => {
+    const store = new UserStore(testDir);
+    const { loadConfig } = await import('./config.js');
+    const { authorizeSessionAccess } = await import('./auth.js');
+    const betaEndIso = '2026-12-31T23:59:59Z';
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      TURN_SHARED_SECRET: 'test-secret-at-least-16-chars',
+      BETA_END_AT: betaEndIso
+    });
+    const betaEndMs = Date.parse(betaEndIso);
+
+    const reg = await store.register({
+      username: 'beta_user_timer',
+      email: 'timer@example.com',
+      password: 'Password123!',
+      displayName: 'Timer Musician'
+    });
+    store.setSessionAccess(reg.user.id, 'beta');
+
+    // Before expiration
+    const beforeResult = authorizeSessionAccess(store, reg.token, config, true, betaEndMs - 1000);
+    expect(beforeResult.ok).toBe(true);
+
+    // At expiration
+    const atResult = authorizeSessionAccess(store, reg.token, config, true, betaEndMs);
+    expect(atResult).toEqual({
+      ok: false,
+      code: 'BETA_ENDED',
+      message: 'JaMeet Beta has ended. A JaMeet subscription will be required to continue creating or joining sessions.'
+    });
+
+    // After expiration
+    const afterResult = authorizeSessionAccess(store, reg.token, config, false, betaEndMs + 5000);
+    expect(afterResult).toEqual({
+      ok: false,
+      code: 'BETA_ENDED',
+      message: 'JaMeet Beta has ended. A JaMeet subscription will be required to continue creating or joining sessions.'
+    });
+  });
+
+  it('authorizes paid users even when BETA_END_AT is expired', async () => {
+    const store = new UserStore(testDir);
+    const { loadConfig } = await import('./config.js');
+    const { authorizeSessionAccess } = await import('./auth.js');
+    const betaEndIso = '2026-01-01T00:00:00Z';
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      TURN_SHARED_SECRET: 'test-secret-at-least-16-chars',
+      BETA_END_AT: betaEndIso
+    });
+    const now = Date.parse('2026-06-01T12:00:00Z');
+
+    const reg = await store.register({
+      username: 'paid_user',
+      email: 'paid@example.com',
+      password: 'Password123!',
+      displayName: 'Paid Subscriber'
+    });
+    store.setSessionAccess(reg.user.id, 'paid');
+
+    const result = authorizeSessionAccess(store, reg.token, config, false, now);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.user.username).toBe('paid_user');
+      expect(result.identity.isGuest).toBe(false);
+      expect(result.identity.isHost).toBe(false);
+    }
+  });
+
+  it('validates ISO 8601 with timezone and rejects invalid or ambiguous formats in loadConfig', async () => {
+    const { loadConfig } = await import('./config.js');
+
+    // Valid formats
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-12-31T23:59:59Z' })).not.toThrow();
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-12-31T23:59:59.123Z' })).not.toThrow();
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-12-31T18:00:00-05:00' })).not.toThrow();
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-12-31T23:59:59+02:00' })).not.toThrow();
+
+    // Invalid formats: date-only
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-12-31' })).toThrow(/BETA_END_AT/i);
+
+    // Invalid formats: local time without timezone
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-12-31T23:59:59' })).toThrow(/BETA_END_AT/i);
+
+    // Invalid formats: numeric epoch
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '1780000000' })).toThrow(/BETA_END_AT/i);
+
+    // Invalid formats: random text
+    expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: 'invalid-date-string' })).toThrow(/BETA_END_AT/i);
+  });
+});
+
+
 
 
 
