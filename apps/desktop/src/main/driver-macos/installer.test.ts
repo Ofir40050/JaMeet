@@ -44,6 +44,13 @@ describe('JaMeet Remote macOS Installer Packaging', () => {
       expect(existsSync(appPkg)).toBe(true);
       expect(existsSync(driverPkg)).toBe(true);
 
+      // Verify that JaMeet.app package is explicitly non-relocatable to prevent PackageKit relocation
+      const appPackageInfoFile = join(appPkg, 'PackageInfo');
+      expect(existsSync(appPackageInfoFile)).toBe(true);
+      const appPackageInfo = readFileSync(appPackageInfoFile, 'utf-8');
+      expect(appPackageInfo).toContain('relocatable="false"');
+      expect(appPackageInfo).toContain('install-location="/Applications"');
+
       // Verify driver package has clean postinstall script setting permissions without forced process kills
       const driverScriptsDir = join(expandDir, 'jameet-driver.pkg', 'Scripts');
       if (existsSync(driverScriptsDir)) {

@@ -17,4 +17,7 @@ apps/desktop/.vite/
 apps/desktop/bin/*
 !apps/desktop/bin/.gitkeep
 apps/server/data/**
+release.old/
+*.old/
+
 

@@ -34,7 +34,11 @@ const candidatePaths = [
 // Remove existing directory bundles so stale versions are never reused
 for (const p of candidatePaths) {
   if (fs.existsSync(p)) {
-    fs.rmSync(p, { recursive: true, force: true });
+    try {
+      execSync(`rm -rf "${p}"`);
+    } catch {
+      // Ignore
+    }
   }
 }
 
@@ -110,10 +114,38 @@ const unsignedPkgPath = path.join(tmpWorkDir, 'JaMeet-Unsigned.pkg');
 fs.mkdirSync(releaseDir, { recursive: true });
 
 try {
-  // 6. Build Application Component Package
-  console.log('[build-macos-pkg] Building JaMeet application component package...');
+  // 6. Build Application Component Package (Non-Relocatable)
+  console.log('[build-macos-pkg] Building non-relocatable JaMeet application component package...');
+  const appRootDir = path.dirname(appPath);
+  const appComponentPlistPath = path.join(tmpWorkDir, 'app-component.plist');
+
+  // Analyze bundle components and disable relocatability so PackageKit never redirects /Applications/JaMeet.app
+  execSync(`pkgbuild --analyze --root "${appRootDir}" "${appComponentPlistPath}"`, { stdio: 'inherit' });
+
+  try {
+    execSync(`plutil -replace 0.BundleIsRelocatable -bool NO "${appComponentPlistPath}"`, { stdio: 'inherit' });
+  } catch {
+    // Fallback: update plist content directly in Node.js if plutil keypath differs
+    let plistData = fs.readFileSync(appComponentPlistPath, 'utf-8');
+    plistData = plistData.replace(
+      /<key>BundleIsRelocatable<\/key>\s*<true\/>/g,
+      '<key>BundleIsRelocatable</key>\n\t\t<false/>'
+    );
+    fs.writeFileSync(appComponentPlistPath, plistData, 'utf-8');
+  }
+
+  // Verify that BundleIsRelocatable is indeed false
+  let finalPlistData = fs.readFileSync(appComponentPlistPath, 'utf-8');
+  if (finalPlistData.includes('<key>BundleIsRelocatable</key>\n\t\t<true/>') || finalPlistData.includes('<key>BundleIsRelocatable</key><true/>')) {
+    finalPlistData = finalPlistData.replace(
+      /<key>BundleIsRelocatable<\/key>\s*<true\/>/g,
+      '<key>BundleIsRelocatable</key>\n\t\t<false/>'
+    );
+    fs.writeFileSync(appComponentPlistPath, finalPlistData, 'utf-8');
+  }
+
   execSync(
-    `pkgbuild --component "${appPath}" --install-location "/Applications" --identifier "com.jameet.app.pkg" --version "0.1.0" "${appPkgPath}"`,
+    `pkgbuild --root "${appRootDir}" --component-plist "${appComponentPlistPath}" --install-location "/Applications" --identifier "com.jameet.app.pkg" --version "0.1.0" "${appPkgPath}"`,
     { stdio: 'inherit' }
   );
 
