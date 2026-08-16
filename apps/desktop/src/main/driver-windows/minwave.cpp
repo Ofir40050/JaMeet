@@ -610,22 +610,32 @@ public:
             return STATUS_NO_MATCH;
         }
 
-        /* Strict validation: require 48 kHz and at least 2 channels */
-        if (pDataRangeAudio->MaximumChannels < 2 ||
-            pDataRangeAudio->MinimumSampleFrequency > 48000 ||
-            pDataRangeAudio->MaximumSampleFrequency < 48000) {
+        /* Strict validation: require 48 kHz within frequency range for both ranges */
+        if (pDataRangeAudio->MinimumSampleFrequency > 48000 ||
+            pDataRangeAudio->MaximumSampleFrequency < 48000 ||
+            pMatchingAudio->MinimumSampleFrequency > 48000 ||
+            pMatchingAudio->MaximumSampleFrequency < 48000) {
+            return STATUS_NO_MATCH;
+        }
+
+        /* At least 2 channels must be supported on both ranges */
+        if (pDataRangeAudio->MaximumChannels < 2 || pMatchingAudio->MaximumChannels < 2) {
             return STATUS_NO_MATCH;
         }
 
         BOOLEAN isFloat = IsEqualGUID(pDataRangeAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) &&
                           IsEqualGUID(pMatchingAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) &&
                           pDataRangeAudio->MinimumBitsPerSample <= 32 &&
-                          pDataRangeAudio->MaximumBitsPerSample >= 32;
+                          pDataRangeAudio->MaximumBitsPerSample >= 32 &&
+                          pMatchingAudio->MinimumBitsPerSample <= 32 &&
+                          pMatchingAudio->MaximumBitsPerSample >= 32;
 
         BOOLEAN isPcm = IsEqualGUID(pDataRangeAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_PCM) &&
                         IsEqualGUID(pMatchingAudio->DataRange.SubFormat, KSDATAFORMAT_SUBTYPE_PCM) &&
                         pDataRangeAudio->MinimumBitsPerSample <= 16 &&
-                        pDataRangeAudio->MaximumBitsPerSample >= 16;
+                        pDataRangeAudio->MaximumBitsPerSample >= 16 &&
+                        pMatchingAudio->MinimumBitsPerSample <= 16 &&
+                        pMatchingAudio->MaximumBitsPerSample >= 16;
 
         if (!isFloat && !isPcm) {
             return STATUS_NO_MATCH;
@@ -640,9 +650,6 @@ public:
         if (OutputBufferLength < formatSize) {
             return STATUS_BUFFER_TOO_SMALL;
         }
-
-        PKSDATARANGE_AUDIO pAudioRes = (PKSDATARANGE_AUDIO)ResultantFormat;
-        (void)pAudioRes;
 
         PKSDATAFORMAT_WAVEFORMATEXTENSIBLE pResFormat = (PKSDATAFORMAT_WAVEFORMATEXTENSIBLE)ResultantFormat;
         RtlZeroMemory(pResFormat, formatSize);
