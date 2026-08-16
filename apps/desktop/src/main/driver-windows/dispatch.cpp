@@ -148,16 +148,27 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
             return STATUS_DEVICE_BUSY;
         }
 
-        PEPROCESS requestorProcess = IoGetRequestorProcess(Irp);
-        if (!requestorProcess) {
-            requestorProcess = PsGetCurrentProcess();
+        PEPROCESS targetProcess = IoGetRequestorProcess(Irp);
+        if (!targetProcess) {
+            targetProcess = PsGetCurrentProcess();
         }
+
+        /* Obtain explicit reference to target producer process before mapping */
+        ObReferenceObject(targetProcess);
 
         PVOID userMappedAddress = NULL;
         NTSTATUS status = STATUS_SUCCESS;
+        BOOLEAN attached = FALSE;
+        KAPC_STATE apcState;
+
+        /* If not already in target producer process context, attach before mapping UserMode MDL */
+        if (PsGetCurrentProcess() != targetProcess) {
+            KeStackAttachProcess(targetProcess, &apcState);
+            attached = TRUE;
+        }
 
         __try {
-            /* Safely map the nonpaged shared memory MDL into the requestor process space */
+            /* Safely map the nonpaged shared memory MDL into the producer process space */
             userMappedAddress = MmMapLockedPagesSpecifyCache(
                 gSharedMdl,
                 UserMode,
@@ -171,7 +182,13 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
             userMappedAddress = NULL;
         }
 
+        if (attached) {
+            KeUnstackDetachProcess(&apcState);
+        }
+
         if (!userMappedAddress || !NT_SUCCESS(status)) {
+            /* Release process reference on mapping failure and leave state clean */
+            ObDereferenceObject(targetProcess);
             KeSetEvent(&gProducerMutexEvent, IO_NO_INCREMENT, FALSE);
             Irp->IoStatus.Status = (status != STATUS_SUCCESS) ? status : STATUS_INSUFFICIENT_RESOURCES;
             Irp->IoStatus.Information = 0;
@@ -179,8 +196,7 @@ static NTSTATUS JaMeetDispatch_HandleDeviceControl(PDEVICE_OBJECT DeviceObject, 
             return Irp->IoStatus.Status;
         }
 
-        ObReferenceObject(requestorProcess);
-        gProducerProcess = requestorProcess;
+        gProducerProcess = targetProcess;
         gUserViewBaseAddress = userMappedAddress;
         gActiveProducerFileObject = irpSp->FileObject;
 
