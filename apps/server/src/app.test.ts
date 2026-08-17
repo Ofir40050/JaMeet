@@ -488,7 +488,7 @@ describe('signaling integration', () => {
         strangerSocket.emit('project:workspace:update', {
           projectId: project.id,
           authToken: strangerAuth.token,
-          updates: { notes: { content: 'Hacked by stranger' } }
+          updates: { notes: { baseRevision: 1, content: 'Hacked by stranger' } }
         }, resolve);
       });
       expect(strangerUpdateRes.ok).toBe(false);
@@ -510,7 +510,7 @@ describe('signaling integration', () => {
           authToken: ownerAuth.token,
           updates: {
             tasks: {
-              tasks: [{ id: 'task-1', title: 'Task 1', status: 'invalid_status', createdAt: Date.now(), updatedAt: Date.now() }]
+              baseRevision: 1, tasks: [{ id: 'task-1', title: 'Task 1', status: 'invalid_status', createdAt: Date.now(), updatedAt: Date.now() }]
             }
           }
         }, resolve);
@@ -525,7 +525,7 @@ describe('signaling integration', () => {
           authToken: ownerAuth.token,
           updates: {
             tasks: {
-              tasks: [{ id: 'task-1', title: '', status: 'todo', createdAt: Date.now(), updatedAt: Date.now() }]
+              baseRevision: 1, tasks: [{ id: 'task-1', title: '', status: 'todo', createdAt: Date.now(), updatedAt: Date.now() }]
             }
           }
         }, resolve);
@@ -540,7 +540,7 @@ describe('signaling integration', () => {
           authToken: ownerAuth.token,
           updates: {
             structure: {
-              sections: [{ id: 'sec-1', name: 'Verse 1', type: 'verse', bars: -5, updatedAt: Date.now() }]
+              baseRevision: 1, sections: [{ id: 'sec-1', name: 'Verse 1', type: 'verse', bars: -5, updatedAt: Date.now() }]
             }
           }
         }, resolve);
@@ -555,7 +555,7 @@ describe('signaling integration', () => {
           authToken: ownerAuth.token,
           updates: {
             tasks: {
-              tasks: 'not-an-array'
+              baseRevision: 1, tasks: 'not-an-array'
             }
           }
         }, resolve);
@@ -578,12 +578,12 @@ describe('signaling integration', () => {
           authToken: ownerAuth.token,
           updates: {
             lyrics: {
-              documentId: 'doc-main',
+              baseRevision: 1, documentId: 'doc-main',
               title: 'Main Lyrics',
               content: '[Verse 1]\nLate night studio session'
             },
             notes: {
-              content: 'Mix revisions notes',
+              baseRevision: 1, content: 'Mix revisions notes',
               bpm: '124',
               key: 'A minor'
             }
@@ -610,13 +610,13 @@ describe('signaling integration', () => {
           authToken: collabAuth.token,
           updates: {
             structure: {
-              sections: [
+              baseRevision: 1, sections: [
                 { id: 'sec-1', type: 'intro', name: 'Intro', bars: 8, updatedAt: Date.now() },
                 { id: 'sec-2', type: 'verse', name: 'Verse 1', bars: 16, updatedAt: Date.now() }
               ]
             },
             tasks: {
-              tasks: [
+              baseRevision: 1, tasks: [
                 {
                   id: 'task-1',
                   title: 'Record Acoustic Guitar',
@@ -852,7 +852,7 @@ describe('signaling integration', () => {
         method: 'PUT',
         url: `/api/projects/${project.id}/workspace`,
         headers: { authorization: `Bearer ${viewerReg.token}` },
-        payload: { lyrics: { content: 'Malicious REST lyrics update' } }
+        payload: { lyrics: { baseRevision: 1, content: 'Malicious REST lyrics update' } }
       });
       expect(viewerWorkspaceRes.statusCode).toBe(403);
       expect(JSON.parse(viewerWorkspaceRes.body).message).toContain('Viewers');
@@ -885,7 +885,7 @@ describe('signaling integration', () => {
         viewerSocket.emit('project:workspace:update', {
           projectId: project.id,
           authToken: viewerReg.token,
-          updates: { notes: { content: 'Viewer socket edit attempt' } }
+          updates: { notes: { baseRevision: 1, content: 'Viewer socket edit attempt' } }
         }, resolve);
       });
       expect(socketUpdateAck.ok).toBe(false);
@@ -905,7 +905,7 @@ describe('signaling integration', () => {
         method: 'PUT',
         url: `/api/projects/${project.id}/workspace`,
         headers: { authorization: `Bearer ${viewerReg.token}` },
-        payload: { lyrics: { content: 'Authorized lyrics by editor' } }
+        payload: { lyrics: { baseRevision: 1, content: 'Authorized lyrics by editor' } }
       });
       expect(editorRestRes.statusCode).toBe(200);
       expect(JSON.parse(editorRestRes.body).workspace.lyrics.content).toBe('Authorized lyrics by editor');
@@ -914,7 +914,7 @@ describe('signaling integration', () => {
         viewerSocket.emit('project:workspace:update', {
           projectId: project.id,
           authToken: viewerReg.token,
-          updates: { notes: { bpm: '124', key: 'C major' } }
+          updates: { notes: { baseRevision: 1, bpm: '124', key: 'C major' } }
         }, resolve);
       });
       expect(editorSocketAck.ok).toBe(true);
@@ -1214,20 +1214,20 @@ describe('signaling integration', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           lyrics: {
-            content: 'Verse 1: Beat drops in 4 bars'
+            baseRevision: 1, content: 'Verse 1: Beat drops in 4 bars'
           },
           notes: {
-            content: 'Use analog compressor on bus',
+            baseRevision: 1, content: 'Use analog compressor on bus',
             bpm: '130',
             key: 'A minor'
           },
           structure: {
-            sections: [
+            baseRevision: 1, sections: [
               { id: 'sec_intro', type: 'intro', name: 'Intro', bars: 8, note: 'Drum loop', updatedAt: Date.now() }
             ]
           },
           tasks: {
-            tasks: [
+            baseRevision: 1, tasks: [
               { id: 'task_mix', title: 'Final Mixdown', status: 'in_progress', createdAt: Date.now(), updatedAt: Date.now() }
             ]
           }
@@ -2145,7 +2145,7 @@ describe('signaling integration', () => {
         testSocket.emit('project:workspace:update', {
           projectId,
           authToken: token,
-          updates: { notes: { content: 'Hacked note' } }
+          updates: { notes: { baseRevision: 1, content: 'Hacked note' } }
         }, resolve);
       });
       expect(updateAfter.ok).toBe(false);
@@ -2474,7 +2474,7 @@ describe('signaling integration', () => {
         socket.emit('project:workspace:update', {
           projectId,
           authToken: token,
-          updates: { notes: { content: 'Note 1' } }
+          updates: { notes: { baseRevision: 1, content: 'Note 1' } }
         }, resolve);
       });
       expect(up1.ok).toBe(true);
@@ -2483,7 +2483,7 @@ describe('signaling integration', () => {
         socket.emit('project:workspace:update', {
           projectId,
           authToken: token,
-          updates: { notes: { content: 'Note 2' } }
+          updates: { notes: { baseRevision: 2, content: 'Note 2' } }
         }, resolve);
       });
       expect(up2.ok).toBe(true);
@@ -2493,7 +2493,7 @@ describe('signaling integration', () => {
         socket.emit('project:workspace:update', {
           projectId,
           authToken: token,
-          updates: { notes: { content: 'Spam Note 3' } }
+          updates: { notes: { baseRevision: 3, content: 'Spam Note 3' } }
         }, resolve);
       });
       expect(up3.ok).toBe(false);
@@ -2898,7 +2898,7 @@ describe('signaling integration', () => {
             authToken: hostReg.token,
             updates: {
               tasks: {
-                tasks: [{ id: 'task_1', title: 'Record Vocals', status: 'done', priority: 'high', assignedTo: guestReg.user.id, createdAt: Date.now(), updatedAt: Date.now() }]
+                baseRevision: 1, tasks: [{ id: 'task_1', title: 'Record Vocals', status: 'done', priority: 'high', assignedTo: guestReg.user.id, createdAt: Date.now(), updatedAt: Date.now() }]
               }
             }
           }, resolve);
@@ -2929,7 +2929,7 @@ describe('signaling integration', () => {
             authToken: hostReg.token,
             updates: {
               tasks: {
-                tasks: [
+                baseRevision: 2, tasks: [
                   { id: 'task_1', title: 'Record Vocals', status: 'done', priority: 'high', assignedTo: guestReg.user.id, createdAt: Date.now(), updatedAt: Date.now() },
                   { id: 'task_2', title: 'Mix Track', status: 'in_progress', priority: 'medium', createdAt: Date.now(), updatedAt: Date.now() }
                 ]
@@ -3989,7 +3989,7 @@ describe('Graceful Server Shutdown Active Session Finalization', () => {
             projectId: project.id,
             authToken: hostUser.token,
             updates: {
-              lyrics: { content: 'Verse 1: Live until shutdown' }
+              lyrics: { baseRevision: 1, content: 'Verse 1: Live until shutdown' }
             }
           }, resolve);
         });
@@ -4207,7 +4207,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         ownerSocket.emit('project:workspace:update', {
           projectId: project.id,
           authToken: ownerAuth.token,
-          updates: { notes: { content: 'Initial lyrics idea' } }
+          updates: { notes: { baseRevision: 1, content: 'Initial lyrics idea' } }
         }, resolve);
       });
       const initialSync = await collabReceivedInitialUpdate;
@@ -4246,7 +4246,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${ownerAuth.token}`
         },
-        body: JSON.stringify({ notes: { content: 'Secret owner-only notes' } })
+        body: JSON.stringify({ notes: { baseRevision: 2, content: 'Secret owner-only notes' } })
       });
       expect(restUpdateRes.status).toBe(200);
 
@@ -4260,7 +4260,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         collabSocket.emit('project:workspace:update', {
           projectId: project.id,
           authToken: collabAuth.token,
-          updates: { notes: { content: 'Hacked update' } }
+          updates: { notes: { baseRevision: 1, content: 'Hacked update' } }
         }, resolve);
       });
       expect(collabUpdateAttempt.ok).toBe(false);
@@ -4337,7 +4337,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${ownerAuth.token}`
         },
-        body: JSON.stringify({ notes: { content: 'Post self-leave update' } })
+        body: JSON.stringify({ notes: { baseRevision: 1, content: 'Post self-leave update' } })
       });
 
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -4407,14 +4407,14 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       await fetch(`${url}/api/projects/${projectA.id}/workspace`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
-        body: JSON.stringify({ notes: { content: 'Project A updated' } })
+        body: JSON.stringify({ notes: { baseRevision: 1, content: 'Project A updated' } })
       });
 
       // Owner updates Project B
       await fetch(`${url}/api/projects/${projectB.id}/workspace`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
-        body: JSON.stringify({ notes: { content: 'Project B updated' } })
+        body: JSON.stringify({ notes: { baseRevision: 1, content: 'Project B updated' } })
       });
 
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -4431,7 +4431,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       await fetch(`${url}/api/projects/${projectB.id}/workspace`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
-        body: JSON.stringify({ notes: { content: 'Project B updated again' } })
+        body: JSON.stringify({ notes: { baseRevision: 1, content: 'Project B updated again' } })
       });
 
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -4504,7 +4504,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       await fetch(`${url}/api/projects/${project.id}/workspace`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
-        body: JSON.stringify({ notes: { content: 'Update after session 1 logout' } })
+        body: JSON.stringify({ notes: { baseRevision: 1, content: 'Update after session 1 logout' } })
       });
 
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -4569,7 +4569,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         ownerSocket.emit('project:workspace:update', {
           projectId: project.id,
           authToken: ownerAuth.token,
-          updates: { notes: { content: 'Update after password change' } }
+          updates: { notes: { baseRevision: 1, content: 'Update after password change' } }
         }, resolve);
       });
 
@@ -4628,7 +4628,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       await fetch(`${url}/api/projects/${project.id}/workspace`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
-        body: JSON.stringify({ notes: { content: 'Update after token expiry' } })
+        body: JSON.stringify({ notes: { baseRevision: 1, content: 'Update after token expiry' } })
       });
 
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -4744,7 +4744,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
         body: JSON.stringify({
           tasks: {
-            tasks: [
+            baseRevision: 1, tasks: [
               {
                 id: 'task-1',
                 title: 'Master Audio',
@@ -4765,7 +4765,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
           authToken: collabAuth.token,
           updates: {
             tasks: {
-              tasks: [
+              baseRevision: 1, tasks: [
                 {
                   id: 'task-1',
                   title: 'Master Audio',
@@ -4791,7 +4791,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
           authToken: collabAuth.token,
           updates: {
             tasks: {
-              tasks: [
+              baseRevision: 1, tasks: [
                 {
                   id: 'task-1',
                   title: 'Master Audio',
@@ -5001,7 +5001,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${editorAuth.token}` },
         body: JSON.stringify({
           lyrics: {
-            documents: [
+            baseRevision: 1, documents: [
               {
                 id: 'doc-main',
                 title: 'Main Lyrics',
@@ -5072,7 +5072,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
         body: JSON.stringify({
           tasks: {
-            tasks: [{ id: '', title: 'Empty ID Task', status: 'todo' }]
+            baseRevision: 1, tasks: [{ id: '', title: 'Empty ID Task', status: 'todo' }]
           }
         })
       });
@@ -5084,7 +5084,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
         body: JSON.stringify({
           tasks: {
-            tasks: [
+            baseRevision: 1, tasks: [
               { id: 'task-1', title: 'Task One', status: 'todo' },
               { id: 'task-1', title: 'Task One Duplicate', status: 'in_progress' }
             ]
@@ -5110,7 +5110,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: ownerAuth.token,
         updates: {
           tasks: {
-            tasks: [
+            baseRevision: 1, tasks: [
               { id: 'dup-1', title: 'Task A', status: 'todo' },
               { id: 'dup-1', title: 'Task A Copy', status: 'todo' }
             ]
@@ -5150,7 +5150,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
         body: JSON.stringify({
           structure: {
-            sections: [{ id: '', type: 'verse', name: 'Verse 1' }]
+            baseRevision: 1, sections: [{ id: '', type: 'verse', name: 'Verse 1' }]
           }
         })
       });
@@ -5162,7 +5162,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
         body: JSON.stringify({
           structure: {
-            sections: [
+            baseRevision: 1, sections: [
               { id: 'sec-1', type: 'verse', name: 'Verse 1' },
               { id: 'sec-1', type: 'chorus', name: 'Chorus 1' }
             ]
@@ -5188,7 +5188,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: ownerAuth.token,
         updates: {
           structure: {
-            sections: [
+            baseRevision: 1, sections: [
               { id: 'sec-dup', type: 'intro', name: 'Intro' },
               { id: 'sec-dup', type: 'outro', name: 'Outro' }
             ]
@@ -5228,7 +5228,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
         body: JSON.stringify({
           lyrics: {
-            documents: [{ id: '', title: 'Empty Doc', content: 'Empty ID' }]
+            baseRevision: 1, documents: [{ id: '', title: 'Empty Doc', content: 'Empty ID' }]
           }
         })
       });
@@ -5240,7 +5240,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
         body: JSON.stringify({
           lyrics: {
-            documents: [
+            baseRevision: 1, documents: [
               { id: 'doc-main', title: 'Main Draft', content: 'Main words' },
               { id: 'doc-main', title: 'Duplicate Draft', content: 'Duplicate words' }
             ]
@@ -5266,7 +5266,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: ownerAuth.token,
         updates: {
           lyrics: {
-            documents: [
+            baseRevision: 1, documents: [
               { id: 'doc-dup', title: 'Draft 1', content: 'Words 1' },
               { id: 'doc-dup', title: 'Draft 2', content: 'Words 2' }
             ]
@@ -5306,7 +5306,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
         body: JSON.stringify({
           lyrics: {
-            documentId: '',
+            baseRevision: 1, documentId: '',
             title: 'Empty Doc Title',
             content: 'Words'
           }
@@ -5320,7 +5320,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
         body: JSON.stringify({
           lyrics: {
-            documentId: '   ',
+            baseRevision: 1, documentId: '   ',
             title: 'Whitespace Doc Title',
             content: 'Words'
           }
@@ -5345,7 +5345,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: ownerAuth.token,
         updates: {
           lyrics: {
-            documentId: '',
+            baseRevision: 1, documentId: '',
             title: 'Empty Socket Title',
             content: 'Words'
           }
@@ -5381,7 +5381,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       // 1. Initial task creation
       projectStore.updateWorkspace(project.id, ownerAuth.user, {
         tasks: {
-          tasks: [{ id: 'task-1', title: 'Edit Drum Tracks', status: 'todo' }]
+          baseRevision: 1, tasks: [{ id: 'task-1', title: 'Edit Drum Tracks', status: 'todo' }]
         }
       });
 
@@ -5391,7 +5391,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
         body: JSON.stringify({
           tasks: {
-            tasks: [{ id: 'task-1', title: 'Edit Drum Tracks', status: 'in_progress' }]
+            baseRevision: 2, tasks: [{ id: 'task-1', title: 'Edit Drum Tracks', status: 'in_progress' }]
           }
         })
       });
@@ -5413,7 +5413,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: ownerAuth.token,
         updates: {
           tasks: {
-            tasks: [{ id: 'task-1', title: 'Edit Drum Tracks', status: 'todo' }]
+            baseRevision: 3, tasks: [{ id: 'task-1', title: 'Edit Drum Tracks', status: 'todo' }]
           }
         }
       });
@@ -5453,7 +5453,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
         body: JSON.stringify({
           tasks: {
-            tasks: [{ id: 'task-1', title: 'Vocals', status: 'todo', dueDate: '<img src=x onerror=alert(1)>' }]
+            baseRevision: 1, tasks: [{ id: 'task-1', title: 'Vocals', status: 'todo', dueDate: '<img src=x onerror=alert(1)>' }]
           }
         })
       });
@@ -5465,7 +5465,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
         body: JSON.stringify({
           tasks: {
-            tasks: [{ id: 'task-1', title: 'Vocals', status: 'todo', dueDate: '2026-02-30' }]
+            baseRevision: 1, tasks: [{ id: 'task-1', title: 'Vocals', status: 'todo', dueDate: '2026-02-30' }]
           }
         })
       });
@@ -5488,7 +5488,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: ownerAuth.token,
         updates: {
           tasks: {
-            tasks: [{ id: 'task-1', title: 'Vocals', status: 'todo', dueDate: 'not-a-date' }]
+            baseRevision: 1, tasks: [{ id: 'task-1', title: 'Vocals', status: 'todo', dueDate: 'not-a-date' }]
           }
         }
       });
@@ -5525,7 +5525,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       // Populate an initial task
       projectStore.updateWorkspace(project.id, hostAuth.user, {
         tasks: {
-          tasks: [{ id: 'task-lead-vocals', title: 'Record Lead Vocals', status: 'todo' }]
+          baseRevision: 1, tasks: [{ id: 'task-lead-vocals', title: 'Record Lead Vocals', status: 'todo' }]
         }
       });
 
@@ -5545,7 +5545,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: hostAuth.token,
         updates: {
           tasks: {
-            tasks: [{ id: 'task-lead-vocals', title: 'Record Lead Vocals', status: 'todo', assigneeId: collabAuth.user.id }]
+            baseRevision: 2, tasks: [{ id: 'task-lead-vocals', title: 'Record Lead Vocals', status: 'todo', assigneeId: collabAuth.user.id }]
           }
         }
       });
@@ -5608,7 +5608,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: hostAuth.token,
         updates: {
           lyrics: {
-            documentId: 'doc-main',
+            baseRevision: 1, documentId: 'doc-main',
             title: 'Midnight Chorus Final'
           }
         }
@@ -5671,7 +5671,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: hostAuth.token,
         updates: {
           notes: {
-            bpm: '135',
+            baseRevision: 1, bpm: '135',
             key: 'A Major'
           }
         }
@@ -5728,7 +5728,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
 
       // Initially populate BPM and Key
       projectStore.updateWorkspace(project.id, hostAuth.user, {
-        notes: { bpm: '120', key: 'C Minor' }
+        notes: { baseRevision: 1, bpm: '120', key: 'C Minor' }
       });
 
       // Host creates meeting linked to project
@@ -5747,7 +5747,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: hostAuth.token,
         updates: {
           notes: {
-            bpm: '',
+            baseRevision: 2, bpm: '',
             key: '   '
           }
         }
@@ -5804,7 +5804,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
 
       // Initially populate Notes content
       projectStore.updateWorkspace(project.id, hostAuth.user, {
-        notes: { content: 'Initial project arrangement notes' }
+        notes: { baseRevision: 1, content: 'Initial project arrangement notes' }
       });
 
       // Host creates meeting linked to project
@@ -5823,7 +5823,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: hostAuth.token,
         updates: {
           notes: {
-            content: '   '
+            baseRevision: 2, content: '   '
           }
         }
       });
@@ -5876,7 +5876,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       // Populate an assigned task
       projectStore.updateWorkspace(project.id, hostAuth.user, {
         tasks: {
-          tasks: [{ id: 'task-guitar-solo', title: 'Record Guitar Solo', status: 'todo', assigneeId: collabAuth.user.id }]
+          baseRevision: 1, tasks: [{ id: 'task-guitar-solo', title: 'Record Guitar Solo', status: 'todo', assigneeId: collabAuth.user.id }]
         }
       });
 
@@ -5896,7 +5896,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: hostAuth.token,
         updates: {
           tasks: {
-            tasks: [{ id: 'task-guitar-solo', title: 'Record Guitar Solo', status: 'todo', assigneeId: undefined }]
+            baseRevision: 2, tasks: [{ id: 'task-guitar-solo', title: 'Record Guitar Solo', status: 'todo', assigneeId: undefined }]
           }
         }
       });
@@ -5946,7 +5946,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       // Initially populate structure
       projectStore.updateWorkspace(project.id, hostAuth.user, {
         structure: {
-          sections: [
+          baseRevision: 1, sections: [
             { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 4, updatedAt: 100 }
           ]
         }
@@ -5968,7 +5968,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: hostAuth.token,
         updates: {
           structure: {
-            sections: [
+            baseRevision: 2, sections: [
               { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 4, updatedAt: 9999 }
             ]
           }
@@ -5982,7 +5982,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: hostAuth.token,
         updates: {
           structure: {
-            sections: [
+            baseRevision: 2, sections: [
               { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 4, updatedAt: 10000 },
               { id: 'sec-verse', type: 'verse', name: 'Verse 1', bars: 16, updatedAt: 10000 }
             ]
@@ -6035,7 +6035,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       // Initially populate a task
       projectStore.updateWorkspace(project.id, hostAuth.user, {
         tasks: {
-          tasks: [{ id: 'task-lead-synth', title: 'Record Synth', status: 'todo' }]
+          baseRevision: 1, tasks: [{ id: 'task-lead-synth', title: 'Record Synth', status: 'todo' }]
         }
       });
 
@@ -6055,7 +6055,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: hostAuth.token,
         updates: {
           tasks: {
-            tasks: [{ id: 'task-lead-synth', title: 'Record Analog Synth Solo', note: 'Use Prophet-6', status: 'todo' }]
+            baseRevision: 2, tasks: [{ id: 'task-lead-synth', title: 'Record Analog Synth Solo', note: 'Use Prophet-6', status: 'todo' }]
           }
         }
       });
@@ -6105,7 +6105,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       // Initially populate multiple documents
       projectStore.updateWorkspace(project.id, hostAuth.user, {
         lyrics: {
-          documents: [
+          baseRevision: 1, documents: [
             { id: 'doc-main', title: 'Main Lyrics', content: 'Main content' },
             { id: 'doc-bridge-alt', title: 'Bridge Draft Alt', content: 'Bridge alt content' }
           ]
@@ -6128,7 +6128,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
         authToken: hostAuth.token,
         updates: {
           lyrics: {
-            documents: [
+            baseRevision: 2, documents: [
               { id: 'doc-main', title: 'Main Lyrics', content: 'Main content' }
             ]
           }
@@ -6153,6 +6153,127 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       expect(event?.description).toContain('Bridge Draft Alt');
 
       hostSocket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('fails closed across REST and Socket.IO when workspace updates omit baseRevision for any area', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-fail-closed-occ-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-fail-closed-occ'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_fail_closed', 'beta', userStore);
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Fail Closed REST/Socket Project' });
+      const initialActivitiesCount = project.activities.length;
+
+      // Socket setup to monitor for illicit broadcasts
+      const socket = await connected(url);
+      let receivedSyncCount = 0;
+      socket.on('project:workspace:synced', () => { receivedSyncCount++; });
+
+      const joinAck: any = await ack(socket, 'project:workspace:join', {
+        projectId: project.id,
+        authToken: ownerAuth.token
+      });
+      expect(joinAck.ok).toBe(true);
+
+      // 1. REST Lyrics update omitting baseRevision -> 409 WORKSPACE_CONFLICT
+      const restLyricsRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          lyrics: { content: 'Lyrics without baseRevision' }
+        })
+      });
+      expect(restLyricsRes.status).toBe(409);
+      const restLyricsData: any = await restLyricsRes.json();
+      expect(restLyricsData.conflict).toBe(true);
+      expect(restLyricsData.code).toBe('WORKSPACE_CONFLICT');
+      expect(restLyricsData.area).toBe('lyrics');
+      expect(restLyricsData.currentRevision).toBe(1);
+      expect(restLyricsData.baseRevision).toBeUndefined();
+
+      // 2. REST Notes update omitting baseRevision -> 409 WORKSPACE_CONFLICT
+      const restNotesRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          notes: { bpm: '135', key: 'G Major' }
+        })
+      });
+      expect(restNotesRes.status).toBe(409);
+      const restNotesData: any = await restNotesRes.json();
+      expect(restNotesData.conflict).toBe(true);
+      expect(restNotesData.code).toBe('WORKSPACE_CONFLICT');
+      expect(restNotesData.area).toBe('notes');
+      expect(restNotesData.currentRevision).toBe(1);
+
+      // 3. REST Structure update omitting baseRevision -> 409 WORKSPACE_CONFLICT
+      const restStructRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          structure: { sections: [{ id: 'sec-1', name: 'Intro', bars: 8 }] }
+        })
+      });
+      expect(restStructRes.status).toBe(409);
+      const restStructData: any = await restStructRes.json();
+      expect(restStructData.conflict).toBe(true);
+      expect(restStructData.code).toBe('WORKSPACE_CONFLICT');
+      expect(restStructData.area).toBe('structure');
+
+      // 4. REST Tasks update omitting baseRevision -> 409 WORKSPACE_CONFLICT
+      const restTasksRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          tasks: { tasks: [{ id: 't-1', title: 'Task without revision', status: 'todo' }] }
+        })
+      });
+      expect(restTasksRes.status).toBe(409);
+      const restTasksData: any = await restTasksRes.json();
+      expect(restTasksData.conflict).toBe(true);
+      expect(restTasksData.code).toBe('WORKSPACE_CONFLICT');
+      expect(restTasksData.area).toBe('tasks');
+
+      // 5. Socket.IO update omitting baseRevision -> returns WORKSPACE_CONFLICT ack
+      const socketRes: any = await ack(socket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: ownerAuth.token,
+        updates: {
+          notes: { content: 'Socket update without revision' }
+        }
+      });
+      expect(socketRes.ok).toBe(false);
+      expect(socketRes.conflict).toBe(true);
+      expect(socketRes.code).toBe('WORKSPACE_CONFLICT');
+      expect(socketRes.area).toBe('notes');
+      expect(socketRes.currentRevision).toBe(1);
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify ZERO broadcasts occurred, zero mutations applied, and zero activities created
+      expect(receivedSyncCount).toBe(0);
+      const finalProject = projectStore.getProject(project.id, ownerAuth.user.id)!;
+      expect(finalProject.workspace.lyrics.revision).toBe(1);
+      expect(finalProject.workspace.notes.revision).toBe(1);
+      expect(finalProject.workspace.structure.revision).toBe(1);
+      expect(finalProject.workspace.tasks.revision).toBe(1);
+      expect(finalProject.activities.length).toBe(initialActivitiesCount);
+
+      socket.disconnect();
       await app.close();
     } finally {
       if (fs.existsSync(tmpDataDir)) {

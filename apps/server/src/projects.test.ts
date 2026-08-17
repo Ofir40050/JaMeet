@@ -4,6 +4,29 @@ import path from 'node:path';
 import os from 'node:os';
 import { ProjectStore, WorkspaceConflictError } from './projects.js';
 import type { UserProfile } from '@jameet/shared';
+function autoUpdateWorkspace(
+  store: ProjectStore,
+  projectId: string,
+  user: UserProfile,
+  updates: any
+) {
+  const current = store.getProject(projectId, user.id);
+  const fixedUpdates = JSON.parse(JSON.stringify(updates));
+  if (fixedUpdates.lyrics && fixedUpdates.lyrics.baseRevision === undefined) {
+    fixedUpdates.lyrics.baseRevision = current?.workspace.lyrics.revision ?? 1;
+  }
+  if (fixedUpdates.notes && fixedUpdates.notes.baseRevision === undefined) {
+    fixedUpdates.notes.baseRevision = current?.workspace.notes.revision ?? 1;
+  }
+  if (fixedUpdates.structure && fixedUpdates.structure.baseRevision === undefined) {
+    fixedUpdates.structure.baseRevision = current?.workspace.structure.revision ?? 1;
+  }
+  if (fixedUpdates.tasks && fixedUpdates.tasks.baseRevision === undefined) {
+    fixedUpdates.tasks.baseRevision = current?.workspace.tasks.revision ?? 1;
+  }
+  return ProjectStore.prototype.updateWorkspace.call(store, projectId, user, fixedUpdates);
+}
+
 
 describe('ProjectStore & Workspace', () => {
   let tmpDir: string;
@@ -57,7 +80,7 @@ describe('ProjectStore & Workspace', () => {
     const project = projectStore.createProject(mockOwner, { name: 'Album Track 1' }, [mockCollaborator]);
     
     // Owner updates lyrics
-    const updated1 = projectStore.updateWorkspace(project.id, mockOwner, {
+    const updated1 = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       lyrics: { content: '[Verse 1]\nWalking in the moonlight...' }
     });
     expect(updated1).not.toBeNull();
@@ -65,7 +88,7 @@ describe('ProjectStore & Workspace', () => {
     expect(updated1?.workspace.lyrics.updatedBy).toBe(mockOwner.id);
 
     // Collaborator updates notes and BPM
-    const updated2 = projectStore.updateWorkspace(project.id, mockCollaborator, {
+    const updated2 = autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
       notes: { content: 'Key sounds better in F# min', bpm: '128', key: 'F# minor' }
     });
     expect(updated2).not.toBeNull();
@@ -87,7 +110,7 @@ describe('ProjectStore & Workspace', () => {
     expect(project.workspace.lyrics.documents[0].title).toBe('Main Lyrics');
 
     // 1. Create a new document "Draft 2"
-    const updated1 = projectStore.updateWorkspace(project.id, mockOwner, {
+    const updated1 = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       lyrics: {
         documentId: 'doc-draft-2',
         title: 'Draft 2 (Acoustic)',
@@ -101,7 +124,7 @@ describe('ProjectStore & Workspace', () => {
     expect(updated1?.workspace.lyrics.content).toContain('Soft acoustic guitar intro');
 
     // 2. Collaborator updates "Main Lyrics" without changing active doc
-    const updated2 = projectStore.updateWorkspace(project.id, mockCollaborator, {
+    const updated2 = autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
       lyrics: {
         documentId: 'doc-main',
         content: '<b>Studio Master Lyrics</b>'
@@ -110,7 +133,7 @@ describe('ProjectStore & Workspace', () => {
     expect(updated2?.workspace.lyrics.documents.find(d => d.id === 'doc-main')?.content).toBe('<b>Studio Master Lyrics</b>');
 
     // 3. Switch back to "Main Lyrics"
-    const updated3 = projectStore.updateWorkspace(project.id, mockOwner, {
+    const updated3 = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       lyrics: {
         activeDocumentId: 'doc-main'
       }
@@ -131,7 +154,7 @@ describe('ProjectStore & Workspace', () => {
     expect(project.workspace.structure.sections.length).toBe(0);
 
     // 1. Add arrangement sections
-    const updated1 = projectStore.updateWorkspace(project.id, mockOwner, {
+    const updated1 = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       structure: {
         sections: [
           { id: 'sec_1', type: 'intro', name: 'Intro', bars: 8, note: 'Rhodes piano & ambient pad', updatedAt: Date.now() },
@@ -148,7 +171,7 @@ describe('ProjectStore & Workspace', () => {
     expect(updated1?.workspace.structure.sections[2].note).toContain('vocal stacks');
 
     // 2. Collaborator reorders / edits sections (e.g. inserts Bridge before Outro)
-    const updated2 = projectStore.updateWorkspace(project.id, mockCollaborator, {
+    const updated2 = autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
       structure: {
         sections: [
           { id: 'sec_1', type: 'intro', name: 'Intro', bars: 8, note: 'Rhodes piano & ambient pad', updatedAt: Date.now() },
@@ -177,7 +200,7 @@ describe('ProjectStore & Workspace', () => {
     expect(project.workspace.tasks.tasks.length).toBe(0);
 
     // 1. Owner adds music production tasks
-    const updated1 = projectStore.updateWorkspace(project.id, mockOwner, {
+    const updated1 = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       tasks: {
         tasks: [
           {
@@ -217,7 +240,7 @@ describe('ProjectStore & Workspace', () => {
     expect(task1).toBeDefined();
 
     // 2. Collaborator completes task_2 and adds a new task
-    const updated2 = projectStore.updateWorkspace(project.id, mockCollaborator, {
+    const updated2 = autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
       tasks: {
         tasks: [
           task0!,
@@ -262,7 +285,7 @@ describe('ProjectStore & Workspace', () => {
       createdAt: Date.now()
     };
 
-    const res = projectStore.updateWorkspace(project.id, stranger, {
+    const res = autoUpdateWorkspace(projectStore, project.id, stranger, {
       notes: { content: 'Hacked notes' }
     });
     expect(res).toBeNull();
@@ -281,7 +304,7 @@ describe('ProjectStore & Workspace', () => {
     expect(pWithCollab?.activities[0].type).toBe('collaborator_added');
 
     // 3. BPM change
-    projectStore.updateWorkspace(project.id, mockCollaborator, {
+    autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
       notes: { bpm: '128' }
     });
     const pBpm = projectStore.getProject(project.id, mockOwner.id);
@@ -289,16 +312,16 @@ describe('ProjectStore & Workspace', () => {
     expect(pBpm?.activities[0].summary).toContain('128 BPM');
 
     // 4. Continuous typing consolidation: 3 rapid notes edits by same user within 10 min
-    projectStore.updateWorkspace(project.id, mockOwner, {
+    autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       notes: { content: 'Intro chord' }
     });
     const pNotes1 = projectStore.getProject(project.id, mockOwner.id);
     const countBefore = pNotes1!.activities.length;
 
-    projectStore.updateWorkspace(project.id, mockOwner, {
+    autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       notes: { content: 'Intro chords: F#m7 -> B9' }
     });
-    projectStore.updateWorkspace(project.id, mockOwner, {
+    autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       notes: { content: 'Intro chords: F#m7 -> B9 -> Emaj7' }
     });
     const pNotes2 = projectStore.getProject(project.id, mockOwner.id);
@@ -307,7 +330,7 @@ describe('ProjectStore & Workspace', () => {
     expect(pNotes2!.activities[0].type).toBe('notes_edited');
 
     // 5. Task creation & completion
-    projectStore.updateWorkspace(project.id, mockCollaborator, {
+    autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
       tasks: {
         tasks: [
           {
@@ -323,7 +346,7 @@ describe('ProjectStore & Workspace', () => {
     let pTasks = projectStore.getProject(project.id, mockOwner.id);
     expect(pTasks?.activities[0].type).toBe('task_created');
 
-    projectStore.updateWorkspace(project.id, mockOwner, {
+    autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       tasks: {
         tasks: [
           {
@@ -381,29 +404,29 @@ describe('ProjectStore & Workspace', () => {
     expect(projectStore.getUserRole(project.id, mockViewer.id)).toBe('viewer');
 
     // 2. Editor CAN modify workspace content (lyrics, notes, structure, tasks)
-    const editorLyricsUpdate = projectStore.updateWorkspace(project.id, mockEditor, {
+    const editorLyricsUpdate = autoUpdateWorkspace(projectStore, project.id, mockEditor, {
       lyrics: { content: 'Lyrics edited by editor Alex' }
     });
     expect(editorLyricsUpdate).not.toBeNull();
     expect(editorLyricsUpdate?.workspace.lyrics.content).toBe('Lyrics edited by editor Alex');
 
     // 3. Viewer CANNOT modify workspace content (returns null)
-    const viewerLyricsUpdate = projectStore.updateWorkspace(project.id, mockViewer, {
+    const viewerLyricsUpdate = autoUpdateWorkspace(projectStore, project.id, mockViewer, {
       lyrics: { content: 'Malicious overwrite by viewer' }
     });
     expect(viewerLyricsUpdate).toBeNull();
 
-    const viewerNotesUpdate = projectStore.updateWorkspace(project.id, mockViewer, {
+    const viewerNotesUpdate = autoUpdateWorkspace(projectStore, project.id, mockViewer, {
       notes: { bpm: '160', content: 'Viewer note' }
     });
     expect(viewerNotesUpdate).toBeNull();
 
-    const viewerStructureUpdate = projectStore.updateWorkspace(project.id, mockViewer, {
+    const viewerStructureUpdate = autoUpdateWorkspace(projectStore, project.id, mockViewer, {
       structure: { sections: [{ id: 'sec_v', type: 'intro', name: 'Viewer Intro', updatedAt: Date.now() }] }
     });
     expect(viewerStructureUpdate).toBeNull();
 
-    const viewerTaskUpdate = projectStore.updateWorkspace(project.id, mockViewer, {
+    const viewerTaskUpdate = autoUpdateWorkspace(projectStore, project.id, mockViewer, {
       tasks: { tasks: [{ id: 'task_v', title: 'Viewer Task', status: 'todo', createdAt: Date.now(), updatedAt: Date.now() }] }
     });
     expect(viewerTaskUpdate).toBeNull();
@@ -455,7 +478,7 @@ describe('ProjectStore & Workspace', () => {
     expect(projectStore.getUserRole(project.id, mockViewer.id)).toBe('editor');
 
     // Now previously viewer (now editor) CAN update workspace
-    const nowEditorUpdate = projectStore.updateWorkspace(project.id, mockViewer, {
+    const nowEditorUpdate = autoUpdateWorkspace(projectStore, project.id, mockViewer, {
       notes: { content: 'Olivia is now an editor and can edit notes' }
     });
     expect(nowEditorUpdate).not.toBeNull();
@@ -487,7 +510,7 @@ describe('ProjectStore & Workspace', () => {
     (projectStore as any).dataFilePath = path.join(blockerFile, 'sub', 'jameet-projects.json');
 
     expect(() => {
-      projectStore.updateWorkspace(project.id, mockOwner, {
+      autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         notes: { content: 'This should not be saved' }
       });
     }).toThrow();
@@ -781,7 +804,7 @@ describe('ProjectStore & Workspace', () => {
       const project = store.createProject(owner, { name: 'Task Assignee Project' }, [collab]);
 
       // 1. Reject task assignment to an invalid user ID (stranger)
-      const invalidAssigneeUpdate = store.updateWorkspace(project.id, owner, {
+      const invalidAssigneeUpdate = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             {
@@ -799,7 +822,7 @@ describe('ProjectStore & Workspace', () => {
       expect(invalidAssigneeUpdate).toBeNull();
 
       // 2. Accept assignment to owner and derive server-authoritative owner name (ignoring client spoofed name)
-      const validOwnerAssign = store.updateWorkspace(project.id, owner, {
+      const validOwnerAssign = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             {
@@ -819,7 +842,7 @@ describe('ProjectStore & Workspace', () => {
       expect(validOwnerAssign!.workspace.tasks.tasks[0].assigneeName).toBe('Real Owner Name');
 
       // 3. Accept assignment to collaborator and derive server-authoritative collaborator name
-      const validCollabAssign = store.updateWorkspace(project.id, owner, {
+      const validCollabAssign = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             {
@@ -839,7 +862,7 @@ describe('ProjectStore & Workspace', () => {
       expect(validCollabAssign!.workspace.tasks.tasks[0].assigneeName).toBe('Real Collab Name');
 
       // 4. Unassigning task clears both assigneeId and assigneeName
-      const unassignUpdate = store.updateWorkspace(project.id, owner, {
+      const unassignUpdate = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             {
@@ -860,7 +883,7 @@ describe('ProjectStore & Workspace', () => {
 
       // 5. Atomic validation: Attempt combined update with notes, lyrics, structure, and invalid task assignee
       const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
-      const failedCombinedUpdate = store.updateWorkspace(project.id, owner, {
+      const failedCombinedUpdate = autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: 'Modified Notes Text', bpm: '140' },
         lyrics: { content: 'Modified Lyrics Text' },
         structure: { sections: [{ id: 'sec-1', name: 'Chorus', bars: 8, color: '#f59e0b', order: 0 }] },
@@ -919,7 +942,7 @@ describe('ProjectStore & Workspace', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       // Editor creates doc-2
-      const createdDoc2 = store.updateWorkspace(project.id, editor, {
+      const createdDoc2 = autoUpdateWorkspace(store, project.id, editor, {
         lyrics: {
           documentId: 'doc-2',
           title: 'Bridge Draft',
@@ -938,7 +961,7 @@ describe('ProjectStore & Workspace', () => {
       // 2. doc-2 MODIFIED content with spoofed metadata
       // 3. doc-3 NEW with spoofed metadata
       const updateTime = Date.now();
-      const updatedWorkspace = store.updateWorkspace(project.id, editor, {
+      const updatedWorkspace = autoUpdateWorkspace(store, project.id, editor, {
         lyrics: {
           documents: [
             {
@@ -1017,7 +1040,7 @@ describe('ProjectStore & Workspace', () => {
       const project = store.createProject(owner, { name: 'Lyrics Delete Song' });
 
       // 1. Create doc-2 and make it active
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documentId: 'doc-2',
           title: 'Chorus Draft',
@@ -1031,7 +1054,7 @@ describe('ProjectStore & Workspace', () => {
       expect(projAfterAdd.workspace.lyrics.content).toBe('Chorus melody lyrics');
 
       // 2. Delete doc-2 by providing documents array containing only doc-main
-      const projAfterDelete = store.updateWorkspace(project.id, owner, {
+      const projAfterDelete = autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             {
@@ -1050,7 +1073,7 @@ describe('ProjectStore & Workspace', () => {
       expect(projAfterDelete.workspace.lyrics.content).toBe('Main verses text');
 
       // 3. Delete all documents by passing empty documents array: fallback document must be restored with empty content
-      const projAfterEmpty = store.updateWorkspace(project.id, owner, {
+      const projAfterEmpty = autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: []
         }
@@ -1086,7 +1109,7 @@ describe('ProjectStore & Workspace', () => {
       const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
 
       // 1. Reject empty task ID
-      const emptyIdRes = store.updateWorkspace(project.id, owner, {
+      const emptyIdRes = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: '', title: 'Empty ID Task', status: 'todo' }
@@ -1097,7 +1120,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 2. Reject whitespace-only task ID
-      const wsIdRes = store.updateWorkspace(project.id, owner, {
+      const wsIdRes = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: '   ', title: 'Whitespace ID Task', status: 'todo' }
@@ -1108,7 +1131,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 3. Reject duplicate task IDs
-      const dupIdRes = store.updateWorkspace(project.id, owner, {
+      const dupIdRes = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'First Task', status: 'todo' },
@@ -1120,7 +1143,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 4. Accept valid unique task IDs
-      const validRes = store.updateWorkspace(project.id, owner, {
+      const validRes = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'First Task', status: 'todo' },
@@ -1155,7 +1178,7 @@ describe('ProjectStore & Workspace', () => {
       const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
 
       // 1. Reject empty section ID
-      const emptyIdRes = store.updateWorkspace(project.id, owner, {
+      const emptyIdRes = autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: '', type: 'verse', name: 'Verse 1', bars: 8 }
@@ -1166,7 +1189,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 2. Reject whitespace-only section ID
-      const wsIdRes = store.updateWorkspace(project.id, owner, {
+      const wsIdRes = autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: '   ', type: 'verse', name: 'Verse 1', bars: 8 }
@@ -1177,7 +1200,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 3. Reject duplicate section IDs
-      const dupIdRes = store.updateWorkspace(project.id, owner, {
+      const dupIdRes = autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: 'sec-1', type: 'verse', name: 'Verse 1', bars: 8 },
@@ -1189,7 +1212,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 4. Accept valid unique section IDs
-      const validRes = store.updateWorkspace(project.id, owner, {
+      const validRes = autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: 'sec-1', type: 'verse', name: 'Verse 1', bars: 8 },
@@ -1226,7 +1249,7 @@ describe('ProjectStore & Workspace', () => {
       const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
 
       // 1. Reject empty document ID
-      const emptyIdRes = store.updateWorkspace(project.id, owner, {
+      const emptyIdRes = autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: '', title: 'Empty Doc', content: 'Empty ID' }
@@ -1237,7 +1260,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 2. Reject whitespace-only document ID
-      const wsIdRes = store.updateWorkspace(project.id, owner, {
+      const wsIdRes = autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: '   ', title: 'Whitespace Doc', content: 'Whitespace ID' }
@@ -1248,7 +1271,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 3. Reject duplicate document IDs
-      const dupIdRes = store.updateWorkspace(project.id, owner, {
+      const dupIdRes = autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-main', title: 'Main Draft', content: 'Main words' },
@@ -1260,7 +1283,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 4. Accept valid unique document IDs
-      const validRes = store.updateWorkspace(project.id, owner, {
+      const validRes = autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-main', title: 'Main Draft', content: 'Main words' },
@@ -1297,7 +1320,7 @@ describe('ProjectStore & Workspace', () => {
       const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
 
       // 1. Reject empty documentId
-      const emptyDocIdRes = store.updateWorkspace(project.id, owner, {
+      const emptyDocIdRes = autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documentId: '',
           title: 'New Document Title',
@@ -1308,7 +1331,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 2. Reject whitespace-only documentId
-      const wsDocIdRes = store.updateWorkspace(project.id, owner, {
+      const wsDocIdRes = autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documentId: '   \t  ',
           title: 'Whitespace Document Title',
@@ -1319,7 +1342,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 3. Accept valid documentId and trim whitespace
-      const validDocIdRes = store.updateWorkspace(project.id, owner, {
+      const validDocIdRes = autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documentId: '  doc-trimmed-1  ',
           title: 'Trimmed Document Title',
@@ -1351,7 +1374,7 @@ describe('ProjectStore & Workspace', () => {
       const project = store.createProject(owner, { name: 'Task Status Activity Song' });
 
       // 1. Create a task in 'todo' status
-      const p1 = store.updateWorkspace(project.id, owner, {
+      const p1 = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'todo' }
@@ -1361,7 +1384,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p1.activities[0].type).toBe('task_created');
 
       // 2. Change status from 'todo' to 'in_progress' -> records task_status_changed
-      const p2 = store.updateWorkspace(project.id, owner, {
+      const p2 = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'in_progress' }
@@ -1373,7 +1396,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p2.activities[0].userId).toBe(owner.id);
 
       // 3. Change status from 'in_progress' back to 'todo' -> records task_status_changed
-      const p3 = store.updateWorkspace(project.id, owner, {
+      const p3 = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'todo' }
@@ -1384,7 +1407,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p3.activities[0].summary).toBe('Owner Alice marked "Master Audio Track" as to-do');
 
       // 4. Change status from 'todo' to 'done' -> records task_completed
-      const p4 = store.updateWorkspace(project.id, owner, {
+      const p4 = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'done' }
@@ -1394,7 +1417,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p4.activities[0].type).toBe('task_completed');
 
       // 5. Change status from 'done' to 'in_progress' -> records task_reopened
-      const p5 = store.updateWorkspace(project.id, owner, {
+      const p5 = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'in_progress' }
@@ -1404,7 +1427,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p5.activities[0].type).toBe('task_reopened');
 
       // 6. Update without changing status or content -> does NOT record duplicate activity
-      const p6 = store.updateWorkspace(project.id, owner, {
+      const p6 = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'in_progress' }
@@ -1416,7 +1439,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p6.activities.length).toBe(p5.activities.length);
 
       // 7. Change assignee AND change status between in_progress and todo -> records task_assigned (higher priority)
-      const p7 = store.updateWorkspace(project.id, owner, {
+      const p7 = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'todo', assigneeId: owner.id }
@@ -1450,7 +1473,7 @@ describe('ProjectStore & Workspace', () => {
       const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
 
       // 1. Reject malicious HTML / script in dueDate
-      const xssDueRes = store.updateWorkspace(project.id, owner, {
+      const xssDueRes = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Vocal Track', status: 'todo', dueDate: '<script>alert(1)</script>' }
@@ -1461,7 +1484,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 2. Reject non-ISO date formats
-      const slashDueRes = store.updateWorkspace(project.id, owner, {
+      const slashDueRes = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Vocal Track', status: 'todo', dueDate: '08/25/2026' }
@@ -1472,7 +1495,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 3. Reject invalid calendar dates (e.g. Feb 31)
-      const feb31DueRes = store.updateWorkspace(project.id, owner, {
+      const feb31DueRes = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Vocal Track', status: 'todo', dueDate: '2026-02-31' }
@@ -1483,7 +1506,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 4. Accept valid YYYY-MM-DD date and absent dueDate
-      const validDueRes = store.updateWorkspace(project.id, owner, {
+      const validDueRes = autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Vocal Track', status: 'todo', dueDate: '  2026-08-25  ' },
@@ -1514,7 +1537,7 @@ describe('ProjectStore & Workspace', () => {
       const project = store.createProject(owner, { name: 'Clear BPM Key Project' });
 
       // Initially set BPM and Key
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         notes: { bpm: '124', key: 'E Minor' }
       });
       const pWithValues = store.getProject(project.id, owner.id);
@@ -1526,14 +1549,14 @@ describe('ProjectStore & Workspace', () => {
       const countBefore = pWithValues?.activities.length || 0;
 
       // Updating with same values should not record new activity
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         notes: { bpm: '124', key: 'E Minor' }
       });
       const pUnchanged = store.getProject(project.id, owner.id);
       expect(pUnchanged?.activities.length).toBe(countBefore);
 
       // Clear BPM
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         notes: { bpm: '' }
       });
       const pBpmCleared = store.getProject(project.id, owner.id);
@@ -1544,13 +1567,13 @@ describe('ProjectStore & Workspace', () => {
 
       // Clearing already-cleared BPM should not record new activity
       const countAfterBpmClear = pBpmCleared?.activities.length || 0;
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         notes: { bpm: '   ' }
       });
       expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterBpmClear);
 
       // Clear Key
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         notes: { key: '' }
       });
       const pKeyCleared = store.getProject(project.id, owner.id);
@@ -1561,13 +1584,13 @@ describe('ProjectStore & Workspace', () => {
 
       // Clearing already-cleared Key should not record new activity
       const countAfterKeyClear = pKeyCleared?.activities.length || 0;
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         notes: { key: '' }
       });
       expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterKeyClear);
 
       // Initially set Notes content
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: 'Bridge: Am -> D7 -> G' }
       });
       const pWithContent = store.getProject(project.id, owner.id);
@@ -1578,13 +1601,13 @@ describe('ProjectStore & Workspace', () => {
       const countBeforeContentClear = pWithContent?.activities.length || 0;
 
       // Updating with same content should not record new activity
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: 'Bridge: Am -> D7 -> G' }
       });
       expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countBeforeContentClear);
 
       // Clear Notes content
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: '   ' }
       });
       const pContentCleared = store.getProject(project.id, owner.id);
@@ -1595,13 +1618,13 @@ describe('ProjectStore & Workspace', () => {
 
       // Clearing already-cleared Notes content should not record new activity
       const countAfterContentClear = pContentCleared?.activities.length || 0;
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: '' }
       });
       expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterContentClear);
 
       // Re-populate notes
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: 'Outro chords' }
       });
       const pOutro = store.getProject(project.id, owner.id);
@@ -1609,7 +1632,7 @@ describe('ProjectStore & Workspace', () => {
       expect(pOutro?.activities[0].summary).toContain('updated Project Notes');
 
       // Update that differs ONLY by trailing whitespace should record updated activity
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: 'Outro chords\n' }
       });
       const pOutroWs = store.getProject(project.id, owner.id);
@@ -1646,7 +1669,7 @@ describe('ProjectStore & Workspace', () => {
       store.addCollaborator(project.id, owner.id, collab, 'editor');
 
       // 1. Create an assigned task
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Record Bass', status: 'todo', assigneeId: collab.id }
@@ -1657,7 +1680,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p1?.activities[0].type).toBe('task_created');
 
       // 2. Unassign task
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Record Bass', status: 'todo', assigneeId: undefined }
@@ -1674,7 +1697,7 @@ describe('ProjectStore & Workspace', () => {
       const countAfterUnassign = p2?.activities.length || 0;
 
       // 3. Updating an already unassigned task without assigning does not record unassigned activity
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Record Bass', status: 'todo' }
@@ -1684,7 +1707,7 @@ describe('ProjectStore & Workspace', () => {
       expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterUnassign);
 
       // 4. Reassign task to collaborator -> records task_assigned
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Record Bass', status: 'todo', assigneeId: collab.id }
@@ -1696,7 +1719,7 @@ describe('ProjectStore & Workspace', () => {
       expect(pReassigned?.activities[0].summary).toContain('assigned "Record Bass" to Collab User');
 
       // 5. Unassign and change status to in_progress in same update -> unassigned takes priority over status change
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Record Bass', status: 'in_progress', assigneeId: undefined }
@@ -1707,7 +1730,7 @@ describe('ProjectStore & Workspace', () => {
       expect(pUnassignStatus?.activities[0].type).toBe('task_unassigned');
 
       // 6. Complete task while also unassigning -> completed takes top priority
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Record Bass', status: 'done', assigneeId: undefined }
@@ -1737,7 +1760,7 @@ describe('ProjectStore & Workspace', () => {
       const project = store.createProject(owner, { name: 'Structure No-Op Test' });
 
       // 1. Initial structure setup (add sections -> records structure_changed)
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 8, note: 'Guitar riff', color: '#6366f1', updatedAt: 1000 },
@@ -1750,7 +1773,7 @@ describe('ProjectStore & Workspace', () => {
       const countAfterSetup = p1?.activities.length || 0;
 
       // 2. No-op update with identical sections (different updatedAt timestamp metadata only) -> should NOT record activity
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 8, note: 'Guitar riff', color: '#6366f1', updatedAt: 5000 },
@@ -1762,7 +1785,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p2?.activities.length).toBe(countAfterSetup);
 
       // 3. Reordering sections -> records structure_changed
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: 'sec-verse1', type: 'verse', name: 'Verse 1', bars: 16, note: 'Vocals enter', color: '#10b981', updatedAt: 6000 },
@@ -1775,7 +1798,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p3?.activities[0].type).toBe('structure_changed');
 
       // 4. Modifying section bars -> records structure_changed
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: 'sec-verse1', type: 'verse', name: 'Verse 1', bars: 32, note: 'Vocals enter', color: '#10b981', updatedAt: 7000 },
@@ -1806,7 +1829,7 @@ describe('ProjectStore & Workspace', () => {
       const project = store.createProject(owner, { name: 'Task Update Test' });
 
       // 1. Initial tasks setup
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't1', title: 'Record Keys', status: 'todo', note: 'Use Rhodes preset', dueDate: '2026-09-01', createdAt: 1000, updatedAt: 1000 },
@@ -1819,7 +1842,7 @@ describe('ProjectStore & Workspace', () => {
       const baseCount = p1?.activities.length || 0;
 
       // 2. Metadata change only (createdAt, updatedAt, completedAt) -> should NOT record task_updated
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't1', title: 'Record Keys', status: 'todo', note: 'Use Rhodes preset', dueDate: '2026-09-01', createdAt: 5000, updatedAt: 9000 },
@@ -1831,7 +1854,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p2?.activities.length).toBe(baseCount);
 
       // 3. Task ordering change only -> should NOT record task_updated
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't2', title: 'Record Bass', status: 'todo', createdAt: 5000, updatedAt: 9000 },
@@ -1843,7 +1866,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p3?.activities.length).toBe(baseCount);
 
       // 4. Change task title -> records task_updated
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't2', title: 'Record Bass (5-string)', status: 'todo' },
@@ -1857,7 +1880,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p4?.activities[0].summary).toContain('updated task "Record Bass (5-string)"');
 
       // 5. Change task note -> records task_updated
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't2', title: 'Record Bass (5-string)', status: 'todo' },
@@ -1871,7 +1894,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p5?.activities[0].summary).toContain('updated task "Record Keys"');
 
       // 6. Change task dueDate -> records task_updated
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't2', title: 'Record Bass (5-string)', status: 'todo' },
@@ -1884,7 +1907,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p6?.activities[0].type).toBe('task_updated');
 
       // 7. Change title AND status between todo and in_progress in same update -> task_status_changed takes priority
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't2', title: 'Record Bass (Final)', status: 'in_progress' },
@@ -1897,7 +1920,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p7?.activities[0].type).toBe('task_status_changed');
 
       // 8. Change title AND complete task -> task_completed takes priority
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't2', title: 'Record Bass (Done)', status: 'done' },
@@ -1928,7 +1951,7 @@ describe('ProjectStore & Workspace', () => {
       const project = store.createProject(owner, { name: 'Lyrics Delete Test' });
 
       // 1. Create multiple lyrics documents
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-main', title: 'Main Lyrics', content: 'Verse 1 text' },
@@ -1941,7 +1964,7 @@ describe('ProjectStore & Workspace', () => {
       const countAfterSetup = p1?.activities.length || 0;
 
       // 2. Remove one document (Bridge Draft)
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-main', title: 'Main Lyrics', content: 'Verse 1 text' },
@@ -1958,7 +1981,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p2?.activities[0].title).toBe('Bridge Draft');
 
       // 3. Reordering documents without removing any -> should NOT record lyrics_doc_deleted
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-outro-draft', title: 'Outro Draft', content: 'Outro idea' },
@@ -1970,7 +1993,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p3?.activities.length).toBe(countAfterSetup + 1);
 
       // 4. Pass empty documents array -> triggers fallback for Main Lyrics, removes Outro Draft
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: []
         }
@@ -1983,7 +2006,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p4?.activities[0].summary).toContain('deleted lyrics draft "Outro Draft"');
 
       // 5. Setup 2 documents again
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-main', title: 'Main Lyrics', content: 'Main text' },
@@ -1995,7 +2018,7 @@ describe('ProjectStore & Workspace', () => {
       const countBeforeCombinedUpdate = p5?.activities.length || 0;
 
       // 6. Update with documents array omitting doc-chorus, but targeting doc-chorus via documentId
-      store.updateWorkspace(project.id, owner, {
+      autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-main', title: 'Main Lyrics', content: 'Main text' }
@@ -2074,32 +2097,32 @@ describe('ProjectStore & Workspace', () => {
       expect(project.workspace.tasks.revision).toBe(1);
 
       // 1. Meaningful Lyrics edit increments lyrics.revision from 1 to 2
-      const updatedLyrics = projectStore.updateWorkspace(project.id, mockOwner, {
+      const updatedLyrics = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         lyrics: { baseRevision: 1, content: 'First line of the verse' }
       });
       expect(updatedLyrics?.workspace.lyrics.revision).toBe(2);
       expect(updatedLyrics?.workspace.notes.revision).toBe(1);
 
       // 2. No-op Lyrics update (same content, same active doc) does NOT increment revision
-      const noopLyrics = projectStore.updateWorkspace(project.id, mockOwner, {
+      const noopLyrics = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         lyrics: { baseRevision: 2, content: 'First line of the verse' }
       });
       expect(noopLyrics?.workspace.lyrics.revision).toBe(2);
 
       // 3. Meaningful Notes BPM change increments notes.revision from 1 to 2
-      const updatedNotes = projectStore.updateWorkspace(project.id, mockCollaborator, {
+      const updatedNotes = autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
         notes: { baseRevision: 1, bpm: '124' }
       });
       expect(updatedNotes?.workspace.notes.revision).toBe(2);
 
       // 4. No-op Notes update does NOT increment revision
-      const noopNotes = projectStore.updateWorkspace(project.id, mockCollaborator, {
+      const noopNotes = autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
         notes: { baseRevision: 2, bpm: '124' }
       });
       expect(noopNotes?.workspace.notes.revision).toBe(2);
 
       // 5. Meaningful Structure change increments structure.revision from 1 to 2
-      const updatedStructure = projectStore.updateWorkspace(project.id, mockOwner, {
+      const updatedStructure = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         structure: {
           baseRevision: 1,
           sections: [{ id: 'sec_intro', type: 'intro', name: 'Intro', bars: 8, updatedAt: Date.now() }]
@@ -2108,7 +2131,7 @@ describe('ProjectStore & Workspace', () => {
       expect(updatedStructure?.workspace.structure.revision).toBe(2);
 
       // 6. No-op Structure update does NOT increment revision
-      const noopStructure = projectStore.updateWorkspace(project.id, mockOwner, {
+      const noopStructure = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         structure: {
           baseRevision: 2,
           sections: [{ id: 'sec_intro', type: 'intro', name: 'Intro', bars: 8, updatedAt: Date.now() }]
@@ -2117,7 +2140,7 @@ describe('ProjectStore & Workspace', () => {
       expect(noopStructure?.workspace.structure.revision).toBe(2);
 
       // 7. Meaningful Tasks change increments tasks.revision from 1 to 2
-      const updatedTasks = projectStore.updateWorkspace(project.id, mockOwner, {
+      const updatedTasks = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         tasks: {
           baseRevision: 1,
           tasks: [{ id: 't1', title: 'Record guitar solo', status: 'todo', createdAt: Date.now(), updatedAt: Date.now() }]
@@ -2126,7 +2149,7 @@ describe('ProjectStore & Workspace', () => {
       expect(updatedTasks?.workspace.tasks.revision).toBe(2);
 
       // 8. No-op Tasks update does NOT increment revision
-      const noopTasks = projectStore.updateWorkspace(project.id, mockOwner, {
+      const noopTasks = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         tasks: {
           baseRevision: 2,
           tasks: [{ id: 't1', title: 'Record guitar solo', status: 'todo', createdAt: Date.now(), updatedAt: Date.now() }]
@@ -2140,7 +2163,7 @@ describe('ProjectStore & Workspace', () => {
       const initialActivitiesCount = project.activities.length;
 
       // Update lyrics to advance revision to 2
-      projectStore.updateWorkspace(project.id, mockOwner, {
+      autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         lyrics: { baseRevision: 1, content: 'Version 2 lyrics' }
       });
       const current = projectStore.getProject(project.id, mockOwner.id);
@@ -2149,7 +2172,7 @@ describe('ProjectStore & Workspace', () => {
 
       // Collaborator attempts to save with stale baseRevision: 1
       expect(() => {
-        projectStore.updateWorkspace(project.id, mockCollaborator, {
+        autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
           lyrics: { baseRevision: 1, content: 'Stale attempt to overwrite' }
         });
       }).toThrow(WorkspaceConflictError);
@@ -2170,7 +2193,7 @@ describe('ProjectStore & Workspace', () => {
       const collabBLyricsRev = initialProject!.workspace.lyrics.revision; // 1
 
       // Collaborator A edits and saves a new document 'Draft Acoustic'
-      const savedByA = projectStore.updateWorkspace(project.id, mockOwner, {
+      const savedByA = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         lyrics: {
           baseRevision: collabALyricsRev,
           documentId: 'doc-acoustic',
@@ -2183,7 +2206,7 @@ describe('ProjectStore & Workspace', () => {
 
       // Collaborator B (holding stale revision 1 snapshot without 'doc-acoustic') attempts to save their snapshot
       expect(() => {
-        projectStore.updateWorkspace(project.id, mockCollaborator, {
+        autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
           lyrics: {
             baseRevision: collabBLyricsRev, // Stale 1
             documents: [{ id: 'doc-main', title: 'Main Lyrics', content: 'Collaborator B main edit' }]
@@ -2225,6 +2248,97 @@ describe('ProjectStore & Workspace', () => {
       expect(finalProject?.workspace.notes.revision).toBe(2);
       expect(finalProject?.workspace.structure.revision).toBe(1);
       expect(finalProject?.workspace.tasks.revision).toBe(1);
+    });
+
+    it('fails closed: rejects any Lyrics, Notes, Structure, or Tasks mutation that omits baseRevision before mutation or activity logging', () => {
+      const project = projectStore.createProject(mockOwner, { name: 'Fail Closed OCC Test' }, [mockCollaborator]);
+      const initialActivitiesCount = project.activities.length;
+      const initialLyricsContent = project.workspace.lyrics.content;
+      const initialNotesContent = project.workspace.notes.content;
+
+      // 1. Lyrics mutation without baseRevision is rejected immediately
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          lyrics: { content: 'Lyrics without baseRevision' } as any
+        });
+      }).toThrow(WorkspaceConflictError);
+
+      try {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          lyrics: { content: 'Lyrics without baseRevision' } as any
+        });
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(WorkspaceConflictError);
+        expect(err.area).toBe('lyrics');
+        expect(err.currentRevision).toBe(1);
+        expect(err.baseRevision).toBeUndefined();
+      }
+
+      // 2. Notes mutation without baseRevision is rejected immediately
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          notes: { bpm: '140', content: 'Notes without baseRevision' } as any
+        });
+      }).toThrow(WorkspaceConflictError);
+
+      try {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          notes: { bpm: '140', content: 'Notes without baseRevision' } as any
+        });
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(WorkspaceConflictError);
+        expect(err.area).toBe('notes');
+        expect(err.currentRevision).toBe(1);
+        expect(err.baseRevision).toBeUndefined();
+      }
+
+      // 3. Structure mutation without baseRevision is rejected immediately
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          structure: { sections: [{ id: 'sec-1', name: 'Intro', bars: 4 }] } as any
+        });
+      }).toThrow(WorkspaceConflictError);
+
+      try {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          structure: { sections: [{ id: 'sec-1', name: 'Intro', bars: 4 }] } as any
+        });
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(WorkspaceConflictError);
+        expect(err.area).toBe('structure');
+        expect(err.currentRevision).toBe(1);
+        expect(err.baseRevision).toBeUndefined();
+      }
+
+      // 4. Tasks mutation without baseRevision is rejected immediately
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          tasks: { tasks: [{ id: 't1', title: 'Task without baseRevision', status: 'todo' }] } as any
+        });
+      }).toThrow(WorkspaceConflictError);
+
+      try {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          tasks: { tasks: [{ id: 't1', title: 'Task without baseRevision', status: 'todo' }] } as any
+        });
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(WorkspaceConflictError);
+        expect(err.area).toBe('tasks');
+        expect(err.currentRevision).toBe(1);
+        expect(err.baseRevision).toBeUndefined();
+      }
+
+      // Verify ZERO mutations applied, revisions remained 1, and ZERO activities recorded
+      const unchangedProject = projectStore.getProject(project.id, mockOwner.id)!;
+      expect(unchangedProject.workspace.lyrics.content).toBe(initialLyricsContent);
+      expect(unchangedProject.workspace.lyrics.revision).toBe(1);
+      expect(unchangedProject.workspace.notes.content).toBe(initialNotesContent);
+      expect(unchangedProject.workspace.notes.revision).toBe(1);
+      expect(unchangedProject.workspace.structure.sections.length).toBe(0);
+      expect(unchangedProject.workspace.structure.revision).toBe(1);
+      expect(unchangedProject.workspace.tasks.tasks.length).toBe(0);
+      expect(unchangedProject.workspace.tasks.revision).toBe(1);
+      expect(unchangedProject.activities.length).toBe(initialActivitiesCount);
     });
   });
 });

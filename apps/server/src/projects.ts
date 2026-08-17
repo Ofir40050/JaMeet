@@ -524,28 +524,28 @@ export class ProjectStore {
       project.workspace.tasks.revision = 1;
     }
 
-    // Pre-mutation Optimistic Concurrency Control (OCC) validation
-    if (updates.lyrics?.baseRevision !== undefined) {
+    // Pre-mutation Optimistic Concurrency Control (OCC) validation - Fail Closed
+    if (updates.lyrics) {
       const currentRev = project.workspace.lyrics.revision ?? 1;
-      if (updates.lyrics.baseRevision !== currentRev) {
+      if (typeof updates.lyrics.baseRevision !== 'number' || updates.lyrics.baseRevision !== currentRev) {
         throw new WorkspaceConflictError('lyrics', currentRev, updates.lyrics.baseRevision);
       }
     }
-    if (updates.notes?.baseRevision !== undefined) {
+    if (updates.notes) {
       const currentRev = project.workspace.notes.revision ?? 1;
-      if (updates.notes.baseRevision !== currentRev) {
+      if (typeof updates.notes.baseRevision !== 'number' || updates.notes.baseRevision !== currentRev) {
         throw new WorkspaceConflictError('notes', currentRev, updates.notes.baseRevision);
       }
     }
-    if (updates.structure?.baseRevision !== undefined) {
+    if (updates.structure) {
       const currentRev = project.workspace.structure.revision ?? 1;
-      if (updates.structure.baseRevision !== currentRev) {
+      if (typeof updates.structure.baseRevision !== 'number' || updates.structure.baseRevision !== currentRev) {
         throw new WorkspaceConflictError('structure', currentRev, updates.structure.baseRevision);
       }
     }
-    if (updates.tasks?.baseRevision !== undefined) {
+    if (updates.tasks) {
       const currentRev = project.workspace.tasks.revision ?? 1;
-      if (updates.tasks.baseRevision !== currentRev) {
+      if (typeof updates.tasks.baseRevision !== 'number' || updates.tasks.baseRevision !== currentRev) {
         throw new WorkspaceConflictError('tasks', currentRev, updates.tasks.baseRevision);
       }
     }
