@@ -2817,6 +2817,112 @@ describe('ProjectStore & Workspace', () => {
       // Total projects owned must strictly equal MAX_PROJECTS_PER_OWNER, never exceeding it
       expect(projectStore.listProjects(raceOwner.id).length).toBe(PROJECT_LIMITS.MAX_PROJECTS_PER_OWNER);
     });
+
+    it('preserves newer existing per-project files when legacy consolidated datastore also exists during startup migration', async () => {
+      const mixedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-mixed-migration-'));
+      const projectsSubdir = path.join(mixedDir, 'projects');
+      fs.mkdirSync(projectsSubdir, { recursive: true });
+
+      // 1. Write an existing newer per-project file for 'proj-existing-1'
+      const existingProjectFile = path.join(projectsSubdir, 'proj-existing-1.json');
+      const newerProjectData = {
+        id: 'proj-existing-1',
+        name: 'Newer Per-Project Data',
+        ownerId: mockOwner.id,
+        ownerDisplayName: mockOwner.displayName,
+        ownerUsername: mockOwner.username,
+        ownerAvatarColor: mockOwner.avatarColor,
+        collaborators: [],
+        sessions: [],
+        sessionCount: 0,
+        workspace: {
+          lyrics: { revision: 10, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main', content: 'Newest lyrics revision 10', updatedAt: 5000 }], content: 'Newest lyrics revision 10', updatedAt: 5000 },
+          notes: { revision: 8, content: 'Newest notes content', updatedAt: 5000 },
+          structure: { revision: 1, sections: [], updatedAt: 5000 },
+          tasks: { revision: 1, tasks: [], updatedAt: 5000 }
+        },
+        activities: [],
+        createdAt: 1000,
+        updatedAt: 5000,
+        lastActivityAt: 5000
+      };
+      fs.writeFileSync(existingProjectFile, JSON.stringify(newerProjectData, null, 2), 'utf-8');
+
+      // 2. Write a consolidated datastore with an older version of 'proj-existing-1' AND a brand new 'proj-legacy-2'
+      const legacyProjectsFile = path.join(mixedDir, 'jameet-projects.json');
+      const legacyData = {
+        version: 1,
+        projects: [
+          {
+            id: 'proj-existing-1',
+            name: 'Stale Older Consolidated Copy',
+            ownerId: mockOwner.id,
+            ownerDisplayName: mockOwner.displayName,
+            ownerUsername: mockOwner.username,
+            ownerAvatarColor: mockOwner.avatarColor,
+            collaborators: [],
+            sessions: [],
+            sessionCount: 0,
+            workspace: {
+              lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main', content: 'Old stale lyrics', updatedAt: 1000 }], content: 'Old stale lyrics', updatedAt: 1000 },
+              notes: { revision: 1, content: 'Old stale notes', updatedAt: 1000 },
+              structure: { revision: 1, sections: [], updatedAt: 1000 },
+              tasks: { revision: 1, tasks: [], updatedAt: 1000 }
+            },
+            activities: [],
+            createdAt: 1000,
+            updatedAt: 1000,
+            lastActivityAt: 1000
+          },
+          {
+            id: 'proj-legacy-2',
+            name: 'Legacy Project 2 to Migrate',
+            ownerId: mockOwner.id,
+            ownerDisplayName: mockOwner.displayName,
+            ownerUsername: mockOwner.username,
+            ownerAvatarColor: mockOwner.avatarColor,
+            collaborators: [],
+            sessions: [],
+            sessionCount: 0,
+            workspace: {
+              lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main', content: 'Legacy 2 content', updatedAt: 1000 }], content: 'Legacy 2 content', updatedAt: 1000 },
+              notes: { revision: 1, content: 'Legacy 2 notes', updatedAt: 1000 },
+              structure: { revision: 1, sections: [], updatedAt: 1000 },
+              tasks: { revision: 1, tasks: [], updatedAt: 1000 }
+            },
+            activities: [],
+            createdAt: 1000,
+            updatedAt: 1000,
+            lastActivityAt: 1000
+          }
+        ]
+      };
+      fs.writeFileSync(legacyProjectsFile, JSON.stringify(legacyData, null, 2), 'utf-8');
+
+      // 3. Initialize ProjectStore
+      const store = new ProjectStore(mixedDir);
+
+      // Verify that proj-existing-1 was NOT overwritten with stale data
+      const loadedExisting = store.getProject('proj-existing-1', mockOwner.id)!;
+      expect(loadedExisting.name).toBe('Newer Per-Project Data');
+      expect(loadedExisting.workspace.lyrics.revision).toBe(10);
+      expect(loadedExisting.workspace.lyrics.content).toBe('Newest lyrics revision 10');
+      expect(loadedExisting.workspace.notes.content).toBe('Newest notes content');
+
+      // Verify on-disk file was also NOT overwritten
+      const diskExisting = JSON.parse(fs.readFileSync(existingProjectFile, 'utf-8'));
+      expect(diskExisting.name).toBe('Newer Per-Project Data');
+      expect(diskExisting.workspace.lyrics.revision).toBe(10);
+
+      // Verify that proj-legacy-2 was successfully migrated
+      const loadedLegacy2 = store.getProject('proj-legacy-2', mockOwner.id)!;
+      expect(loadedLegacy2.name).toBe('Legacy Project 2 to Migrate');
+      expect(fs.existsSync(path.join(projectsSubdir, 'proj-legacy-2.json'))).toBe(true);
+
+      // Verify legacy file was archived
+      expect(fs.existsSync(legacyProjectsFile)).toBe(false);
+      expect(fs.existsSync(`${legacyProjectsFile}.migrated.bak`)).toBe(true);
+    });
   });
 });
 

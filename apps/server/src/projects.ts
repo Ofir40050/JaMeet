@@ -173,7 +173,6 @@ export class ProjectStore {
         }
         for (const p of data.projects) {
           this.normalizeLoadedProject(p);
-          this.projects.set(p.id, p);
           loadedLegacyProjects.push(p);
         }
       } catch (err: unknown) {
@@ -191,7 +190,8 @@ export class ProjectStore {
       }
     }
 
-    // 3. Load standalone project files from projectsDir if present
+    // 3. Load standalone authoritative per-project files from projectsDir if present
+    const existingPerProjectIds = new Set<string>();
     if (fs.existsSync(this.projectsDir)) {
       try {
         const files = fs.readdirSync(this.projectsDir);
@@ -204,9 +204,10 @@ export class ProjectStore {
             if (p && p.id) {
               this.normalizeLoadedProject(p);
               this.projects.set(p.id, p);
+              existingPerProjectIds.add(p.id);
             }
           } catch {
-            // ignore corrupt individual file during load
+            // ignore corrupt individual file during initial load
           }
         }
       } catch {
@@ -214,7 +215,7 @@ export class ProjectStore {
       }
     }
 
-    // 4. Fail-closed migration of consolidated datastore to per-project files
+    // 4. Safe fail-closed migration: migrate legacy projects that do NOT already have a valid per-project file
     if (legacyFileExists) {
       try {
         if (!fs.existsSync(this.projectsDir)) {
@@ -226,11 +227,18 @@ export class ProjectStore {
       }
 
       for (const p of loadedLegacyProjects) {
+        // NEVER overwrite a valid existing per-project file with an older consolidated copy
+        if (existingPerProjectIds.has(p.id)) {
+          continue;
+        }
+
         const projPath = path.join(this.projectsDir, `${p.id}.json`);
         const tmpPath = `${projPath}.${crypto.randomUUID()}.tmp`;
         try {
           fs.writeFileSync(tmpPath, JSON.stringify(p, null, 2), 'utf-8');
           fs.renameSync(tmpPath, projPath);
+          this.projects.set(p.id, p);
+          existingPerProjectIds.add(p.id);
         } catch (err: unknown) {
           try {
             if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
@@ -240,7 +248,7 @@ export class ProjectStore {
         }
       }
 
-      // Only archive the consolidated file after EVERY project has successfully and durably persisted
+      // Only archive the consolidated file after EVERY project has been successfully migrated or preserved
       try {
         fs.renameSync(this.dataFilePath, `${this.dataFilePath}.migrated.bak`);
       } catch (err: unknown) {
