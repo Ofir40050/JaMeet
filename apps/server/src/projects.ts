@@ -541,77 +541,106 @@ export class ProjectStore {
 
     // Enforce workspace storage limits before any OCC checks, mutations, or persistence
     if (updates.lyrics) {
+      const curLyrics = project.workspace?.lyrics;
+      const initialDocs: { id: string; title: string; content: string }[] =
+        curLyrics?.documents && curLyrics.documents.length > 0
+          ? curLyrics.documents.map((d) => ({ id: d.id, title: d.title, content: d.content }))
+          : [{ id: 'doc-main', title: 'Main Lyrics', content: curLyrics?.content || '' }];
+
+      let projectedDocs: { id: string; title: string; content: string }[] = [...initialDocs];
+      let projectedActiveDocId = updates.lyrics.activeDocumentId || curLyrics?.activeDocumentId || projectedDocs[0]?.id || 'doc-main';
+
       if (updates.lyrics.documents) {
-        if (updates.lyrics.documents.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS) {
-          throw new WorkspaceLimitError(
-            'lyrics',
-            `Maximum lyrics documents limit exceeded (${PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS} documents).`
-          );
-        }
-        let totalLyricsLength = 0;
-        for (const d of updates.lyrics.documents) {
-          if (d.title && d.title.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH) {
-            throw new WorkspaceLimitError(
-              'lyrics',
-              `Lyrics document title exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH} characters.`
-            );
+        const oldDocs = new Map(initialDocs.map((d) => [d.id, d]));
+        projectedDocs = updates.lyrics.documents.map((incDoc) => {
+          const existing = oldDocs.get(incDoc.id);
+          if (existing) {
+            const hasTitleUpdate = incDoc.title !== undefined && incDoc.title.trim().length > 0;
+            const newTitle = hasTitleUpdate ? incDoc.title.trim() : existing.title;
+            const newContent = incDoc.content !== undefined ? incDoc.content : existing.content;
+            return {
+              id: incDoc.id,
+              title: newTitle,
+              content: newContent
+            };
           }
-          if (d.content && d.content.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH) {
-            throw new WorkspaceLimitError(
-              'lyrics',
-              `Lyrics document content exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH} characters.`
-            );
-          }
-          totalLyricsLength += (d.content || '').length;
-        }
-        if (totalLyricsLength > PROJECT_LIMITS.MAX_LYRICS_TOTAL_CONTENT_LENGTH) {
-          throw new WorkspaceLimitError(
-            'lyrics',
-            `Total lyrics content exceeds maximum project limit of ${PROJECT_LIMITS.MAX_LYRICS_TOTAL_CONTENT_LENGTH} characters.`
-          );
+          return {
+            id: incDoc.id,
+            title: incDoc.title ? incDoc.title.trim() : 'Untitled Lyrics',
+            content: incDoc.content || ''
+          };
+        });
+
+        if (projectedDocs.length === 0) {
+          projectedDocs = [{ id: 'doc-main', title: 'Main Lyrics', content: '' }];
+          projectedActiveDocId = 'doc-main';
         }
       }
 
-      if (updates.lyrics.title && updates.lyrics.title.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH) {
+      if (updates.lyrics.activeDocumentId) {
+        projectedActiveDocId = updates.lyrics.activeDocumentId;
+      }
+
+      if (updates.lyrics.documentId !== undefined || updates.lyrics.title !== undefined || updates.lyrics.content !== undefined) {
+        const targetDocId = updates.lyrics.documentId || projectedActiveDocId || projectedDocs[0]?.id || 'doc-main';
+        const docIdx = projectedDocs.findIndex((d) => d.id === targetDocId);
+
+        if (docIdx === -1) {
+          projectedDocs.push({
+            id: targetDocId,
+            title: updates.lyrics.title ? updates.lyrics.title.trim() : 'Untitled Lyrics',
+            content: updates.lyrics.content || ''
+          });
+        } else {
+          const docToUpdate = projectedDocs[docIdx]!;
+          let nextTitle = docToUpdate.title;
+          let nextContent = docToUpdate.content;
+          if (updates.lyrics.title !== undefined && updates.lyrics.title.trim().length > 0) {
+            nextTitle = updates.lyrics.title.trim();
+          }
+          if (updates.lyrics.content !== undefined) {
+            nextContent = updates.lyrics.content;
+          }
+          projectedDocs[docIdx] = {
+            ...docToUpdate,
+            title: nextTitle,
+            content: nextContent
+          };
+        }
+      }
+
+      // 1. Validate projected document count
+      if (projectedDocs.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS) {
         throw new WorkspaceLimitError(
           'lyrics',
-          `Lyrics document title exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH} characters.`
+          `Maximum lyrics documents limit exceeded (${PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS} documents).`
         );
       }
 
-      if (updates.lyrics.content && updates.lyrics.content.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH) {
-        throw new WorkspaceLimitError(
-          'lyrics',
-          `Lyrics document content exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH} characters.`
-        );
+      // 2. Validate each document title, individual content size, and total cumulative content length
+      let totalLyricsLength = 0;
+      for (const d of projectedDocs) {
+        if (d.title && d.title.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH) {
+          throw new WorkspaceLimitError(
+            'lyrics',
+            `Lyrics document title exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH} characters.`
+          );
+        }
+        if (d.content && d.content.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH) {
+          throw new WorkspaceLimitError(
+            'lyrics',
+            `Lyrics document content exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH} characters.`
+          );
+        }
+        totalLyricsLength += (d.content || '').length;
       }
 
-      if (updates.lyrics.documentId !== undefined || updates.lyrics.content !== undefined) {
-        const existingDocs = project.workspace?.lyrics?.documents || [];
-        const targetDocId = updates.lyrics.documentId || project.workspace?.lyrics?.activeDocumentId || existingDocs[0]?.id || 'doc-main';
-        const docExists = existingDocs.some((d) => d.id === targetDocId);
-        if (!docExists && !updates.lyrics.documents) {
-          if (existingDocs.length + 1 > PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS) {
-            throw new WorkspaceLimitError(
-              'lyrics',
-              `Maximum lyrics documents limit exceeded (${PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS} documents).`
-            );
-          }
-        }
-        if (updates.lyrics.content !== undefined && !updates.lyrics.documents) {
-          let projectedTotal = updates.lyrics.content.length;
-          for (const d of existingDocs) {
-            if (d.id !== targetDocId) {
-              projectedTotal += (d.content || '').length;
-            }
-          }
-          if (projectedTotal > PROJECT_LIMITS.MAX_LYRICS_TOTAL_CONTENT_LENGTH) {
-            throw new WorkspaceLimitError(
-              'lyrics',
-              `Total lyrics content exceeds maximum project limit of ${PROJECT_LIMITS.MAX_LYRICS_TOTAL_CONTENT_LENGTH} characters.`
-            );
-          }
-        }
+      // 3. Validate total cumulative lyrics content limit
+      if (totalLyricsLength > PROJECT_LIMITS.MAX_LYRICS_TOTAL_CONTENT_LENGTH) {
+        throw new WorkspaceLimitError(
+          'lyrics',
+          `Total lyrics content exceeds maximum project limit of ${PROJECT_LIMITS.MAX_LYRICS_TOTAL_CONTENT_LENGTH} characters.`
+        );
       }
     }
 

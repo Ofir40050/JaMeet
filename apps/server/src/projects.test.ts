@@ -2427,6 +2427,82 @@ describe('ProjectStore & Workspace', () => {
         });
       }).toThrow(WorkspaceLimitError);
 
+      // 4. Combined update: 50 documents + new documentId in the same request -> projected 51 documents -> rejected
+      const maxDocs = [];
+      for (let i = 0; i < PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS; i++) {
+        maxDocs.push({ id: `doc-${i}`, title: `Doc ${i}`, content: 'hello' });
+      }
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          lyrics: {
+            baseRevision: initialRev,
+            documents: maxDocs,
+            documentId: 'doc-overflow-51',
+            title: 'Overflow Doc',
+            content: 'extra'
+          }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // 5. Combined update: documents + title exceeding limit on target document
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          lyrics: {
+            baseRevision: initialRev,
+            documents: [{ id: 'doc-1', title: 'Normal', content: 'hello' }],
+            documentId: 'doc-1',
+            title: 't'.repeat(PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH + 1)
+          }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // 6. Combined update: documents + content exceeding total cumulative content limit
+      const heavyDocs = [
+        { id: 'doc-1', title: 'D1', content: 'a'.repeat(80_000) },
+        { id: 'doc-2', title: 'D2', content: 'b'.repeat(80_000) },
+        { id: 'doc-3', title: 'D3', content: 'c'.repeat(80_000) },
+        { id: 'doc-4', title: 'D4', content: 'd'.repeat(80_000) },
+        { id: 'doc-5', title: 'D5', content: 'e'.repeat(80_000) } // total 400,000
+      ];
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          lyrics: {
+            baseRevision: initialRev,
+            documents: heavyDocs,
+            documentId: 'doc-extra',
+            title: 'Extra Doc',
+            content: 'f'.repeat(100_001) // would exceed individual and total limit
+          }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // 7. Combined update: documents + single doc update exceeding total cumulative content limit (500k)
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          lyrics: {
+            baseRevision: initialRev,
+            documents: heavyDocs,
+            documentId: 'doc-extra',
+            title: 'Extra Doc',
+            content: 'f'.repeat(100_000) // 400,000 + 100,000 = 500,000 (ok), but let's test 100,001 or adding to existing
+          }
+        });
+      });
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          lyrics: {
+            baseRevision: initialRev,
+            documents: [
+              ...heavyDocs,
+              { id: 'doc-6', title: 'D6', content: 'g'.repeat(50_000) } // total 450,000
+            ],
+            documentId: 'doc-extra',
+            title: 'Extra Doc',
+            content: 'h'.repeat(60_000) // total would become 510,000 > 500,000
+          }
+        });
+      }).toThrow(WorkspaceLimitError);
+
       // Verify ZERO mutations applied
       const p = projectStore.getProject(project.id, mockOwner.id)!;
       expect(p.workspace.lyrics.revision).toBe(initialRev);
