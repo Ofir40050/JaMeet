@@ -12,7 +12,7 @@ export function isTrustedOrigin(urlStr?: string | null): boolean {
   try {
     const parsed = new URL(urlStr);
     if (parsed.protocol === 'jameet-app:' || parsed.protocol === 'musiczoom-app:') {
-      return parsed.hostname === 'bundle' || parsed.host === 'bundle' || parsed.pathname === '/bundle' || parsed.pathname.startsWith('/bundle/');
+      return parsed.hostname === 'bundle' || parsed.host === 'bundle';
     }
     // Allow local development server only when configured or during dev
     if (process.env.ELECTRON_RENDERER_URL || (app && !app.isPackaged)) {
@@ -54,20 +54,30 @@ export function isAllowedExternalUrl(urlStr?: string | null): boolean {
 
 /**
  * Validates that an incoming IPC event was dispatched from an authoritative
- * trusted JaMeet renderer frame via event.senderFrame or trusted sender WebContents.
+ * trusted JaMeet renderer frame.
+ *
+ * Rules:
+ * 1. If event.senderFrame exists and has a non-empty URL, it is authoritative.
+ *    If trusted, allowed. If untrusted, rejected immediately without fallback.
+ * 2. Only if senderFrame is genuinely missing, null, or has an empty URL,
+ *    fall back to event.sender.getURL() for early window lifecycle compatibility.
  */
 export function isTrustedSender(event?: { senderFrame?: { url?: string | null } | null; sender?: { getURL?: () => string } | null } | null): boolean {
   if (!event) return false;
-  const frameUrl = event.senderFrame?.url;
-  if (frameUrl && isTrustedOrigin(frameUrl)) {
-    return true;
+
+  // Authoritative frame URL check
+  if (event.senderFrame && typeof event.senderFrame.url === 'string' && event.senderFrame.url.trim() !== '') {
+    return isTrustedOrigin(event.senderFrame.url.trim());
   }
+
+  // Early lifecycle fallback when senderFrame is missing or empty
   if (event.sender && typeof event.sender.getURL === 'function') {
     const senderUrl = event.sender.getURL();
-    if (senderUrl && isTrustedOrigin(senderUrl)) {
-      return true;
+    if (senderUrl && typeof senderUrl === 'string' && senderUrl.trim() !== '') {
+      return isTrustedOrigin(senderUrl.trim());
     }
   }
+
   return false;
 }
 

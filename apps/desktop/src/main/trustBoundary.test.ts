@@ -35,8 +35,10 @@ describe('Electron Renderer Trust Boundary & Sender Validation', () => {
       expect(isTrustedOrigin('musiczoom-app://bundle/index.html')).toBe(true);
     });
 
-    it('rejects untrusted custom protocol hosts', () => {
+    it('rejects untrusted custom protocol hosts even if pathname contains bundle', () => {
+      expect(isTrustedOrigin('jameet-app://evil/bundle')).toBe(false);
       expect(isTrustedOrigin('jameet-app://evil-host/index.html')).toBe(false);
+      expect(isTrustedOrigin('musiczoom-app://untrusted/bundle/index.html')).toBe(false);
       expect(isTrustedOrigin('musiczoom-app://untrusted/page.html')).toBe(false);
     });
 
@@ -82,26 +84,53 @@ describe('Electron Renderer Trust Boundary & Sender Validation', () => {
   });
 
   describe('isTrustedSender', () => {
-    it('validates authoritative frame URL via event.senderFrame', () => {
+    it('accepts trusted packaged senderFrame', () => {
       const validEvent = {
         senderFrame: { url: 'jameet-app://bundle/index.html' }
       };
       expect(isTrustedSender(validEvent)).toBe(true);
     });
 
-    it('validates sender via sender WebContents when senderFrame is unpopulated during early lifecycle', () => {
-      const validWebContentsEvent = {
+    it('validates empty/missing senderFrame with trusted sender WebContents fallback', () => {
+      const nullFrameEvent = {
         senderFrame: null,
         sender: { getURL: () => 'jameet-app://bundle/index.html' }
       };
-      expect(isTrustedSender(validWebContentsEvent as any)).toBe(true);
+      expect(isTrustedSender(nullFrameEvent as any)).toBe(true);
+
+      const emptyFrameEvent = {
+        senderFrame: { url: '' },
+        sender: { getURL: () => 'jameet-app://bundle/index.html' }
+      };
+      expect(isTrustedSender(emptyFrameEvent as any)).toBe(true);
+
+      const whitespaceFrameEvent = {
+        senderFrame: { url: '   ' },
+        sender: { getURL: () => 'jameet-app://bundle/index.html' }
+      };
+      expect(isTrustedSender(whitespaceFrameEvent as any)).toBe(true);
     });
 
-    it('rejects IPC events from untrusted frame URLs', () => {
-      const invalidEvent = {
-        senderFrame: { url: 'https://evil.com/exploit.html' }
+    it('strictly rejects untrusted senderFrame even when top-level sender WebContents is trusted', () => {
+      const maliciousSubframeEvent = {
+        senderFrame: { url: 'https://evil.com/exploit.html' },
+        sender: { getURL: () => 'jameet-app://bundle/index.html' }
       };
-      expect(isTrustedSender(invalidEvent)).toBe(false);
+      expect(isTrustedSender(maliciousSubframeEvent as any)).toBe(false);
+
+      const maliciousCustomProtocolEvent = {
+        senderFrame: { url: 'jameet-app://evil/bundle' },
+        sender: { getURL: () => 'jameet-app://bundle/index.html' }
+      };
+      expect(isTrustedSender(maliciousCustomProtocolEvent as any)).toBe(false);
+    });
+
+    it('rejects external HTTPS sender', () => {
+      const httpsEvent = {
+        senderFrame: { url: 'https://attacker.com/malicious.html' },
+        sender: { getURL: () => 'https://attacker.com/malicious.html' }
+      };
+      expect(isTrustedSender(httpsEvent as any)).toBe(false);
     });
 
     it('rejects IPC events when senderFrame and sender are missing, null, or untrusted', () => {
@@ -111,6 +140,7 @@ describe('Electron Renderer Trust Boundary & Sender Validation', () => {
       expect(isTrustedSender({ senderFrame: null })).toBe(false);
       expect(isTrustedSender({ senderFrame: { url: '' } })).toBe(false);
       expect(isTrustedSender({ senderFrame: null, sender: { getURL: () => 'https://evil.com' } } as any)).toBe(false);
+      expect(isTrustedSender({ senderFrame: null, sender: null } as any)).toBe(false);
     });
   });
 
