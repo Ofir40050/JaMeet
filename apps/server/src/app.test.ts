@@ -5196,6 +5196,77 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('maps notes_bpm_changed and notes_key_changed Project Activity to Notes Session Summary events during active linked sessions', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-notes-bpm-key-summary-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-notes-summary-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const hostAuth = await createTestAccount(url, 'host_notes_sum', 'beta', userStore);
+      const project = projectStore.createProject(hostAuth.user, { name: 'Notes BPM Key Summary Project' });
+
+      // Host creates meeting linked to project
+      const hostSocket = await connected(url);
+      const createAck: any = await ack(hostSocket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        projectId: project.id,
+        authToken: hostAuth.token,
+        media
+      });
+      expect(createAck.ok).toBe(true);
+
+      // Mutate workspace during active linked session: update BPM and Key
+      const updateAck: any = await ack(hostSocket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: hostAuth.token,
+        updates: {
+          notes: {
+            bpm: '135',
+            key: 'A Major'
+          }
+        }
+      });
+      expect(updateAck.ok).toBe(true);
+
+      // Host leaves meeting
+      hostSocket.emit('meeting:leave');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify host's finalized session summary contains both notes events
+      const history = userStore.getSessionHistory(hostAuth.user.id);
+      expect(history.length).toBe(1);
+      const summary = history[0]?.summary;
+      expect(summary).toBeDefined();
+      expect(summary?.events.length).toBe(2);
+
+      const bpmEvent = summary?.events.find((e) => e.description.includes('135'));
+      expect(bpmEvent).toBeDefined();
+      expect(bpmEvent?.category).toBe('note');
+      expect(bpmEvent?.action).toBe('updated');
+      expect(bpmEvent?.description).toBe('Set tempo to 135 BPM');
+
+      const keyEvent = summary?.events.find((e) => e.description.includes('A Major'));
+      expect(keyEvent).toBeDefined();
+      expect(keyEvent?.category).toBe('note');
+      expect(keyEvent?.action).toBe('updated');
+      expect(keyEvent?.description).toBe('Changed key to A Major');
+
+      hostSocket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

@@ -76,6 +76,14 @@ function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSumm
     category = 'note';
     action = 'edited';
     description = 'Updated Project Notes';
+  } else if (act.type === 'notes_bpm_changed') {
+    category = 'note';
+    action = 'updated';
+    description = act.title ? `Set tempo to ${act.title}` : (act.summary || 'Updated Project tempo');
+  } else if (act.type === 'notes_key_changed') {
+    category = 'note';
+    action = 'updated';
+    description = act.title ? `Changed key to ${act.title}` : (act.summary || 'Updated Project key');
   } else if (act.type === 'structure_changed') {
     category = 'structure';
     action = 'updated';
