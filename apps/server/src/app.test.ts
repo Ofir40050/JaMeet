@@ -6579,6 +6579,82 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('safely transmits large valid workspace updates over Socket.IO without hitting buffer size limits', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-socket-payload-test-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-socket-payload'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'payload_owner', 'paid', userStore);
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Large Payload Test Project' });
+
+      const socket1 = await connected(url);
+      const socket2 = await connected(url);
+
+      let syncedPayloadOnSocket2: any = null;
+      socket2.on('project:workspace:synced', (data) => {
+        syncedPayloadOnSocket2 = data;
+      });
+
+      await ack(socket1, 'project:workspace:join', {
+        projectId: project.id,
+        authToken: ownerAuth.token
+      });
+      await ack(socket2, 'project:workspace:join', {
+        projectId: project.id,
+        authToken: ownerAuth.token
+      });
+
+      // 1. Send valid large lyrics update (e.g. 50,000 characters > 16KB)
+      const largeLyricsContent = 'Chorus line repeat. '.repeat(2500); // 50,000 chars (~50KB)
+      expect(largeLyricsContent.length).toBe(50_000);
+
+      const updateAck: any = await ack(socket1, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: ownerAuth.token,
+        updates: {
+          lyrics: { baseRevision: 1, content: largeLyricsContent }
+        }
+      });
+      expect(updateAck.ok).toBe(true);
+      expect(updateAck.workspace?.lyrics?.content).toBe(largeLyricsContent);
+      expect(updateAck.workspace?.lyrics?.revision).toBe(2);
+
+      // Verify sync was delivered to socket2
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(syncedPayloadOnSocket2).not.toBeNull();
+      expect(syncedPayloadOnSocket2.workspace?.lyrics?.content).toBe(largeLyricsContent);
+
+      // 2. Send oversized lyrics (100,001 chars) over Socket.IO -> received by server and rejected with WORKSPACE_LIMIT_EXCEEDED
+      const oversizedLyrics = 'a'.repeat(100_001);
+      const overflowAck: any = await ack(socket1, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: ownerAuth.token,
+        updates: {
+          lyrics: { baseRevision: 2, content: oversizedLyrics }
+        }
+      });
+      expect(overflowAck.ok).toBe(false);
+      expect(overflowAck.code).toBe('WORKSPACE_LIMIT_EXCEEDED');
+      expect(overflowAck.area).toBe('lyrics');
+
+      socket1.disconnect();
+      socket2.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

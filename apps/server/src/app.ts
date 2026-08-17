@@ -830,7 +830,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       methods: ['GET', 'POST'],
       credentials: true
     },
-    maxHttpBufferSize: 16_384,
+    maxHttpBufferSize: 2_097_152,
     transports: ['websocket', 'polling']
   });
 
