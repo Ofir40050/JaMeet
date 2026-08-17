@@ -4273,7 +4273,7 @@ select option {
 .settings-content-area {
   flex: 1;
   min-width: 0;
-  padding: 20px 36px 36px 36px;
+  padding: 0 36px 36px 36px;
   overflow-y: auto;
   max-height: calc(100vh - 75px);
   background: transparent;
@@ -4286,6 +4286,7 @@ select option {
   gap: 16px;
   width: 100%;
   box-sizing: border-box;
+  padding-top: 20px;
 }
 
 .settings-field-group,
@@ -4309,16 +4310,19 @@ select option {
 
 .settings-panel-header-sticky {
   position: sticky;
-  top: -20px;
-  z-index: 15;
-  background: var(--bg-main);
+  top: 0;
+  z-index: 20;
+  background: var(--bg-app);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 8px 0 10px 0;
-  margin-bottom: 10px;
+  padding: 20px 0 12px 0;
+  margin-top: -20px;
+  margin-bottom: 16px;
   border-bottom: 1px solid var(--border-subtle);
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .settings-panel-header-text {
@@ -4369,13 +4373,47 @@ select option {
   margin: 0;
 }
 
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.settings-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+
 .settings-section-title {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-secondary);
-  margin: 0 0 6px 0;
+  margin: 0;
+}
+
+.settings-badge-pill {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.settings-badge-pill.accent {
+  color: var(--accent-primary);
+  border-color: rgba(59, 130, 246, 0.35);
 }
 
 .settings-divider {
@@ -4559,6 +4597,15 @@ select option {
 }
 
 /* Account Profile Flat Layout */
+#settings-view #panel-auth-profile {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  width: 100%;
+}
+
 #settings-view .profile-hero-preview {
   display: flex;
   align-items: center;
