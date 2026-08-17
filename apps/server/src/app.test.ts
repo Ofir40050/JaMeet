@@ -5484,6 +5484,95 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('records structure_changed Session Summary events only for actual arrangement changes during active linked sessions', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-struct-summary-noop-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-struct-summary-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const hostAuth = await createTestAccount(url, 'host_struct_sum', 'beta', userStore);
+      const project = projectStore.createProject(hostAuth.user, { name: 'Structure Summary Project' });
+
+      // Initially populate structure
+      projectStore.updateWorkspace(project.id, hostAuth.user, {
+        structure: {
+          sections: [
+            { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 4, updatedAt: 100 }
+          ]
+        }
+      });
+
+      // Host creates meeting linked to project
+      const hostSocket = await connected(url);
+      const createAck: any = await ack(hostSocket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        projectId: project.id,
+        authToken: hostAuth.token,
+        media
+      });
+      expect(createAck.ok).toBe(true);
+
+      // 1. Send no-op structure update with identical section arrangement (only timestamp differs)
+      const noopAck: any = await ack(hostSocket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: hostAuth.token,
+        updates: {
+          structure: {
+            sections: [
+              { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 4, updatedAt: 9999 }
+            ]
+          }
+        }
+      });
+      expect(noopAck.ok).toBe(true);
+
+      // 2. Send actual structure modification: add Verse section
+      const realUpdateAck: any = await ack(hostSocket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: hostAuth.token,
+        updates: {
+          structure: {
+            sections: [
+              { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 4, updatedAt: 10000 },
+              { id: 'sec-verse', type: 'verse', name: 'Verse 1', bars: 16, updatedAt: 10000 }
+            ]
+          }
+        }
+      });
+      expect(realUpdateAck.ok).toBe(true);
+
+      // Host leaves meeting
+      hostSocket.emit('meeting:leave');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify host's finalized session summary contains exactly 1 structure event from the real change, not 2
+      const history = userStore.getSessionHistory(hostAuth.user.id);
+      expect(history.length).toBe(1);
+      const summary = history[0]?.summary;
+      expect(summary).toBeDefined();
+      expect(summary?.events.length).toBe(1);
+
+      const event = summary?.events[0];
+      expect(event?.category).toBe('structure');
+      expect(event?.action).toBe('updated');
+      expect(event?.description).toBe('Updated Song Structure arrangement');
+
+      hostSocket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

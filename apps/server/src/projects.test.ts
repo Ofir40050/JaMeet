@@ -1720,6 +1720,76 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('records structure_changed only on actual Song Structure arrangement changes and ignores no-ops or timestamp updates', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-structure-noop-test-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'usr_owner_struct',
+        username: 'owner_struct',
+        displayName: 'Structure Owner',
+        email: 'owner_struct@test.com',
+        avatarColor: '#2563eb',
+        createdAt: Date.now()
+      };
+
+      const project = store.createProject(owner, { name: 'Structure No-Op Test' });
+
+      // 1. Initial structure setup (add sections -> records structure_changed)
+      store.updateWorkspace(project.id, owner, {
+        structure: {
+          sections: [
+            { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 8, note: 'Guitar riff', color: '#6366f1', updatedAt: 1000 },
+            { id: 'sec-verse1', type: 'verse', name: 'Verse 1', bars: 16, note: 'Vocals enter', color: '#10b981', updatedAt: 1000 }
+          ]
+        }
+      });
+      const p1 = store.getProject(project.id, owner.id);
+      expect(p1?.activities[0].type).toBe('structure_changed');
+      const countAfterSetup = p1?.activities.length || 0;
+
+      // 2. No-op update with identical sections (different updatedAt timestamp metadata only) -> should NOT record activity
+      store.updateWorkspace(project.id, owner, {
+        structure: {
+          sections: [
+            { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 8, note: 'Guitar riff', color: '#6366f1', updatedAt: 5000 },
+            { id: 'sec-verse1', type: 'verse', name: 'Verse 1', bars: 16, note: 'Vocals enter', color: '#10b981', updatedAt: 5000 }
+          ]
+        }
+      });
+      const p2 = store.getProject(project.id, owner.id);
+      expect(p2?.activities.length).toBe(countAfterSetup);
+
+      // 3. Reordering sections -> records structure_changed
+      store.updateWorkspace(project.id, owner, {
+        structure: {
+          sections: [
+            { id: 'sec-verse1', type: 'verse', name: 'Verse 1', bars: 16, note: 'Vocals enter', color: '#10b981', updatedAt: 6000 },
+            { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 8, note: 'Guitar riff', color: '#6366f1', updatedAt: 6000 }
+          ]
+        }
+      });
+      const p3 = store.getProject(project.id, owner.id);
+      expect(p3?.activities.length).toBe(countAfterSetup + 1);
+      expect(p3?.activities[0].type).toBe('structure_changed');
+
+      // 4. Modifying section bars -> records structure_changed
+      store.updateWorkspace(project.id, owner, {
+        structure: {
+          sections: [
+            { id: 'sec-verse1', type: 'verse', name: 'Verse 1', bars: 32, note: 'Vocals enter', color: '#10b981', updatedAt: 7000 },
+            { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 8, note: 'Guitar riff', color: '#6366f1', updatedAt: 7000 }
+          ]
+        }
+      });
+      const p4 = store.getProject(project.id, owner.id);
+      expect(p4?.activities.length).toBe(countAfterSetup + 2);
+      expect(p4?.activities[0].type).toBe('structure_changed');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

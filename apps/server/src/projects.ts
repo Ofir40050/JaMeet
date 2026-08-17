@@ -708,16 +708,36 @@ export class ProjectStore {
 
     if (updates.structure) {
       if (updates.structure.sections !== undefined) {
-        project.workspace.structure.sections = updates.structure.sections;
-        this.recordActivity(
-          projectId,
-          user,
-          'structure_changed',
-          `${user.displayName} updated Song Structure arrangement`,
-          'Song Structure',
-          undefined,
-          false
-        );
+        const oldSections = project.workspace.structure.sections || [];
+        const newSections = updates.structure.sections;
+        const changed =
+          oldSections.length !== newSections.length ||
+          oldSections.some((oldS, i) => {
+            const newS = newSections[i];
+            if (!newS) return true;
+            return (
+              oldS.id !== newS.id ||
+              oldS.type !== newS.type ||
+              oldS.name !== newS.name ||
+              (oldS.bars ?? undefined) !== (newS.bars ?? undefined) ||
+              (oldS.note || undefined) !== (newS.note || undefined) ||
+              (oldS.color || undefined) !== (newS.color || undefined)
+            );
+          });
+
+        project.workspace.structure.sections = newSections;
+
+        if (changed) {
+          this.recordActivity(
+            projectId,
+            user,
+            'structure_changed',
+            `${user.displayName} updated Song Structure arrangement`,
+            'Song Structure',
+            undefined,
+            false
+          );
+        }
       }
       project.workspace.structure.updatedAt = now;
       project.workspace.structure.updatedBy = user.id;
