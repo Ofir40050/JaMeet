@@ -2522,9 +2522,17 @@
 
               <!-- PANEL 5: ACCOUNT -->
               <div id="settings-panel-account" class="settings-panel hidden">
-                <div class="settings-panel-header">
-                  <h3>Account Profile</h3>
-                  <p>Manage your musician identity, studio setup info, and security credentials.</p>
+                <div class="settings-panel-header settings-panel-header-sticky">
+                  <div class="settings-panel-header-text">
+                    <h3>Account Profile</h3>
+                    <p>Manage your musician identity, studio setup info, and security credentials.</p>
+                  </div>
+                  <button id="btn-profile-save" type="button" class="btn-profile-save-top" title="Save Profile Changes">
+                    <span class="btn-icon-inner">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polyline points="20 6 9 17 4 12"/></svg>
+                    </span>
+                    <span>Save Profile Changes</span>
+                  </button>
                 </div>
 
                 <div id="panel-auth-profile" class="auth-panel">
@@ -2652,7 +2660,7 @@
 
                   <!-- 3. Profile Photo & Avatar Palette -->
                   <div class="settings-section">
-                    <h4 class="settings-section-title">Profile Photo &amp; Avatar Palette</h4>
+                    <h4 class="settings-section-title">Profile Photo &amp; Avatar</h4>
                     <div class="avatar-manager-card">
                       <div class="avatar-upload-dropzone" id="avatar-dropzone">
                         <div id="avatar-upload-preview" class="avatar-large-preview">DB</div>
@@ -2671,7 +2679,7 @@
                       </div>
 
                       <div class="avatar-color-picker-section mt-3">
-                        <label class="section-sublabel">Studio Avatar Gradient Color Palette:</label>
+                        <label class="section-sublabel">Avatar Color</label>
                         <div class="avatar-color-swatches" id="avatar-color-swatches">
                           <button type="button" class="color-swatch-btn active" data-color="#06b6d4" style="background: linear-gradient(135deg, #06b6d4, #0284c7);" title="Cyan Blue"></button>
                           <button type="button" class="color-swatch-btn" data-color="#8b5cf6" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9);" title="Deep Purple"></button>
@@ -2722,20 +2730,13 @@
                   <!-- Feedback Message Banner -->
                   <p id="profile-feedback-msg" class="message hidden" role="alert"></p>
 
-                  <!-- Bottom Actions -->
+                  <!-- Bottom Actions (Quiet Destructive Logout Only) -->
                   <div class="profile-actions-bar mt-4">
-                    <button id="btn-auth-logout" type="button" class="secondary danger btn-auth-logout">
+                    <button id="btn-auth-logout" type="button" class="btn-account-logout">
                       <span class="btn-icon-inner">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
                       </span>
                       <span>Sign Out</span>
-                    </button>
-
-                    <button id="btn-profile-save" type="button" class="primary glow btn-profile-save">
-                      <span class="btn-icon-inner">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polyline points="20 6 9 17 4 12"/></svg>
-                      </span>
-                      <span>Save Profile Changes</span>
                     </button>
                   </div>
                 </div>
@@ -2877,20 +2878,20 @@
       </dialog>
 
       <!-- 6. SESSION STATS & DIAGNOSTICS MODAL -->
-      <dialog id="stats-dialog" class="studio-dialog">
+      <dialog id="stats-dialog" class="studio-dialog stats-dialog-compact">
         <form method="dialog" class="dialog-content">
           <div class="dialog-head">
             <div class="dialog-title-wrap">
               <span class="dialog-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>
               </span>
               <div>
-                <h2>Session Telemetry & WebRTC Stats</h2>
-                <p class="dialog-subtitle-top">Real-time bitrates, audio packet loss, latency, and video pipeline telemetry.</p>
+                <h2>Session Diagnostics</h2>
+                <p class="dialog-subtitle-top">Real-time bitrates, audio packet loss, latency, and hardware clock.</p>
               </div>
             </div>
             <button value="cancel" class="dialog-close" aria-label="Close">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
           </div>
 
@@ -2934,13 +2935,11 @@
           </div>
 
           <div class="dialog-actions">
-            <button value="cancel" class="primary w-full">
-              <span>Close Diagnostics</span>
+            <button value="cancel" class="btn-stats-close w-full">
+              <span>Close</span>
             </button>
           </div>
         </form>
-      </dialog>
-
       </dialog>
 
       <!-- 8. GUEST JOIN PROMPT MODAL -->
