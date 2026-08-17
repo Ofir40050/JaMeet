@@ -1414,6 +1414,17 @@ describe('ProjectStore & Workspace', () => {
       // Latest activity remains task_reopened from previous update
       expect(p6.activities[0].type).toBe('task_reopened');
       expect(p6.activities.length).toBe(p5.activities.length);
+
+      // 7. Change assignee AND change status between in_progress and todo -> records task_assigned (higher priority)
+      const p7 = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Master Audio Track', status: 'todo', assigneeId: owner.id }
+          ]
+        }
+      })!;
+      expect(p7.activities[0].type).toBe('task_assigned');
+      expect(p7.activities[0].summary).toBe('Owner Alice assigned "Master Audio Track" to Owner Alice');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
