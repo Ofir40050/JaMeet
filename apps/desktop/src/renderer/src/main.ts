@@ -5183,6 +5183,54 @@ function setNotesStatus(status: 'saving' | 'saved' | 'unsaved'): void {
   });
 }
 
+function applyAuthoritativeWorkspaceUpdate(
+  savedArea: 'lyrics' | 'notes' | 'structure' | 'tasks',
+  serverWorkspace: any
+): void {
+  if (!activeProject || !serverWorkspace) return;
+  if (!activeProject.workspace) {
+    activeProject.workspace = {
+      lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: Date.now() }], content: '', updatedAt: Date.now() },
+      notes: { content: '', updatedAt: Date.now() },
+      structure: { sections: [], updatedAt: Date.now() },
+      tasks: { tasks: [], updatedAt: Date.now() }
+    };
+  }
+
+  // 1. Lyrics
+  const hasPendingLyrics = lyricsSaveTimeout !== null || currentLyricsStatus === 'saving' || currentLyricsStatus === 'unsaved';
+  if (savedArea === 'lyrics' || (!hasPendingLyrics && serverWorkspace.lyrics)) {
+    if (serverWorkspace.lyrics) {
+      activeProject.workspace.lyrics = serverWorkspace.lyrics;
+    }
+  }
+
+  // 2. Notes
+  const currentLocalNotes = activeProject.workspace?.notes?.content ?? '';
+  const hasPendingNotes = notesSaveTimeout !== null || currentNotesStatus === 'saving' || currentNotesStatus === 'unsaved' || currentLocalNotes !== lastSyncedNotes;
+  if (savedArea === 'notes' || (!hasPendingNotes && serverWorkspace.notes)) {
+    if (serverWorkspace.notes) {
+      activeProject.workspace.notes = serverWorkspace.notes;
+    }
+  }
+
+  // 3. Structure
+  const hasPendingStructure = structureSaveTimeout !== null || currentStructureStatus === 'saving' || currentStructureStatus === 'unsaved';
+  if (savedArea === 'structure' || (!hasPendingStructure && serverWorkspace.structure)) {
+    if (serverWorkspace.structure) {
+      activeProject.workspace.structure = serverWorkspace.structure;
+    }
+  }
+
+  // 4. Tasks
+  const hasPendingTasks = tasksSaveTimeout !== null || currentTasksStatus === 'saving' || currentTasksStatus === 'unsaved';
+  if (savedArea === 'tasks' || (!hasPendingTasks && serverWorkspace.tasks)) {
+    if (serverWorkspace.tasks) {
+      activeProject.workspace.tasks = serverWorkspace.tasks;
+    }
+  }
+}
+
 function parseMusicalKey(keyString: string): { root: string; mode: 'Major' | 'Minor' } {
   if (!keyString || !keyString.trim()) {
     return { root: '', mode: 'Major' };
@@ -5363,7 +5411,7 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
 
     const res = await signaling.updateProjectWorkspace(activeProject.id, payload, token);
     if (res?.ok && res.workspace && activeProject) {
-      activeProject.workspace = res.workspace;
+      applyAuthoritativeWorkspaceUpdate('lyrics', res.workspace);
       const syncedDoc = getActiveLyricsDoc();
       lastSyncedLyrics = syncedDoc.content ?? content;
       setLyricsStatus('saved');
@@ -5815,7 +5863,7 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
   try {
     const res = await signaling.updateProjectWorkspace(activeProject.id, { notes: { content, bpm, key } }, token);
     if (res?.ok && res.workspace && activeProject) {
-      activeProject.workspace = res.workspace;
+      applyAuthoritativeWorkspaceUpdate('notes', res.workspace);
       lastSyncedNotes = res.workspace.notes?.content ?? content;
       setNotesStatus('saved');
     } else {
@@ -6245,7 +6293,7 @@ async function saveStructureWorkspace(): Promise<void> {
     const sections = getStructureSections();
     const res = await signaling.updateProjectWorkspace(activeProject.id, { structure: { sections } }, token);
     if (res?.ok && res.workspace && activeProject) {
-      activeProject.workspace = res.workspace;
+      applyAuthoritativeWorkspaceUpdate('structure', res.workspace);
       setStructureStatus('saved');
     } else {
       setStructureStatus('unsaved');
@@ -6649,7 +6697,7 @@ async function saveTasksWorkspace(): Promise<void> {
       tasks: { tasks }
     }, token);
     if (res?.ok && res.workspace && activeProject) {
-      activeProject.workspace = res.workspace;
+      applyAuthoritativeWorkspaceUpdate('tasks', res.workspace);
       setTasksStatus('saved');
     } else {
       setTasksStatus('unsaved');

@@ -37,6 +37,62 @@ export async function executeWorkspaceSave<T>(
 }
 
 /**
+ * Mirror of applyAuthoritativeWorkspaceUpdate logic in main.ts
+ */
+export function applyAuthoritativeWorkspaceUpdate(
+  savedArea: 'lyrics' | 'notes' | 'structure' | 'tasks',
+  currentWorkspace: any,
+  serverWorkspace: any,
+  areaStates: {
+    lyrics: { status: WorkspaceSaveStatus; hasPending: boolean };
+    notes: { status: WorkspaceSaveStatus; hasPending: boolean };
+    structure: { status: WorkspaceSaveStatus; hasPending: boolean };
+    tasks: { status: WorkspaceSaveStatus; hasPending: boolean };
+  }
+): any {
+  const result = {
+    lyrics: { ...currentWorkspace?.lyrics },
+    notes: { ...currentWorkspace?.notes },
+    structure: { ...currentWorkspace?.structure },
+    tasks: { ...currentWorkspace?.tasks }
+  };
+
+  // 1. Lyrics
+  const hasPendingLyrics = areaStates.lyrics.hasPending || areaStates.lyrics.status === 'saving' || areaStates.lyrics.status === 'unsaved';
+  if (savedArea === 'lyrics' || (!hasPendingLyrics && serverWorkspace.lyrics)) {
+    if (serverWorkspace.lyrics) {
+      result.lyrics = serverWorkspace.lyrics;
+    }
+  }
+
+  // 2. Notes
+  const hasPendingNotes = areaStates.notes.hasPending || areaStates.notes.status === 'saving' || areaStates.notes.status === 'unsaved';
+  if (savedArea === 'notes' || (!hasPendingNotes && serverWorkspace.notes)) {
+    if (serverWorkspace.notes) {
+      result.notes = serverWorkspace.notes;
+    }
+  }
+
+  // 3. Structure
+  const hasPendingStructure = areaStates.structure.hasPending || areaStates.structure.status === 'saving' || areaStates.structure.status === 'unsaved';
+  if (savedArea === 'structure' || (!hasPendingStructure && serverWorkspace.structure)) {
+    if (serverWorkspace.structure) {
+      result.structure = serverWorkspace.structure;
+    }
+  }
+
+  // 4. Tasks
+  const hasPendingTasks = areaStates.tasks.hasPending || areaStates.tasks.status === 'saving' || areaStates.tasks.status === 'unsaved';
+  if (savedArea === 'tasks' || (!hasPendingTasks && serverWorkspace.tasks)) {
+    if (serverWorkspace.tasks) {
+      result.tasks = serverWorkspace.tasks;
+    }
+  }
+
+  return result;
+}
+
+/**
  * Mirror of realtime sync protection logic in main.ts
  */
 export function handleRealtimeWorkspaceSync(
@@ -220,6 +276,120 @@ describe('Workspace Save Status & Failure Recovery', () => {
     );
     expect(status).toBe('saved');
     expect(localWorkspace.tasks.tasks[0]?.title).toBe('Record Vocals');
+  });
+
+  describe('Cross-Area Independent Unsaved Protection', () => {
+    it('preserves unsaved Notes, Structure, and Tasks when Lyrics save succeeds', () => {
+      const currentWorkspace = {
+        lyrics: { content: 'Old Lyrics' },
+        notes: { content: 'Unsaved Notes Edit' },
+        structure: { sections: [{ id: 'sec-1', name: 'Unsaved Bridge' }] },
+        tasks: { tasks: [{ id: 'task-1', title: 'Unsaved Task' }] }
+      };
+
+      const serverResponseWorkspace = {
+        lyrics: { content: 'Newly Persisted Lyrics' },
+        notes: { content: 'Server Notes from Old State' },
+        structure: { sections: [] },
+        tasks: { tasks: [] }
+      };
+
+      const areaStates = {
+        lyrics: { status: 'saving' as WorkspaceSaveStatus, hasPending: false },
+        notes: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true },
+        structure: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true },
+        tasks: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true }
+      };
+
+      const updatedWorkspace = applyAuthoritativeWorkspaceUpdate(
+        'lyrics',
+        currentWorkspace,
+        serverResponseWorkspace,
+        areaStates
+      );
+
+      // Lyrics was saved -> updated to server
+      expect(updatedWorkspace.lyrics.content).toBe('Newly Persisted Lyrics');
+      // Unsaved Notes, Structure, Tasks -> preserved!
+      expect(updatedWorkspace.notes.content).toBe('Unsaved Notes Edit');
+      expect(updatedWorkspace.structure.sections[0]?.name).toBe('Unsaved Bridge');
+      expect(updatedWorkspace.tasks.tasks[0]?.title).toBe('Unsaved Task');
+    });
+
+    it('preserves unsaved Lyrics, Structure, and Tasks when Notes save succeeds', () => {
+      const currentWorkspace = {
+        lyrics: { content: 'Unsaved Lyrics Edit' },
+        notes: { content: 'Saving Notes' },
+        structure: { sections: [{ id: 'sec-1', name: 'Unsaved Solo' }] },
+        tasks: { tasks: [{ id: 'task-1', title: 'Unsaved Task 2' }] }
+      };
+
+      const serverResponseWorkspace = {
+        lyrics: { content: 'Server Stale Lyrics' },
+        notes: { content: 'Newly Persisted Notes' },
+        structure: { sections: [] },
+        tasks: { tasks: [] }
+      };
+
+      const areaStates = {
+        lyrics: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true },
+        notes: { status: 'saving' as WorkspaceSaveStatus, hasPending: false },
+        structure: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true },
+        tasks: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true }
+      };
+
+      const updatedWorkspace = applyAuthoritativeWorkspaceUpdate(
+        'notes',
+        currentWorkspace,
+        serverResponseWorkspace,
+        areaStates
+      );
+
+      // Notes was saved -> updated to server
+      expect(updatedWorkspace.notes.content).toBe('Newly Persisted Notes');
+      // Unsaved Lyrics, Structure, Tasks -> preserved!
+      expect(updatedWorkspace.lyrics.content).toBe('Unsaved Lyrics Edit');
+      expect(updatedWorkspace.structure.sections[0]?.name).toBe('Unsaved Solo');
+      expect(updatedWorkspace.tasks.tasks[0]?.title).toBe('Unsaved Task 2');
+    });
+
+    it('updates clean areas from server response when Structure or Tasks save succeeds', () => {
+      const currentWorkspace = {
+        lyrics: { content: 'Clean Lyrics' },
+        notes: { content: 'Clean Notes' },
+        structure: { sections: [{ id: 'sec-1', name: 'Old Structure' }] },
+        tasks: { tasks: [{ id: 'task-1', title: 'Unsaved Tasks' }] }
+      };
+
+      const serverResponseWorkspace = {
+        lyrics: { content: 'Updated Remote Lyrics' },
+        notes: { content: 'Updated Remote Notes' },
+        structure: { sections: [{ id: 'sec-1', name: 'Newly Persisted Structure' }] },
+        tasks: { tasks: [] }
+      };
+
+      const areaStates = {
+        lyrics: { status: 'saved' as WorkspaceSaveStatus, hasPending: false },
+        notes: { status: 'saved' as WorkspaceSaveStatus, hasPending: false },
+        structure: { status: 'saving' as WorkspaceSaveStatus, hasPending: false },
+        tasks: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true }
+      };
+
+      const updatedWorkspace = applyAuthoritativeWorkspaceUpdate(
+        'structure',
+        currentWorkspace,
+        serverResponseWorkspace,
+        areaStates
+      );
+
+      // Structure was saved
+      expect(updatedWorkspace.structure.sections[0]?.name).toBe('Newly Persisted Structure');
+      // Clean areas (lyrics, notes) updated
+      expect(updatedWorkspace.lyrics.content).toBe('Updated Remote Lyrics');
+      expect(updatedWorkspace.notes.content).toBe('Updated Remote Notes');
+      // Unsaved tasks preserved
+      expect(updatedWorkspace.tasks.tasks[0]?.title).toBe('Unsaved Tasks');
+    });
   });
 
   describe('Realtime Sync & Reconnect Protection', () => {
