@@ -64,6 +64,10 @@ function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSumm
     category = 'lyrics';
     action = 'created';
     description = `Created lyrics document "${act.title}"`;
+  } else if (act.type === 'lyrics_doc_renamed') {
+    category = 'lyrics';
+    action = 'renamed';
+    description = `Renamed lyrics document to "${act.title}"`;
   } else if (act.type === 'lyrics_edited') {
     category = 'lyrics';
     action = 'edited';
