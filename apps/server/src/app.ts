@@ -26,6 +26,7 @@ import { CrashReportStore } from './crash-store.js';
 import { createIceServers } from './turn.js';
 import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from './rate-limiter.js';
 import { updateAccountSessionAccess, writeAdminRuntimeFile, cleanupAdminRuntimeFile } from './admin-access.js';
+import { registerAdminPanel } from './admin-panel.js';
 import { acquireDatastoreLock, type DatastoreLock } from './datastore-lock.js';
 import { logger } from './logger.js';
 import { getClientIp } from './client-ip.js';
@@ -209,6 +210,8 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       return reply.code(isNotFound ? 404 : (isInvalid ? 400 : 500)).send({ ok: false, message: err.message || 'Failed to update session access.' });
     }
   });
+
+  registerAdminPanel(app, userStore, config);
 
   const syncRuntimeInfo = () => {
     const address = app.server.address();
@@ -1252,7 +1255,8 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
       const identity = authResult.identity;
       const userSnapshot = userStore.createSnapshot();
-      const projectSnapshot = projectStore.createSnapshot(parsed.data.projectId);
+      let projectSnapshot: string | null = null;
+      let projectMutationAttempted = false;
       let createdRoom: Room | undefined;
 
       try {
@@ -1275,6 +1279,8 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         }
 
         if (createdRoom.projectId) {
+          projectSnapshot = projectStore.createSnapshot(createdRoom.projectId);
+          projectMutationAttempted = true;
           await projectStore.recordProjectSession(createdRoom.projectId, {
             id: `${identity.id}_${createdRoom.code}`,
             code: createdRoom.code,
@@ -1310,7 +1316,9 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         let rollbackError: unknown;
         try {
           userStore.restoreSnapshot(userSnapshot);
-          await projectStore.restoreSnapshot(projectSnapshot);
+          if (projectMutationAttempted && projectSnapshot) {
+            await projectStore.restoreSnapshot(projectSnapshot);
+          }
         } catch (rErr: unknown) {
           rollbackError = rErr;
           console.error('Critical: Failed to persist compensating rollback for session creation:', { originalError: err, rollbackError: rErr });
@@ -1387,7 +1395,8 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
 
       const userSnapshot = userStore.createSnapshot();
-      const projectSnapshot = projectStore.createSnapshot(joined.room.projectId || undefined);
+      let projectSnapshot: string | null = null;
+      let projectMutationAttempted = false;
 
       try {
         const peer = rooms.peer(joined.room, parsed.data.participantId);
@@ -1395,6 +1404,8 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
           if (!joined.reconnected) {
             userStore.recordCollaboratorJoined(joined.room.sessionId, parsed.data.code, joined.room.hostIdentity, joined.participant.identity);
             if (ensureRoomProjectAccess(joined.room)) {
+              projectSnapshot = projectStore.createSnapshot(joined.room.projectId!);
+              projectMutationAttempted = true;
               await projectStore.recordProjectSession(joined.room.projectId!, {
                 id: `${joined.room.hostIdentity.id}_${parsed.data.code}`,
                 code: parsed.data.code,
@@ -1458,7 +1469,9 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         let rollbackError: unknown;
         try {
           userStore.restoreSnapshot(userSnapshot);
-          await projectStore.restoreSnapshot(projectSnapshot);
+          if (projectMutationAttempted && projectSnapshot) {
+            await projectStore.restoreSnapshot(projectSnapshot);
+          }
         } catch (rErr: unknown) {
           rollbackError = rErr;
           console.error('Critical: Failed to persist compensating rollback for session join:', { originalError: err, rollbackError: rErr });
@@ -1522,11 +1535,14 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
 
       const userSnapshot = userStore.createSnapshot();
-      const projectSnapshot = projectStore.createSnapshot(admitted.room.projectId || undefined);
+      let projectSnapshot: string | null = null;
+      let projectMutationAttempted = false;
 
       try {
         userStore.recordCollaboratorJoined(admitted.room.sessionId, admitted.room.code, admitted.room.hostIdentity, admitted.participant.identity);
         if (ensureRoomProjectAccess(admitted.room)) {
+          projectSnapshot = projectStore.createSnapshot(admitted.room.projectId!);
+          projectMutationAttempted = true;
           await projectStore.recordProjectSession(admitted.room.projectId!, {
             id: `${admitted.room.hostIdentity.id}_${admitted.room.code}`,
             code: admitted.room.code,
@@ -1591,7 +1607,9 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         let rollbackError: unknown;
         try {
           userStore.restoreSnapshot(userSnapshot);
-          await projectStore.restoreSnapshot(projectSnapshot);
+          if (projectMutationAttempted && projectSnapshot) {
+            await projectStore.restoreSnapshot(projectSnapshot);
+          }
         } catch (rErr: unknown) {
           rollbackError = rErr;
           console.error('Critical: Failed to persist compensating rollback for session admission:', { originalError: err, rollbackError: rErr });

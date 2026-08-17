@@ -16,6 +16,26 @@ import { type ServerConfig, parseBetaEndAt } from './config.js';
 
 export type SessionAccessState = 'beta' | 'paid' | 'blocked';
 
+export interface AdminUserSummary {
+  id: string;
+  username: string;
+  email: string;
+  displayName: string;
+  sessionAccess: SessionAccessState;
+  avatarColor: string;
+  avatarUrl?: string;
+  location?: string;
+  role?: string;
+  primaryDaw?: string;
+  genres?: string[];
+  bio?: string;
+  website?: string;
+  socialHandle?: string;
+  createdAt: number;
+  updatedAt: number;
+  sessionsHostedCount: number;
+}
+
 export interface StoredUser {
   id: string;
   username: string;
@@ -849,6 +869,30 @@ export class UserStore {
       user.updatedAt = prevUpdatedAt;
       throw err;
     }
+  }
+
+  listAdminUsers(): AdminUserSummary[] {
+    return Array.from(this.users.values())
+      .map((u) => ({
+        id: u.id,
+        username: u.username,
+        email: u.email,
+        displayName: u.displayName,
+        sessionAccess: u.sessionAccess ?? 'blocked',
+        avatarColor: u.avatarColor,
+        avatarUrl: u.avatarUrl,
+        location: u.location,
+        role: u.role,
+        primaryDaw: u.primaryDaw,
+        genres: u.genres ? [...u.genres] : undefined,
+        bio: u.bio,
+        website: u.website,
+        socialHandle: u.socialHandle,
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
+        sessionsHostedCount: u.sessionsHostedCount || 0
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt);
   }
 
   private toProfile(stored: StoredUser): UserProfile {

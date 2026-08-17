@@ -15,7 +15,8 @@ const schema = z.object({
   TURN_SHARED_SECRET: z.string().min(16).default('development-secret-change-me'),
   TURN_CREDENTIAL_TTL_SECONDS: z.coerce.number().int().min(60).default(3600),
   DISCONNECT_GRACE_MS: z.coerce.number().int().min(0).default(30000),
-  EMPTY_ROOM_TTL_MS: z.coerce.number().int().min(60000).default(28800000)
+  EMPTY_ROOM_TTL_MS: z.coerce.number().int().min(60000).default(28800000),
+  JAMEET_ADMIN_SECRET: z.string().optional()
 });
 
 export type ServerConfig = z.infer<typeof schema>;
