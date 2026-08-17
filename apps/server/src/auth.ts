@@ -782,11 +782,15 @@ export class UserStore {
   setAdminNote(userId: string, note: string | null | undefined): boolean {
     const user = this.users.get(userId);
     if (!user) return false;
+    const trimmed = (note && typeof note === 'string') ? note.trim() : '';
+    if (trimmed.length > 2000) {
+      throw new Error('Admin note exceeds maximum length of 2000 characters.');
+    }
     const prevNote = user.adminNote;
     const prevUpdatedAt = user.updatedAt;
     const now = Date.now();
 
-    user.adminNote = (note && typeof note === 'string' && note.trim()) ? note.trim() : undefined;
+    user.adminNote = trimmed.length > 0 ? trimmed : undefined;
     user.updatedAt = now;
 
     try {

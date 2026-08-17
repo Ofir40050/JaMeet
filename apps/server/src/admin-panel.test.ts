@@ -1134,6 +1134,22 @@ describe('JaMeet Secure Admin Panel', () => {
       expect(JSON.parse(clearNoteRes.body).user.adminNote).toBeUndefined();
       expect(userStore.getStoredUser(reg.user.id)?.adminNote).toBeUndefined();
 
+      // Reject note exceeding 2000 characters
+      const oversizedNote = 'a'.repeat(2001);
+      const oversizedRes = await app.inject({
+        method: 'POST',
+        url: `/admin/api/users/${reg.user.id}/note`,
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`,
+          origin: 'http://localhost:3000'
+        },
+        payload: {
+          note: oversizedNote
+        }
+      });
+      expect(oversizedRes.statusCode).toBe(400);
+      expect(JSON.parse(oversizedRes.body).message).toContain('2000 characters');
+
       await app.close();
     });
   });

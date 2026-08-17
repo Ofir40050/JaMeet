@@ -1031,6 +1031,39 @@ function renderAdminDashboard(): string {
       return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     }
 
+    function compareVersions(a, b) {
+      const isUnknownA = !a || a === 'Unknown';
+      const isUnknownB = !b || b === 'Unknown';
+      if (isUnknownA && isUnknownB) return 0;
+      if (isUnknownA) return -1;
+      if (isUnknownB) return 1;
+
+      const cleanA = String(a).trim().replace(/^[vV]/, '');
+      const cleanB = String(b).trim().replace(/^[vV]/, '');
+
+      const partsA = cleanA.split('.').map(p => {
+        const num = parseInt(p, 10);
+        return isNaN(num) ? p : num;
+      });
+      const partsB = cleanB.split('.').map(p => {
+        const num = parseInt(p, 10);
+        return isNaN(num) ? p : num;
+      });
+
+      const maxLen = Math.max(partsA.length, partsB.length);
+      for (let i = 0; i < maxLen; i++) {
+        const pA = partsA[i] !== undefined ? partsA[i] : 0;
+        const pB = partsB[i] !== undefined ? partsB[i] : 0;
+        if (typeof pA === 'number' && typeof pB === 'number') {
+          if (pA !== pB) return pA - pB;
+        } else {
+          const strComp = String(pA).localeCompare(String(pB), undefined, { numeric: true });
+          if (strComp !== 0) return strComp;
+        }
+      }
+      return 0;
+    }
+
     function getFilteredUsers() {
       const q = (document.getElementById('search-input').value || '').trim().toLowerCase();
       const access = document.getElementById('access-filter').value;
@@ -1085,9 +1118,7 @@ function renderAdminDashboard(): string {
           valB = (b.clientPlatform || 'Unknown').toLowerCase();
           return valA.localeCompare(valB) * dir;
         } else if (col === 'clientVersion') {
-          valA = (a.clientVersion || 'Unknown').toLowerCase();
-          valB = (b.clientVersion || 'Unknown').toLowerCase();
-          return valA.localeCompare(valB) * dir;
+          return compareVersions(a.clientVersion, b.clientVersion) * dir;
         } else if (col === 'sessionsHostedCount') {
           valA = a.sessionsHostedCount || 0;
           valB = b.sessionsHostedCount || 0;
@@ -1514,8 +1545,8 @@ function renderAdminDashboard(): string {
         escapeCSV(u.adminNote || '')
       ]);
 
-      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\\r\\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.setAttribute('href', url);
@@ -1709,6 +1740,10 @@ function renderAdminDashboard(): string {
     document.getElementById('modal-save-note-btn').addEventListener('click', async () => {
       if (!selectedUserId) return;
       const noteVal = document.getElementById('modal-note-input').value;
+      if (noteVal && noteVal.trim().length > 2000) {
+        showToast('Admin note exceeds maximum length of 2000 characters', 'error');
+        return;
+      }
       try {
         const res = await fetch('/admin/api/users/' + encodeURIComponent(selectedUserId) + '/note', {
           method: 'POST',
@@ -1725,10 +1760,25 @@ function renderAdminDashboard(): string {
       }
     });
 
-    // Event Listeners for Filters & Search
-    document.getElementById('search-input').addEventListener('input', () => renderTable());
-    document.getElementById('access-filter').addEventListener('change', () => renderTable());
-    document.getElementById('status-filter').addEventListener('change', () => renderTable());
+    function pruneSelectionToVisible() {
+      const visible = getFilteredUsers();
+      const visibleIds = new Set(visible.map(u => u.id));
+      let changed = false;
+      selectedUserIds.forEach(id => {
+        if (!visibleIds.has(id)) {
+          selectedUserIds.delete(id);
+          changed = true;
+        }
+      });
+      lastClickedIndex = -1;
+      renderTable();
+      updateBulkActionBar();
+    }
+
+    // Event Listeners for Filters & Search (prune selection to only visible users)
+    document.getElementById('search-input').addEventListener('input', () => pruneSelectionToVisible());
+    document.getElementById('access-filter').addEventListener('change', () => pruneSelectionToVisible());
+    document.getElementById('status-filter').addEventListener('change', () => pruneSelectionToVisible());
     document.getElementById('btn-refresh').addEventListener('click', () => {
       fetchUsers(true);
       showToast('Refreshed user list', 'info');
@@ -1999,12 +2049,27 @@ export function registerAdminPanel(
     const body = (request.body || {}) as any;
     const note = typeof body === 'object' && body ? body.note : undefined;
 
+    if (typeof note === 'string' && note.trim().length > 2000) {
+      return reply.code(400).send({
+        ok: false,
+        message: 'Admin note exceeds maximum length of 2000 characters.'
+      });
+    }
+
     const profile = userStore.getStoredUser(userId) || (userStore.findByUsernameOrEmail(userId) ? userStore.getStoredUser(userStore.findByUsernameOrEmail(userId)!.id) : null);
     if (!profile) {
       return reply.code(404).send({ ok: false, message: `Account not found for identifier: "${userId}".` });
     }
 
-    userStore.setAdminNote(profile.id, note);
+    try {
+      userStore.setAdminNote(profile.id, note);
+    } catch (err: any) {
+      return reply.code(400).send({
+        ok: false,
+        message: err.message || 'Failed to set admin note.'
+      });
+    }
+
     const isOnline = Boolean(runtimeContext?.isUserOnline ? runtimeContext.isUserOnline(profile.id) : false);
 
     return reply.send({
