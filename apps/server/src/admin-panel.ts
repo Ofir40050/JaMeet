@@ -660,7 +660,7 @@ function renderAdminDashboard(): string {
       text-transform: capitalize;
     }
     .access-tag.blocked { color: #dc2626; }
-    .access-tag.beta { color: #0284c7; }
+    .access-tag.beta { color: #2563eb; }
     .access-tag.paid { color: #16a34a; }
     .expiry-note {
       color: var(--text-subtle);
@@ -845,13 +845,13 @@ function renderAdminDashboard(): string {
     <div class="toolbar-left">
       <input type="text" id="search-input" class="search-input" placeholder="Search name, username, email..." autocomplete="off" />
       <select id="access-filter" class="select-filter">
-        <option value="all">All</option>
+        <option value="all">Access: All</option>
         <option value="blocked">Blocked</option>
         <option value="beta">Beta</option>
         <option value="paid">Paid</option>
       </select>
       <select id="status-filter" class="select-filter">
-        <option value="all">All</option>
+        <option value="all">Presence: All</option>
         <option value="online">Online</option>
         <option value="offline">Offline</option>
       </select>
@@ -979,9 +979,8 @@ function renderAdminDashboard(): string {
 
         <div class="detail-row" style="border-bottom:none;">
           <div class="detail-label">User ID</div>
-          <div class="detail-value" style="display:flex; align-items:center; gap:0.5rem;">
-            <span class="text-mono" id="modal-id" style="color:var(--text-subtle);">-</span>
-            <button type="button" class="btn btn-subtle" id="modal-copy-id-btn" style="padding:0.15rem 0.4rem; font-size:11px;">Copy ID</button>
+          <div class="detail-value">
+            <button type="button" class="btn btn-subtle" id="modal-copy-id-btn" style="padding:0.2rem 0.5rem; font-size:11.5px;">Copy User ID</button>
           </div>
         </div>
 
@@ -1597,10 +1596,20 @@ function renderAdminDashboard(): string {
       }
     }
 
+    function formatActivityTime(timestamp) {
+      if (!timestamp) return '-';
+      const date = new Date(timestamp);
+      const now = new Date();
+      const isToday = date.toDateString() === now.toDateString();
+      if (isToday) {
+        return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      }
+      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    }
+
     function populateModal(u) {
       document.getElementById('modal-display-name').textContent = u.displayName || u.username;
       document.getElementById('modal-username').textContent = '@' + u.username;
-      document.getElementById('modal-id').textContent = u.id;
       document.getElementById('modal-email').textContent = u.email || '-';
       document.getElementById('modal-access-select').value = u.sessionAccess || 'blocked';
       document.getElementById('modal-created-at').textContent = u.createdAt ? new Date(u.createdAt).toLocaleString() : '-';
@@ -1620,7 +1629,7 @@ function renderAdminDashboard(): string {
         expiryStatus.textContent = isPassed ? '(Expired)' : '(Expires ' + d.toLocaleDateString() + ')';
       } else {
         expiryInput.value = '';
-        expiryStatus.textContent = '';
+        expiryStatus.textContent = 'No expiration';
       }
 
       // Activity List
@@ -1632,7 +1641,7 @@ function renderAdminDashboard(): string {
           item.className = 'activity-item';
           const time = document.createElement('div');
           time.className = 'activity-time';
-          time.textContent = act.timestamp ? new Date(act.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+          time.textContent = formatActivityTime(act.timestamp);
           const desc = document.createElement('div');
           desc.textContent = act.description || act.type || '-';
           item.appendChild(time);
