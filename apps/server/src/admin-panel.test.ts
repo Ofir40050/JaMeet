@@ -592,6 +592,46 @@ describe('JaMeet Secure Admin Panel', () => {
       await app.close();
     });
 
+    it('initializes lastLoginAt upon account registration so it does not remain Never', async () => {
+      const userStore = new UserStore(testDir);
+      const reg = await userStore.register({
+        username: 'fresh_musician',
+        email: 'fresh@musician.com',
+        password: 'PasswordFresh123!',
+        displayName: 'Fresh Musician'
+      }, { version: '0.1.0', platform: 'macOS' });
+
+      // Verify directly on UserStore
+      const stored = userStore.getStoredUser(reg.user.id);
+      expect(stored?.lastLoginAt).toBeDefined();
+      expect(typeof stored?.lastLoginAt).toBe('number');
+      expect(stored?.lastLoginAt).toBeGreaterThan(0);
+
+      // Verify via Admin API
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: testDir,
+        ALLOWED_ORIGINS: 'http://localhost:3000',
+        JAMEET_ADMIN_SECRET: TEST_ADMIN_SECRET
+      });
+      const { app } = await createApp(config);
+      const sessionToken = createAdminSessionToken(TEST_ADMIN_SECRET);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/admin/api/users/${reg.user.id}`,
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`
+        }
+      });
+      expect(res.statusCode).toBe(200);
+      const data = JSON.parse(res.body);
+      expect(data.user.lastLoginAt).toBeDefined();
+      expect(data.user.lastLoginAt).toBe(stored?.lastLoginAt);
+
+      await app.close();
+    });
+
     it('returns 404 for non-existent user identifier', async () => {
       const config = loadConfig({
         NODE_ENV: 'test',

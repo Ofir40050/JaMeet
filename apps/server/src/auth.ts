@@ -469,6 +469,7 @@ export class UserStore {
         createdAt: now,
         updatedAt: now,
         lastActiveAt: now,
+        lastLoginAt: now,
         clientVersion: clientInfo?.version,
         clientPlatform: clientInfo?.platform,
         activityHistory: [initialActivity],

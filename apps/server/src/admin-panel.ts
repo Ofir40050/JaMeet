@@ -1378,9 +1378,17 @@ function renderAdminDashboard(): string {
         const tdClient = document.createElement('td');
         const clientTag = document.createElement('span');
         clientTag.className = 'client-tag';
-        const platformStr = u.clientPlatform || 'Unknown';
-        const verStr = (u.clientVersion && u.clientVersion !== 'Unknown') ? ' • v' + u.clientVersion : '';
-        clientTag.textContent = platformStr + verStr;
+        let clientTagStr = 'Unknown';
+        const hasPlatform = u.clientPlatform && u.clientPlatform !== 'Unknown';
+        const hasVersion = u.clientVersion && u.clientVersion !== 'Unknown';
+        if (hasPlatform && hasVersion) {
+          clientTagStr = u.clientPlatform + ' • JaMeet ' + u.clientVersion;
+        } else if (hasPlatform) {
+          clientTagStr = u.clientPlatform;
+        } else if (hasVersion) {
+          clientTagStr = 'JaMeet ' + u.clientVersion;
+        }
+        clientTag.textContent = clientTagStr;
         tdClient.appendChild(clientTag);
 
         // Registered
@@ -1504,9 +1512,17 @@ function renderAdminDashboard(): string {
 
       document.getElementById('modal-id').textContent = u.id;
       document.getElementById('modal-presence').textContent = u.isOnline ? '🟢 Online Now' : (u.lastActiveAt ? '⚪ Active ' + formatRelativeTime(u.lastActiveAt) : '⚪ Offline');
-      const modalPlatform = u.clientPlatform || 'Unknown';
-      const modalVer = (u.clientVersion && u.clientVersion !== 'Unknown') ? ' • v' + u.clientVersion : '';
-      document.getElementById('modal-client').textContent = modalPlatform + modalVer;
+      let clientModalStr = 'Unknown';
+      const hasModalPlatform = u.clientPlatform && u.clientPlatform !== 'Unknown';
+      const hasModalVersion = u.clientVersion && u.clientVersion !== 'Unknown';
+      if (hasModalPlatform && hasModalVersion) {
+        clientModalStr = u.clientPlatform + ' • JaMeet ' + u.clientVersion;
+      } else if (hasModalPlatform) {
+        clientModalStr = u.clientPlatform;
+      } else if (hasModalVersion) {
+        clientModalStr = 'JaMeet ' + u.clientVersion;
+      }
+      document.getElementById('modal-client').textContent = clientModalStr;
       document.getElementById('modal-last-active').textContent = u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleString() : 'Never';
       document.getElementById('modal-last-login').textContent = u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never';
       document.getElementById('modal-hosted-count').textContent = (u.sessionsHostedCount || 0) + ' sessions';
