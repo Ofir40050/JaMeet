@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { ProjectStore, WorkspaceConflictError, ProjectLimitError, WorkspaceLimitError, PROJECT_LIMITS } from './projects.js';
 import type { UserProfile } from '@jameet/shared';
-function autoUpdateWorkspace(
+async function autoUpdateWorkspace(
   store: ProjectStore,
   projectId: string,
   user: UserProfile,
@@ -24,7 +24,7 @@ function autoUpdateWorkspace(
   if (fixedUpdates.tasks && fixedUpdates.tasks.baseRevision === undefined) {
     fixedUpdates.tasks.baseRevision = current?.workspace.tasks.revision ?? 1;
   }
-  return ProjectStore.prototype.updateWorkspace.call(store, projectId, user, fixedUpdates);
+  return await store.updateWorkspace(projectId, user, fixedUpdates);
 }
 
 
@@ -67,8 +67,8 @@ describe('ProjectStore & Workspace', () => {
     projectStore = new ProjectStore(tmpDir);
   });
 
-  it('creates project with initialized empty workspace', () => {
-    const project = projectStore.createProject(mockOwner, { name: 'Summer Hit' }, [mockCollaborator]);
+  it('creates project with initialized empty workspace', async () => {
+    const project = await projectStore.createProject(mockOwner, { name: 'Summer Hit' }, [mockCollaborator]);
     expect(project).toBeDefined();
     expect(project.name).toBe('Summer Hit');
     expect(project.workspace).toBeDefined();
@@ -76,11 +76,11 @@ describe('ProjectStore & Workspace', () => {
     expect(project.workspace.notes.content).toBe('');
   });
 
-  it('allows owner and collaborators to update lyrics and notes with persistence', () => {
-    const project = projectStore.createProject(mockOwner, { name: 'Album Track 1' }, [mockCollaborator]);
+  it('allows owner and collaborators to update lyrics and notes with persistence', async () => {
+    const project = await projectStore.createProject(mockOwner, { name: 'Album Track 1' }, [mockCollaborator]);
     
     // Owner updates lyrics
-    const updated1 = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+    const updated1 = await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       lyrics: { content: '[Verse 1]\nWalking in the moonlight...' }
     });
     expect(updated1).not.toBeNull();
@@ -88,7 +88,7 @@ describe('ProjectStore & Workspace', () => {
     expect(updated1?.workspace.lyrics.updatedBy).toBe(mockOwner.id);
 
     // Collaborator updates notes and BPM
-    const updated2 = autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
+    const updated2 = await autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
       notes: { content: 'Key sounds better in F# min', bpm: '128', key: 'F# minor' }
     });
     expect(updated2).not.toBeNull();
@@ -104,13 +104,13 @@ describe('ProjectStore & Workspace', () => {
     expect(reloadedProject?.workspace.notes.bpm).toBe('128');
   });
 
-  it('supports multiple lyrics documents per project with switching, renaming, and persistence', () => {
-    const project = projectStore.createProject(mockOwner, { name: 'Multi-Doc Album' }, [mockCollaborator]);
+  it('supports multiple lyrics documents per project with switching, renaming, and persistence', async () => {
+    const project = await projectStore.createProject(mockOwner, { name: 'Multi-Doc Album' }, [mockCollaborator]);
     expect(project.workspace.lyrics.documents.length).toBe(1);
     expect(project.workspace.lyrics.documents[0].title).toBe('Main Lyrics');
 
     // 1. Create a new document "Draft 2"
-    const updated1 = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+    const updated1 = await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       lyrics: {
         documentId: 'doc-draft-2',
         title: 'Draft 2 (Acoustic)',
@@ -124,7 +124,7 @@ describe('ProjectStore & Workspace', () => {
     expect(updated1?.workspace.lyrics.content).toContain('Soft acoustic guitar intro');
 
     // 2. Collaborator updates "Main Lyrics" without changing active doc
-    const updated2 = autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
+    const updated2 = await autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
       lyrics: {
         documentId: 'doc-main',
         content: '<b>Studio Master Lyrics</b>'
@@ -133,7 +133,7 @@ describe('ProjectStore & Workspace', () => {
     expect(updated2?.workspace.lyrics.documents.find(d => d.id === 'doc-main')?.content).toBe('<b>Studio Master Lyrics</b>');
 
     // 3. Switch back to "Main Lyrics"
-    const updated3 = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+    const updated3 = await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       lyrics: {
         activeDocumentId: 'doc-main'
       }
@@ -148,13 +148,13 @@ describe('ProjectStore & Workspace', () => {
     expect(reloadedProject?.workspace.lyrics.documents[1].title).toBe('Draft 2 (Acoustic)');
   });
 
-  it('supports Song Structure arrangement sections with bar counts, notes, reordering and disk persistence', () => {
-    const project = projectStore.createProject(mockOwner, { name: 'Arrangement Project' }, [mockCollaborator]);
+  it('supports Song Structure arrangement sections with bar counts, notes, reordering and disk persistence', async () => {
+    const project = await projectStore.createProject(mockOwner, { name: 'Arrangement Project' }, [mockCollaborator]);
     expect(project.workspace.structure).toBeDefined();
     expect(project.workspace.structure.sections.length).toBe(0);
 
     // 1. Add arrangement sections
-    const updated1 = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+    const updated1 = await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       structure: {
         sections: [
           { id: 'sec_1', type: 'intro', name: 'Intro', bars: 8, note: 'Rhodes piano & ambient pad', updatedAt: Date.now() },
@@ -171,7 +171,7 @@ describe('ProjectStore & Workspace', () => {
     expect(updated1?.workspace.structure.sections[2].note).toContain('vocal stacks');
 
     // 2. Collaborator reorders / edits sections (e.g. inserts Bridge before Outro)
-    const updated2 = autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
+    const updated2 = await autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
       structure: {
         sections: [
           { id: 'sec_1', type: 'intro', name: 'Intro', bars: 8, note: 'Rhodes piano & ambient pad', updatedAt: Date.now() },
@@ -194,13 +194,13 @@ describe('ProjectStore & Workspace', () => {
     expect(reloaded?.workspace.structure.sections[3].bars).toBe(8);
   });
 
-  it('supports Tasks workspace with creation, assignment, status changes, and disk persistence', () => {
-    const project = projectStore.createProject(mockOwner, { name: 'Tasks Project' }, [mockCollaborator]);
+  it('supports Tasks workspace with creation, assignment, status changes, and disk persistence', async () => {
+    const project = await projectStore.createProject(mockOwner, { name: 'Tasks Project' }, [mockCollaborator]);
     expect(project.workspace.tasks).toBeDefined();
     expect(project.workspace.tasks.tasks.length).toBe(0);
 
     // 1. Owner adds music production tasks
-    const updated1 = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+    const updated1 = await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       tasks: {
         tasks: [
           {
@@ -240,7 +240,7 @@ describe('ProjectStore & Workspace', () => {
     expect(task1).toBeDefined();
 
     // 2. Collaborator completes task_2 and adds a new task
-    const updated2 = autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
+    const updated2 = await autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
       tasks: {
         tasks: [
           task0!,
@@ -273,8 +273,8 @@ describe('ProjectStore & Workspace', () => {
     expect(reloaded?.workspace.tasks.tasks[1]?.completedAt).toBeDefined();
   });
 
-  it('rejects unauthorized users from updating workspace', () => {
-    const project = projectStore.createProject(mockOwner, { name: 'Private Demo' });
+  it('rejects unauthorized users from updating workspace', async () => {
+    const project = await projectStore.createProject(mockOwner, { name: 'Private Demo' });
     const stranger: UserProfile = {
       id: 'usr_stranger',
       username: 'stranger',
@@ -285,26 +285,26 @@ describe('ProjectStore & Workspace', () => {
       createdAt: Date.now()
     };
 
-    const res = autoUpdateWorkspace(projectStore, project.id, stranger, {
+    const res = await autoUpdateWorkspace(projectStore, project.id, stranger, {
       notes: { content: 'Hacked notes' }
     });
     expect(res).toBeNull();
   });
 
-  it('records chronological project activities and throttles rapid typing edits', () => {
+  it('records chronological project activities and throttles rapid typing edits', async () => {
     // 1. Creation generates project_created activity
-    const project = projectStore.createProject(mockOwner, { name: 'Chronicle Project' });
+    const project = await projectStore.createProject(mockOwner, { name: 'Chronicle Project' });
     expect(project.activities.length).toBe(1);
     expect(project.activities[0].type).toBe('project_created');
     expect(project.activities[0].summary).toContain('created project');
 
     // 2. Collaborator added
-    projectStore.addCollaborator(project.id, mockOwner.id, mockCollaborator);
+    await projectStore.addCollaborator(project.id, mockOwner.id, mockCollaborator);
     const pWithCollab = projectStore.getProject(project.id, mockOwner.id);
     expect(pWithCollab?.activities[0].type).toBe('collaborator_added');
 
     // 3. BPM change
-    autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
+    await autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
       notes: { bpm: '128' }
     });
     const pBpm = projectStore.getProject(project.id, mockOwner.id);
@@ -312,16 +312,16 @@ describe('ProjectStore & Workspace', () => {
     expect(pBpm?.activities[0].summary).toContain('128 BPM');
 
     // 4. Continuous typing consolidation: 3 rapid notes edits by same user within 10 min
-    autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+    await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       notes: { content: 'Intro chord' }
     });
     const pNotes1 = projectStore.getProject(project.id, mockOwner.id);
     const countBefore = pNotes1!.activities.length;
 
-    autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+    await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       notes: { content: 'Intro chords: F#m7 -> B9' }
     });
-    autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+    await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       notes: { content: 'Intro chords: F#m7 -> B9 -> Emaj7' }
     });
     const pNotes2 = projectStore.getProject(project.id, mockOwner.id);
@@ -330,7 +330,7 @@ describe('ProjectStore & Workspace', () => {
     expect(pNotes2!.activities[0].type).toBe('notes_edited');
 
     // 5. Task creation & completion
-    autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
+    await autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
       tasks: {
         tasks: [
           {
@@ -346,7 +346,7 @@ describe('ProjectStore & Workspace', () => {
     let pTasks = projectStore.getProject(project.id, mockOwner.id);
     expect(pTasks?.activities[0].type).toBe('task_created');
 
-    autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+    await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
       tasks: {
         tasks: [
           {
@@ -371,7 +371,7 @@ describe('ProjectStore & Workspace', () => {
     expect(reloaded?.activities[0].type).toBe('task_completed');
   });
 
-  it('strictly enforces role permissions: viewer is read-only, editor/collaborator can edit workspace, owner has admin', () => {
+  it('strictly enforces role permissions: viewer is read-only, editor/collaborator can edit workspace, owner has admin', async () => {
     const mockEditor: UserProfile = {
       id: 'user-editor',
       displayName: 'Audio Editor Alex',
@@ -392,41 +392,41 @@ describe('ProjectStore & Workspace', () => {
       createdAt: Date.now()
     };
 
-    const project = projectStore.createProject(mockOwner, { name: 'Permission Master' });
+    const project = await projectStore.createProject(mockOwner, { name: 'Permission Master' });
 
     // 1. Owner adds collaborator with 'editor' role, and another with 'viewer' role
-    const withEditor = projectStore.addCollaborator(project.id, mockOwner.id, mockEditor, 'editor');
+    const withEditor = await projectStore.addCollaborator(project.id, mockOwner.id, mockEditor, 'editor');
     expect(withEditor).not.toBeNull();
     expect(projectStore.getUserRole(project.id, mockEditor.id)).toBe('editor');
 
-    const withViewer = projectStore.addCollaborator(project.id, mockOwner.id, mockViewer, 'viewer');
+    const withViewer = await projectStore.addCollaborator(project.id, mockOwner.id, mockViewer, 'viewer');
     expect(withViewer).not.toBeNull();
     expect(projectStore.getUserRole(project.id, mockViewer.id)).toBe('viewer');
 
     // 2. Editor CAN modify workspace content (lyrics, notes, structure, tasks)
-    const editorLyricsUpdate = autoUpdateWorkspace(projectStore, project.id, mockEditor, {
+    const editorLyricsUpdate = await autoUpdateWorkspace(projectStore, project.id, mockEditor, {
       lyrics: { content: 'Lyrics edited by editor Alex' }
     });
     expect(editorLyricsUpdate).not.toBeNull();
     expect(editorLyricsUpdate?.workspace.lyrics.content).toBe('Lyrics edited by editor Alex');
 
     // 3. Viewer CANNOT modify workspace content (returns null)
-    const viewerLyricsUpdate = autoUpdateWorkspace(projectStore, project.id, mockViewer, {
+    const viewerLyricsUpdate = await autoUpdateWorkspace(projectStore, project.id, mockViewer, {
       lyrics: { content: 'Malicious overwrite by viewer' }
     });
     expect(viewerLyricsUpdate).toBeNull();
 
-    const viewerNotesUpdate = autoUpdateWorkspace(projectStore, project.id, mockViewer, {
+    const viewerNotesUpdate = await autoUpdateWorkspace(projectStore, project.id, mockViewer, {
       notes: { bpm: '160', content: 'Viewer note' }
     });
     expect(viewerNotesUpdate).toBeNull();
 
-    const viewerStructureUpdate = autoUpdateWorkspace(projectStore, project.id, mockViewer, {
+    const viewerStructureUpdate = await autoUpdateWorkspace(projectStore, project.id, mockViewer, {
       structure: { sections: [{ id: 'sec_v', type: 'intro', name: 'Viewer Intro', updatedAt: Date.now() }] }
     });
     expect(viewerStructureUpdate).toBeNull();
 
-    const viewerTaskUpdate = autoUpdateWorkspace(projectStore, project.id, mockViewer, {
+    const viewerTaskUpdate = await autoUpdateWorkspace(projectStore, project.id, mockViewer, {
       tasks: { tasks: [{ id: 'task_v', title: 'Viewer Task', status: 'todo', createdAt: Date.now(), updatedAt: Date.now() }] }
     });
     expect(viewerTaskUpdate).toBeNull();
@@ -437,7 +437,7 @@ describe('ProjectStore & Workspace', () => {
     expect(afterViewerAttempts?.workspace.notes.bpm).toBeUndefined();
 
     // 4. Viewer CANNOT modify project settings / metadata
-    const viewerProjectUpdate = projectStore.updateProject(project.id, mockViewer.id, {
+    const viewerProjectUpdate = await projectStore.updateProject(project.id, mockViewer.id, {
       name: 'Hacked Project Name',
       archived: true
     });
@@ -453,43 +453,43 @@ describe('ProjectStore & Workspace', () => {
       isGuest: false,
       createdAt: Date.now()
     };
-    const unauthorizedAddByEditor = projectStore.addCollaborator(project.id, mockEditor.id, mockNewMember, 'viewer');
+    const unauthorizedAddByEditor = await projectStore.addCollaborator(project.id, mockEditor.id, mockNewMember, 'viewer');
     expect(unauthorizedAddByEditor).toBeNull();
 
-    const unauthorizedAddByViewer = projectStore.addCollaborator(project.id, mockViewer.id, mockNewMember, 'viewer');
+    const unauthorizedAddByViewer = await projectStore.addCollaborator(project.id, mockViewer.id, mockNewMember, 'viewer');
     expect(unauthorizedAddByViewer).toBeNull();
 
     // 6. Non-owner CANNOT remove other collaborators
-    const unauthorizedRemoveOther = projectStore.removeCollaborator(project.id, mockEditor.id, mockViewer.id);
+    const unauthorizedRemoveOther = await projectStore.removeCollaborator(project.id, mockEditor.id, mockViewer.id);
     expect(unauthorizedRemoveOther).toBeNull();
 
     // 7. Non-owner CAN remove themselves (leave project)
-    const editorLeaves = projectStore.removeCollaborator(project.id, mockEditor.id, mockEditor.id);
+    const editorLeaves = await projectStore.removeCollaborator(project.id, mockEditor.id, mockEditor.id);
     expect(editorLeaves).not.toBeNull();
     expect(projectStore.hasAccess(project.id, mockEditor.id)).toBe(false);
 
     // 8. Non-owner CANNOT delete project
-    const viewerDelete = projectStore.deleteProject(project.id, mockViewer.id);
+    const viewerDelete = await projectStore.deleteProject(project.id, mockViewer.id);
     expect(viewerDelete).toBe(false);
 
     // 9. Owner CAN update collaborator role (e.g. promote viewer to editor)
-    const promoted = projectStore.addCollaborator(project.id, mockOwner.id, mockViewer, 'editor');
+    const promoted = await projectStore.addCollaborator(project.id, mockOwner.id, mockViewer, 'editor');
     expect(promoted).not.toBeNull();
     expect(projectStore.getUserRole(project.id, mockViewer.id)).toBe('editor');
 
     // Now previously viewer (now editor) CAN update workspace
-    const nowEditorUpdate = autoUpdateWorkspace(projectStore, project.id, mockViewer, {
+    const nowEditorUpdate = await autoUpdateWorkspace(projectStore, project.id, mockViewer, {
       notes: { content: 'Olivia is now an editor and can edit notes' }
     });
     expect(nowEditorUpdate).not.toBeNull();
     expect(nowEditorUpdate?.workspace.notes.content).toContain('Olivia is now an editor');
 
     // 10. Owner CAN delete project
-    const ownerDelete = projectStore.deleteProject(project.id, mockOwner.id);
+    const ownerDelete = await projectStore.deleteProject(project.id, mockOwner.id);
     expect(ownerDelete).toBe(true);
   });
 
-  it('fails and rolls back in-memory state when project persistence write fails', () => {
+  it('fails and rolls back in-memory state when project persistence write fails', async () => {
     const blockerFile = path.join(tmpDir, 'blocker');
     fs.writeFileSync(blockerFile, 'blocking file');
     const unwritableDir = path.join(blockerFile, 'sub');
@@ -497,41 +497,33 @@ describe('ProjectStore & Workspace', () => {
     const store = new ProjectStore(unwritableDir);
 
     // 1. createProject should throw on persistence failure and not retain project in memory
-    expect(() => {
-      store.createProject(mockOwner, { name: 'Failing Project' });
-    }).toThrow();
+    await expect(store.createProject(mockOwner, { name: 'Failing Project' })).rejects.toThrow();
     expect(store.listProjects(mockOwner.id).length).toBe(0);
 
     // 2. updateWorkspace should throw and rollback workspace changes if write fails
-    const project = projectStore.createProject(mockOwner, { name: 'Rollback Demo' });
+    const project = await projectStore.createProject(mockOwner, { name: 'Rollback Demo' });
     const prevContent = project.workspace.notes.content;
 
     // Break the data file path
     (projectStore as any).dataFilePath = path.join(blockerFile, 'sub', 'jameet-projects.json');
 
-    expect(() => {
-      autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+    await expect(autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         notes: { content: 'This should not be saved' }
-      });
-    }).toThrow();
+      })).rejects.toThrow();
 
     const projAfterFail = projectStore.getProject(project.id, mockOwner.id);
     expect(projAfterFail?.workspace.notes.content).toBe(prevContent);
 
     // 3. updateProject should throw and rollback
-    expect(() => {
-      projectStore.updateProject(project.id, mockOwner.id, { name: 'Hacked Project Name' });
-    }).toThrow();
+    await expect(projectStore.updateProject(project.id, mockOwner.id, { name: 'Hacked Project Name' })).rejects.toThrow();
     expect(projectStore.getProject(project.id, mockOwner.id)?.name).toBe('Rollback Demo');
 
     // 4. deleteProject should throw and not delete project from memory if write fails
-    expect(() => {
-      projectStore.deleteProject(project.id, mockOwner.id);
-    }).toThrow();
+    await expect(projectStore.deleteProject(project.id, mockOwner.id)).rejects.toThrow();
     expect(projectStore.getProject(project.id, mockOwner.id)).not.toBeNull();
   });
 
-  it('keeps project ownership strictly authoritative through project.ownerId and rejects collaborator owner role', () => {
+  it('keeps project ownership strictly authoritative through project.ownerId and rejects collaborator owner role', async () => {
     const mockImpostor: UserProfile = {
       id: 'user-impostor',
       displayName: 'Impostor Ian',
@@ -542,15 +534,15 @@ describe('ProjectStore & Workspace', () => {
       createdAt: Date.now()
     };
 
-    const project = projectStore.createProject(mockOwner, { name: 'Authoritative Owner Test' });
+    const project = await projectStore.createProject(mockOwner, { name: 'Authoritative Owner Test' });
 
     // 1. Attempting to assign 'owner' role to collaborator via addCollaborator is rejected
-    const tryOwnerRole = projectStore.addCollaborator(project.id, mockOwner.id, mockImpostor, 'owner' as any);
+    const tryOwnerRole = await projectStore.addCollaborator(project.id, mockOwner.id, mockImpostor, 'owner' as any);
     expect(tryOwnerRole).toBeNull();
     expect(projectStore.hasAccess(project.id, mockImpostor.id)).toBe(false);
 
     // 2. Add impostor as editor
-    const asEditor = projectStore.addCollaborator(project.id, mockOwner.id, mockImpostor, 'editor');
+    const asEditor = await projectStore.addCollaborator(project.id, mockOwner.id, mockImpostor, 'editor');
     expect(asEditor).not.toBeNull();
     expect(projectStore.isOwner(project.id, mockImpostor.id)).toBe(false);
     expect(projectStore.getUserRole(project.id, mockImpostor.id)).toBe('editor');
@@ -565,7 +557,7 @@ describe('ProjectStore & Workspace', () => {
     expect(projectStore.getUserRole(project.id, mockImpostor.id)).not.toBe('owner');
 
     // Verify impostor CANNOT delete project
-    expect(projectStore.deleteProject(project.id, mockImpostor.id)).toBe(false);
+    expect(await projectStore.deleteProject(project.id, mockImpostor.id)).toBe(false);
 
     // Verify impostor CANNOT add other collaborators
     const mockThirdUser: UserProfile = {
@@ -577,19 +569,19 @@ describe('ProjectStore & Workspace', () => {
       isGuest: false,
       createdAt: Date.now()
     };
-    expect(projectStore.addCollaborator(project.id, mockImpostor.id, mockThirdUser, 'viewer')).toBeNull();
+    expect(await projectStore.addCollaborator(project.id, mockImpostor.id, mockThirdUser, 'viewer')).toBeNull();
 
     // Verify impostor CANNOT remove other collaborators
-    expect(projectStore.removeCollaborator(project.id, mockImpostor.id, mockOwner.id)).toBeNull();
+    expect(await projectStore.removeCollaborator(project.id, mockImpostor.id, mockOwner.id)).toBeNull();
 
     // 4. Verify disk reload sanitizes legacy owner role on collaborator
-    (projectStore as any).saveToDisk();
+    await (projectStore as any).persistProject(rawProject);
     const reloadedStore = new ProjectStore(tmpDir);
     expect(reloadedStore.isOwner(project.id, mockImpostor.id)).toBe(false);
     expect(reloadedStore.getUserRole(project.id, mockImpostor.id)).toBe('collaborator');
   });
 
-  it('initializes normally with an empty store when the projects file does not exist', () => {
+  it('initializes normally with an empty store when the projects file does not exist', async () => {
     const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-empty-proj-'));
     try {
       const projectsPath = path.join(emptyDir, 'jameet-projects.json');
@@ -602,7 +594,7 @@ describe('ProjectStore & Workspace', () => {
     }
   });
 
-  it('fails initialization and stops server startup when an existing projects file is corrupted or unreadable', () => {
+  it('fails initialization and stops server startup when an existing projects file is corrupted or unreadable', async () => {
     const corruptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-corrupt-proj-'));
     try {
       const projectsPath = path.join(corruptDir, 'jameet-projects.json');
@@ -619,7 +611,7 @@ describe('ProjectStore & Workspace', () => {
     }
   });
 
-  it('fails initialization when the projects datastore root is not an object or is an array', () => {
+  it('fails initialization when the projects datastore root is not an object or is an array', async () => {
     const corruptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-root-proj-'));
     try {
       const projectsPath = path.join(corruptDir, 'jameet-projects.json');
@@ -640,7 +632,7 @@ describe('ProjectStore & Workspace', () => {
     }
   });
 
-  it('fails initialization when the projects field is missing or not an array', () => {
+  it('fails initialization when the projects field is missing or not an array', async () => {
     const corruptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-field-proj-'));
     try {
       const projectsPath = path.join(corruptDir, 'jameet-projects.json');
@@ -665,7 +657,7 @@ describe('ProjectStore & Workspace', () => {
     }
   });
 
-  it('loads successfully when projects datastore has valid projects array', () => {
+  it('loads successfully when projects datastore has valid projects array', async () => {
     const validDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-valid-proj-'));
     try {
       const projectsPath = path.join(validDir, 'jameet-projects.json');
@@ -678,7 +670,7 @@ describe('ProjectStore & Workspace', () => {
     }
   });
 
-  it('omits email address when creating or adding collaborators to projects', () => {
+  it('omits email address when creating or adding collaborators to projects', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-collab-email-test-'));
     try {
       const store = new ProjectStore(tmpDir);
@@ -701,7 +693,7 @@ describe('ProjectStore & Workspace', () => {
         createdAt: Date.now()
       };
 
-      const project = store.createProject(owner, { name: 'Email Privacy Song' }, [collab]);
+      const project = await store.createProject(owner, { name: 'Email Privacy Song' }, [collab]);
       expect(project.collaborators[0].userId).toBe('collab-1');
       expect((project.collaborators[0] as any).email).toBeUndefined();
       expect('email' in project.collaborators[0]).toBe(false);
@@ -715,7 +707,7 @@ describe('ProjectStore & Workspace', () => {
         isGuest: false,
         createdAt: Date.now()
       };
-      const updated = store.addCollaborator(project.id, owner.id, addedMember, 'editor');
+      const updated = await store.addCollaborator(project.id, owner.id, addedMember, 'editor');
       expect(updated).not.toBeNull();
       const addedCollab = updated!.collaborators.find((c) => c.userId === 'collab-2')!;
       expect(addedCollab).toBeDefined();
@@ -726,7 +718,7 @@ describe('ProjectStore & Workspace', () => {
     }
   });
 
-  it('normalizes and strips legacy collaborator email addresses when loading existing datastores from disk', () => {
+  it('normalizes and strips legacy collaborator email addresses when loading existing datastores from disk', async () => {
     const legacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-legacy-email-proj-'));
     try {
       const projectsPath = path.join(legacyDir, 'jameet-projects.json');
@@ -778,7 +770,7 @@ describe('ProjectStore & Workspace', () => {
     }
   });
 
-  it('validates task assignees server-authoritatively and derives assigneeName from project members', () => {
+  it('validates task assignees server-authoritatively and derives assigneeName from project members', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-assignee-test-'));
     try {
       const store = new ProjectStore(tmpDir);
@@ -801,10 +793,10 @@ describe('ProjectStore & Workspace', () => {
         createdAt: Date.now()
       };
 
-      const project = store.createProject(owner, { name: 'Task Assignee Project' }, [collab]);
+      const project = await store.createProject(owner, { name: 'Task Assignee Project' }, [collab]);
 
       // 1. Reject task assignment to an invalid user ID (stranger)
-      const invalidAssigneeUpdate = autoUpdateWorkspace(store, project.id, owner, {
+      const invalidAssigneeUpdate = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             {
@@ -822,7 +814,7 @@ describe('ProjectStore & Workspace', () => {
       expect(invalidAssigneeUpdate).toBeNull();
 
       // 2. Accept assignment to owner and derive server-authoritative owner name (ignoring client spoofed name)
-      const validOwnerAssign = autoUpdateWorkspace(store, project.id, owner, {
+      const validOwnerAssign = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             {
@@ -842,7 +834,7 @@ describe('ProjectStore & Workspace', () => {
       expect(validOwnerAssign!.workspace.tasks.tasks[0].assigneeName).toBe('Real Owner Name');
 
       // 3. Accept assignment to collaborator and derive server-authoritative collaborator name
-      const validCollabAssign = autoUpdateWorkspace(store, project.id, owner, {
+      const validCollabAssign = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             {
@@ -862,7 +854,7 @@ describe('ProjectStore & Workspace', () => {
       expect(validCollabAssign!.workspace.tasks.tasks[0].assigneeName).toBe('Real Collab Name');
 
       // 4. Unassigning task clears both assigneeId and assigneeName
-      const unassignUpdate = autoUpdateWorkspace(store, project.id, owner, {
+      const unassignUpdate = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             {
@@ -883,7 +875,7 @@ describe('ProjectStore & Workspace', () => {
 
       // 5. Atomic validation: Attempt combined update with notes, lyrics, structure, and invalid task assignee
       const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
-      const failedCombinedUpdate = autoUpdateWorkspace(store, project.id, owner, {
+      const failedCombinedUpdate = await autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: 'Modified Notes Text', bpm: '140' },
         lyrics: { content: 'Modified Lyrics Text' },
         structure: { sections: [{ id: 'sec-1', name: 'Chorus', bars: 8, color: '#f59e0b', order: 0 }] },
@@ -933,7 +925,7 @@ describe('ProjectStore & Workspace', () => {
         createdAt: 2000
       };
 
-      const project = store.createProject(owner, { name: 'Lyrics Attrib Song' }, [editor]);
+      const project = await store.createProject(owner, { name: 'Lyrics Attrib Song' }, [editor]);
 
       // Initial doc created by owner
       const initialDoc = project.workspace.lyrics.documents[0];
@@ -942,7 +934,7 @@ describe('ProjectStore & Workspace', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       // Editor creates doc-2
-      const createdDoc2 = autoUpdateWorkspace(store, project.id, editor, {
+      const createdDoc2 = await autoUpdateWorkspace(store, project.id, editor, {
         lyrics: {
           documentId: 'doc-2',
           title: 'Bridge Draft',
@@ -961,7 +953,7 @@ describe('ProjectStore & Workspace', () => {
       // 2. doc-2 MODIFIED content with spoofed metadata
       // 3. doc-3 NEW with spoofed metadata
       const updateTime = Date.now();
-      const updatedWorkspace = autoUpdateWorkspace(store, project.id, editor, {
+      const updatedWorkspace = await autoUpdateWorkspace(store, project.id, editor, {
         lyrics: {
           documents: [
             {
@@ -1037,10 +1029,10 @@ describe('ProjectStore & Workspace', () => {
         createdAt: 1000
       };
 
-      const project = store.createProject(owner, { name: 'Lyrics Delete Song' });
+      const project = await store.createProject(owner, { name: 'Lyrics Delete Song' });
 
       // 1. Create doc-2 and make it active
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documentId: 'doc-2',
           title: 'Chorus Draft',
@@ -1054,7 +1046,7 @@ describe('ProjectStore & Workspace', () => {
       expect(projAfterAdd.workspace.lyrics.content).toBe('Chorus melody lyrics');
 
       // 2. Delete doc-2 by providing documents array containing only doc-main
-      const projAfterDelete = autoUpdateWorkspace(store, project.id, owner, {
+      const projAfterDelete = await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             {
@@ -1073,7 +1065,7 @@ describe('ProjectStore & Workspace', () => {
       expect(projAfterDelete.workspace.lyrics.content).toBe('Main verses text');
 
       // 3. Delete all documents by passing empty documents array: fallback document must be restored with empty content
-      const projAfterEmpty = autoUpdateWorkspace(store, project.id, owner, {
+      const projAfterEmpty = await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: []
         }
@@ -1103,13 +1095,13 @@ describe('ProjectStore & Workspace', () => {
         createdAt: 1000
       };
 
-      const project = store.createProject(owner, { name: 'Task ID Validation Song' });
+      const project = await store.createProject(owner, { name: 'Task ID Validation Song' });
 
       // Baseline state
       const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
 
       // 1. Reject empty task ID
-      const emptyIdRes = autoUpdateWorkspace(store, project.id, owner, {
+      const emptyIdRes = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: '', title: 'Empty ID Task', status: 'todo' }
@@ -1120,7 +1112,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 2. Reject whitespace-only task ID
-      const wsIdRes = autoUpdateWorkspace(store, project.id, owner, {
+      const wsIdRes = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: '   ', title: 'Whitespace ID Task', status: 'todo' }
@@ -1131,7 +1123,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 3. Reject duplicate task IDs
-      const dupIdRes = autoUpdateWorkspace(store, project.id, owner, {
+      const dupIdRes = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'First Task', status: 'todo' },
@@ -1143,7 +1135,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 4. Accept valid unique task IDs
-      const validRes = autoUpdateWorkspace(store, project.id, owner, {
+      const validRes = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'First Task', status: 'todo' },
@@ -1172,13 +1164,13 @@ describe('ProjectStore & Workspace', () => {
         createdAt: 1000
       };
 
-      const project = store.createProject(owner, { name: 'Structure ID Validation Song' });
+      const project = await store.createProject(owner, { name: 'Structure ID Validation Song' });
 
       // Baseline state
       const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
 
       // 1. Reject empty section ID
-      const emptyIdRes = autoUpdateWorkspace(store, project.id, owner, {
+      const emptyIdRes = await autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: '', type: 'verse', name: 'Verse 1', bars: 8 }
@@ -1189,7 +1181,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 2. Reject whitespace-only section ID
-      const wsIdRes = autoUpdateWorkspace(store, project.id, owner, {
+      const wsIdRes = await autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: '   ', type: 'verse', name: 'Verse 1', bars: 8 }
@@ -1200,7 +1192,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 3. Reject duplicate section IDs
-      const dupIdRes = autoUpdateWorkspace(store, project.id, owner, {
+      const dupIdRes = await autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: 'sec-1', type: 'verse', name: 'Verse 1', bars: 8 },
@@ -1212,7 +1204,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 4. Accept valid unique section IDs
-      const validRes = autoUpdateWorkspace(store, project.id, owner, {
+      const validRes = await autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: 'sec-1', type: 'verse', name: 'Verse 1', bars: 8 },
@@ -1243,13 +1235,13 @@ describe('ProjectStore & Workspace', () => {
         createdAt: 1000
       };
 
-      const project = store.createProject(owner, { name: 'Lyrics ID Validation Song' });
+      const project = await store.createProject(owner, { name: 'Lyrics ID Validation Song' });
 
       // Baseline state
       const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
 
       // 1. Reject empty document ID
-      const emptyIdRes = autoUpdateWorkspace(store, project.id, owner, {
+      const emptyIdRes = await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: '', title: 'Empty Doc', content: 'Empty ID' }
@@ -1260,7 +1252,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 2. Reject whitespace-only document ID
-      const wsIdRes = autoUpdateWorkspace(store, project.id, owner, {
+      const wsIdRes = await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: '   ', title: 'Whitespace Doc', content: 'Whitespace ID' }
@@ -1271,7 +1263,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 3. Reject duplicate document IDs
-      const dupIdRes = autoUpdateWorkspace(store, project.id, owner, {
+      const dupIdRes = await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-main', title: 'Main Draft', content: 'Main words' },
@@ -1283,7 +1275,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 4. Accept valid unique document IDs
-      const validRes = autoUpdateWorkspace(store, project.id, owner, {
+      const validRes = await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-main', title: 'Main Draft', content: 'Main words' },
@@ -1314,13 +1306,13 @@ describe('ProjectStore & Workspace', () => {
         createdAt: 1000
       };
 
-      const project = store.createProject(owner, { name: 'Target Doc ID Validation Song' });
+      const project = await store.createProject(owner, { name: 'Target Doc ID Validation Song' });
 
       // Baseline state
       const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
 
       // 1. Reject empty documentId
-      const emptyDocIdRes = autoUpdateWorkspace(store, project.id, owner, {
+      const emptyDocIdRes = await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documentId: '',
           title: 'New Document Title',
@@ -1331,7 +1323,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 2. Reject whitespace-only documentId
-      const wsDocIdRes = autoUpdateWorkspace(store, project.id, owner, {
+      const wsDocIdRes = await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documentId: '   \t  ',
           title: 'Whitespace Document Title',
@@ -1342,7 +1334,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 3. Accept valid documentId and trim whitespace
-      const validDocIdRes = autoUpdateWorkspace(store, project.id, owner, {
+      const validDocIdRes = await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documentId: '  doc-trimmed-1  ',
           title: 'Trimmed Document Title',
@@ -1371,10 +1363,10 @@ describe('ProjectStore & Workspace', () => {
         createdAt: 1000
       };
 
-      const project = store.createProject(owner, { name: 'Task Status Activity Song' });
+      const project = await store.createProject(owner, { name: 'Task Status Activity Song' });
 
       // 1. Create a task in 'todo' status
-      const p1 = autoUpdateWorkspace(store, project.id, owner, {
+      const p1 = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'todo' }
@@ -1384,7 +1376,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p1.activities[0].type).toBe('task_created');
 
       // 2. Change status from 'todo' to 'in_progress' -> records task_status_changed
-      const p2 = autoUpdateWorkspace(store, project.id, owner, {
+      const p2 = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'in_progress' }
@@ -1396,7 +1388,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p2.activities[0].userId).toBe(owner.id);
 
       // 3. Change status from 'in_progress' back to 'todo' -> records task_status_changed
-      const p3 = autoUpdateWorkspace(store, project.id, owner, {
+      const p3 = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'todo' }
@@ -1407,7 +1399,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p3.activities[0].summary).toBe('Owner Alice marked "Master Audio Track" as to-do');
 
       // 4. Change status from 'todo' to 'done' -> records task_completed
-      const p4 = autoUpdateWorkspace(store, project.id, owner, {
+      const p4 = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'done' }
@@ -1417,7 +1409,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p4.activities[0].type).toBe('task_completed');
 
       // 5. Change status from 'done' to 'in_progress' -> records task_reopened
-      const p5 = autoUpdateWorkspace(store, project.id, owner, {
+      const p5 = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'in_progress' }
@@ -1427,7 +1419,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p5.activities[0].type).toBe('task_reopened');
 
       // 6. Update without changing status or content -> does NOT record duplicate activity
-      const p6 = autoUpdateWorkspace(store, project.id, owner, {
+      const p6 = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'in_progress' }
@@ -1439,7 +1431,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p6.activities.length).toBe(p5.activities.length);
 
       // 7. Change assignee AND change status between in_progress and todo -> records task_assigned (higher priority)
-      const p7 = autoUpdateWorkspace(store, project.id, owner, {
+      const p7 = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Master Audio Track', status: 'todo', assigneeId: owner.id }
@@ -1467,13 +1459,13 @@ describe('ProjectStore & Workspace', () => {
         createdAt: 1000
       };
 
-      const project = store.createProject(owner, { name: 'Task Due Date Validation Song' });
+      const project = await store.createProject(owner, { name: 'Task Due Date Validation Song' });
 
       // Baseline state
       const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
 
       // 1. Reject malicious HTML / script in dueDate
-      const xssDueRes = autoUpdateWorkspace(store, project.id, owner, {
+      const xssDueRes = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Vocal Track', status: 'todo', dueDate: '<script>alert(1)</script>' }
@@ -1484,7 +1476,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 2. Reject non-ISO date formats
-      const slashDueRes = autoUpdateWorkspace(store, project.id, owner, {
+      const slashDueRes = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Vocal Track', status: 'todo', dueDate: '08/25/2026' }
@@ -1495,7 +1487,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 3. Reject invalid calendar dates (e.g. Feb 31)
-      const feb31DueRes = autoUpdateWorkspace(store, project.id, owner, {
+      const feb31DueRes = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Vocal Track', status: 'todo', dueDate: '2026-02-31' }
@@ -1506,7 +1498,7 @@ describe('ProjectStore & Workspace', () => {
       expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
 
       // 4. Accept valid YYYY-MM-DD date and absent dueDate
-      const validDueRes = autoUpdateWorkspace(store, project.id, owner, {
+      const validDueRes = await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Vocal Track', status: 'todo', dueDate: '  2026-08-25  ' },
@@ -1522,7 +1514,7 @@ describe('ProjectStore & Workspace', () => {
     }
   });
 
-  it('records notes_bpm_changed and notes_key_changed activities when BPM or Key is cleared', () => {
+  it('records notes_bpm_changed and notes_key_changed activities when BPM or Key is cleared', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-notes-clear-test-'));
     try {
       const store = new ProjectStore(tmpDir);
@@ -1534,10 +1526,10 @@ describe('ProjectStore & Workspace', () => {
         avatarColor: '#2563eb',
         createdAt: Date.now()
       };
-      const project = store.createProject(owner, { name: 'Clear BPM Key Project' });
+      const project = await store.createProject(owner, { name: 'Clear BPM Key Project' });
 
       // Initially set BPM and Key
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         notes: { bpm: '124', key: 'E Minor' }
       });
       const pWithValues = store.getProject(project.id, owner.id);
@@ -1549,14 +1541,14 @@ describe('ProjectStore & Workspace', () => {
       const countBefore = pWithValues?.activities.length || 0;
 
       // Updating with same values should not record new activity
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         notes: { bpm: '124', key: 'E Minor' }
       });
       const pUnchanged = store.getProject(project.id, owner.id);
       expect(pUnchanged?.activities.length).toBe(countBefore);
 
       // Clear BPM
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         notes: { bpm: '' }
       });
       const pBpmCleared = store.getProject(project.id, owner.id);
@@ -1567,13 +1559,13 @@ describe('ProjectStore & Workspace', () => {
 
       // Clearing already-cleared BPM should not record new activity
       const countAfterBpmClear = pBpmCleared?.activities.length || 0;
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         notes: { bpm: '   ' }
       });
       expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterBpmClear);
 
       // Clear Key
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         notes: { key: '' }
       });
       const pKeyCleared = store.getProject(project.id, owner.id);
@@ -1584,13 +1576,13 @@ describe('ProjectStore & Workspace', () => {
 
       // Clearing already-cleared Key should not record new activity
       const countAfterKeyClear = pKeyCleared?.activities.length || 0;
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         notes: { key: '' }
       });
       expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterKeyClear);
 
       // Initially set Notes content
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: 'Bridge: Am -> D7 -> G' }
       });
       const pWithContent = store.getProject(project.id, owner.id);
@@ -1601,13 +1593,13 @@ describe('ProjectStore & Workspace', () => {
       const countBeforeContentClear = pWithContent?.activities.length || 0;
 
       // Updating with same content should not record new activity
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: 'Bridge: Am -> D7 -> G' }
       });
       expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countBeforeContentClear);
 
       // Clear Notes content
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: '   ' }
       });
       const pContentCleared = store.getProject(project.id, owner.id);
@@ -1618,13 +1610,13 @@ describe('ProjectStore & Workspace', () => {
 
       // Clearing already-cleared Notes content should not record new activity
       const countAfterContentClear = pContentCleared?.activities.length || 0;
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: '' }
       });
       expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterContentClear);
 
       // Re-populate notes
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: 'Outro chords' }
       });
       const pOutro = store.getProject(project.id, owner.id);
@@ -1632,7 +1624,7 @@ describe('ProjectStore & Workspace', () => {
       expect(pOutro?.activities[0].summary).toContain('updated Project Notes');
 
       // Update that differs ONLY by trailing whitespace should record updated activity
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         notes: { content: 'Outro chords\n' }
       });
       const pOutroWs = store.getProject(project.id, owner.id);
@@ -1644,7 +1636,7 @@ describe('ProjectStore & Workspace', () => {
     }
   });
 
-  it('records task_unassigned activity when task changes from assigned to unassigned', () => {
+  it('records task_unassigned activity when task changes from assigned to unassigned', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-unassign-test-'));
     try {
       const store = new ProjectStore(tmpDir);
@@ -1665,11 +1657,11 @@ describe('ProjectStore & Workspace', () => {
         createdAt: Date.now()
       };
 
-      const project = store.createProject(owner, { name: 'Task Unassign Project' });
-      store.addCollaborator(project.id, owner.id, collab, 'editor');
+      const project = await store.createProject(owner, { name: 'Task Unassign Project' });
+      await store.addCollaborator(project.id, owner.id, collab, 'editor');
 
       // 1. Create an assigned task
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Record Bass', status: 'todo', assigneeId: collab.id }
@@ -1680,7 +1672,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p1?.activities[0].type).toBe('task_created');
 
       // 2. Unassign task
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Record Bass', status: 'todo', assigneeId: undefined }
@@ -1697,7 +1689,7 @@ describe('ProjectStore & Workspace', () => {
       const countAfterUnassign = p2?.activities.length || 0;
 
       // 3. Updating an already unassigned task without assigning does not record unassigned activity
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Record Bass', status: 'todo' }
@@ -1707,7 +1699,7 @@ describe('ProjectStore & Workspace', () => {
       expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterUnassign);
 
       // 4. Reassign task to collaborator -> records task_assigned
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Record Bass', status: 'todo', assigneeId: collab.id }
@@ -1719,7 +1711,7 @@ describe('ProjectStore & Workspace', () => {
       expect(pReassigned?.activities[0].summary).toContain('assigned "Record Bass" to Collab User');
 
       // 5. Unassign and change status to in_progress in same update -> unassigned takes priority over status change
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Record Bass', status: 'in_progress', assigneeId: undefined }
@@ -1730,7 +1722,7 @@ describe('ProjectStore & Workspace', () => {
       expect(pUnassignStatus?.activities[0].type).toBe('task_unassigned');
 
       // 6. Complete task while also unassigning -> completed takes top priority
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 'task-1', title: 'Record Bass', status: 'done', assigneeId: undefined }
@@ -1744,7 +1736,7 @@ describe('ProjectStore & Workspace', () => {
     }
   });
 
-  it('records structure_changed only on actual Song Structure arrangement changes and ignores no-ops or timestamp updates', () => {
+  it('records structure_changed only on actual Song Structure arrangement changes and ignores no-ops or timestamp updates', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-structure-noop-test-'));
     try {
       const store = new ProjectStore(tmpDir);
@@ -1757,10 +1749,10 @@ describe('ProjectStore & Workspace', () => {
         createdAt: Date.now()
       };
 
-      const project = store.createProject(owner, { name: 'Structure No-Op Test' });
+      const project = await store.createProject(owner, { name: 'Structure No-Op Test' });
 
       // 1. Initial structure setup (add sections -> records structure_changed)
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 8, note: 'Guitar riff', color: '#6366f1', updatedAt: 1000 },
@@ -1773,7 +1765,7 @@ describe('ProjectStore & Workspace', () => {
       const countAfterSetup = p1?.activities.length || 0;
 
       // 2. No-op update with identical sections (different updatedAt timestamp metadata only) -> should NOT record activity
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 8, note: 'Guitar riff', color: '#6366f1', updatedAt: 5000 },
@@ -1785,7 +1777,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p2?.activities.length).toBe(countAfterSetup);
 
       // 3. Reordering sections -> records structure_changed
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: 'sec-verse1', type: 'verse', name: 'Verse 1', bars: 16, note: 'Vocals enter', color: '#10b981', updatedAt: 6000 },
@@ -1798,7 +1790,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p3?.activities[0].type).toBe('structure_changed');
 
       // 4. Modifying section bars -> records structure_changed
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         structure: {
           sections: [
             { id: 'sec-verse1', type: 'verse', name: 'Verse 1', bars: 32, note: 'Vocals enter', color: '#10b981', updatedAt: 7000 },
@@ -1814,7 +1806,7 @@ describe('ProjectStore & Workspace', () => {
     }
   });
 
-  it('records task_updated on title, note, or dueDate changes and ignores metadata-only or order changes', () => {
+  it('records task_updated on title, note, or dueDate changes and ignores metadata-only or order changes', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-updated-test-'));
     try {
       const store = new ProjectStore(tmpDir);
@@ -1826,10 +1818,10 @@ describe('ProjectStore & Workspace', () => {
         avatarColor: '#2563eb',
         createdAt: Date.now()
       };
-      const project = store.createProject(owner, { name: 'Task Update Test' });
+      const project = await store.createProject(owner, { name: 'Task Update Test' });
 
       // 1. Initial tasks setup
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't1', title: 'Record Keys', status: 'todo', note: 'Use Rhodes preset', dueDate: '2026-09-01', createdAt: 1000, updatedAt: 1000 },
@@ -1842,7 +1834,7 @@ describe('ProjectStore & Workspace', () => {
       const baseCount = p1?.activities.length || 0;
 
       // 2. Metadata change only (createdAt, updatedAt, completedAt) -> should NOT record task_updated
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't1', title: 'Record Keys', status: 'todo', note: 'Use Rhodes preset', dueDate: '2026-09-01', createdAt: 5000, updatedAt: 9000 },
@@ -1854,7 +1846,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p2?.activities.length).toBe(baseCount);
 
       // 3. Task ordering change only -> should NOT record task_updated
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't2', title: 'Record Bass', status: 'todo', createdAt: 5000, updatedAt: 9000 },
@@ -1866,7 +1858,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p3?.activities.length).toBe(baseCount);
 
       // 4. Change task title -> records task_updated
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't2', title: 'Record Bass (5-string)', status: 'todo' },
@@ -1880,7 +1872,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p4?.activities[0].summary).toContain('updated task "Record Bass (5-string)"');
 
       // 5. Change task note -> records task_updated
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't2', title: 'Record Bass (5-string)', status: 'todo' },
@@ -1894,7 +1886,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p5?.activities[0].summary).toContain('updated task "Record Keys"');
 
       // 6. Change task dueDate -> records task_updated
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't2', title: 'Record Bass (5-string)', status: 'todo' },
@@ -1907,7 +1899,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p6?.activities[0].type).toBe('task_updated');
 
       // 7. Change title AND status between todo and in_progress in same update -> task_status_changed takes priority
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't2', title: 'Record Bass (Final)', status: 'in_progress' },
@@ -1920,7 +1912,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p7?.activities[0].type).toBe('task_status_changed');
 
       // 8. Change title AND complete task -> task_completed takes priority
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         tasks: {
           tasks: [
             { id: 't2', title: 'Record Bass (Done)', status: 'done' },
@@ -1936,7 +1928,7 @@ describe('ProjectStore & Workspace', () => {
     }
   });
 
-  it('records lyrics_doc_deleted activity when lyrics documents are removed', () => {
+  it('records lyrics_doc_deleted activity when lyrics documents are removed', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-lyrics-del-test-'));
     try {
       const store = new ProjectStore(tmpDir);
@@ -1948,10 +1940,10 @@ describe('ProjectStore & Workspace', () => {
         avatarColor: '#2563eb',
         createdAt: Date.now()
       };
-      const project = store.createProject(owner, { name: 'Lyrics Delete Test' });
+      const project = await store.createProject(owner, { name: 'Lyrics Delete Test' });
 
       // 1. Create multiple lyrics documents
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-main', title: 'Main Lyrics', content: 'Verse 1 text' },
@@ -1964,7 +1956,7 @@ describe('ProjectStore & Workspace', () => {
       const countAfterSetup = p1?.activities.length || 0;
 
       // 2. Remove one document (Bridge Draft)
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-main', title: 'Main Lyrics', content: 'Verse 1 text' },
@@ -1981,7 +1973,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p2?.activities[0].title).toBe('Bridge Draft');
 
       // 3. Reordering documents without removing any -> should NOT record lyrics_doc_deleted
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-outro-draft', title: 'Outro Draft', content: 'Outro idea' },
@@ -1993,7 +1985,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p3?.activities.length).toBe(countAfterSetup + 1);
 
       // 4. Pass empty documents array -> triggers fallback for Main Lyrics, removes Outro Draft
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: []
         }
@@ -2006,7 +1998,7 @@ describe('ProjectStore & Workspace', () => {
       expect(p4?.activities[0].summary).toContain('deleted lyrics draft "Outro Draft"');
 
       // 5. Setup 2 documents again
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-main', title: 'Main Lyrics', content: 'Main text' },
@@ -2018,7 +2010,7 @@ describe('ProjectStore & Workspace', () => {
       const countBeforeCombinedUpdate = p5?.activities.length || 0;
 
       // 6. Update with documents array omitting doc-chorus, but targeting doc-chorus via documentId
-      autoUpdateWorkspace(store, project.id, owner, {
+      await autoUpdateWorkspace(store, project.id, owner, {
         lyrics: {
           documents: [
             { id: 'doc-main', title: 'Main Lyrics', content: 'Main text' }
@@ -2039,15 +2031,15 @@ describe('ProjectStore & Workspace', () => {
   });
 
   describe('Revision-based Optimistic Concurrency Control (OCC)', () => {
-    it('initializes default revisions to 1 for all workspace areas on project creation', () => {
-      const project = projectStore.createProject(mockOwner, { name: 'Revision Init Project' }, [mockCollaborator]);
+    it('initializes default revisions to 1 for all workspace areas on project creation', async () => {
+      const project = await projectStore.createProject(mockOwner, { name: 'Revision Init Project' }, [mockCollaborator]);
       expect(project.workspace.lyrics.revision).toBe(1);
       expect(project.workspace.notes.revision).toBe(1);
       expect(project.workspace.structure.revision).toBe(1);
       expect(project.workspace.tasks.revision).toBe(1);
     });
 
-    it('migrates legacy persisted projects without revisions on disk load to revision = 1', () => {
+    it('migrates legacy persisted projects without revisions on disk load to revision = 1', async () => {
       const legacyStorageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-legacy-test-'));
       const legacyFile = path.join(legacyStorageDir, 'jameet-projects.json');
       const legacyProject = {
@@ -2089,40 +2081,40 @@ describe('ProjectStore & Workspace', () => {
       expect(loaded?.workspace.tasks.revision).toBe(1);
     });
 
-    it('increments area revision on meaningful mutations and preserves revision on no-op updates', () => {
-      const project = projectStore.createProject(mockOwner, { name: 'Mutation Revision Test' }, [mockCollaborator]);
+    it('increments area revision on meaningful mutations and preserves revision on no-op updates', async () => {
+      const project = await projectStore.createProject(mockOwner, { name: 'Mutation Revision Test' }, [mockCollaborator]);
       expect(project.workspace.lyrics.revision).toBe(1);
       expect(project.workspace.notes.revision).toBe(1);
       expect(project.workspace.structure.revision).toBe(1);
       expect(project.workspace.tasks.revision).toBe(1);
 
       // 1. Meaningful Lyrics edit increments lyrics.revision from 1 to 2
-      const updatedLyrics = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+      const updatedLyrics = await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         lyrics: { baseRevision: 1, content: 'First line of the verse' }
       });
       expect(updatedLyrics?.workspace.lyrics.revision).toBe(2);
       expect(updatedLyrics?.workspace.notes.revision).toBe(1);
 
       // 2. No-op Lyrics update (same content, same active doc) does NOT increment revision
-      const noopLyrics = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+      const noopLyrics = await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         lyrics: { baseRevision: 2, content: 'First line of the verse' }
       });
       expect(noopLyrics?.workspace.lyrics.revision).toBe(2);
 
       // 3. Meaningful Notes BPM change increments notes.revision from 1 to 2
-      const updatedNotes = autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
+      const updatedNotes = await autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
         notes: { baseRevision: 1, bpm: '124' }
       });
       expect(updatedNotes?.workspace.notes.revision).toBe(2);
 
       // 4. No-op Notes update does NOT increment revision
-      const noopNotes = autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
+      const noopNotes = await autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
         notes: { baseRevision: 2, bpm: '124' }
       });
       expect(noopNotes?.workspace.notes.revision).toBe(2);
 
       // 5. Meaningful Structure change increments structure.revision from 1 to 2
-      const updatedStructure = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+      const updatedStructure = await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         structure: {
           baseRevision: 1,
           sections: [{ id: 'sec_intro', type: 'intro', name: 'Intro', bars: 8, updatedAt: Date.now() }]
@@ -2131,7 +2123,7 @@ describe('ProjectStore & Workspace', () => {
       expect(updatedStructure?.workspace.structure.revision).toBe(2);
 
       // 6. No-op Structure update does NOT increment revision
-      const noopStructure = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+      const noopStructure = await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         structure: {
           baseRevision: 2,
           sections: [{ id: 'sec_intro', type: 'intro', name: 'Intro', bars: 8, updatedAt: Date.now() }]
@@ -2140,7 +2132,7 @@ describe('ProjectStore & Workspace', () => {
       expect(noopStructure?.workspace.structure.revision).toBe(2);
 
       // 7. Meaningful Tasks change increments tasks.revision from 1 to 2
-      const updatedTasks = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+      const updatedTasks = await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         tasks: {
           baseRevision: 1,
           tasks: [{ id: 't1', title: 'Record guitar solo', status: 'todo', createdAt: Date.now(), updatedAt: Date.now() }]
@@ -2149,7 +2141,7 @@ describe('ProjectStore & Workspace', () => {
       expect(updatedTasks?.workspace.tasks.revision).toBe(2);
 
       // 8. No-op Tasks update does NOT increment revision
-      const noopTasks = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+      const noopTasks = await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         tasks: {
           baseRevision: 2,
           tasks: [{ id: 't1', title: 'Record guitar solo', status: 'todo', createdAt: Date.now(), updatedAt: Date.now() }]
@@ -2158,12 +2150,12 @@ describe('ProjectStore & Workspace', () => {
       expect(noopTasks?.workspace.tasks.revision).toBe(2);
     });
 
-    it('rejects stale baseRevision before mutation and records zero activity logs', () => {
-      const project = projectStore.createProject(mockOwner, { name: 'Conflict Pre-check Test' }, [mockCollaborator]);
+    it('rejects stale baseRevision before mutation and records zero activity logs', async () => {
+      const project = await projectStore.createProject(mockOwner, { name: 'Conflict Pre-check Test' }, [mockCollaborator]);
       const initialActivitiesCount = project.activities.length;
 
       // Update lyrics to advance revision to 2
-      autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+      await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         lyrics: { baseRevision: 1, content: 'Version 2 lyrics' }
       });
       const current = projectStore.getProject(project.id, mockOwner.id);
@@ -2171,11 +2163,9 @@ describe('ProjectStore & Workspace', () => {
       const afterSaveActivitiesCount = current!.activities.length;
 
       // Collaborator attempts to save with stale baseRevision: 1
-      expect(() => {
-        autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
+      await expect(autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
           lyrics: { baseRevision: 1, content: 'Stale attempt to overwrite' }
-        });
-      }).toThrow(WorkspaceConflictError);
+        })).rejects.toThrow(WorkspaceConflictError);
 
       // Verify no mutations applied and no activities recorded
       const afterConflict = projectStore.getProject(project.id, mockOwner.id);
@@ -2184,8 +2174,8 @@ describe('ProjectStore & Workspace', () => {
       expect(afterConflict?.activities.length).toBe(afterSaveActivitiesCount);
     });
 
-    it('handles critical concurrency scenario: Collaborator A saves revision 1 -> 2, Collaborator B with baseRevision 1 is rejected and Collaborator A data is preserved', () => {
-      const project = projectStore.createProject(mockOwner, { name: 'Collab Race Project' }, [mockCollaborator]);
+    it('handles critical concurrency scenario: Collaborator A saves revision 1 -> 2, Collaborator B with baseRevision 1 is rejected and Collaborator A data is preserved', async () => {
+      const project = await projectStore.createProject(mockOwner, { name: 'Collab Race Project' }, [mockCollaborator]);
 
       // Both collaborators load project at revision 1
       const initialProject = projectStore.getProject(project.id, mockOwner.id);
@@ -2193,7 +2183,7 @@ describe('ProjectStore & Workspace', () => {
       const collabBLyricsRev = initialProject!.workspace.lyrics.revision; // 1
 
       // Collaborator A edits and saves a new document 'Draft Acoustic'
-      const savedByA = autoUpdateWorkspace(projectStore, project.id, mockOwner, {
+      const savedByA = await autoUpdateWorkspace(projectStore, project.id, mockOwner, {
         lyrics: {
           baseRevision: collabALyricsRev,
           documentId: 'doc-acoustic',
@@ -2205,14 +2195,12 @@ describe('ProjectStore & Workspace', () => {
       expect(savedByA?.workspace.lyrics.documents.some((d) => d.id === 'doc-acoustic')).toBe(true);
 
       // Collaborator B (holding stale revision 1 snapshot without 'doc-acoustic') attempts to save their snapshot
-      expect(() => {
-        autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
+      await expect(autoUpdateWorkspace(projectStore, project.id, mockCollaborator, {
           lyrics: {
             baseRevision: collabBLyricsRev, // Stale 1
             documents: [{ id: 'doc-main', title: 'Main Lyrics', content: 'Collaborator B main edit' }]
           }
-        });
-      }).toThrow(WorkspaceConflictError);
+        })).rejects.toThrow(WorkspaceConflictError);
 
       // Verify Collaborator A's newly persisted document and content are completely safe
       const authoritative = projectStore.getProject(project.id, mockOwner.id);
@@ -2221,18 +2209,18 @@ describe('ProjectStore & Workspace', () => {
       expect(authoritative?.workspace.lyrics.documents.find((d) => d.id === 'doc-acoustic')?.content).toBe('Acoustic intro chords');
     });
 
-    it('allows simultaneous updates to different workspace areas to succeed independently without conflict', () => {
-      const project = projectStore.createProject(mockOwner, { name: 'Independent Areas Project' }, [mockCollaborator]);
+    it('allows simultaneous updates to different workspace areas to succeed independently without conflict', async () => {
+      const project = await projectStore.createProject(mockOwner, { name: 'Independent Areas Project' }, [mockCollaborator]);
 
       // Collaborator A updates Lyrics from baseRevision 1
-      const resA = projectStore.updateWorkspace(project.id, mockOwner, {
+      const resA = await projectStore.updateWorkspace(project.id, mockOwner, {
         lyrics: { baseRevision: 1, content: 'Vocals verse 1 line 1' }
       });
       expect(resA?.workspace.lyrics.revision).toBe(2);
       expect(resA?.workspace.notes.revision).toBe(1);
 
       // Collaborator B updates Notes from baseRevision 1
-      const resB = projectStore.updateWorkspace(project.id, mockCollaborator, {
+      const resB = await projectStore.updateWorkspace(project.id, mockCollaborator, {
         notes: { baseRevision: 1, content: 'Bassline reference link', bpm: '130', key: 'G Major' }
       });
       expect(resB?.workspace.notes.revision).toBe(2);
@@ -2250,21 +2238,19 @@ describe('ProjectStore & Workspace', () => {
       expect(finalProject?.workspace.tasks.revision).toBe(1);
     });
 
-    it('fails closed: rejects any Lyrics, Notes, Structure, or Tasks mutation that omits baseRevision before mutation or activity logging', () => {
-      const project = projectStore.createProject(mockOwner, { name: 'Fail Closed OCC Test' }, [mockCollaborator]);
+    it('fails closed: rejects any Lyrics, Notes, Structure, or Tasks mutation that omits baseRevision before mutation or activity logging', async () => {
+      const project = await projectStore.createProject(mockOwner, { name: 'Fail Closed OCC Test' }, [mockCollaborator]);
       const initialActivitiesCount = project.activities.length;
       const initialLyricsContent = project.workspace.lyrics.content;
       const initialNotesContent = project.workspace.notes.content;
 
       // 1. Lyrics mutation without baseRevision is rejected immediately
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           lyrics: { content: 'Lyrics without baseRevision' } as any
-        });
-      }).toThrow(WorkspaceConflictError);
+        })).rejects.toThrow(WorkspaceConflictError);
 
       try {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+        await projectStore.updateWorkspace(project.id, mockOwner, {
           lyrics: { content: 'Lyrics without baseRevision' } as any
         });
       } catch (err: any) {
@@ -2275,14 +2261,12 @@ describe('ProjectStore & Workspace', () => {
       }
 
       // 2. Notes mutation without baseRevision is rejected immediately
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           notes: { bpm: '140', content: 'Notes without baseRevision' } as any
-        });
-      }).toThrow(WorkspaceConflictError);
+        })).rejects.toThrow(WorkspaceConflictError);
 
       try {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+        await projectStore.updateWorkspace(project.id, mockOwner, {
           notes: { bpm: '140', content: 'Notes without baseRevision' } as any
         });
       } catch (err: any) {
@@ -2293,14 +2277,12 @@ describe('ProjectStore & Workspace', () => {
       }
 
       // 3. Structure mutation without baseRevision is rejected immediately
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           structure: { sections: [{ id: 'sec-1', name: 'Intro', bars: 4 }] } as any
-        });
-      }).toThrow(WorkspaceConflictError);
+        })).rejects.toThrow(WorkspaceConflictError);
 
       try {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+        await projectStore.updateWorkspace(project.id, mockOwner, {
           structure: { sections: [{ id: 'sec-1', name: 'Intro', bars: 4 }] } as any
         });
       } catch (err: any) {
@@ -2311,14 +2293,12 @@ describe('ProjectStore & Workspace', () => {
       }
 
       // 4. Tasks mutation without baseRevision is rejected immediately
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           tasks: { tasks: [{ id: 't1', title: 'Task without baseRevision', status: 'todo' }] } as any
-        });
-      }).toThrow(WorkspaceConflictError);
+        })).rejects.toThrow(WorkspaceConflictError);
 
       try {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+        await projectStore.updateWorkspace(project.id, mockOwner, {
           tasks: { tasks: [{ id: 't1', title: 'Task without baseRevision', status: 'todo' }] } as any
         });
       } catch (err: any) {
@@ -2343,30 +2323,28 @@ describe('ProjectStore & Workspace', () => {
   });
 
   describe('Server-Enforced Storage Limits for Projects & Workspaces', () => {
-    it('prevents a single account from creating more than MAX_PROJECTS_PER_OWNER projects', () => {
+    it('prevents a single account from creating more than MAX_PROJECTS_PER_OWNER projects', async () => {
       // Create MAX_PROJECTS_PER_OWNER projects
       for (let i = 0; i < PROJECT_LIMITS.MAX_PROJECTS_PER_OWNER; i++) {
-        projectStore.createProject(mockOwner, { name: `Project #${i + 1}` });
+        await projectStore.createProject(mockOwner, { name: `Project #${i + 1}` });
       }
 
-      expect(() => {
-        projectStore.createProject(mockOwner, { name: 'One Too Many Project' });
-      }).toThrow(ProjectLimitError);
+      await expect(projectStore.createProject(mockOwner, { name: 'One Too Many Project' })).rejects.toThrow(ProjectLimitError);
 
       try {
-        projectStore.createProject(mockOwner, { name: 'One Too Many Project' });
+        await projectStore.createProject(mockOwner, { name: 'One Too Many Project' });
       } catch (err: any) {
         expect(err).toBeInstanceOf(ProjectLimitError);
         expect(err.code).toBe('PROJECT_LIMIT_EXCEEDED');
       }
 
       // Another user can still create projects
-      const otherProject = projectStore.createProject(mockCollaborator, { name: 'Other User Project' });
+      const otherProject = await projectStore.createProject(mockCollaborator, { name: 'Other User Project' });
       expect(otherProject).toBeDefined();
     });
 
-    it('prevents adding more than MAX_COLLABORATORS_PER_PROJECT collaborators', () => {
-      const project = projectStore.createProject(mockOwner, { name: 'Collaborator Limit Test' });
+    it('prevents adding more than MAX_COLLABORATORS_PER_PROJECT collaborators', async () => {
+      const project = await projectStore.createProject(mockOwner, { name: 'Collaborator Limit Test' });
 
       for (let i = 0; i < PROJECT_LIMITS.MAX_COLLABORATORS_PER_PROJECT; i++) {
         const collabUser: UserProfile = {
@@ -2378,7 +2356,7 @@ describe('ProjectStore & Workspace', () => {
           isGuest: false,
           createdAt: Date.now()
         };
-        projectStore.addCollaborator(project.id, mockOwner.id, collabUser, 'collaborator');
+        await projectStore.addCollaborator(project.id, mockOwner.id, collabUser, 'collaborator');
       }
 
       const overflowUser: UserProfile = {
@@ -2391,49 +2369,40 @@ describe('ProjectStore & Workspace', () => {
         createdAt: Date.now()
       };
 
-      expect(() => {
-        projectStore.addCollaborator(project.id, mockOwner.id, overflowUser, 'collaborator');
-      }).toThrow(ProjectLimitError);
+      await expect(projectStore.addCollaborator(project.id, mockOwner.id, overflowUser, 'collaborator')).rejects.toThrow(ProjectLimitError);
     });
 
-    it('rejects oversized Lyrics data before any mutation occurs', () => {
-      const project = projectStore.createProject(mockOwner, { name: 'Lyrics Limit Test' });
+    it('rejects oversized Lyrics data before any mutation occurs', async () => {
+      const project = await projectStore.createProject(mockOwner, { name: 'Lyrics Limit Test' });
       const initialRev = project.workspace.lyrics.revision;
 
       // 1. Oversized single doc content
       const oversizedContent = 'a'.repeat(PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH + 1);
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           lyrics: { baseRevision: initialRev, content: oversizedContent }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // 2. Oversized doc title
       const oversizedTitle = 't'.repeat(PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH + 1);
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           lyrics: { baseRevision: initialRev, title: oversizedTitle }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // 3. Exceeding MAX_LYRICS_DOCUMENTS
       const tooManyDocs = [];
       for (let i = 0; i < PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS + 1; i++) {
         tooManyDocs.push({ id: `doc-${i}`, title: `Doc ${i}`, content: 'hello' });
       }
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           lyrics: { baseRevision: initialRev, documents: tooManyDocs }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // 4. Combined update: 50 documents + new documentId in the same request -> projected 51 documents -> rejected
       const maxDocs = [];
       for (let i = 0; i < PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS; i++) {
         maxDocs.push({ id: `doc-${i}`, title: `Doc ${i}`, content: 'hello' });
       }
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           lyrics: {
             baseRevision: initialRev,
             documents: maxDocs,
@@ -2441,20 +2410,17 @@ describe('ProjectStore & Workspace', () => {
             title: 'Overflow Doc',
             content: 'extra'
           }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // 5. Combined update: documents + title exceeding limit on target document
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           lyrics: {
             baseRevision: initialRev,
             documents: [{ id: 'doc-1', title: 'Normal', content: 'hello' }],
             documentId: 'doc-1',
             title: 't'.repeat(PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH + 1)
           }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // 6. Combined update: documents + content exceeding total cumulative content limit
       const heavyDocs = [
@@ -2464,8 +2430,7 @@ describe('ProjectStore & Workspace', () => {
         { id: 'doc-4', title: 'D4', content: 'd'.repeat(80_000) },
         { id: 'doc-5', title: 'D5', content: 'e'.repeat(80_000) } // total 400,000
       ];
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           lyrics: {
             baseRevision: initialRev,
             documents: heavyDocs,
@@ -2473,35 +2438,21 @@ describe('ProjectStore & Workspace', () => {
             title: 'Extra Doc',
             content: 'f'.repeat(100_001) // would exceed individual and total limit
           }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // 7. Combined update: documents + single doc update exceeding total cumulative content limit (500k)
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
-          lyrics: {
-            baseRevision: initialRev,
-            documents: heavyDocs,
-            documentId: 'doc-extra',
-            title: 'Extra Doc',
-            content: 'f'.repeat(100_000) // 400,000 + 100,000 = 500,000 (ok), but let's test 100,001 or adding to existing
-          }
-        });
-      });
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
-          lyrics: {
-            baseRevision: initialRev,
-            documents: [
-              ...heavyDocs,
-              { id: 'doc-6', title: 'D6', content: 'g'.repeat(50_000) } // total 450,000
-            ],
-            documentId: 'doc-extra',
-            title: 'Extra Doc',
-            content: 'h'.repeat(60_000) // total would become 510,000 > 500,000
-          }
-        });
-      }).toThrow(WorkspaceLimitError);
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
+        lyrics: {
+          baseRevision: initialRev,
+          documents: [
+            ...heavyDocs,
+            { id: 'doc-6', title: 'D6', content: 'g'.repeat(50_000) } // total 450,000
+          ],
+          documentId: 'doc-extra',
+          title: 'Extra Doc',
+          content: 'h'.repeat(60_000) // total would become 510,000 > 500,000
+        }
+      })).rejects.toThrow(WorkspaceLimitError);
 
       // Verify ZERO mutations applied
       const p = projectStore.getProject(project.id, mockOwner.id)!;
@@ -2509,33 +2460,27 @@ describe('ProjectStore & Workspace', () => {
       expect(p.workspace.lyrics.content).toBe('');
     });
 
-    it('rejects oversized Notes data before any mutation occurs', () => {
-      const project = projectStore.createProject(mockOwner, { name: 'Notes Limit Test' });
+    it('rejects oversized Notes data before any mutation occurs', async () => {
+      const project = await projectStore.createProject(mockOwner, { name: 'Notes Limit Test' });
       const initialRev = project.workspace.notes.revision;
 
       // 1. Oversized content
       const oversizedNotes = 'n'.repeat(PROJECT_LIMITS.MAX_NOTES_CONTENT_LENGTH + 1);
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           notes: { baseRevision: initialRev, content: oversizedNotes }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // 2. Oversized BPM
       const oversizedBpm = '1'.repeat(PROJECT_LIMITS.MAX_NOTES_BPM_LENGTH + 1);
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           notes: { baseRevision: initialRev, bpm: oversizedBpm }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // 3. Oversized Key
       const oversizedKey = 'k'.repeat(PROJECT_LIMITS.MAX_NOTES_KEY_LENGTH + 1);
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           notes: { baseRevision: initialRev, key: oversizedKey }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // Verify ZERO mutations applied
       const p = projectStore.getProject(project.id, mockOwner.id)!;
@@ -2543,8 +2488,8 @@ describe('ProjectStore & Workspace', () => {
       expect(p.workspace.notes.content).toBe('');
     });
 
-    it('rejects oversized Song Structure data before any mutation occurs', () => {
-      const project = projectStore.createProject(mockOwner, { name: 'Structure Limit Test' });
+    it('rejects oversized Song Structure data before any mutation occurs', async () => {
+      const project = await projectStore.createProject(mockOwner, { name: 'Structure Limit Test' });
       const initialRev = project.workspace.structure.revision;
 
       // 1. Exceeding MAX_STRUCTURE_SECTIONS
@@ -2552,27 +2497,21 @@ describe('ProjectStore & Workspace', () => {
       for (let i = 0; i < PROJECT_LIMITS.MAX_STRUCTURE_SECTIONS + 1; i++) {
         tooManySections.push({ id: `sec-${i}`, name: `Section ${i}`, bars: 8 });
       }
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           structure: { baseRevision: initialRev, sections: tooManySections }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // 2. Oversized section name
       const oversizedName = 's'.repeat(PROJECT_LIMITS.MAX_STRUCTURE_SECTION_NAME_LENGTH + 1);
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           structure: { baseRevision: initialRev, sections: [{ id: 'sec-1', name: oversizedName, bars: 8 }] }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // 3. Oversized section note
       const oversizedNote = 'note-'.repeat(150);
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           structure: { baseRevision: initialRev, sections: [{ id: 'sec-1', name: 'Verse', note: oversizedNote }] }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // Verify ZERO mutations applied
       const p = projectStore.getProject(project.id, mockOwner.id)!;
@@ -2580,8 +2519,8 @@ describe('ProjectStore & Workspace', () => {
       expect(p.workspace.structure.sections.length).toBe(0);
     });
 
-    it('rejects oversized Tasks data before any mutation occurs', () => {
-      const project = projectStore.createProject(mockOwner, { name: 'Tasks Limit Test' });
+    it('rejects oversized Tasks data before any mutation occurs', async () => {
+      const project = await projectStore.createProject(mockOwner, { name: 'Tasks Limit Test' });
       const initialRev = project.workspace.tasks.revision;
 
       // 1. Exceeding MAX_TASKS
@@ -2589,32 +2528,180 @@ describe('ProjectStore & Workspace', () => {
       for (let i = 0; i < PROJECT_LIMITS.MAX_TASKS + 1; i++) {
         tooManyTasks.push({ id: `task-${i}`, title: `Task ${i}`, status: 'todo' as const });
       }
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           tasks: { baseRevision: initialRev, tasks: tooManyTasks }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // 2. Oversized task title
       const oversizedTitle = 't'.repeat(PROJECT_LIMITS.MAX_TASK_TITLE_LENGTH + 1);
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           tasks: { baseRevision: initialRev, tasks: [{ id: 'task-1', title: oversizedTitle, status: 'todo' }] }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // 3. Oversized task note
       const oversizedNote = 'n'.repeat(PROJECT_LIMITS.MAX_TASK_NOTE_LENGTH + 1);
-      expect(() => {
-        projectStore.updateWorkspace(project.id, mockOwner, {
+      await expect(projectStore.updateWorkspace(project.id, mockOwner, {
           tasks: { baseRevision: initialRev, tasks: [{ id: 'task-1', title: 'Normal', note: oversizedNote, status: 'todo' }] }
-        });
-      }).toThrow(WorkspaceLimitError);
+        })).rejects.toThrow(WorkspaceLimitError);
 
       // Verify ZERO mutations applied
       const p = projectStore.getProject(project.id, mockOwner.id)!;
       expect(p.workspace.tasks.revision).toBe(initialRev);
       expect(p.workspace.tasks.tasks.length).toBe(0);
+    });
+  });
+
+  describe('Per-Project Asynchronous Persistence & Concurrency Queue (Issue 45)', () => {
+    it('migrates legacy consolidated projects file into per-project files on startup without data loss', async () => {
+      const migrationDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-migration-test-'));
+      const legacyProjectsFile = path.join(migrationDir, 'jameet-projects.json');
+      const legacyData = {
+        version: 1,
+        projects: [
+          {
+            id: 'legacy-p1',
+            name: 'Legacy Project 1',
+            ownerId: mockOwner.id,
+            ownerDisplayName: mockOwner.displayName,
+            ownerUsername: mockOwner.username,
+            ownerAvatarColor: mockOwner.avatarColor,
+            collaborators: [
+              {
+                userId: mockCollaborator.id,
+                displayName: mockCollaborator.displayName,
+                username: mockCollaborator.username,
+                avatarColor: mockCollaborator.avatarColor,
+                role: 'collaborator' as const,
+                addedAt: 1000
+              }
+            ],
+            sessions: [],
+            sessionCount: 0,
+            workspace: {
+              lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main', content: 'Legacy lyrics', updatedAt: 1000 }], content: 'Legacy lyrics', updatedAt: 1000 },
+              notes: { revision: 1, content: 'Legacy notes', updatedAt: 1000 },
+              structure: { revision: 1, sections: [], updatedAt: 1000 },
+              tasks: { revision: 1, tasks: [], updatedAt: 1000 }
+            },
+            activities: [],
+            createdAt: 1000,
+            updatedAt: 1000,
+            lastActivityAt: 1000
+          },
+          {
+            id: 'legacy-p2',
+            name: 'Legacy Project 2',
+            ownerId: mockOwner.id,
+            ownerDisplayName: mockOwner.displayName,
+            ownerUsername: mockOwner.username,
+            ownerAvatarColor: mockOwner.avatarColor,
+            collaborators: [],
+            sessions: [],
+            sessionCount: 0,
+            workspace: {
+              lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main', content: '', updatedAt: 1000 }], content: '', updatedAt: 1000 },
+              notes: { revision: 1, content: '', updatedAt: 1000 },
+              structure: { revision: 1, sections: [], updatedAt: 1000 },
+              tasks: { revision: 1, tasks: [], updatedAt: 1000 }
+            },
+            activities: [],
+            createdAt: 1000,
+            updatedAt: 1000,
+            lastActivityAt: 1000
+          }
+        ]
+      };
+
+      fs.writeFileSync(legacyProjectsFile, JSON.stringify(legacyData, null, 2), 'utf-8');
+
+      // Initialize ProjectStore on migrationDir
+      const store = new ProjectStore(migrationDir);
+      const loaded = store.listProjects(mockOwner.id);
+      expect(loaded.length).toBe(2);
+      expect(loaded.find((p) => p.id === 'legacy-p1')?.name).toBe('Legacy Project 1');
+      expect(loaded.find((p) => p.id === 'legacy-p2')?.name).toBe('Legacy Project 2');
+
+      // Verify per-project files exist on disk
+      const p1File = path.join(migrationDir, 'projects', 'legacy-p1.json');
+      const p2File = path.join(migrationDir, 'projects', 'legacy-p2.json');
+      expect(fs.existsSync(p1File)).toBe(true);
+      expect(fs.existsSync(p2File)).toBe(true);
+
+      // Verify legacy consolidated file was renamed or backed up
+      expect(fs.existsSync(legacyProjectsFile)).toBe(false);
+      expect(fs.existsSync(`${legacyProjectsFile}.migrated.bak`)).toBe(true);
+
+      // Reloading a new ProjectStore instance from the same directory loads the per-project files cleanly
+      const freshStore = new ProjectStore(migrationDir);
+      expect(freshStore.listProjects(mockOwner.id).length).toBe(2);
+      const p1 = freshStore.getProject('legacy-p1', mockOwner.id);
+      expect(p1?.workspace.lyrics.content).toBe('Legacy lyrics');
+      expect(p1?.workspace.notes.content).toBe('Legacy notes');
+    });
+
+    it('serializes concurrent mutations on the same project in FIFO order through transaction queue', async () => {
+      const project = await projectStore.createProject(mockOwner, { name: 'FIFO Queue Test Project' });
+      
+      // Perform 5 sequential mutations fired concurrently on the same project
+      const results: string[] = [];
+
+      const p1 = projectStore.updateProject(project.id, mockOwner.id, { name: 'FIFO Step 1' }).then((res) => {
+        results.push(res!.name);
+      });
+      const p2 = projectStore.updateProject(project.id, mockOwner.id, { name: 'FIFO Step 2' }).then((res) => {
+        results.push(res!.name);
+      });
+      const p3 = projectStore.updateProject(project.id, mockOwner.id, { name: 'FIFO Step 3' }).then((res) => {
+        results.push(res!.name);
+      });
+      const p4 = projectStore.updateProject(project.id, mockOwner.id, { name: 'FIFO Step 4' }).then((res) => {
+        results.push(res!.name);
+      });
+      const p5 = projectStore.updateProject(project.id, mockOwner.id, { name: 'FIFO Step 5' }).then((res) => {
+        results.push(res!.name);
+      });
+
+      await Promise.all([p1, p2, p3, p4, p5]);
+
+      expect(results).toEqual(['FIFO Step 1', 'FIFO Step 2', 'FIFO Step 3', 'FIFO Step 4', 'FIFO Step 5']);
+
+      const finalProject = projectStore.getProject(project.id, mockOwner.id);
+      expect(finalProject?.name).toBe('FIFO Step 5');
+
+      // Verify on-disk single authoritative project file
+      const projectPath = path.join(tmpDir, 'projects', `${project.id}.json`);
+      const diskContent = JSON.parse(fs.readFileSync(projectPath, 'utf-8'));
+      expect(diskContent.name).toBe('FIFO Step 5');
+    });
+
+    it('executes mutations on different projects concurrently without blocking each other', async () => {
+      const projA = await projectStore.createProject(mockOwner, { name: 'Project Alpha' });
+      const projB = await projectStore.createProject(mockOwner, { name: 'Project Beta' });
+
+      const [resA, resB] = await Promise.all([
+        projectStore.updateWorkspace(projA.id, mockOwner, {
+          notes: { baseRevision: 1, content: 'Alpha Notes Content', bpm: '120' }
+        }),
+        projectStore.updateWorkspace(projB.id, mockOwner, {
+          notes: { baseRevision: 1, content: 'Beta Notes Content', bpm: '140' }
+        })
+      ]);
+
+      expect(resA?.workspace.notes.content).toBe('Alpha Notes Content');
+      expect(resA?.workspace.notes.bpm).toBe('120');
+      expect(resB?.workspace.notes.content).toBe('Beta Notes Content');
+      expect(resB?.workspace.notes.bpm).toBe('140');
+
+      // Verify both written to individual files
+      const aFile = path.join(tmpDir, 'projects', `${projA.id}.json`);
+      const bFile = path.join(tmpDir, 'projects', `${projB.id}.json`);
+      expect(fs.existsSync(aFile)).toBe(true);
+      expect(fs.existsSync(bFile)).toBe(true);
+
+      const aDisk = JSON.parse(fs.readFileSync(aFile, 'utf-8'));
+      const bDisk = JSON.parse(fs.readFileSync(bFile, 'utf-8'));
+      expect(aDisk.workspace.notes.content).toBe('Alpha Notes Content');
+      expect(bDisk.workspace.notes.content).toBe('Beta Notes Content');
     });
   });
 });

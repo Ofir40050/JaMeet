@@ -548,7 +548,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     }
 
     try {
-      const project = projectStore.createProject(user, parsed.data, initialCollaborators);
+      const project = await projectStore.createProject(user, parsed.data, initialCollaborators);
       return reply.code(201).send({ ok: true, project });
     } catch (err: unknown) {
       if (err instanceof ProjectLimitError) {
@@ -592,7 +592,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       return reply.code(400).send({ ok: false, message: 'Invalid update parameters.' });
     }
     try {
-      const updated = projectStore.updateProject(request.params.id, user.id, parsed.data);
+      const updated = await projectStore.updateProject(request.params.id, user.id, parsed.data);
       if (!updated) {
         return reply.code(403).send({ ok: false, message: 'Project not found or unauthorized.' });
       }
@@ -621,7 +621,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       return reply.code(403).send({ ok: false, message: 'Only the project owner can delete this project.' });
     }
     try {
-      const deleted = projectStore.deleteProject(request.params.id, user.id);
+      const deleted = await projectStore.deleteProject(request.params.id, user.id);
       if (!deleted) {
         return reply.code(403).send({ ok: false, message: 'Only the project owner can delete this project.' });
       }
@@ -691,7 +691,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       return reply.code(404).send({ ok: false, message: `No registered JaMeet user found matching "${parsed.data.usernameOrEmail}".` });
     }
     try {
-      const updated = projectStore.addCollaborator(request.params.id, user.id, targetUser, parsed.data.role);
+      const updated = await projectStore.addCollaborator(request.params.id, user.id, targetUser, parsed.data.role);
       if (!updated) {
         return reply.code(403).send({ ok: false, message: 'Unauthorized to add collaborator or assign role.' });
       }
@@ -725,7 +725,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       return reply.code(403).send({ ok: false, message: 'Only the project owner can remove other collaborators.' });
     }
     try {
-      const updated = projectStore.removeCollaborator(request.params.id, user.id, request.params.userId);
+      const updated = await projectStore.removeCollaborator(request.params.id, user.id, request.params.userId);
       if (!updated) {
         return reply.code(403).send({ ok: false, message: 'Unauthorized to remove collaborator.' });
       }
@@ -777,7 +777,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       return reply.code(400).send({ ok: false, message: 'Invalid workspace update payload.' });
     }
     try {
-      const updated = projectStore.updateWorkspace(request.params.id, user, parsed.data);
+      const updated = await projectStore.updateWorkspace(request.params.id, user, parsed.data);
       if (!updated) {
         return reply.code(403).send({ ok: false, message: 'Unauthorized to modify workspace.' });
       }
@@ -1158,7 +1158,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
     });
 
-    socket.on('project:workspace:update', (raw: { projectId: string; authToken?: string; updates: unknown }, ack?: (res: UpdateProjectWorkspaceResponse) => void) => {
+    socket.on('project:workspace:update', async (raw: { projectId: string; authToken?: string; updates: unknown }, ack?: (res: UpdateProjectWorkspaceResponse) => void) => {
       if (!limiter.consume('workspace')) { ack?.({ ok: false, message: 'Too many requests. Please slow down.' }); return; }
       if (!raw?.projectId || !raw?.updates) { ack?.({ ok: false, message: 'Invalid payload' }); return; }
       const user = userStore.verifyToken(raw.authToken);
@@ -1177,7 +1177,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
       let updated;
       try {
-        updated = projectStore.updateWorkspace(raw.projectId, user, parsed.data);
+        updated = await projectStore.updateWorkspace(raw.projectId, user, parsed.data);
       } catch (err: unknown) {
         if (err instanceof WorkspaceConflictError) {
           const currentProject = projectStore.getProject(raw.projectId, user.id);
@@ -1238,7 +1238,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       ack?.({ ok: true, workspace: updated.workspace });
     });
 
-    socket.on('meeting:create', (raw, ack: (value: MeetingAck) => void) => {
+    socket.on('meeting:create', async (raw, ack: (value: MeetingAck) => void) => {
       if (!limiter.consume('session')) return ack(failure('BAD_REQUEST', 'Too many requests. Please slow down.'));
       const parsed = createMeetingSchema.safeParse(raw);
       if (!parsed.success) return ack(failure('BAD_REQUEST', 'Invalid session request'));
@@ -1275,7 +1275,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         }
 
         if (createdRoom.projectId) {
-          projectStore.recordProjectSession(createdRoom.projectId, {
+          await projectStore.recordProjectSession(createdRoom.projectId, {
             id: `${identity.id}_${createdRoom.code}`,
             code: createdRoom.code,
             startedAt: Date.now(),
@@ -1289,18 +1289,15 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
         logger.info('session_created', 'Session created successfully', {
           code: createdRoom.code,
-          sessionId: createdRoom.sessionId,
-          role: 'host',
-          isGuest: identity.isGuest,
-          userId: identity.isGuest ? undefined : identity.id,
-          projectId: createdRoom.projectId,
-          waitingRoom: Boolean(parsed.data.waitingRoomEnabled)
-        }, { sessionCode: createdRoom.code, sessionId: createdRoom.sessionId });
+          hostId: identity.id,
+          isGuest: identity.isGuest
+        }, { sessionCode: createdRoom.code });
 
         ack({
           ok: true,
           code: createdRoom.code,
           role: 'host',
+          waiting: false,
           locked: false,
           iceServers: createIceServers(config, parsed.data.participantId),
           peerPresent: false,
@@ -1313,7 +1310,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         let rollbackError: unknown;
         try {
           userStore.restoreSnapshot(userSnapshot);
-          projectStore.restoreSnapshot(projectSnapshot);
+          await projectStore.restoreSnapshot(projectSnapshot);
         } catch (rErr: unknown) {
           rollbackError = rErr;
           console.error('Critical: Failed to persist compensating rollback for session creation:', { originalError: err, rollbackError: rErr });
@@ -1335,7 +1332,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
     });
 
-    socket.on('meeting:join', (raw, ack: (value: MeetingAck) => void) => {
+    socket.on('meeting:join', async (raw, ack: (value: MeetingAck) => void) => {
       if (!limiter.consume('session')) return ack(failure('BAD_REQUEST', 'Too many requests. Please slow down.'));
       const parsed = joinMeetingSchema.safeParse(raw);
       if (!parsed.success) return ack(failure('BAD_REQUEST', 'Invalid session code or participant'));
@@ -1398,7 +1395,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
           if (!joined.reconnected) {
             userStore.recordCollaboratorJoined(joined.room.sessionId, parsed.data.code, joined.room.hostIdentity, joined.participant.identity);
             if (ensureRoomProjectAccess(joined.room)) {
-              projectStore.recordProjectSession(joined.room.projectId!, {
+              await projectStore.recordProjectSession(joined.room.projectId!, {
                 id: `${joined.room.hostIdentity.id}_${parsed.data.code}`,
                 code: parsed.data.code,
                 startedAt: Date.now(),
@@ -1418,34 +1415,34 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         }
 
         Object.assign(socketData, { code: parsed.data.code, participantId: joined.participant.id, identity: joined.participant.identity, isWaiting: false });
-        void socket.join(parsed.data.code);
+        void socket.join(joined.room.code);
 
-        logger.info('session_joined', 'Participant joined session', {
-          code: parsed.data.code,
-          role: joined.participant.role,
-          isWaiting: false,
-          reconnected: Boolean(joined.reconnected),
-          isGuest: identity.isGuest,
-          userId: identity.isGuest ? undefined : identity.id
-        }, { sessionCode: parsed.data.code });
+        logger.info('session_joined', 'Session joined successfully', {
+          code: joined.room.code,
+          participantId: joined.participant.id,
+          isGuest: joined.participant.identity.isGuest,
+          reconnected: joined.reconnected
+        }, { sessionCode: joined.room.code });
 
+        const hostParticipant = Array.from(joined.room.participants.values()).find((p) => p.role === 'host');
         ack({
           ok: true,
-          code: parsed.data.code,
+          code: joined.room.code,
           role: joined.participant.role,
+          waiting: false,
           locked: Boolean(joined.room.isLocked),
           iceServers: createIceServers(config, parsed.data.participantId),
-          peerPresent: Boolean(peer?.socketId),
+          peerPresent: Boolean(peer),
           peerMedia: peer?.media,
           peerParticipantId: peer?.id,
           identity: joined.participant.identity,
           hostIdentity: joined.room.hostIdentity,
-          peerIdentity: peer?.identity,
+          peerIdentity: peer ? peer.identity : (joined.participant.role === 'guest' ? hostParticipant?.identity : undefined),
           projectId: joined.room.projectId || undefined,
           reconnectToken: joined.participant.reconnectToken
         });
 
-        if (peer?.socketId) {
+        if (peer && peer.socketId) {
           io.to(peer.socketId).emit('peer:ready', {
             media: joined.participant.media,
             identity: joined.participant.identity,
@@ -1461,7 +1458,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         let rollbackError: unknown;
         try {
           userStore.restoreSnapshot(userSnapshot);
-          projectStore.restoreSnapshot(projectSnapshot);
+          await projectStore.restoreSnapshot(projectSnapshot);
         } catch (rErr: unknown) {
           rollbackError = rErr;
           console.error('Critical: Failed to persist compensating rollback for session join:', { originalError: err, rollbackError: rErr });
@@ -1485,7 +1482,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
     });
 
-    const handleAdmit = (raw: unknown, ack?: (res: { ok: boolean; message?: string }) => void) => {
+    const handleAdmit = async (raw: unknown, ack?: (res: { ok: boolean; message?: string }) => void) => {
       if (!limiter.consume('session')) {
         ack?.({ ok: false, message: 'Too many requests. Please slow down.' });
         return;
@@ -1530,7 +1527,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       try {
         userStore.recordCollaboratorJoined(admitted.room.sessionId, admitted.room.code, admitted.room.hostIdentity, admitted.participant.identity);
         if (ensureRoomProjectAccess(admitted.room)) {
-          projectStore.recordProjectSession(admitted.room.projectId!, {
+          await projectStore.recordProjectSession(admitted.room.projectId!, {
             id: `${admitted.room.hostIdentity.id}_${admitted.room.code}`,
             code: admitted.room.code,
             startedAt: Date.now(),
@@ -1594,7 +1591,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         let rollbackError: unknown;
         try {
           userStore.restoreSnapshot(userSnapshot);
-          projectStore.restoreSnapshot(projectSnapshot);
+          await projectStore.restoreSnapshot(projectSnapshot);
         } catch (rErr: unknown) {
           rollbackError = rErr;
           console.error('Critical: Failed to persist compensating rollback for session admission:', { originalError: err, rollbackError: rErr });

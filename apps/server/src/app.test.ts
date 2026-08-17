@@ -466,7 +466,7 @@ describe('signaling integration', () => {
         displayName: 'Socket Stranger'
       });
 
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Socket Sync Project' }, [collabAuth.user]);
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Socket Sync Project' }, [collabAuth.user]);
       expect(project).toBeDefined();
 
       const ownerSocket = await connected(url);
@@ -1686,7 +1686,7 @@ describe('signaling integration', () => {
           displayName: 'Project Host'
         });
         userStore.setSessionAccess(hostReg.user.id, 'beta');
-        const project = projectStore.createProject(hostReg.user, { name: 'Consistency Test Project' });
+        const project = await projectStore.createProject(hostReg.user, { name: 'Consistency Test Project' });
 
         expect(userStore.getStoredUser(hostReg.user.id)?.sessionsHostedCount).toBe(0);
         expect(userStore.getSessionHistory(hostReg.user.id).length).toBe(0);
@@ -1761,7 +1761,7 @@ describe('signaling integration', () => {
           displayName: 'Cross Guest'
         });
         userStore.setSessionAccess(guestReg.user.id, 'beta');
-        const project = projectStore.createProject(hostReg.user, { name: 'Cross Join Project' });
+        const project = await projectStore.createProject(hostReg.user, { name: 'Cross Join Project' });
 
         const hostSocket = await connected(url);
         const guestSocket = await connected(url);
@@ -2865,7 +2865,7 @@ describe('signaling integration', () => {
           displayName: 'Sarah Guest'
         });
         userStore.setSessionAccess(guestReg.user.id, 'beta');
-        const project = projectStore.createProject(hostReg.user, { name: 'EP Production' });
+        const project = await projectStore.createProject(hostReg.user, { name: 'EP Production' });
 
         const hostSocket = await connected(url);
         const guestSocket = await connected(url);
@@ -2995,7 +2995,7 @@ describe('signaling integration', () => {
           displayName: 'Guest Kicked'
         });
         userStore.setSessionAccess(guestReg.user.id, 'beta');
-        const project = projectStore.createProject(hostReg.user, { name: 'Kicked Test EP' });
+        const project = await projectStore.createProject(hostReg.user, { name: 'Kicked Test EP' });
 
         const hostSocket = await connected(url);
         const guestSocket = await connected(url);
@@ -3957,7 +3957,7 @@ describe('Graceful Server Shutdown Active Session Finalization', () => {
         const hostUser = await createTestAccount(url, 'shut_host', 'beta', userStore);
         const guestUser = await createTestAccount(url, 'shut_guest', 'beta', userStore);
 
-        const project = projectStore.createProject(hostUser.user, { name: 'Shutdown Album Project' }, [guestUser.user]);
+        const project = await projectStore.createProject(hostUser.user, { name: 'Shutdown Album Project' }, [guestUser.user]);
 
         const hostSocket = await connected(url);
         const guestSocket = await connected(url);
@@ -4184,7 +4184,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const ownerAuth = await createTestAccount(url, 'owner_collab_test', 'beta', userStore);
       const collabAuth = await createTestAccount(url, 'collab_user_test', 'beta', userStore);
 
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Collaborative Song' }, [collabAuth.user]);
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Collaborative Song' }, [collabAuth.user]);
 
       const ownerSocket = await connected(url);
       const collabSocket = await connected(url);
@@ -4298,7 +4298,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const ownerAuth = await createTestAccount(url, 'owner_self_test', 'beta', userStore);
       const collabAuth = await createTestAccount(url, 'collab_self_test', 'beta', userStore);
 
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Self Remove Song' }, [collabAuth.user]);
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Self Remove Song' }, [collabAuth.user]);
 
       const ownerSocket = await connected(url);
       const collabSocket = await connected(url);
@@ -4368,8 +4368,8 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const ownerAuth = await createTestAccount(url, 'owner_multi_proj', 'beta', userStore);
       const collabAuth = await createTestAccount(url, 'collab_multi_proj', 'beta', userStore);
 
-      const projectA = projectStore.createProject(ownerAuth.user, { name: 'Project A' }, [collabAuth.user]);
-      const projectB = projectStore.createProject(ownerAuth.user, { name: 'Project B' }, [collabAuth.user]);
+      const projectA = await projectStore.createProject(ownerAuth.user, { name: 'Project A' }, [collabAuth.user]);
+      const projectB = await projectStore.createProject(ownerAuth.user, { name: 'Project B' }, [collabAuth.user]);
 
       const ownerSocket = await connected(url);
       const collabSocket = await connected(url);
@@ -4472,7 +4472,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const loginData = (await loginRes.json()) as { ok: boolean; token: string };
       const collabToken2 = loginData.token;
 
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Logout Test Song' }, [collabAuth1.user]);
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Logout Test Song' }, [collabAuth1.user]);
 
       const ownerSocket = await connected(url);
       const collabSocket1 = await connected(url);
@@ -4539,7 +4539,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const ownerAuth = await createTestAccount(url, 'owner_pwd_test', 'beta', userStore);
       const collabAuth = await createTestAccount(url, 'collab_pwd_test', 'beta', userStore);
 
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Password Test Song' }, [collabAuth.user]);
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Password Test Song' }, [collabAuth.user]);
 
       const ownerSocket = await connected(url);
       const collabSocket = await connected(url);
@@ -4604,7 +4604,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const ownerAuth = await createTestAccount(url, 'owner_exp_test', 'beta', userStore);
       const collabAuth = await createTestAccount(url, 'collab_exp_test', 'beta', userStore);
 
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Expiry Test Song' }, [collabAuth.user]);
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Expiry Test Song' }, [collabAuth.user]);
 
       const ownerSocket = await connected(url);
       const collabSocket = await connected(url);
@@ -4727,7 +4727,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const ownerAuth = await createTestAccount(url, 'owner_assignee', 'beta', userStore);
       const collabAuth = await createTestAccount(url, 'collab_assignee', 'beta', userStore);
 
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Assignee Song' }, [collabAuth.user]);
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Assignee Song' }, [collabAuth.user]);
 
       const ownerSocket = await connected(url);
       const collabSocket = await connected(url);
@@ -4837,9 +4837,9 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const editorAuth = await createTestAccount(url, 'editor_sess_auth', 'beta', userStore);
       const viewerAuth = await createTestAccount(url, 'viewer_sess_auth', 'beta', userStore);
 
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Session Auth Project' });
-      projectStore.addCollaborator(project.id, ownerAuth.user.id, editorAuth.user, 'editor');
-      projectStore.addCollaborator(project.id, ownerAuth.user.id, viewerAuth.user, 'viewer');
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Session Auth Project' });
+      await projectStore.addCollaborator(project.id, ownerAuth.user.id, editorAuth.user, 'editor');
+      await projectStore.addCollaborator(project.id, ownerAuth.user.id, viewerAuth.user, 'viewer');
 
       const viewerSocket = await connected(url);
       const editorSocket = await connected(url);
@@ -4912,9 +4912,9 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const hostAuth = await createTestAccount(url, 'host_editor_user', 'beta', userStore);
       const participantAuth = await createTestAccount(url, 'part_stale_user', 'beta', userStore);
 
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Active Session Stale Test' });
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Active Session Stale Test' });
       // Add host as editor
-      projectStore.addCollaborator(project.id, ownerAuth.user.id, hostAuth.user, 'editor');
+      await projectStore.addCollaborator(project.id, ownerAuth.user.id, hostAuth.user, 'editor');
 
       const hostSocket = await connected(url);
       const participantSocket = await connected(url);
@@ -4990,7 +4990,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const ownerAuth = await createTestAccount(url, 'owner_lyr_rest', 'beta', userStore);
       const editorAuth = await createTestAccount(url, 'editor_lyr_rest', 'beta', userStore);
 
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Lyrics Rest Test' }, [editorAuth.user]);
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Lyrics Rest Test' }, [editorAuth.user]);
       const initialDoc = project.workspace.lyrics.documents[0];
       const initialDocUpdatedAt = initialDoc.updatedAt;
 
@@ -5065,7 +5065,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const ownerAuth = await createTestAccount(url, 'owner_task_id', 'beta', userStore);
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Task ID Integration Song' });
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Task ID Integration Song' });
 
       // 1. REST update with empty task ID -> 400 Bad Request
       const emptyIdRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
@@ -5143,7 +5143,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const ownerAuth = await createTestAccount(url, 'owner_sec_id', 'beta', userStore);
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Structure ID Integration Song' });
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Structure ID Integration Song' });
 
       // 1. REST update with empty section ID -> 400 Bad Request
       const emptyIdRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
@@ -5221,7 +5221,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const ownerAuth = await createTestAccount(url, 'owner_doc_id', 'beta', userStore);
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Lyrics ID Integration Song' });
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Lyrics ID Integration Song' });
 
       // 1. REST update with empty document ID -> 400 Bad Request
       const emptyIdRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
@@ -5299,7 +5299,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const ownerAuth = await createTestAccount(url, 'owner_docid_val', 'beta', userStore);
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Doc ID Validation Song' });
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Doc ID Validation Song' });
 
       // 1. REST update with empty documentId -> 400 Bad Request
       const emptyDocIdRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
@@ -5377,10 +5377,10 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const ownerAuth = await createTestAccount(url, 'owner_task_status', 'beta', userStore);
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Task Status REST Integration Song' });
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Task Status REST Integration Song' });
 
       // 1. Initial task creation
-      projectStore.updateWorkspace(project.id, ownerAuth.user, {
+      await projectStore.updateWorkspace(project.id, ownerAuth.user, {
         tasks: {
           baseRevision: 1, tasks: [{ id: 'task-1', title: 'Edit Drum Tracks', status: 'todo' }]
         }
@@ -5446,7 +5446,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const ownerAuth = await createTestAccount(url, 'owner_task_due', 'beta', userStore);
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Task Due REST Integration Song' });
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Task Due REST Integration Song' });
 
       // 1. REST update with invalid date format -> 400 Bad Request
       const xssRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
@@ -5520,11 +5520,11 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const hostAuth = await createTestAccount(url, 'host_task_assign', 'beta', userStore);
       const collabAuth = await createTestAccount(url, 'collab_task_assign', 'beta', userStore);
 
-      const project = projectStore.createProject(hostAuth.user, { name: 'Task Assign Summary Project' });
-      projectStore.addCollaborator(project.id, hostAuth.user.id, collabAuth.user, 'editor');
+      const project = await projectStore.createProject(hostAuth.user, { name: 'Task Assign Summary Project' });
+      await projectStore.addCollaborator(project.id, hostAuth.user.id, collabAuth.user, 'editor');
 
       // Populate an initial task
-      projectStore.updateWorkspace(project.id, hostAuth.user, {
+      await projectStore.updateWorkspace(project.id, hostAuth.user, {
         tasks: {
           baseRevision: 1, tasks: [{ id: 'task-lead-vocals', title: 'Record Lead Vocals', status: 'todo' }]
         }
@@ -5591,7 +5591,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const hostAuth = await createTestAccount(url, 'host_lyr_rename', 'beta', userStore);
-      const project = projectStore.createProject(hostAuth.user, { name: 'Lyrics Rename Summary Project' });
+      const project = await projectStore.createProject(hostAuth.user, { name: 'Lyrics Rename Summary Project' });
 
       // Host creates meeting linked to project
       const hostSocket = await connected(url);
@@ -5654,7 +5654,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const hostAuth = await createTestAccount(url, 'host_notes_sum', 'beta', userStore);
-      const project = projectStore.createProject(hostAuth.user, { name: 'Notes BPM Key Summary Project' });
+      const project = await projectStore.createProject(hostAuth.user, { name: 'Notes BPM Key Summary Project' });
 
       // Host creates meeting linked to project
       const hostSocket = await connected(url);
@@ -5725,10 +5725,10 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const hostAuth = await createTestAccount(url, 'host_notes_clr', 'beta', userStore);
-      const project = projectStore.createProject(hostAuth.user, { name: 'Notes Clear Summary Project' });
+      const project = await projectStore.createProject(hostAuth.user, { name: 'Notes Clear Summary Project' });
 
       // Initially populate BPM and Key
-      projectStore.updateWorkspace(project.id, hostAuth.user, {
+      await projectStore.updateWorkspace(project.id, hostAuth.user, {
         notes: { baseRevision: 1, bpm: '120', key: 'C Minor' }
       });
 
@@ -5801,10 +5801,10 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const hostAuth = await createTestAccount(url, 'host_notes_c_clr', 'beta', userStore);
-      const project = projectStore.createProject(hostAuth.user, { name: 'Notes Content Clear Summary Project' });
+      const project = await projectStore.createProject(hostAuth.user, { name: 'Notes Content Clear Summary Project' });
 
       // Initially populate Notes content
-      projectStore.updateWorkspace(project.id, hostAuth.user, {
+      await projectStore.updateWorkspace(project.id, hostAuth.user, {
         notes: { baseRevision: 1, content: 'Initial project arrangement notes' }
       });
 
@@ -5871,11 +5871,11 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const hostAuth = await createTestAccount(url, 'host_task_unassign', 'beta', userStore);
       const collabAuth = await createTestAccount(url, 'collab_task_unassign', 'beta', userStore);
 
-      const project = projectStore.createProject(hostAuth.user, { name: 'Task Unassign Summary Project' });
-      projectStore.addCollaborator(project.id, hostAuth.user.id, collabAuth.user, 'editor');
+      const project = await projectStore.createProject(hostAuth.user, { name: 'Task Unassign Summary Project' });
+      await projectStore.addCollaborator(project.id, hostAuth.user.id, collabAuth.user, 'editor');
 
       // Populate an assigned task
-      projectStore.updateWorkspace(project.id, hostAuth.user, {
+      await projectStore.updateWorkspace(project.id, hostAuth.user, {
         tasks: {
           baseRevision: 1, tasks: [{ id: 'task-guitar-solo', title: 'Record Guitar Solo', status: 'todo', assigneeId: collabAuth.user.id }]
         }
@@ -5942,10 +5942,10 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const hostAuth = await createTestAccount(url, 'host_struct_sum', 'beta', userStore);
-      const project = projectStore.createProject(hostAuth.user, { name: 'Structure Summary Project' });
+      const project = await projectStore.createProject(hostAuth.user, { name: 'Structure Summary Project' });
 
       // Initially populate structure
-      projectStore.updateWorkspace(project.id, hostAuth.user, {
+      await projectStore.updateWorkspace(project.id, hostAuth.user, {
         structure: {
           baseRevision: 1, sections: [
             { id: 'sec-intro', type: 'intro', name: 'Intro', bars: 4, updatedAt: 100 }
@@ -6031,10 +6031,10 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const hostAuth = await createTestAccount(url, 'host_task_upd', 'beta', userStore);
-      const project = projectStore.createProject(hostAuth.user, { name: 'Task Update Summary Project' });
+      const project = await projectStore.createProject(hostAuth.user, { name: 'Task Update Summary Project' });
 
       // Initially populate a task
-      projectStore.updateWorkspace(project.id, hostAuth.user, {
+      await projectStore.updateWorkspace(project.id, hostAuth.user, {
         tasks: {
           baseRevision: 1, tasks: [{ id: 'task-lead-synth', title: 'Record Synth', status: 'todo' }]
         }
@@ -6101,10 +6101,10 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const hostAuth = await createTestAccount(url, 'host_lyr_del', 'beta', userStore);
-      const project = projectStore.createProject(hostAuth.user, { name: 'Lyrics Delete Summary Project' });
+      const project = await projectStore.createProject(hostAuth.user, { name: 'Lyrics Delete Summary Project' });
 
       // Initially populate multiple documents
-      projectStore.updateWorkspace(project.id, hostAuth.user, {
+      await projectStore.updateWorkspace(project.id, hostAuth.user, {
         lyrics: {
           baseRevision: 1, documents: [
             { id: 'doc-main', title: 'Main Lyrics', content: 'Main content' },
@@ -6176,7 +6176,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const ownerAuth = await createTestAccount(url, 'owner_fail_closed', 'beta', userStore);
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Fail Closed REST/Socket Project' });
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Fail Closed REST/Socket Project' });
       const initialActivitiesCount = project.activities.length;
 
       // Socket setup to monitor for illicit broadcasts
@@ -6676,7 +6676,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const ownerAuth = await createTestAccount(url, 'payload_owner', 'paid', userStore);
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Large Payload Test Project' });
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Large Payload Test Project' });
 
       const socket1 = await connected(url);
       const socket2 = await connected(url);
@@ -6752,7 +6752,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const ownerAuth = await createTestAccount(url, 'utf8_owner', 'paid', userStore);
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Combined UTF8 Project' });
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Combined UTF8 Project' });
 
       const socket1 = await connected(url);
       const socket2 = await connected(url);
@@ -6858,7 +6858,7 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       const url = `http://127.0.0.1:${address.port}`;
 
       const ownerAuth = await createTestAccount(url, 'escape_owner', 'paid', userStore);
-      const project = projectStore.createProject(ownerAuth.user, { name: 'Escape Expansion Project' });
+      const project = await projectStore.createProject(ownerAuth.user, { name: 'Escape Expansion Project' });
 
       const socket = await connected(url);
       await ack(socket, 'project:workspace:join', {
