@@ -540,9 +540,22 @@ else {
 
     ipcMain.handle('get-app-info', (event) => {
       if (!isTrustedSender(event)) return null;
+      let version = 'Unknown';
+      try {
+        const v = app.getVersion();
+        if (typeof v === 'string' && v.trim()) {
+          version = v.trim();
+        }
+      } catch {}
+      let platform = 'Unknown';
+      if (process.platform === 'darwin') {
+        platform = 'macOS';
+      } else if (process.platform === 'win32') {
+        platform = 'Windows';
+      }
       return {
-        version: app.getVersion(),
-        platform: process.platform === 'darwin' ? 'macOS' : (process.platform === 'win32' ? 'Windows' : 'Unknown')
+        version,
+        platform
       };
     });
 

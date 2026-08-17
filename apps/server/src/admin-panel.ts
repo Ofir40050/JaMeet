@@ -1372,8 +1372,8 @@ function renderAdminDashboard(): string {
         const tdClient = document.createElement('td');
         const clientTag = document.createElement('span');
         clientTag.className = 'client-tag';
-        const platformStr = u.clientPlatform || 'Desktop';
-        const verStr = u.clientVersion ? ' • v' + u.clientVersion : '';
+        const platformStr = u.clientPlatform || 'Unknown';
+        const verStr = (u.clientVersion && u.clientVersion !== 'Unknown') ? ' • v' + u.clientVersion : '';
         clientTag.textContent = platformStr + verStr;
         tdClient.appendChild(clientTag);
 
@@ -1498,7 +1498,9 @@ function renderAdminDashboard(): string {
 
       document.getElementById('modal-id').textContent = u.id;
       document.getElementById('modal-presence').textContent = u.isOnline ? '🟢 Online Now' : (u.lastActiveAt ? '⚪ Active ' + formatRelativeTime(u.lastActiveAt) : '⚪ Offline');
-      document.getElementById('modal-client').textContent = (u.clientPlatform || 'Desktop') + (u.clientVersion ? ' • v' + u.clientVersion : '');
+      const modalPlatform = u.clientPlatform || 'Unknown';
+      const modalVer = (u.clientVersion && u.clientVersion !== 'Unknown') ? ' • v' + u.clientVersion : '';
+      document.getElementById('modal-client').textContent = modalPlatform + modalVer;
       document.getElementById('modal-last-active').textContent = u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleString() : 'Never';
       document.getElementById('modal-last-login').textContent = u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never';
       document.getElementById('modal-hosted-count').textContent = (u.sessionsHostedCount || 0) + ' sessions';

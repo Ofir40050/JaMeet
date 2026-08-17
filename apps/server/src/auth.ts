@@ -657,9 +657,11 @@ export class UserStore {
     if (clientInfo?.version) user.clientVersion = clientInfo.version;
     if (clientInfo?.platform) user.clientPlatform = clientInfo.platform;
 
-    const platformLabel = user.clientPlatform || 'Desktop';
-    const versionLabel = user.clientVersion ? `v${user.clientVersion}` : '';
-    const desc = versionLabel ? `Logged in (${platformLabel} • ${versionLabel})` : `Logged in (${platformLabel})`;
+    const platformLabel = user.clientPlatform || 'Unknown';
+    const versionLabel = user.clientVersion && user.clientVersion !== 'Unknown' ? `v${user.clientVersion}` : '';
+    const desc = versionLabel && platformLabel !== 'Unknown'
+      ? `Logged in (${platformLabel} • ${versionLabel})`
+      : (versionLabel ? `Logged in (${versionLabel})` : `Logged in (${platformLabel})`);
 
     const event: UserActivityEvent = {
       id: crypto.randomUUID(),

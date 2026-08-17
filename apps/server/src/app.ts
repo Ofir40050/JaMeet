@@ -215,8 +215,9 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   const isUserOnline = (userId: string): boolean => (authenticatedUserSockets.get(userId)?.size ?? 0) > 0;
   const getActiveRoomsCount = (): number => {
     let count = 0;
+    const now = Date.now();
     for (const r of rooms.rooms.values()) {
-      if (Array.from(r.participants.values()).some((p) => p.socketId !== null)) {
+      if (!rooms.isExpired(r, now) && r.participants.size >= 2 && Array.from(r.participants.values()).some((p) => p.socketId !== null)) {
         count++;
       }
     }
@@ -229,12 +230,22 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     let platform = typeof h['x-client-platform'] === 'string' ? h['x-client-platform'].trim() : undefined;
     const ua = typeof h['user-agent'] === 'string' ? h['user-agent'] : '';
 
-    if (!platform && ua) {
+    if (platform) {
+      if (platform !== 'macOS' && platform !== 'Windows') {
+        platform = 'Unknown';
+      }
+    } else if (ua) {
       if (ua.includes('Mac') || ua.includes('Darwin')) platform = 'macOS';
       else if (ua.includes('Win')) platform = 'Windows';
       else platform = 'Unknown';
+    } else {
+      platform = 'Unknown';
     }
-    if (!platform) platform = 'macOS';
+
+    if (!version || version === '') {
+      version = 'Unknown';
+    }
+
     return { version, platform };
   };
 

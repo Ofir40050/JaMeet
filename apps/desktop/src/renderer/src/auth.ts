@@ -9,17 +9,21 @@ async function getClientHeaders(): Promise<Record<string, string>> {
     if (api?.getAppInfo) {
       const info = await api.getAppInfo();
       if (info && typeof info === 'object') {
+        const version = typeof info.version === 'string' && info.version.trim() ? info.version.trim() : 'Unknown';
+        let platform = typeof info.platform === 'string' && info.platform.trim() ? info.platform.trim() : 'Unknown';
+        if (platform !== 'macOS' && platform !== 'Windows') {
+          platform = 'Unknown';
+        }
         return {
-          'X-Client-Version': String(info.version || '0.1.0'),
-          'X-Client-Platform': String(info.platform || 'macOS')
+          'X-Client-Version': version,
+          'X-Client-Platform': platform
         };
       }
     }
   } catch {}
-  const platform = typeof navigator !== 'undefined' && navigator.userAgent.includes('Win') ? 'Windows' : 'macOS';
   return {
-    'X-Client-Version': '0.1.0',
-    'X-Client-Platform': platform
+    'X-Client-Version': 'Unknown',
+    'X-Client-Platform': 'Unknown'
   };
 }
 

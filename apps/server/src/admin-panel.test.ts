@@ -771,6 +771,113 @@ describe('JaMeet Secure Admin Panel', () => {
       expect(data.stats.blockedUsers).toBe(1);
       expect(data.stats.isOperational).toBe(true);
       expect(typeof data.stats.uptimeSeconds).toBe('number');
+      expect(data.stats.activeSessions).toBe(0);
+
+      await app.close();
+    });
+
+    it('accurately counts Active Sessions representing genuinely active multi-participant calls', async () => {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: testDir,
+        ALLOWED_ORIGINS: 'http://localhost:3000',
+        JAMEET_ADMIN_SECRET: TEST_ADMIN_SECRET
+      });
+      const { app, rooms } = await createApp(config);
+      const sessionToken = createAdminSessionToken(TEST_ADMIN_SECRET);
+
+      // Case 1: Room created by host alone (waiting for collaborator) -> NOT an active live session
+      const hostRoom = rooms.create('host-1', 'socket-host-1', { audio: true, video: false }, { id: 'u1', username: 'host', displayName: 'Host', isGuest: false });
+      
+      let res = await app.inject({
+        method: 'GET',
+        url: '/admin/api/stats',
+        headers: { cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}` }
+      });
+      expect(JSON.parse(res.body).stats.activeSessions).toBe(0);
+
+      // Case 2: Guest is in waiting room -> NOT an active live session yet
+      rooms.join(hostRoom.code, 'guest-1', 'socket-guest-1', { audio: true, video: false }, { id: 'u2', username: 'guest', displayName: 'Guest', isGuest: false });
+      
+      // Since waiting room wasn't enabled on creation, guest joins directly into participants -> Now it is 2 participants!
+      res = await app.inject({
+        method: 'GET',
+        url: '/admin/api/stats',
+        headers: { cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}` }
+      });
+      expect(JSON.parse(res.body).stats.activeSessions).toBe(1);
+
+      // Case 3: Guest leaves -> Back to 1 participant -> Active sessions returns to 0
+      rooms.leave(hostRoom.code, 'guest-1', 'socket-guest-1');
+      res = await app.inject({
+        method: 'GET',
+        url: '/admin/api/stats',
+        headers: { cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}` }
+      });
+      expect(JSON.parse(res.body).stats.activeSessions).toBe(0);
+
+      await app.close();
+    });
+
+    it('reports Unknown for missing or unrecognized client metadata during registration and login', async () => {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: testDir,
+        ALLOWED_ORIGINS: 'http://localhost:3000',
+        JAMEET_ADMIN_SECRET: TEST_ADMIN_SECRET
+      });
+      const { app, userStore } = await createApp(config);
+      const sessionToken = createAdminSessionToken(TEST_ADMIN_SECRET);
+
+      // Register without client headers or user agent
+      const regRes = await app.inject({
+        method: 'POST',
+        url: '/api/auth/register',
+        headers: { 'content-type': 'application/json' },
+        payload: {
+          username: 'mystery_user',
+          email: 'mystery@test.com',
+          password: 'Password123!',
+          displayName: 'Mystery User'
+        }
+      });
+      expect(regRes.statusCode).toBe(201);
+      const regData = JSON.parse(regRes.body);
+
+      // Inspect admin user details
+      const detailRes = await app.inject({
+        method: 'GET',
+        url: `/admin/api/users/${regData.user.id}`,
+        headers: { cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}` }
+      });
+      expect(detailRes.statusCode).toBe(200);
+      const detailData = JSON.parse(detailRes.body);
+      expect(detailData.user.clientPlatform).toBe('Unknown');
+      expect(detailData.user.clientVersion).toBe('Unknown');
+
+      // Login with unrecognized platform
+      await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        headers: {
+          'content-type': 'application/json',
+          'x-client-platform': 'FreeBSD',
+          'x-client-version': ''
+        },
+        payload: {
+          usernameOrEmail: 'mystery_user',
+          password: 'Password123!'
+        }
+      });
+
+      const updatedDetailRes = await app.inject({
+        method: 'GET',
+        url: `/admin/api/users/${regData.user.id}`,
+        headers: { cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}` }
+      });
+      const updatedDetail = JSON.parse(updatedDetailRes.body);
+      expect(updatedDetail.user.clientPlatform).toBe('Unknown');
+      expect(updatedDetail.user.clientVersion).toBe('Unknown');
 
       await app.close();
     });
