@@ -88,6 +88,9 @@ describe('Project Activity Engine & Helpers', () => {
 
   it('returns valid svg icons for all activity types', () => {
     expect(getActivityIconSvg('project_created')).toContain('<svg');
+    expect(getActivityIconSvg('lyrics_doc_created')).toContain('<svg');
+    expect(getActivityIconSvg('lyrics_doc_renamed')).toContain('<svg');
+    expect(getActivityIconSvg('lyrics_doc_deleted')).toContain('<svg');
     expect(getActivityIconSvg('lyrics_edited')).toContain('<svg');
     expect(getActivityIconSvg('notes_key_changed')).toContain('<svg');
     expect(getActivityIconSvg('structure_changed')).toContain('<svg');

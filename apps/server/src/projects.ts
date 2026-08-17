@@ -483,7 +483,8 @@ export class ProjectStore {
       }
 
       if (updates.lyrics.documents) {
-        const oldDocs = new Map((curLyrics.documents || []).map((d) => [d.id, { ...d }]));
+        const oldDocsList = curLyrics.documents || [];
+        const oldDocs = new Map(oldDocsList.map((d) => [d.id, { ...d }]));
         curLyrics.documents = updates.lyrics.documents.map((incDoc) => {
           const existing = oldDocs.get(incDoc.id);
           if (existing) {
@@ -526,6 +527,21 @@ export class ProjectStore {
             { id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now, updatedBy: user.id, updatedByName: user.displayName }
           ];
           curLyrics.activeDocumentId = 'doc-main';
+        }
+
+        const resultingDocIds = new Set(curLyrics.documents.map((d) => d.id));
+        for (const oldDoc of oldDocsList) {
+          if (!resultingDocIds.has(oldDoc.id)) {
+            this.recordActivity(
+              projectId,
+              user,
+              'lyrics_doc_deleted',
+              `${user.displayName} deleted lyrics draft "${oldDoc.title}"`,
+              oldDoc.title,
+              undefined,
+              false
+            );
+          }
         }
       }
 

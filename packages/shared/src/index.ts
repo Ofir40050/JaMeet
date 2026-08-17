@@ -317,6 +317,7 @@ export const projectActivityTypeSchema = z.enum([
   'project_created',
   'lyrics_doc_created',
   'lyrics_doc_renamed',
+  'lyrics_doc_deleted',
   'lyrics_edited',
   'notes_edited',
   'notes_bpm_changed',

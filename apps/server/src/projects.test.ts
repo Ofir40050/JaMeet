@@ -1912,6 +1912,79 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('records lyrics_doc_deleted activity when lyrics documents are removed', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-lyrics-del-test-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'usr_owner_lyr_del',
+        username: 'owner_lyr_del',
+        displayName: 'Lyrics Owner',
+        email: 'owner_lyr_del@test.com',
+        avatarColor: '#2563eb',
+        createdAt: Date.now()
+      };
+      const project = store.createProject(owner, { name: 'Lyrics Delete Test' });
+
+      // 1. Create multiple lyrics documents
+      store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documents: [
+            { id: 'doc-main', title: 'Main Lyrics', content: 'Verse 1 text' },
+            { id: 'doc-bridge-draft', title: 'Bridge Draft', content: 'Bridge idea' },
+            { id: 'doc-outro-draft', title: 'Outro Draft', content: 'Outro idea' }
+          ]
+        }
+      });
+      const p1 = store.getProject(project.id, owner.id);
+      const countAfterSetup = p1?.activities.length || 0;
+
+      // 2. Remove one document (Bridge Draft)
+      store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documents: [
+            { id: 'doc-main', title: 'Main Lyrics', content: 'Verse 1 text' },
+            { id: 'doc-outro-draft', title: 'Outro Draft', content: 'Outro idea' }
+          ]
+        }
+      });
+      const p2 = store.getProject(project.id, owner.id);
+      expect(p2?.workspace.lyrics.documents.length).toBe(2);
+      expect(p2?.activities.length).toBe(countAfterSetup + 1);
+      expect(p2?.activities[0].type).toBe('lyrics_doc_deleted');
+      expect(p2?.activities[0].summary).toContain('deleted lyrics draft "Bridge Draft"');
+      expect(p2?.activities[0].userId).toBe(owner.id);
+      expect(p2?.activities[0].title).toBe('Bridge Draft');
+
+      // 3. Reordering documents without removing any -> should NOT record lyrics_doc_deleted
+      store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documents: [
+            { id: 'doc-outro-draft', title: 'Outro Draft', content: 'Outro idea' },
+            { id: 'doc-main', title: 'Main Lyrics', content: 'Verse 1 text' }
+          ]
+        }
+      });
+      const p3 = store.getProject(project.id, owner.id);
+      expect(p3?.activities.length).toBe(countAfterSetup + 1);
+
+      // 4. Pass empty documents array -> triggers fallback for Main Lyrics, removes Outro Draft
+      store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documents: []
+        }
+      });
+      const p4 = store.getProject(project.id, owner.id);
+      expect(p4?.workspace.lyrics.documents.length).toBe(1);
+      expect(p4?.workspace.lyrics.documents[0].id).toBe('doc-main');
+      expect(p4?.activities.length).toBe(countAfterSetup + 2);
+      expect(p4?.activities[0].type).toBe('lyrics_doc_deleted');
+      expect(p4?.activities[0].summary).toContain('deleted lyrics draft "Outro Draft"');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

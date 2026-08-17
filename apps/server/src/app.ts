@@ -76,6 +76,10 @@ function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSumm
     category = 'lyrics';
     action = 'renamed';
     description = `Renamed lyrics document to "${act.title}"`;
+  } else if (act.type === 'lyrics_doc_deleted') {
+    category = 'lyrics';
+    action = 'deleted';
+    description = `Deleted lyrics document "${act.title}"`;
   } else if (act.type === 'lyrics_edited') {
     category = 'lyrics';
     action = 'edited';
