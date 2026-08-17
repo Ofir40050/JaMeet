@@ -11,17 +11,42 @@ export function getStatusBadgeData(status: WorkspaceSaveStatus): { className: st
   };
 }
 
+export interface WorkspaceSaveContext {
+  activeProjectId?: string;
+  targetProjectId?: string;
+  localEditGen?: number;
+  targetEditGen?: number;
+  saveAttemptGen?: number;
+  targetSaveGen?: number;
+}
+
 export async function executeWorkspaceSave<T>(
   saveCall: () => Promise<{ ok: boolean; workspace?: T; message?: string }>,
   currentLocalState: T,
   callbacks: {
     setStatus: (status: WorkspaceSaveStatus) => void;
     updateAuthoritativeState: (serverWorkspace: T) => void;
-  }
+  },
+  context?: WorkspaceSaveContext
 ): Promise<{ ok: boolean; state: T }> {
-  callbacks.setStatus('saving');
+  const isStaleDispatch = context?.targetSaveGen !== undefined && context?.saveAttemptGen !== undefined && context.targetSaveGen < context.saveAttemptGen;
+  if (!isStaleDispatch) {
+    callbacks.setStatus('saving');
+  }
   try {
     const res = await saveCall();
+
+    // Check project binding and generation matching
+    const projectMatches = context?.targetProjectId === undefined || context?.activeProjectId === undefined || context.targetProjectId === context.activeProjectId;
+    const editGenMatches = context?.targetEditGen === undefined || context?.localEditGen === undefined || context.targetEditGen === context.localEditGen;
+    const saveGenMatches = context?.targetSaveGen === undefined || context?.saveAttemptGen === undefined || context.targetSaveGen === context.saveAttemptGen;
+    const isLatest = projectMatches && editGenMatches && saveGenMatches;
+
+    if (!isLatest) {
+      // Stale response from older save attempt or previous project: do not overwrite local state or change status
+      return { ok: res?.ok ?? false, state: currentLocalState };
+    }
+
     if (res?.ok && res.workspace) {
       callbacks.updateAuthoritativeState(res.workspace);
       callbacks.setStatus('saved');
@@ -31,24 +56,26 @@ export async function executeWorkspaceSave<T>(
       return { ok: false, state: currentLocalState };
     }
   } catch (err) {
-    callbacks.setStatus('unsaved');
+    const projectMatches = context?.targetProjectId === undefined || context?.activeProjectId === undefined || context.targetProjectId === context.activeProjectId;
+    const editGenMatches = context?.targetEditGen === undefined || context?.localEditGen === undefined || context.targetEditGen === context.localEditGen;
+    const saveGenMatches = context?.targetSaveGen === undefined || context?.saveAttemptGen === undefined || context.targetSaveGen === context.saveAttemptGen;
+    const isLatest = projectMatches && editGenMatches && saveGenMatches;
+
+    if (isLatest) {
+      callbacks.setStatus('unsaved');
+    }
     return { ok: false, state: currentLocalState };
   }
 }
 
 /**
  * Mirror of applyAuthoritativeWorkspaceUpdate logic in main.ts
+ * Applies authoritative server state ONLY to the specific saved area.
  */
 export function applyAuthoritativeWorkspaceUpdate(
   savedArea: 'lyrics' | 'notes' | 'structure' | 'tasks',
   currentWorkspace: any,
-  serverWorkspace: any,
-  areaStates: {
-    lyrics: { status: WorkspaceSaveStatus; hasPending: boolean };
-    notes: { status: WorkspaceSaveStatus; hasPending: boolean };
-    structure: { status: WorkspaceSaveStatus; hasPending: boolean };
-    tasks: { status: WorkspaceSaveStatus; hasPending: boolean };
-  }
+  serverWorkspace: any
 ): any {
   const result = {
     lyrics: { ...currentWorkspace?.lyrics },
@@ -57,36 +84,14 @@ export function applyAuthoritativeWorkspaceUpdate(
     tasks: { ...currentWorkspace?.tasks }
   };
 
-  // 1. Lyrics
-  const hasPendingLyrics = areaStates.lyrics.hasPending || areaStates.lyrics.status === 'saving' || areaStates.lyrics.status === 'unsaved';
-  if (savedArea === 'lyrics' || (!hasPendingLyrics && serverWorkspace.lyrics)) {
-    if (serverWorkspace.lyrics) {
-      result.lyrics = serverWorkspace.lyrics;
-    }
-  }
-
-  // 2. Notes
-  const hasPendingNotes = areaStates.notes.hasPending || areaStates.notes.status === 'saving' || areaStates.notes.status === 'unsaved';
-  if (savedArea === 'notes' || (!hasPendingNotes && serverWorkspace.notes)) {
-    if (serverWorkspace.notes) {
-      result.notes = serverWorkspace.notes;
-    }
-  }
-
-  // 3. Structure
-  const hasPendingStructure = areaStates.structure.hasPending || areaStates.structure.status === 'saving' || areaStates.structure.status === 'unsaved';
-  if (savedArea === 'structure' || (!hasPendingStructure && serverWorkspace.structure)) {
-    if (serverWorkspace.structure) {
-      result.structure = serverWorkspace.structure;
-    }
-  }
-
-  // 4. Tasks
-  const hasPendingTasks = areaStates.tasks.hasPending || areaStates.tasks.status === 'saving' || areaStates.tasks.status === 'unsaved';
-  if (savedArea === 'tasks' || (!hasPendingTasks && serverWorkspace.tasks)) {
-    if (serverWorkspace.tasks) {
-      result.tasks = serverWorkspace.tasks;
-    }
+  if (savedArea === 'lyrics' && serverWorkspace.lyrics) {
+    result.lyrics = serverWorkspace.lyrics;
+  } else if (savedArea === 'notes' && serverWorkspace.notes) {
+    result.notes = serverWorkspace.notes;
+  } else if (savedArea === 'structure' && serverWorkspace.structure) {
+    result.structure = serverWorkspace.structure;
+  } else if (savedArea === 'tasks' && serverWorkspace.tasks) {
+    result.tasks = serverWorkspace.tasks;
   }
 
   return result;
@@ -132,8 +137,6 @@ export function handleRealtimeWorkspaceSync(
   if (!local.hasPendingNotes && local.notesStatus === 'saved' && incomingWorkspace.notes) {
     resultWorkspace.notes = incomingWorkspace.notes;
     newNotesStatus = 'saved';
-  } else if (local.hasPendingNotes || local.notesStatus !== 'saved') {
-    // Preserves local notes and does not overwrite with saved
   }
 
   // 3. Structure
@@ -216,7 +219,6 @@ describe('Workspace Save Status & Failure Recovery', () => {
 
     expect(result.ok).toBe(false);
     expect(status).toBe('unsaved');
-    // Local edit preserved
     expect(localWorkspace.notes.content).toBe('Draft chord progression: Cmaj7 -> Dm7');
   });
 
@@ -277,126 +279,456 @@ describe('Workspace Save Status & Failure Recovery', () => {
     expect(status).toBe('saved');
     expect(localWorkspace.tasks.tasks[0]?.title).toBe('Record Vocals');
   });
+});
 
-  describe('Cross-Area Independent Unsaved Protection', () => {
-    it('preserves unsaved Notes, Structure, and Tasks when Lyrics save succeeds', () => {
-      const currentWorkspace = {
-        lyrics: { content: 'Old Lyrics' },
-        notes: { content: 'Unsaved Notes Edit' },
-        structure: { sections: [{ id: 'sec-1', name: 'Unsaved Bridge' }] },
-        tasks: { tasks: [{ id: 'task-1', title: 'Unsaved Task' }] }
+describe('Dual-Generation & Project Context Stale Save Protection', () => {
+  describe('Project Context Binding', () => {
+    it('completely ignores a save response arriving from a previous project after switching projects', async () => {
+      let status: WorkspaceSaveStatus = 'saving';
+      let currentWorkspace = { lyrics: { content: 'Project B Lyrics' } };
+
+      const projectAServerResponse = {
+        lyrics: { content: 'Project A Old Lyrics from in-flight save' }
       };
+      const mockSaveCall = vi.fn().mockResolvedValue({ ok: true, workspace: projectAServerResponse });
 
-      const serverResponseWorkspace = {
-        lyrics: { content: 'Newly Persisted Lyrics' },
-        notes: { content: 'Server Notes from Old State' },
-        structure: { sections: [] },
-        tasks: { tasks: [] }
-      };
-
-      const areaStates = {
-        lyrics: { status: 'saving' as WorkspaceSaveStatus, hasPending: false },
-        notes: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true },
-        structure: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true },
-        tasks: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true }
-      };
-
-      const updatedWorkspace = applyAuthoritativeWorkspaceUpdate(
-        'lyrics',
+      await executeWorkspaceSave(
+        mockSaveCall,
         currentWorkspace,
-        serverResponseWorkspace,
-        areaStates
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { currentWorkspace = ws; }
+        },
+        {
+          targetProjectId: 'proj_A',
+          activeProjectId: 'proj_B', // User switched to Project B
+          targetEditGen: 1,
+          localEditGen: 1,
+          targetSaveGen: 1,
+          saveAttemptGen: 1
+        }
       );
 
-      // Lyrics was saved -> updated to server
-      expect(updatedWorkspace.lyrics.content).toBe('Newly Persisted Lyrics');
-      // Unsaved Notes, Structure, Tasks -> preserved!
-      expect(updatedWorkspace.notes.content).toBe('Unsaved Notes Edit');
-      expect(updatedWorkspace.structure.sections[0]?.name).toBe('Unsaved Bridge');
-      expect(updatedWorkspace.tasks.tasks[0]?.title).toBe('Unsaved Task');
+      // Project B's state and status are completely untouched!
+      expect(currentWorkspace.lyrics.content).toBe('Project B Lyrics');
+      expect(status).toBe('saving');
     });
 
-    it('preserves unsaved Lyrics, Structure, and Tasks when Notes save succeeds', () => {
-      const currentWorkspace = {
-        lyrics: { content: 'Unsaved Lyrics Edit' },
-        notes: { content: 'Saving Notes' },
-        structure: { sections: [{ id: 'sec-1', name: 'Unsaved Solo' }] },
-        tasks: { tasks: [{ id: 'task-1', title: 'Unsaved Task 2' }] }
-      };
+    it('ignores an older project save failure without overwriting the new project save status', async () => {
+      let status: WorkspaceSaveStatus = 'saving';
+      let currentWorkspace = { notes: { content: 'Project B Fresh Notes' } };
 
-      const serverResponseWorkspace = {
-        lyrics: { content: 'Server Stale Lyrics' },
-        notes: { content: 'Newly Persisted Notes' },
-        structure: { sections: [] },
-        tasks: { tasks: [] }
-      };
+      const mockSaveCall = vi.fn().mockRejectedValue(new Error('Network error on Project A'));
 
-      const areaStates = {
-        lyrics: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true },
-        notes: { status: 'saving' as WorkspaceSaveStatus, hasPending: false },
-        structure: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true },
-        tasks: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true }
-      };
-
-      const updatedWorkspace = applyAuthoritativeWorkspaceUpdate(
-        'notes',
+      await executeWorkspaceSave(
+        mockSaveCall,
         currentWorkspace,
-        serverResponseWorkspace,
-        areaStates
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { currentWorkspace = ws; }
+        },
+        {
+          targetProjectId: 'proj_A',
+          activeProjectId: 'proj_B',
+          targetEditGen: 1,
+          localEditGen: 1,
+          targetSaveGen: 1,
+          saveAttemptGen: 1
+        }
       );
 
-      // Notes was saved -> updated to server
-      expect(updatedWorkspace.notes.content).toBe('Newly Persisted Notes');
-      // Unsaved Lyrics, Structure, Tasks -> preserved!
-      expect(updatedWorkspace.lyrics.content).toBe('Unsaved Lyrics Edit');
-      expect(updatedWorkspace.structure.sections[0]?.name).toBe('Unsaved Solo');
-      expect(updatedWorkspace.tasks.tasks[0]?.title).toBe('Unsaved Task 2');
-    });
-
-    it('updates clean areas from server response when Structure or Tasks save succeeds', () => {
-      const currentWorkspace = {
-        lyrics: { content: 'Clean Lyrics' },
-        notes: { content: 'Clean Notes' },
-        structure: { sections: [{ id: 'sec-1', name: 'Old Structure' }] },
-        tasks: { tasks: [{ id: 'task-1', title: 'Unsaved Tasks' }] }
-      };
-
-      const serverResponseWorkspace = {
-        lyrics: { content: 'Updated Remote Lyrics' },
-        notes: { content: 'Updated Remote Notes' },
-        structure: { sections: [{ id: 'sec-1', name: 'Newly Persisted Structure' }] },
-        tasks: { tasks: [] }
-      };
-
-      const areaStates = {
-        lyrics: { status: 'saved' as WorkspaceSaveStatus, hasPending: false },
-        notes: { status: 'saved' as WorkspaceSaveStatus, hasPending: false },
-        structure: { status: 'saving' as WorkspaceSaveStatus, hasPending: false },
-        tasks: { status: 'unsaved' as WorkspaceSaveStatus, hasPending: true }
-      };
-
-      const updatedWorkspace = applyAuthoritativeWorkspaceUpdate(
-        'structure',
-        currentWorkspace,
-        serverResponseWorkspace,
-        areaStates
-      );
-
-      // Structure was saved
-      expect(updatedWorkspace.structure.sections[0]?.name).toBe('Newly Persisted Structure');
-      // Clean areas (lyrics, notes) updated
-      expect(updatedWorkspace.lyrics.content).toBe('Updated Remote Lyrics');
-      expect(updatedWorkspace.notes.content).toBe('Updated Remote Notes');
-      // Unsaved tasks preserved
-      expect(updatedWorkspace.tasks.tasks[0]?.title).toBe('Unsaved Tasks');
+      // Status remains 'saving' for Project B, not changed to 'unsaved'
+      expect(status).toBe('saving');
+      expect(currentWorkspace.notes.content).toBe('Project B Fresh Notes');
     });
   });
 
-  describe('Realtime Sync & Reconnect Protection', () => {
-    it('preserves unsaved Lyrics when incoming realtime sync arrives', () => {
+  describe('Newer Local Edits During In-Flight Save', () => {
+    it('protects newer Lyrics edits from older in-flight save response', async () => {
+      let status: WorkspaceSaveStatus = 'saving';
+      let localWorkspace = { lyrics: { content: 'Verse 1 + Chorus (New local edit)' } };
+
+      // Earlier save response only has Verse 1
+      const staleServerResponse = { lyrics: { content: 'Verse 1 only (Stale)' } };
+      const mockSaveCall = vi.fn().mockResolvedValue({ ok: true, workspace: staleServerResponse });
+
+      await executeWorkspaceSave(
+        mockSaveCall,
+        localWorkspace,
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { localWorkspace = ws; }
+        },
+        {
+          targetProjectId: 'proj_1',
+          activeProjectId: 'proj_1',
+          targetEditGen: 1, // save was dispatched for edit gen 1
+          localEditGen: 2,  // user typed more -> edit gen is now 2
+          targetSaveGen: 1,
+          saveAttemptGen: 1
+        }
+      );
+
+      // Stale response must not overwrite newer local edit or mark as saved
+      expect(localWorkspace.lyrics.content).toBe('Verse 1 + Chorus (New local edit)');
+      expect(status).toBe('saving');
+    });
+
+    it('protects newer Notes edits from older in-flight save response', async () => {
+      let status: WorkspaceSaveStatus = 'saving';
+      let localWorkspace = { notes: { content: 'Key: Am -> Bridge transition note (Newer)' } };
+
+      const staleServerResponse = { notes: { content: 'Key: Am (Stale)' } };
+      const mockSaveCall = vi.fn().mockResolvedValue({ ok: true, workspace: staleServerResponse });
+
+      await executeWorkspaceSave(
+        mockSaveCall,
+        localWorkspace,
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { localWorkspace = ws; }
+        },
+        {
+          targetProjectId: 'proj_1',
+          activeProjectId: 'proj_1',
+          targetEditGen: 1,
+          localEditGen: 2,
+          targetSaveGen: 1,
+          saveAttemptGen: 1
+        }
+      );
+
+      expect(localWorkspace.notes.content).toBe('Key: Am -> Bridge transition note (Newer)');
+      expect(status).toBe('saving');
+    });
+
+    it('protects Song Structure sections added while earlier save is in flight so debounced save can persist them', async () => {
+      let status: WorkspaceSaveStatus = 'saving';
+      // User added Intro, and while saving, added Verse and Chorus
+      let localWorkspace = {
+        structure: {
+          sections: [
+            { id: 's1', type: 'intro', name: 'Intro', bars: 8 },
+            { id: 's2', type: 'verse', name: 'Verse 1', bars: 16 },
+            { id: 's3', type: 'chorus', name: 'Chorus 1', bars: 16 }
+          ]
+        }
+      };
+
+      // Stale response only contains Intro
+      const staleServerResponse = {
+        structure: {
+          sections: [{ id: 's1', type: 'intro', name: 'Intro', bars: 8 }]
+        }
+      };
+      const mockSaveCall = vi.fn().mockResolvedValue({ ok: true, workspace: staleServerResponse });
+
+      await executeWorkspaceSave(
+        mockSaveCall,
+        localWorkspace,
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { localWorkspace = ws; }
+        },
+        {
+          targetProjectId: 'proj_1',
+          activeProjectId: 'proj_1',
+          targetEditGen: 1,
+          localEditGen: 3, // 2 more sections added
+          targetSaveGen: 1,
+          saveAttemptGen: 1
+        }
+      );
+
+      // In-memory sections are preserved for the subsequent debounced save
+      expect(localWorkspace.structure.sections.length).toBe(3);
+      expect(localWorkspace.structure.sections.map((s) => s.name)).toEqual(['Intro', 'Verse 1', 'Chorus 1']);
+      expect(status).toBe('saving');
+    });
+
+    it('protects Tasks modified while earlier save is in flight so debounced save can persist them', async () => {
+      let status: WorkspaceSaveStatus = 'saving';
+      let localWorkspace = {
+        tasks: {
+          tasks: [
+            { id: 't1', title: 'Record Vocals', status: 'done' as const },
+            { id: 't2', title: 'Mix Track', status: 'todo' as const }
+          ]
+        }
+      };
+
+      const staleServerResponse = {
+        tasks: {
+          tasks: [
+            { id: 't1', title: 'Record Vocals', status: 'todo' as const }
+          ]
+        }
+      };
+      const mockSaveCall = vi.fn().mockResolvedValue({ ok: true, workspace: staleServerResponse });
+
+      await executeWorkspaceSave(
+        mockSaveCall,
+        localWorkspace,
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { localWorkspace = ws; }
+        },
+        {
+          targetProjectId: 'proj_1',
+          activeProjectId: 'proj_1',
+          targetEditGen: 1,
+          localEditGen: 2,
+          targetSaveGen: 1,
+          saveAttemptGen: 1
+        }
+      );
+
+      expect(localWorkspace.tasks.tasks.length).toBe(2);
+      expect(localWorkspace.tasks.tasks[0]?.status).toBe('done');
+      expect(localWorkspace.tasks.tasks[1]?.title).toBe('Mix Track');
+      expect(status).toBe('saving');
+    });
+  });
+
+  describe('Multiple Save Attempts for the Same Edit Generation', () => {
+    it('prevents an older save attempt from overriding a newer save attempt for the same edit generation', async () => {
+      let status: WorkspaceSaveStatus = 'saving';
+      let localWorkspace = { lyrics: { content: 'Verse 1' } };
+
+      const attempt1Response = { lyrics: { content: 'Verse 1 (Attempt 1 Response)' } };
+      const attempt2Response = { lyrics: { content: 'Verse 1 (Attempt 2 Response)' } };
+
+      // Attempt 2 completes first and succeeds
+      await executeWorkspaceSave(
+        vi.fn().mockResolvedValue({ ok: true, workspace: attempt2Response }),
+        localWorkspace,
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { localWorkspace = ws; }
+        },
+        {
+          targetProjectId: 'proj_1',
+          activeProjectId: 'proj_1',
+          targetEditGen: 1,
+          localEditGen: 1,
+          targetSaveGen: 2, // Attempt 2
+          saveAttemptGen: 2  // latest save attempt is 2
+        }
+      );
+      expect(status).toBe('saved');
+      expect(localWorkspace.lyrics.content).toBe('Verse 1 (Attempt 2 Response)');
+
+      // Attempt 1 finishes later
+      await executeWorkspaceSave(
+        vi.fn().mockResolvedValue({ ok: true, workspace: attempt1Response }),
+        localWorkspace,
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { localWorkspace = ws; }
+        },
+        {
+          targetProjectId: 'proj_1',
+          activeProjectId: 'proj_1',
+          targetEditGen: 1,
+          localEditGen: 1,
+          targetSaveGen: 1, // Attempt 1 (older saveGen)
+          saveAttemptGen: 2  // latest save attempt is 2
+        }
+      );
+
+      // Attempt 1 must NOT override Attempt 2's authoritative state or status
+      expect(localWorkspace.lyrics.content).toBe('Verse 1 (Attempt 2 Response)');
+      expect(status).toBe('saved');
+    });
+
+    it('prevents a late failure of Attempt 1 from turning Attempt 2 saved status into unsaved', async () => {
+      let status: WorkspaceSaveStatus = 'saving';
+      let localWorkspace = { notes: { content: 'Guitar tuning: DADGAD' } };
+
+      const attempt2Response = { notes: { content: 'Guitar tuning: DADGAD' } };
+
+      // Attempt 2 succeeds
+      await executeWorkspaceSave(
+        vi.fn().mockResolvedValue({ ok: true, workspace: attempt2Response }),
+        localWorkspace,
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { localWorkspace = ws; }
+        },
+        {
+          targetProjectId: 'proj_1',
+          activeProjectId: 'proj_1',
+          targetEditGen: 1,
+          localEditGen: 1,
+          targetSaveGen: 2,
+          saveAttemptGen: 2
+        }
+      );
+      expect(status).toBe('saved');
+
+      // Attempt 1 fails later
+      await executeWorkspaceSave(
+        vi.fn().mockRejectedValue(new Error('Connection reset on attempt 1')),
+        localWorkspace,
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { localWorkspace = ws; }
+        },
+        {
+          targetProjectId: 'proj_1',
+          activeProjectId: 'proj_1',
+          targetEditGen: 1,
+          localEditGen: 1,
+          targetSaveGen: 1,
+          saveAttemptGen: 2
+        }
+      );
+
+      // Status must remain 'saved'
+      expect(status).toBe('saved');
+      expect(localWorkspace.notes.content).toBe('Guitar tuning: DADGAD');
+    });
+  });
+
+  describe('Isolated Per-Area Save Responses & Cross-Area Out-Of-Order Handling', () => {
+    it('applies authoritative server state ONLY to Lyrics when Lyrics save succeeds', () => {
+      const currentWorkspace = {
+        lyrics: { content: 'Old Lyrics' },
+        notes: { content: 'Newer Unsaved Notes' },
+        structure: { sections: [{ id: 's1', name: 'Newer Section' }] },
+        tasks: { tasks: [{ id: 't1', title: 'Newer Task' }] }
+      };
+
+      // Server returns complete workspace snapshot, where notes/structure/tasks may be stale
+      const serverResponseWorkspace = {
+        lyrics: { content: 'Authoritative Persisted Lyrics' },
+        notes: { content: 'Stale Notes Snapshot' },
+        structure: { sections: [] },
+        tasks: { tasks: [] }
+      };
+
+      const updated = applyAuthoritativeWorkspaceUpdate('lyrics', currentWorkspace, serverResponseWorkspace);
+
+      // Only Lyrics is updated
+      expect(updated.lyrics.content).toBe('Authoritative Persisted Lyrics');
+      // Other areas are completely untouched
+      expect(updated.notes.content).toBe('Newer Unsaved Notes');
+      expect(updated.structure.sections[0]?.name).toBe('Newer Section');
+      expect(updated.tasks.tasks[0]?.title).toBe('Newer Task');
+    });
+
+    it('applies authoritative server state ONLY to Notes when Notes save succeeds', () => {
+      const currentWorkspace = {
+        lyrics: { content: 'Newer Unsaved Lyrics' },
+        notes: { content: 'Old Notes' },
+        structure: { sections: [{ id: 's1', name: 'Newer Section' }] },
+        tasks: { tasks: [{ id: 't1', title: 'Newer Task' }] }
+      };
+
+      const serverResponseWorkspace = {
+        lyrics: { content: 'Stale Lyrics Snapshot' },
+        notes: { content: 'Authoritative Persisted Notes' },
+        structure: { sections: [] },
+        tasks: { tasks: [] }
+      };
+
+      const updated = applyAuthoritativeWorkspaceUpdate('notes', currentWorkspace, serverResponseWorkspace);
+
+      expect(updated.notes.content).toBe('Authoritative Persisted Notes');
+      expect(updated.lyrics.content).toBe('Newer Unsaved Lyrics');
+      expect(updated.structure.sections[0]?.name).toBe('Newer Section');
+      expect(updated.tasks.tasks[0]?.title).toBe('Newer Task');
+    });
+
+    it('applies authoritative server state ONLY to Structure when Structure save succeeds', () => {
+      const currentWorkspace = {
+        lyrics: { content: 'Newer Lyrics' },
+        notes: { content: 'Newer Notes' },
+        structure: { sections: [{ id: 's1', name: 'Old Section' }] },
+        tasks: { tasks: [{ id: 't1', title: 'Newer Task' }] }
+      };
+
+      const serverResponseWorkspace = {
+        lyrics: { content: 'Stale Lyrics' },
+        notes: { content: 'Stale Notes' },
+        structure: { sections: [{ id: 's1', name: 'Authoritative Persisted Section' }] },
+        tasks: { tasks: [] }
+      };
+
+      const updated = applyAuthoritativeWorkspaceUpdate('structure', currentWorkspace, serverResponseWorkspace);
+
+      expect(updated.structure.sections[0]?.name).toBe('Authoritative Persisted Section');
+      expect(updated.lyrics.content).toBe('Newer Lyrics');
+      expect(updated.notes.content).toBe('Newer Notes');
+      expect(updated.tasks.tasks[0]?.title).toBe('Newer Task');
+    });
+
+    it('applies authoritative server state ONLY to Tasks when Tasks save succeeds', () => {
+      const currentWorkspace = {
+        lyrics: { content: 'Newer Lyrics' },
+        notes: { content: 'Newer Notes' },
+        structure: { sections: [{ id: 's1', name: 'Newer Section' }] },
+        tasks: { tasks: [{ id: 't1', title: 'Old Task' }] }
+      };
+
+      const serverResponseWorkspace = {
+        lyrics: { content: 'Stale Lyrics' },
+        notes: { content: 'Stale Notes' },
+        structure: { sections: [] },
+        tasks: { tasks: [{ id: 't1', title: 'Authoritative Persisted Task' }] }
+      };
+
+      const updated = applyAuthoritativeWorkspaceUpdate('tasks', currentWorkspace, serverResponseWorkspace);
+
+      expect(updated.tasks.tasks[0]?.title).toBe('Authoritative Persisted Task');
+      expect(updated.lyrics.content).toBe('Newer Lyrics');
+      expect(updated.notes.content).toBe('Newer Notes');
+      expect(updated.structure.sections[0]?.name).toBe('Newer Section');
+    });
+
+    it('handles out-of-order save responses across different workspace areas without regression', () => {
+      let workspace = {
+        lyrics: { content: 'Lyrics Edit 1' },
+        notes: { content: 'Notes Edit 1' },
+        structure: { sections: [{ id: 's1', name: 'Structure Edit 1' }] },
+        tasks: { tasks: [{ id: 't1', title: 'Tasks Edit 1' }] }
+      };
+
+      // 1. Notes save completes with its response
+      const notesServerResponse = {
+        lyrics: { content: 'Stale Lyrics snapshot from Notes server payload' },
+        notes: { content: 'Authoritative Notes 1' },
+        structure: { sections: [] },
+        tasks: { tasks: [] }
+      };
+      workspace = applyAuthoritativeWorkspaceUpdate('notes', workspace, notesServerResponse);
+
+      // Notes updated, Lyrics preserved
+      expect(workspace.notes.content).toBe('Authoritative Notes 1');
+      expect(workspace.lyrics.content).toBe('Lyrics Edit 1');
+
+      // 2. Lyrics save completes later with its response
+      const lyricsServerResponse = {
+        lyrics: { content: 'Authoritative Lyrics 1' },
+        notes: { content: 'Old Stale Notes snapshot from Lyrics server payload' },
+        structure: { sections: [] },
+        tasks: { tasks: [] }
+      };
+      workspace = applyAuthoritativeWorkspaceUpdate('lyrics', workspace, lyricsServerResponse);
+
+      // Both Notes and Lyrics retain their respective latest authoritative state!
+      expect(workspace.lyrics.content).toBe('Authoritative Lyrics 1');
+      expect(workspace.notes.content).toBe('Authoritative Notes 1');
+      expect(workspace.structure.sections[0]?.name).toBe('Structure Edit 1');
+      expect(workspace.tasks.tasks[0]?.title).toBe('Tasks Edit 1');
+    });
+  });
+
+  describe('Realtime Sync & Reconnect Preservation', () => {
+    it('preserves unsaved Lyrics and status across realtime socket sync', () => {
       const state = {
         workspace: {
-          lyrics: { content: 'Unsaved draft chorus lyrics' },
+          lyrics: { content: 'Unsaved local draft lyrics' },
           notes: { content: 'Clean notes' },
           structure: { sections: [] },
           tasks: { tasks: [] }
@@ -413,7 +745,7 @@ describe('Workspace Save Status & Failure Recovery', () => {
       };
 
       const incoming = {
-        lyrics: { content: 'Remote old lyrics' },
+        lyrics: { content: 'Remote server lyrics' },
         notes: { content: 'Updated remote notes' },
         structure: { sections: [{ id: 's1', type: 'intro', bars: 4 }] },
         tasks: { tasks: [{ id: 't1', title: 'Remote Task', status: 'todo' }] }
@@ -421,11 +753,8 @@ describe('Workspace Save Status & Failure Recovery', () => {
 
       const result = handleRealtimeWorkspaceSync(state, incoming);
 
-      // Local unsaved lyrics preserved and status stays unsaved
-      expect(result.workspace.lyrics.content).toBe('Unsaved draft chorus lyrics');
+      expect(result.workspace.lyrics.content).toBe('Unsaved local draft lyrics');
       expect(result.lyricsStatus).toBe('unsaved');
-
-      // Clean areas (notes, structure, tasks) updated to remote server state
       expect(result.workspace.notes.content).toBe('Updated remote notes');
       expect(result.notesStatus).toBe('saved');
       expect(result.workspace.structure.sections.length).toBe(1);
@@ -434,13 +763,13 @@ describe('Workspace Save Status & Failure Recovery', () => {
       expect(result.tasksStatus).toBe('saved');
     });
 
-    it('preserves unsaved Structure and Tasks across socket sync without marking saved', () => {
+    it('preserves unsaved Structure and Tasks across realtime socket sync', () => {
       const state = {
         workspace: {
           lyrics: { content: 'Clean lyrics' },
           notes: { content: 'Clean notes' },
           structure: { sections: [{ id: 's_local', type: 'outro', bars: 16 }] },
-          tasks: { tasks: [{ id: 't_local', title: 'Local Task In Progress', status: 'in_progress' }] }
+          tasks: { tasks: [{ id: 't_local', title: 'Local Task', status: 'in_progress' }] }
         },
         lyricsStatus: 'saved' as WorkspaceSaveStatus,
         hasPendingLyrics: false,
@@ -466,7 +795,6 @@ describe('Workspace Save Status & Failure Recovery', () => {
       expect(result.structureStatus).toBe('unsaved');
       expect(result.workspace.tasks.tasks[0]?.id).toBe('t_local');
       expect(result.tasksStatus).toBe('unsaved');
-
       expect(result.workspace.lyrics.content).toBe('Clean lyrics updated');
       expect(result.lyricsStatus).toBe('saved');
       expect(result.workspace.notes.content).toBe('Clean notes updated');

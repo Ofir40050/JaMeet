@@ -4239,6 +4239,17 @@ function renderProjectsGrid(): void {
   }
 }
 
+function resetWorkspaceGenerations(): void {
+  lyricsEditGen = 0;
+  lyricsSaveGen = 0;
+  notesEditGen = 0;
+  notesSaveGen = 0;
+  structureEditGen = 0;
+  structureSaveGen = 0;
+  tasksEditGen = 0;
+  tasksSaveGen = 0;
+}
+
 async function openProjectView(projectId: string): Promise<void> {
   const token = auth.getToken();
   if (!token) {
@@ -4246,6 +4257,7 @@ async function openProjectView(projectId: string): Promise<void> {
     return;
   }
   try {
+    resetWorkspaceGenerations();
     const project = await projectsApi.fetchProject(token, projectId);
     activeProject = project;
     activeProjectId = projectId;
@@ -4733,6 +4745,16 @@ let currentStructureStatus: 'saving' | 'saved' | 'unsaved' = 'saved';
 let currentTasksStatus: 'saving' | 'saved' | 'unsaved' = 'saved';
 let sessionWorkspaceOpen = false;
 
+// Generation counters for stale save response protection
+let lyricsEditGen = 0;
+let lyricsSaveGen = 0;
+let notesEditGen = 0;
+let notesSaveGen = 0;
+let structureEditGen = 0;
+let structureSaveGen = 0;
+let tasksEditGen = 0;
+let tasksSaveGen = 0;
+
 // Snapshot of last confirmed server state for 3-way merging
 let lastSyncedLyrics = '';
 let lastSyncedNotes = '';
@@ -4980,6 +5002,8 @@ function moveLyricsDoc(docId: string, direction: 'up' | 'down'): void {
   docs.splice(targetIdx, 0, moved);
   renderLyricsDocTabs();
 
+  lyricsEditGen++;
+  setLyricsStatus('saving');
   const activeDoc = getActiveLyricsDoc();
   void saveLyricsWorkspace(activeDoc.content, activeDoc.id, activeDoc.title);
 }
@@ -5033,7 +5057,8 @@ function switchActiveLyricsDoc(docId: string): void {
 
   lastSyncedLyrics = doc.content || '';
   updateLyricsStatsFromHtml(doc.content || '');
-  setLyricsStatus('saved');
+  lyricsEditGen++;
+  setLyricsStatus('saving');
 
   // Debounce save active document switch
   void saveLyricsWorkspace(doc.content || '', doc.id, doc.title);
@@ -5197,37 +5222,15 @@ function applyAuthoritativeWorkspaceUpdate(
     };
   }
 
-  // 1. Lyrics
-  const hasPendingLyrics = lyricsSaveTimeout !== null || currentLyricsStatus === 'saving' || currentLyricsStatus === 'unsaved';
-  if (savedArea === 'lyrics' || (!hasPendingLyrics && serverWorkspace.lyrics)) {
-    if (serverWorkspace.lyrics) {
-      activeProject.workspace.lyrics = serverWorkspace.lyrics;
-    }
-  }
-
-  // 2. Notes
-  const currentLocalNotes = activeProject.workspace?.notes?.content ?? '';
-  const hasPendingNotes = notesSaveTimeout !== null || currentNotesStatus === 'saving' || currentNotesStatus === 'unsaved' || currentLocalNotes !== lastSyncedNotes;
-  if (savedArea === 'notes' || (!hasPendingNotes && serverWorkspace.notes)) {
-    if (serverWorkspace.notes) {
-      activeProject.workspace.notes = serverWorkspace.notes;
-    }
-  }
-
-  // 3. Structure
-  const hasPendingStructure = structureSaveTimeout !== null || currentStructureStatus === 'saving' || currentStructureStatus === 'unsaved';
-  if (savedArea === 'structure' || (!hasPendingStructure && serverWorkspace.structure)) {
-    if (serverWorkspace.structure) {
-      activeProject.workspace.structure = serverWorkspace.structure;
-    }
-  }
-
-  // 4. Tasks
-  const hasPendingTasks = tasksSaveTimeout !== null || currentTasksStatus === 'saving' || currentTasksStatus === 'unsaved';
-  if (savedArea === 'tasks' || (!hasPendingTasks && serverWorkspace.tasks)) {
-    if (serverWorkspace.tasks) {
-      activeProject.workspace.tasks = serverWorkspace.tasks;
-    }
+  // Only apply authoritative state to the specific saved area
+  if (savedArea === 'lyrics' && serverWorkspace.lyrics) {
+    activeProject.workspace.lyrics = serverWorkspace.lyrics;
+  } else if (savedArea === 'notes' && serverWorkspace.notes) {
+    activeProject.workspace.notes = serverWorkspace.notes;
+  } else if (savedArea === 'structure' && serverWorkspace.structure) {
+    activeProject.workspace.structure = serverWorkspace.structure;
+  } else if (savedArea === 'tasks' && serverWorkspace.tasks) {
+    activeProject.workspace.tasks = serverWorkspace.tasks;
   }
 }
 
@@ -5377,6 +5380,7 @@ function handleLyricsEditorInput(source: 'project' | 'session'): void {
     activeProject.workspace.lyrics.content = newHtml;
   }
 
+  lyricsEditGen++;
   updateLyricsStatsFromHtml(newHtml);
   setLyricsStatus('saving');
 
@@ -5394,6 +5398,10 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
     setLyricsStatus('unsaved');
     return;
   }
+  const targetProjectId = activeProject.id;
+  const targetEditGen = lyricsEditGen;
+  const targetSaveGen = ++lyricsSaveGen;
+
   try {
     const activeDoc = getActiveLyricsDoc();
     const docId = documentId || activeDoc.id;
@@ -5409,7 +5417,10 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
       }
     };
 
-    const res = await signaling.updateProjectWorkspace(activeProject.id, payload, token);
+    const res = await signaling.updateProjectWorkspace(targetProjectId, payload, token);
+    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === lyricsSaveGen) && (targetEditGen === lyricsEditGen);
+    if (!isLatest) return;
+
     if (res?.ok && res.workspace && activeProject) {
       applyAuthoritativeWorkspaceUpdate('lyrics', res.workspace);
       const syncedDoc = getActiveLyricsDoc();
@@ -5420,7 +5431,10 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
     }
   } catch (err) {
     console.error('Failed to save lyrics document:', err);
-    setLyricsStatus('unsaved');
+    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === lyricsSaveGen) && (targetEditGen === lyricsEditGen);
+    if (isLatest) {
+      setLyricsStatus('unsaved');
+    }
   }
 }
 
@@ -5648,6 +5662,8 @@ $('lyrics-current-doc-title')?.addEventListener('input', (e) => {
   const activeDoc = getActiveLyricsDoc();
   activeDoc.title = newTitle;
   renderLyricsDocTabs();
+  lyricsEditGen++;
+  setLyricsStatus('saving');
   if (lyricsSaveTimeout) clearTimeout(lyricsSaveTimeout);
   lyricsSaveTimeout = setTimeout(() => {
     lyricsSaveTimeout = null;
@@ -5845,6 +5861,7 @@ function handleNotesInput(): void {
   if (sessionBpm && document.activeElement !== sessionBpm) sessionBpm.value = bpm;
   applyKeyToControls(key, false);
 
+  notesEditGen++;
   setNotesStatus('saving');
   if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
   notesSaveTimeout = setTimeout(() => {
@@ -5860,8 +5877,15 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
     setNotesStatus('unsaved');
     return;
   }
+  const targetProjectId = activeProject.id;
+  const targetEditGen = notesEditGen;
+  const targetSaveGen = ++notesSaveGen;
+
   try {
-    const res = await signaling.updateProjectWorkspace(activeProject.id, { notes: { content, bpm, key } }, token);
+    const res = await signaling.updateProjectWorkspace(targetProjectId, { notes: { content, bpm, key } }, token);
+    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === notesSaveGen) && (targetEditGen === notesEditGen);
+    if (!isLatest) return;
+
     if (res?.ok && res.workspace && activeProject) {
       applyAuthoritativeWorkspaceUpdate('notes', res.workspace);
       lastSyncedNotes = res.workspace.notes?.content ?? content;
@@ -5871,7 +5895,10 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
     }
   } catch (err) {
     console.error('Failed to save notes:', err);
-    setNotesStatus('unsaved');
+    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === notesSaveGen) && (targetEditGen === notesEditGen);
+    if (isLatest) {
+      setNotesStatus('unsaved');
+    }
   }
 }
 
@@ -6274,6 +6301,7 @@ function reorderStructureSectionToPosition(
 }
 
 function debounceSaveStructure(): void {
+  structureEditGen++;
   setStructureStatus('saving');
   if (structureSaveTimeout) clearTimeout(structureSaveTimeout);
   structureSaveTimeout = setTimeout(() => {
@@ -6289,9 +6317,16 @@ async function saveStructureWorkspace(): Promise<void> {
     setStructureStatus('unsaved');
     return;
   }
+  const targetProjectId = activeProject.id;
+  const targetEditGen = structureEditGen;
+  const targetSaveGen = ++structureSaveGen;
+
   try {
     const sections = getStructureSections();
-    const res = await signaling.updateProjectWorkspace(activeProject.id, { structure: { sections } }, token);
+    const res = await signaling.updateProjectWorkspace(targetProjectId, { structure: { sections } }, token);
+    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === structureSaveGen) && (targetEditGen === structureEditGen);
+    if (!isLatest) return;
+
     if (res?.ok && res.workspace && activeProject) {
       applyAuthoritativeWorkspaceUpdate('structure', res.workspace);
       setStructureStatus('saved');
@@ -6300,7 +6335,10 @@ async function saveStructureWorkspace(): Promise<void> {
     }
   } catch (err) {
     console.error('Failed to save structure workspace:', err);
-    setStructureStatus('unsaved');
+    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === structureSaveGen) && (targetEditGen === structureEditGen);
+    if (isLatest) {
+      setStructureStatus('unsaved');
+    }
   }
 }
 
@@ -6676,6 +6714,7 @@ function setTasksStatus(status: 'saving' | 'saved' | 'unsaved'): void {
 }
 
 function debounceSaveTasks(): void {
+  tasksEditGen++;
   setTasksStatus('saving');
   if (tasksSaveTimeout) clearTimeout(tasksSaveTimeout);
   tasksSaveTimeout = setTimeout(() => {
@@ -6691,11 +6730,18 @@ async function saveTasksWorkspace(): Promise<void> {
     setTasksStatus('unsaved');
     return;
   }
+  const targetProjectId = activeProject.id;
+  const targetEditGen = tasksEditGen;
+  const targetSaveGen = ++tasksSaveGen;
   const tasks = getProjectTasks();
+
   try {
-    const res = await signaling.updateProjectWorkspace(activeProject.id, {
+    const res = await signaling.updateProjectWorkspace(targetProjectId, {
       tasks: { tasks }
     }, token);
+    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === tasksSaveGen) && (targetEditGen === tasksEditGen);
+    if (!isLatest) return;
+
     if (res?.ok && res.workspace && activeProject) {
       applyAuthoritativeWorkspaceUpdate('tasks', res.workspace);
       setTasksStatus('saved');
@@ -6704,7 +6750,10 @@ async function saveTasksWorkspace(): Promise<void> {
     }
   } catch (err) {
     console.error('Failed to save tasks workspace:', err);
-    setTasksStatus('unsaved');
+    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === tasksSaveGen) && (targetEditGen === tasksEditGen);
+    if (isLatest) {
+      setTasksStatus('unsaved');
+    }
   }
 }
 
