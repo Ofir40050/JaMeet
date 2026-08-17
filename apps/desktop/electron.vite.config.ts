@@ -2,8 +2,20 @@ import { resolve } from 'path';
 import { defineConfig } from 'electron-vite';
 
 export default defineConfig({
-  main: {},
-  preload: {},
+  main: {
+    build: {
+      externalizeDeps: {
+        exclude: ['@jameet/shared']
+      }
+    }
+  },
+  preload: {
+    build: {
+      externalizeDeps: {
+        exclude: ['@jameet/shared']
+      }
+    }
+  },
   renderer: {
     build: {
       rollupOptions: {
