@@ -219,7 +219,6 @@ describe('JaMeet Secure Admin Panel', () => {
       expect(resDash.statusCode).toBe(200);
       expect(resDash.headers['content-type']).toContain('text/html');
       expect(resDash.body).toContain('JaMeet Admin');
-      expect(resDash.body).toContain('Beta Ops');
       expect(resDash.body).toContain('users-table');
       expect(resDash.body).toContain('btn-logout');
 
@@ -937,6 +936,122 @@ describe('JaMeet Secure Admin Panel', () => {
       const updatedDetail = JSON.parse(updatedDetailRes.body);
       expect(updatedDetail.user.clientPlatform).toBe('Unknown');
       expect(updatedDetail.user.clientVersion).toBe('Unknown');
+
+      await app.close();
+    });
+
+    it('performs bulk access updates across multiple selected users', async () => {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: testDir,
+        ALLOWED_ORIGINS: 'http://localhost:3000',
+        JAMEET_ADMIN_SECRET: TEST_ADMIN_SECRET
+      });
+      const { app, userStore } = await createApp(config);
+      const sessionToken = createAdminSessionToken(TEST_ADMIN_SECRET);
+
+      const regA = await userStore.register({ username: 'bulk_a', email: 'bulk_a@test.com', password: 'Password1!', displayName: 'User A' });
+      const regB = await userStore.register({ username: 'bulk_b', email: 'bulk_b@test.com', password: 'Password2!', displayName: 'User B' });
+      const regC = await userStore.register({ username: 'bulk_c', email: 'bulk_c@test.com', password: 'Password3!', displayName: 'User C' });
+
+      expect(userStore.getStoredUser(regA.user.id)?.sessionAccess).toBe('blocked');
+      expect(userStore.getStoredUser(regB.user.id)?.sessionAccess).toBe('blocked');
+      expect(userStore.getStoredUser(regC.user.id)?.sessionAccess).toBe('blocked');
+
+      // Bulk update userA and userB to 'beta'
+      const bulkRes = await app.inject({
+        method: 'POST',
+        url: '/admin/api/users/bulk-access',
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`,
+          origin: 'http://localhost:3000'
+        },
+        payload: {
+          userIds: [regA.user.id, regB.user.id],
+          access: 'beta'
+        }
+      });
+      expect(bulkRes.statusCode).toBe(200);
+      const bulkData = JSON.parse(bulkRes.body);
+      expect(bulkData.ok).toBe(true);
+      expect(bulkData.updatedCount).toBe(2);
+
+      expect(userStore.getStoredUser(regA.user.id)?.sessionAccess).toBe('beta');
+      expect(userStore.getStoredUser(regB.user.id)?.sessionAccess).toBe('beta');
+      expect(userStore.getStoredUser(regC.user.id)?.sessionAccess).toBe('blocked');
+
+      // Bulk update all to 'paid'
+      const bulkPaidRes = await app.inject({
+        method: 'POST',
+        url: '/admin/api/users/bulk-access',
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`,
+          origin: 'http://localhost:3000'
+        },
+        payload: {
+          userIds: [regA.user.id, regB.user.id, regC.user.id],
+          access: 'paid'
+        }
+      });
+      expect(bulkPaidRes.statusCode).toBe(200);
+      expect(JSON.parse(bulkPaidRes.body).updatedCount).toBe(3);
+
+      expect(userStore.getStoredUser(regA.user.id)?.sessionAccess).toBe('paid');
+      expect(userStore.getStoredUser(regB.user.id)?.sessionAccess).toBe('paid');
+      expect(userStore.getStoredUser(regC.user.id)?.sessionAccess).toBe('paid');
+
+      await app.close();
+    });
+
+    it('performs bulk beta expiration updates across multiple selected users', async () => {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: testDir,
+        ALLOWED_ORIGINS: 'http://localhost:3000',
+        JAMEET_ADMIN_SECRET: TEST_ADMIN_SECRET
+      });
+      const { app, userStore } = await createApp(config);
+      const sessionToken = createAdminSessionToken(TEST_ADMIN_SECRET);
+
+      const regA = await userStore.register({ username: 'bulk_exp_a', email: 'exp_a@test.com', password: 'Password1!', displayName: 'User Exp A' });
+      const regB = await userStore.register({ username: 'bulk_exp_b', email: 'exp_b@test.com', password: 'Password2!', displayName: 'User Exp B' });
+
+      const futureExpiry = Date.now() + 7 * 24 * 60 * 60 * 1000;
+
+      const bulkExpRes = await app.inject({
+        method: 'POST',
+        url: '/admin/api/users/bulk-beta-expiry',
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`,
+          origin: 'http://localhost:3000'
+        },
+        payload: {
+          userIds: [regA.user.id, regB.user.id],
+          betaExpiresAt: futureExpiry
+        }
+      });
+      expect(bulkExpRes.statusCode).toBe(200);
+      expect(JSON.parse(bulkExpRes.body).updatedCount).toBe(2);
+
+      expect(userStore.getStoredUser(regA.user.id)?.betaExpiresAt).toBe(futureExpiry);
+      expect(userStore.getStoredUser(regB.user.id)?.betaExpiresAt).toBe(futureExpiry);
+
+      // Clear expiration
+      const clearRes = await app.inject({
+        method: 'POST',
+        url: '/admin/api/users/bulk-beta-expiry',
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`,
+          origin: 'http://localhost:3000'
+        },
+        payload: {
+          userIds: [regA.user.id, regB.user.id],
+          betaExpiresAt: null
+        }
+      });
+      expect(clearRes.statusCode).toBe(200);
+      expect(userStore.getStoredUser(regA.user.id)?.betaExpiresAt).toBeNull();
+      expect(userStore.getStoredUser(regB.user.id)?.betaExpiresAt).toBeNull();
 
       await app.close();
     });

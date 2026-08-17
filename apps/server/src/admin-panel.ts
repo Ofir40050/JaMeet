@@ -207,16 +207,16 @@ function renderLoginPage(errorMessage?: string): string {
   <title>JaMeet Admin Authentication</title>
   <style>
     :root {
-      --bg: #090d16;
-      --card-bg: #111827;
-      --border: #1f2937;
-      --text: #f9fafb;
-      --text-muted: #9ca3af;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
       --primary: #2563eb;
       --primary-hover: #1d4ed8;
-      --danger-bg: rgba(239, 68, 68, 0.15);
-      --danger-text: #fca5a5;
-      --danger-border: #7f1d1d;
+      --danger-bg: #fef2f2;
+      --danger-text: #b91c1c;
+      --danger-border: #fecaca;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -231,61 +231,54 @@ function renderLoginPage(errorMessage?: string): string {
     }
     .login-container {
       width: 100%;
-      max-width: 420px;
+      max-width: 380px;
       background: var(--card-bg);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 2.25rem 2rem;
-      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+      border-radius: 6px;
+      padding: 2rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     }
-    .logo-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.8rem;
+    .logo-header {
+      font-size: 0.8125rem;
       font-weight: 700;
       letter-spacing: 0.05em;
       text-transform: uppercase;
-      color: #38bdf8;
-      background: rgba(56, 189, 248, 0.1);
-      border: 1px solid rgba(56, 189, 248, 0.25);
-      padding: 0.25rem 0.65rem;
-      border-radius: 9999px;
-      margin-bottom: 1.25rem;
-    }
-    h1 {
-      font-size: 1.5rem;
-      font-weight: 600;
-      letter-spacing: -0.02em;
+      color: var(--primary);
       margin-bottom: 0.5rem;
     }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.35rem;
+    }
     p.subtitle {
-      font-size: 0.875rem;
+      font-size: 0.8125rem;
       color: var(--text-muted);
-      margin-bottom: 1.75rem;
+      margin-bottom: 1.5rem;
       line-height: 1.4;
     }
     .error-alert {
       background: var(--danger-bg);
       color: var(--danger-text);
       border: 1px solid var(--danger-border);
-      padding: 0.75rem 1rem;
-      border-radius: 8px;
-      font-size: 0.875rem;
-      margin-bottom: 1.5rem;
+      padding: 0.625rem 0.875rem;
+      border-radius: 4px;
+      font-size: 0.8125rem;
+      margin-bottom: 1.25rem;
       display: flex;
       align-items: center;
       gap: 0.5rem;
     }
     .form-group {
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.25rem;
     }
     label {
       display: block;
       font-size: 0.8125rem;
       font-weight: 500;
-      color: var(--text-muted);
-      margin-bottom: 0.5rem;
+      color: var(--text);
+      margin-bottom: 0.35rem;
     }
     .input-wrapper {
       position: relative;
@@ -295,67 +288,57 @@ function renderLoginPage(errorMessage?: string): string {
     input[type="password"],
     input[type="text"] {
       width: 100%;
-      background: #0d1322;
+      background: #ffffff;
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 4px;
       color: var(--text);
-      font-size: 0.9375rem;
-      padding: 0.75rem 1rem;
-      padding-right: 4rem;
+      font-size: 0.875rem;
+      padding: 0.5rem 0.75rem;
+      padding-right: 3.5rem;
       outline: none;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
     input[type="password"]:focus,
     input[type="text"]:focus {
       border-color: var(--primary);
-      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+      box-shadow: 0 0 0 1px var(--primary);
     }
     .toggle-visibility {
       position: absolute;
-      right: 0.75rem;
+      right: 0.5rem;
       background: none;
       border: none;
       color: var(--text-muted);
-      font-size: 0.8125rem;
-      font-weight: 500;
+      font-size: 0.75rem;
       cursor: pointer;
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
-    }
-    .toggle-visibility:hover {
-      color: var(--text);
+      padding: 0.2rem 0.4rem;
     }
     button[type="submit"] {
       width: 100%;
       background: var(--primary);
       color: #ffffff;
       border: none;
-      border-radius: 8px;
-      padding: 0.75rem 1rem;
-      font-size: 0.9375rem;
-      font-weight: 600;
+      border-radius: 4px;
+      padding: 0.55rem 0.75rem;
+      font-size: 0.875rem;
+      font-weight: 500;
       cursor: pointer;
-      transition: background-color 0.15s ease, transform 0.05s ease;
     }
     button[type="submit"]:hover {
       background: var(--primary-hover);
     }
-    button[type="submit"]:active {
-      transform: scale(0.99);
-    }
     .footer-note {
       text-align: center;
       font-size: 0.75rem;
-      color: #556987;
-      margin-top: 1.5rem;
+      color: var(--text-muted);
+      margin-top: 1.25rem;
     }
   </style>
 </head>
 <body>
   <div class="login-container" id="admin-login-card">
-    <div class="logo-badge">JaMeet Server Admin</div>
+    <div class="logo-header">JaMeet Server Admin</div>
     <h1>Authentication Required</h1>
-    <p class="subtitle">Enter the administrator secret to access the beta operations dashboard.</p>
+    <p class="subtitle">Enter administrator secret to access user management.</p>
 
     ${safeError ? `<div class="error-alert" id="admin-login-error" role="alert"><span>⚠️</span><span>${safeError}</span></div>` : ''}
 
@@ -370,7 +353,7 @@ function renderLoginPage(errorMessage?: string): string {
       <button type="submit" id="admin-login-submit">Authenticate</button>
     </form>
 
-    <div class="footer-note">Server-side authenticated session • 12-hour expiration</div>
+    <div class="footer-note">Server authenticated session • 12-hour expiration</div>
   </div>
 
   <script>
@@ -394,904 +377,935 @@ function renderAdminDashboard(): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>JaMeet Beta Operations Dashboard</title>
+  <title>JaMeet Admin</title>
   <style>
     :root {
-      --bg: #090d16;
-      --card-bg: #111827;
-      --card-hover: #162032;
-      --border: #1f2937;
-      --border-subtle: #2d3748;
-      --text: #f9fafb;
-      --text-muted: #9ca3af;
-      --text-dim: #6b7280;
-      
-      --badge-beta-bg: rgba(14, 165, 233, 0.15);
-      --badge-beta-border: #0284c7;
-      --badge-beta-text: #7dd3fc;
-      
-      --badge-paid-bg: rgba(16, 185, 129, 0.15);
-      --badge-paid-border: #059669;
-      --badge-paid-text: #6ee7b7;
-      
-      --badge-blocked-bg: rgba(244, 63, 94, 0.15);
-      --badge-blocked-border: #e11d48;
-      --badge-blocked-text: #fda4af;
-
-      --badge-online-bg: rgba(34, 197, 94, 0.15);
-      --badge-online-border: #16a34a;
-      --badge-online-text: #4ade80;
-      
-      --btn-primary: #2563eb;
-      --btn-primary-hover: #1d4ed8;
+      --bg: #ffffff;
+      --text: #111827;
+      --text-muted: #4b5563;
+      --text-subtle: #6b7280;
+      --border: #e5e7eb;
+      --border-dark: #d1d5db;
+      --hover-bg: #f9fafb;
+      --selected-bg: #eff6ff;
+      --selected-border: #bfdbfe;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --btn-bg: #ffffff;
+      --btn-border: #d1d5db;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background-color: var(--bg);
       color: var(--text);
+      font-size: 13px;
+      line-height: 1.4;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
     }
+    
+    /* Top Header */
     header {
-      background: var(--card-bg);
       border-bottom: 1px solid var(--border);
-      padding: 0.875rem 1.5rem;
+      padding: 0.5rem 1rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
-      position: sticky;
-      top: 0;
-      z-index: 50;
+      background: #ffffff;
     }
-    .brand-section {
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .app-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+    .summary-counts {
       display: flex;
       align-items: center;
       gap: 0.75rem;
+      color: var(--text-muted);
+      font-size: 12px;
     }
-    .brand-title {
-      font-size: 1.125rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
+    .summary-item strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .header-right {
       display: flex;
       align-items: center;
       gap: 0.5rem;
     }
-    .brand-tag {
-      font-size: 0.6875rem;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      background: rgba(37, 99, 235, 0.2);
-      color: #60a5fa;
-      border: 1px solid rgba(37, 99, 235, 0.35);
-      padding: 0.15rem 0.45rem;
-      border-radius: 4px;
-    }
-    .server-health-pills {
-      display: flex;
-      align-items: center;
-      gap: 0.625rem;
-      flex-wrap: wrap;
-    }
-    .health-pill {
+
+    /* Common Buttons & Inputs */
+    .btn {
       display: inline-flex;
       align-items: center;
-      gap: 0.375rem;
-      font-size: 0.75rem;
-      font-weight: 600;
-      padding: 0.25rem 0.65rem;
-      border-radius: 9999px;
-      border: 1px solid var(--border-subtle);
-      background: #0d1322;
+      justify-content: center;
+      background: var(--btn-bg);
+      border: 1px solid var(--btn-border);
+      color: var(--text);
+      padding: 0.3rem 0.6rem;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 3px;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .btn:hover {
+      background: #f3f4f6;
+      border-color: #9ca3af;
+    }
+    .btn:active {
+      background: #e5e7eb;
+    }
+    .btn-primary {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background: var(--primary-hover);
+      border-color: var(--primary-hover);
+    }
+    .btn-subtle {
+      background: transparent;
+      border-color: transparent;
       color: var(--text-muted);
     }
-    .health-pill.operational {
-      border-color: rgba(34, 197, 94, 0.3);
-      color: #4ade80;
-      background: rgba(34, 197, 94, 0.08);
+    .btn-subtle:hover {
+      background: #f3f4f6;
+      border-color: var(--border);
+      color: var(--text);
     }
-    .pulse-beacon {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #22c55e;
-      box-shadow: 0 0 6px #22c55e;
-      display: inline-block;
-    }
-    .header-actions {
+
+    /* Controls & Filter Bar */
+    .toolbar {
+      padding: 0.5rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: #fafafa;
       display: flex;
       align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex: 1;
+      max-width: 600px;
+    }
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .search-input {
+      width: 100%;
+      max-width: 280px;
+      padding: 0.3rem 0.5rem;
+      font-size: 12px;
+      border: 1px solid var(--btn-border);
+      border-radius: 3px;
+      background: #ffffff;
+      outline: none;
+    }
+    .search-input:focus {
+      border-color: var(--primary);
+    }
+    .select-filter {
+      padding: 0.3rem 0.4rem;
+      font-size: 12px;
+      border: 1px solid var(--btn-border);
+      border-radius: 3px;
+      background: #ffffff;
+      color: var(--text);
+      outline: none;
+    }
+    .select-filter:focus {
+      border-color: var(--primary);
+    }
+
+    /* Bulk Actions Bar */
+    .bulk-bar {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.4rem 1rem;
+      background: #f0f7ff;
+      border-bottom: 1px solid #bfdbfe;
+      font-size: 12px;
       gap: 0.75rem;
     }
-    .btn-secondary {
-      background: #1f2937;
-      color: var(--text);
-      border: 1px solid var(--border-subtle);
-      border-radius: 6px;
-      padding: 0.45rem 0.875rem;
-      font-size: 0.8125rem;
-      font-weight: 500;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.375rem;
-      transition: background-color 0.15s ease;
-    }
-    .btn-secondary:hover {
-      background: #374151;
-    }
-    main {
-      flex: 1;
-      max-width: 1300px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 1.5rem;
+    .bulk-bar.active {
       display: flex;
-      flex-direction: column;
-      gap: 1.5rem;
     }
-    .summary-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 1rem;
-    }
-    .stat-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1.125rem 1.25rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.375rem;
-    }
-    .stat-label {
-      font-size: 0.75rem;
+    .bulk-count {
       font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
+      color: #1e40af;
+    }
+    .bulk-actions {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 0.4rem;
     }
-    .stat-value {
-      font-size: 1.625rem;
-      font-weight: 700;
-      color: var(--text);
-      letter-spacing: -0.02em;
-    }
-    .controls-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
-    }
-    .search-box {
-      position: relative;
-      flex: 1;
-      min-width: 260px;
-      max-width: 440px;
-    }
-    .search-box input {
-      width: 100%;
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      font-size: 0.875rem;
-      padding: 0.6rem 1rem 0.6rem 2.25rem;
-      outline: none;
-      transition: border-color 0.15s ease;
-    }
-    .search-box input:focus {
-      border-color: var(--btn-primary);
-    }
-    .search-icon {
-      position: absolute;
-      left: 0.75rem;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--text-dim);
-      font-size: 0.875rem;
-    }
-    .filter-tabs {
-      display: inline-flex;
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.25rem;
-      gap: 0.25rem;
-    }
-    .filter-btn {
-      background: transparent;
-      border: none;
-      color: var(--text-muted);
-      font-size: 0.8125rem;
-      font-weight: 500;
-      padding: 0.375rem 0.75rem;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
-    .filter-btn.active {
-      background: #1f2937;
-      color: #ffffff;
-      font-weight: 600;
-    }
+
+    /* Spreadsheet Table */
     .table-container {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      overflow: hidden;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+      flex: 1;
+      overflow: auto;
+      background: #ffffff;
     }
     table {
       width: 100%;
       border-collapse: collapse;
       text-align: left;
-      font-size: 0.875rem;
+      font-size: 12px;
     }
     th {
-      background: #0f172a;
+      background: #f8fafc;
       color: var(--text-muted);
-      font-size: 0.75rem;
       font-weight: 600;
+      font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      padding: 0.75rem 1rem;
-      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.03em;
+      border-bottom: 1px solid var(--border-dark);
+      border-right: 1px solid var(--border);
+      padding: 0.4rem 0.6rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      user-select: none;
+    }
+    th:last-child {
+      border-right: none;
     }
     td {
-      padding: 0.875rem 1rem;
       border-bottom: 1px solid var(--border);
-      vertical-align: middle;
+      border-right: 1px solid var(--border);
+      padding: 0.35rem 0.6rem;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    tr:last-child td {
-      border-bottom: none;
+    td:last-child {
+      border-right: none;
     }
     tr:hover td {
-      background-color: var(--card-hover);
+      background: var(--hover-bg);
     }
-    .user-cell {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
+    tr.selected td {
+      background: var(--selected-bg);
+      border-bottom-color: var(--selected-border);
     }
-    .avatar {
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 0.8125rem;
-      color: #ffffff;
-      flex-shrink: 0;
+    .col-checkbox {
+      width: 32px;
+      text-align: center;
+      padding: 0.35rem 0.25rem;
     }
-    .user-info {
-      display: flex;
-      flex-direction: column;
-      gap: 0.15rem;
+    .col-checkbox input {
+      cursor: pointer;
     }
-    .display-name {
-      font-weight: 600;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
+    .cell-clickable {
+      cursor: pointer;
+      font-weight: 500;
+      color: var(--primary);
     }
-    .username-sub {
-      font-size: 0.75rem;
-      color: var(--text-dim);
+    .cell-clickable:hover {
+      text-decoration: underline;
     }
-    .presence-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      font-size: 0.6875rem;
-      font-weight: 600;
-      padding: 0.1rem 0.45rem;
-      border-radius: 9999px;
-      line-height: 1.2;
+    .text-mono {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
     }
-    .presence-badge.online {
-      background: var(--badge-online-bg);
-      border: 1px solid var(--badge-online-border);
-      color: var(--badge-online-text);
-    }
-    .presence-badge.offline {
-      background: rgba(107, 114, 128, 0.15);
-      border: 1px solid rgba(107, 114, 128, 0.3);
-      color: #9ca3af;
-    }
-    .presence-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: currentColor;
-    }
-    .client-tag {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      background: #0d1322;
-      border: 1px solid var(--border-subtle);
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-      font-size: 0.6875rem;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      padding: 0.2rem 0.55rem;
-      border-radius: 6px;
-    }
-    .badge-beta {
-      background: var(--badge-beta-bg);
-      border: 1px solid var(--badge-beta-border);
-      color: var(--badge-beta-text);
-    }
-    .badge-paid {
-      background: var(--badge-paid-bg);
-      border: 1px solid var(--badge-paid-border);
-      color: var(--badge-paid-text);
-    }
-    .badge-blocked {
-      background: var(--badge-blocked-bg);
-      border: 1px solid var(--badge-blocked-border);
-      color: var(--badge-blocked-text);
-    }
-    .expiry-note {
-      display: block;
-      font-size: 0.6875rem;
-      color: #f59e0b;
-      margin-top: 0.25rem;
+    .status-online {
+      color: #16a34a;
       font-weight: 500;
     }
-    .action-group {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
+    .status-offline {
+      color: var(--text-subtle);
     }
-    .segmented-control {
-      display: inline-flex;
-      background: #0d1322;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 2px;
+    .access-tag {
+      font-weight: 500;
+      text-transform: capitalize;
     }
-    .segment-btn {
-      background: transparent;
-      border: none;
-      color: var(--text-dim);
-      font-size: 0.75rem;
-      font-weight: 600;
-      padding: 0.3rem 0.6rem;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
-    .segment-btn:hover {
-      color: var(--text);
-    }
-    .segment-btn.active.blocked {
-      background: #e11d48;
-      color: #ffffff;
-    }
-    .segment-btn.active.beta {
-      background: #0284c7;
-      color: #ffffff;
-    }
-    .segment-btn.active.paid {
-      background: #059669;
-      color: #ffffff;
-    }
-    .btn-inspect {
-      background: #1e293b;
-      color: #94a3b8;
-      border: 1px solid var(--border-subtle);
-      border-radius: 6px;
-      padding: 0.3rem 0.65rem;
-      font-size: 0.75rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
-    .btn-inspect:hover {
-      background: #334155;
-      color: #ffffff;
+    .access-tag.blocked { color: #dc2626; }
+    .access-tag.beta { color: #0284c7; }
+    .access-tag.paid { color: #16a34a; }
+    .expiry-note {
+      color: var(--text-subtle);
+      font-size: 11px;
+      margin-left: 0.3rem;
     }
     .empty-state {
-      padding: 3rem 1.5rem;
+      padding: 3rem 1rem;
       text-align: center;
       color: var(--text-muted);
     }
-    
-    /* User Detail Modal */
+
+    /* Modal / Inspector Dialog */
     .modal-backdrop {
+      display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.75);
-      backdrop-filter: blur(4px);
-      display: none;
+      background: rgba(0, 0, 0, 0.4);
+      z-index: 100;
       align-items: center;
       justify-content: center;
-      z-index: 100;
-      padding: 1.5rem;
+      padding: 1rem;
     }
     .modal-backdrop.open {
       display: flex;
     }
     .modal-card {
+      background: #ffffff;
+      border: 1px solid var(--border-dark);
+      border-radius: 4px;
       width: 100%;
-      max-width: 680px;
+      max-width: 640px;
       max-height: 90vh;
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
     .modal-header {
-      padding: 1.25rem 1.5rem;
+      padding: 0.6rem 1rem;
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: #0d1322;
+      background: #fafafa;
     }
-    .modal-header-left {
-      display: flex;
-      align-items: center;
-      gap: 0.875rem;
-    }
-    .modal-close-btn {
-      background: transparent;
-      border: none;
-      color: var(--text-muted);
-      font-size: 1.25rem;
-      cursor: pointer;
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
-    }
-    .modal-close-btn:hover {
-      color: var(--text);
-      background: #1f2937;
+    .modal-title {
+      font-size: 13px;
+      font-weight: 600;
     }
     .modal-body {
-      padding: 1.5rem;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 1.5rem;
-    }
-    .modal-section-title {
-      font-size: 0.8125rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
-      margin-bottom: 0.75rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .info-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 0.875rem;
-    }
-    .info-item {
-      background: #0d1322;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.75rem 1rem;
-    }
-    .info-item-label {
-      font-size: 0.6875rem;
-      color: var(--text-dim);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 0.25rem;
-    }
-    .info-item-value {
-      font-size: 0.875rem;
-      font-weight: 600;
-      color: var(--text);
-      word-break: break-all;
-    }
-    
-    /* Beta Expiry Box */
-    .expiry-config-box {
-      background: #0d1322;
-      border: 1px solid var(--border);
-      border-radius: 8px;
       padding: 1rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.875rem;
+      overflow-y: auto;
+      font-size: 12px;
     }
-    .expiry-current-status {
-      font-size: 0.875rem;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
+    .prop-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1.25rem;
     }
-    .expiry-presets {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-    }
-    .preset-btn {
-      background: #1e293b;
-      border: 1px solid var(--border-subtle);
-      color: var(--text);
-      font-size: 0.75rem;
-      font-weight: 600;
-      padding: 0.35rem 0.65rem;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    .preset-btn:hover {
-      background: #334155;
-    }
-    .expiry-custom-row {
-      display: flex;
-      align-items: center;
-      gap: 0.625rem;
-    }
-    .expiry-custom-row input[type="date"] {
-      background: #111827;
+    .prop-table td {
+      padding: 0.4rem 0.5rem;
       border: 1px solid var(--border);
-      color: var(--text);
-      padding: 0.45rem 0.75rem;
-      border-radius: 6px;
-      font-size: 0.8125rem;
-      outline: none;
+      white-space: normal;
     }
-    .btn-apply-expiry {
-      background: var(--btn-primary);
-      border: none;
-      color: #ffffff;
-      padding: 0.45rem 0.875rem;
-      border-radius: 6px;
-      font-size: 0.8125rem;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .btn-apply-expiry:hover {
-      background: var(--btn-primary-hover);
-    }
-    
-    /* Activity Timeline */
-    .timeline {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      position: relative;
-      padding-left: 1.25rem;
-    }
-    .timeline::before {
-      content: "";
-      position: absolute;
-      left: 5px;
-      top: 6px;
-      bottom: 6px;
-      width: 2px;
-      background: var(--border);
-    }
-    .timeline-item {
-      position: relative;
-      display: flex;
-      flex-direction: column;
-      gap: 0.2rem;
-    }
-    .timeline-dot {
-      position: absolute;
-      left: -1.25rem;
-      top: 4px;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #38bdf8;
-      border: 2px solid var(--card-bg);
-    }
-    .timeline-desc {
-      font-size: 0.8125rem;
-      color: var(--text);
+    .prop-label {
+      width: 140px;
+      background: #f8fafc;
       font-weight: 500;
+      color: var(--text-muted);
     }
-    .timeline-time {
-      font-size: 0.6875rem;
-      color: var(--text-dim);
+    .activity-section-title {
+      font-weight: 600;
+      font-size: 12px;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--text-muted);
     }
-    
-    /* Toast Alert */
-    #toast-container {
-      position: fixed;
-      bottom: 1.5rem;
-      right: 1.5rem;
-      z-index: 200;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
+    .activity-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11.5px;
     }
+    .activity-table th,
+    .activity-table td {
+      border: 1px solid var(--border);
+      padding: 0.3rem 0.4rem;
+    }
+    .activity-table th {
+      background: #f8fafc;
+      color: var(--text-muted);
+    }
+
+    /* Toast */
     .toast {
-      background: #1e293b;
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      background: #1f2937;
       color: #ffffff;
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      padding: 0.75rem 1rem;
-      font-size: 0.875rem;
-      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-      animation: slideIn 0.2s ease-out;
+      font-size: 12px;
+      padding: 0.5rem 0.75rem;
+      border-radius: 3px;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.2s ease;
+      z-index: 200;
+      pointer-events: none;
     }
-    .toast.success { border-color: #059669; }
-    .toast.error { border-color: #e11d48; }
-    @keyframes slideIn {
-      from { transform: translateY(10px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
     }
+    .toast.success { background: #15803d; }
+    .toast.error { background: #b91c1c; }
   </style>
 </head>
 <body>
+  <!-- Header -->
   <header>
-    <div class="brand-section">
-      <div class="brand-title">
-        <span>JaMeet Admin</span>
-        <span class="brand-tag">Beta Ops</span>
-      </div>
-      <div class="server-health-pills" id="server-health-bar">
-        <span class="health-pill operational"><span class="pulse-beacon"></span> Operational</span>
-        <span class="health-pill" id="health-uptime">⏱️ Uptime: ...</span>
-        <span class="health-pill" id="health-online">🟢 0 Online</span>
-        <span class="health-pill" id="health-active-sessions">🎙️ 0 Active Calls</span>
+    <div class="header-left">
+      <div class="app-title">JaMeet Admin</div>
+      <div class="summary-counts">
+        <span class="summary-item">Total: <strong id="sum-total">0</strong></span>
+        <span>•</span>
+        <span class="summary-item">Beta: <strong id="sum-beta">0</strong></span>
+        <span>•</span>
+        <span class="summary-item">Paid: <strong id="sum-paid">0</strong></span>
+        <span>•</span>
+        <span class="summary-item">Blocked: <strong id="sum-blocked">0</strong></span>
+        <span>•</span>
+        <span class="summary-item">Online: <strong id="sum-online">0</strong></span>
       </div>
     </div>
-    <div class="header-actions">
-      <button type="button" class="btn-secondary" id="btn-refresh">↻ Refresh</button>
-      <form method="POST" action="/admin/logout" style="margin: 0;">
-        <button type="submit" class="btn-secondary" id="btn-logout">Log Out</button>
+    <div class="header-right">
+      <form method="POST" action="/admin/logout" style="margin:0;">
+        <button type="submit" class="btn btn-subtle" id="btn-logout">Log out</button>
       </form>
     </div>
   </header>
 
-  <main>
-    <div class="summary-grid">
-      <div class="stat-card">
-        <div class="stat-label">Total Registered</div>
-        <div class="stat-value" id="stat-total">-</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Currently Online <span class="pulse-beacon"></span></div>
-        <div class="stat-value" id="stat-online">-</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Active Sessions</div>
-        <div class="stat-value" id="stat-active-sessions">-</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Beta Access</div>
-        <div class="stat-value" id="stat-beta">-</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Paid Subscribers</div>
-        <div class="stat-value" id="stat-paid">-</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Blocked Accounts</div>
-        <div class="stat-value" id="stat-blocked">-</div>
-      </div>
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <input type="text" id="search-input" class="search-input" placeholder="Search name, username, email..." autocomplete="off" />
+      <select id="access-filter" class="select-filter">
+        <option value="all">All Access</option>
+        <option value="beta">Beta</option>
+        <option value="paid">Paid</option>
+        <option value="blocked">Blocked</option>
+      </select>
+      <select id="status-filter" class="select-filter">
+        <option value="all">All Status</option>
+        <option value="online">Online</option>
+        <option value="offline">Offline</option>
+      </select>
     </div>
+    <div class="toolbar-right">
+      <button type="button" class="btn" id="btn-export-csv">Export CSV</button>
+      <button type="button" class="btn" id="btn-refresh">Refresh</button>
+    </div>
+  </div>
 
-    <div class="controls-row">
-      <div class="search-box">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="user-search" placeholder="Search by name, @username, or email...">
-      </div>
-      <div class="filter-tabs">
-        <button type="button" class="filter-btn active" data-filter="all">All</button>
-        <button type="button" class="filter-btn" data-filter="online">Online</button>
-        <button type="button" class="filter-btn" data-filter="beta">Beta</button>
-        <button type="button" class="filter-btn" data-filter="paid">Paid</button>
-        <button type="button" class="filter-btn" data-filter="blocked">Blocked</button>
-      </div>
+  <!-- Bulk Action Bar -->
+  <div class="bulk-bar" id="bulk-bar">
+    <div class="bulk-count" id="bulk-count">0 users selected</div>
+    <div class="bulk-actions">
+      <button type="button" class="btn btn-sm" id="bulk-set-beta">Set Beta</button>
+      <button type="button" class="btn btn-sm" id="bulk-set-paid">Set Paid</button>
+      <button type="button" class="btn btn-sm" id="bulk-set-blocked">Set Blocked</button>
+      <button type="button" class="btn btn-sm" id="bulk-set-expiry">Set Beta Expiration</button>
+      <button type="button" class="btn btn-sm btn-subtle" id="bulk-clear">Clear</button>
     </div>
+  </div>
 
-    <div class="table-container">
-      <table>
-        <thead>
-          <tr>
-            <th>Musician & Presence</th>
-            <th>Email</th>
-            <th>Client Platform</th>
-            <th>Registered</th>
-            <th>Sessions</th>
-            <th>Access State</th>
-            <th style="text-align: right;">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="users-table-body">
-          <tr>
-            <td colspan="7" class="empty-state">Loading user registry...</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </main>
+  <!-- Primary User Table -->
+  <div class="table-container">
+    <table id="users-table">
+      <thead>
+        <tr>
+          <th class="col-checkbox"><input type="checkbox" id="select-all-checkbox" aria-label="Select all visible users" /></th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Username</th>
+          <th>Access</th>
+          <th>Joined</th>
+          <th>Last Active</th>
+          <th>Platform</th>
+          <th>Version</th>
+          <th style="text-align:right;">Sessions</th>
+        </tr>
+      </thead>
+      <tbody id="users-tbody">
+        <tr><td colspan="10" class="empty-state">Loading users...</td></tr>
+      </tbody>
+    </table>
+  </div>
 
   <!-- User Detail Modal -->
   <div class="modal-backdrop" id="user-detail-modal">
     <div class="modal-card">
       <div class="modal-header">
-        <div class="modal-header-left">
-          <div class="avatar" id="modal-avatar">?</div>
-          <div>
-            <div class="display-name" id="modal-display-name">User Name</div>
-            <div class="username-sub" id="modal-username">@username</div>
-          </div>
-        </div>
-        <button type="button" class="modal-close-btn" id="modal-close-btn" aria-label="Close">✕</button>
+        <div class="modal-title" id="modal-title">User Details</div>
+        <button type="button" class="btn btn-subtle" id="modal-close-btn">✕</button>
       </div>
       <div class="modal-body">
-        <div>
-          <div class="modal-section-title">Operational Information</div>
-          <div class="info-grid">
-            <div class="info-item">
-              <div class="info-item-label">Account ID</div>
-              <div class="info-item-value" id="modal-id" style="font-family: monospace; font-size: 0.75rem;">-</div>
-            </div>
-            <div class="info-item">
-              <div class="info-item-label">Presence Status</div>
-              <div class="info-item-value" id="modal-presence">-</div>
-            </div>
-            <div class="info-item">
-              <div class="info-item-label">Client Platform & App</div>
-              <div class="info-item-value" id="modal-client">-</div>
-            </div>
-            <div class="info-item">
-              <div class="info-item-label">Last Active</div>
-              <div class="info-item-value" id="modal-last-active">-</div>
-            </div>
-            <div class="info-item">
-              <div class="info-item-label">Last Login</div>
-              <div class="info-item-value" id="modal-last-login">-</div>
-            </div>
-            <div class="info-item">
-              <div class="info-item-label">Hosted Sessions</div>
-              <div class="info-item-value" id="modal-hosted-count">-</div>
-            </div>
-            <div class="info-item">
-              <div class="info-item-label">Created At</div>
-              <div class="info-item-value" id="modal-created-at">-</div>
-            </div>
-            <div class="info-item">
-              <div class="info-item-label">Access State Updated</div>
-              <div class="info-item-value" id="modal-access-updated">-</div>
-            </div>
-          </div>
-        </div>
+        <table class="prop-table">
+          <tr>
+            <td class="prop-label">User ID</td>
+            <td class="text-mono" id="modal-id">-</td>
+          </tr>
+          <tr>
+            <td class="prop-label">Display Name</td>
+            <td id="modal-display-name">-</td>
+          </tr>
+          <tr>
+            <td class="prop-label">Username</td>
+            <td class="text-mono" id="modal-username">-</td>
+          </tr>
+          <tr>
+            <td class="prop-label">Email</td>
+            <td id="modal-email">-</td>
+          </tr>
+          <tr>
+            <td class="prop-label">Access State</td>
+            <td>
+              <div style="display:flex; align-items:center; gap:0.5rem;">
+                <select id="modal-access-select" class="select-filter">
+                  <option value="blocked">Blocked</option>
+                  <option value="beta">Beta</option>
+                  <option value="paid">Paid</option>
+                </select>
+                <button type="button" class="btn" id="modal-update-access-btn">Save Access</button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="prop-label">Beta Expiration</td>
+            <td>
+              <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                <input type="date" id="modal-expiry-input" class="search-input" style="max-width:140px;" />
+                <button type="button" class="btn" id="modal-set-expiry-btn">Set Date</button>
+                <button type="button" class="btn btn-subtle" id="modal-clear-expiry-btn">Clear Expiration</button>
+                <span id="modal-expiry-status" style="font-size:11.5px; color:var(--text-subtle);"></span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="prop-label">Presence</td>
+            <td id="modal-presence">-</td>
+          </tr>
+          <tr>
+            <td class="prop-label">Client Info</td>
+            <td id="modal-client">-</td>
+          </tr>
+          <tr>
+            <td class="prop-label">Last Active</td>
+            <td id="modal-last-active">-</td>
+          </tr>
+          <tr>
+            <td class="prop-label">Last Login</td>
+            <td id="modal-last-login">-</td>
+          </tr>
+          <tr>
+            <td class="prop-label">Sessions Hosted</td>
+            <td id="modal-hosted-count">-</td>
+          </tr>
+          <tr>
+            <td class="prop-label">Joined</td>
+            <td id="modal-created-at">-</td>
+          </tr>
+        </table>
 
-        <div>
-          <div class="modal-section-title">Beta Access & Expiration Management</div>
-          <div class="expiry-config-box">
-            <div class="expiry-current-status" id="modal-expiry-status">Status: No expiration configured.</div>
-            <div class="expiry-presets">
-              <button type="button" class="preset-btn" data-days="7">+7 Days</button>
-              <button type="button" class="preset-btn" data-days="14">+14 Days</button>
-              <button type="button" class="preset-btn" data-days="30">+30 Days</button>
-              <button type="button" class="preset-btn" data-days="90">+90 Days</button>
-              <button type="button" class="preset-btn" id="btn-modal-clear-expiry" style="color: #fca5a5;">Clear Expiration</button>
-            </div>
-            <div class="expiry-custom-row">
-              <label for="modal-expiry-date" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Set Date:</label>
-              <input type="date" id="modal-expiry-date">
-              <button type="button" class="btn-apply-expiry" id="btn-modal-apply-expiry">Save Expiry</button>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div class="modal-section-title">Operational Activity History</div>
-          <div class="timeline" id="modal-timeline">
-            <div style="font-size: 0.8125rem; color: var(--text-muted);">No recorded activity events.</div>
-          </div>
-        </div>
+        <div class="activity-section-title">Operational Activity History</div>
+        <table class="activity-table">
+          <thead>
+            <tr>
+              <th style="width:130px;">Time</th>
+              <th style="width:90px;">Type</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody id="modal-activity-tbody">
+            <tr><td colspan="3" style="text-align:center; color:var(--text-muted);">No activity recorded</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
 
-  <div id="toast-container"></div>
+  <div class="toast" id="toast"></div>
 
   <script>
     let allUsers = [];
-    let currentFilter = 'all';
-    let searchQuery = '';
+    let selectedUserIds = new Set();
+    let lastClickedIndex = -1;
     let selectedUserId = null;
 
-    function showToast(message, type = 'info') {
-      const container = document.getElementById('toast-container');
-      const toast = document.createElement('div');
-      toast.className = 'toast ' + type;
-      toast.textContent = message;
-      container.appendChild(toast);
-      setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 200);
-      }, 3000);
+    function showToast(msg, type = 'info') {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = 'toast show ' + type;
+      setTimeout(() => { el.className = 'toast'; }, 2500);
     }
 
-    function formatRelativeTime(timestamp) {
-      if (!timestamp) return 'Never';
-      const diffSec = Math.floor((Date.now() - timestamp) / 1000);
-      if (diffSec < 60) return 'Just now';
-      const diffMin = Math.floor(diffSec / 60);
-      if (diffMin < 60) return diffMin + 'm ago';
-      const diffHour = Math.floor(diffMin / 60);
-      if (diffHour < 24) return diffHour + 'h ago';
-      const diffDays = Math.floor(diffHour / 24);
-      if (diffDays < 30) return diffDays + 'd ago';
-      return new Date(timestamp).toLocaleDateString();
+    function getFilteredUsers() {
+      const q = (document.getElementById('search-input').value || '').trim().toLowerCase();
+      const access = document.getElementById('access-filter').value;
+      const status = document.getElementById('status-filter').value;
+
+      return allUsers.filter(u => {
+        if (access !== 'all' && u.sessionAccess !== access) return false;
+        if (status === 'online' && !u.isOnline) return false;
+        if (status === 'offline' && u.isOnline) return false;
+        if (!q) return true;
+        const name = (u.displayName || '').toLowerCase();
+        const username = (u.username || '').toLowerCase();
+        const email = (u.email || '').toLowerCase();
+        return name.includes(q) || username.includes(q) || email.includes(q);
+      });
     }
 
-    function formatUptime(seconds) {
-      if (!seconds || seconds < 0) return '0s';
-      const d = Math.floor(seconds / 86400);
-      const h = Math.floor((seconds % 86400) / 3600);
-      const m = Math.floor((seconds % 3600) / 60);
-      if (d > 0) return d + 'd ' + h + 'h';
-      if (h > 0) return h + 'h ' + m + 'm';
-      return m + 'm';
+    function updateSummaryCounts() {
+      const total = allUsers.length;
+      const beta = allUsers.filter(u => u.sessionAccess === 'beta').length;
+      const paid = allUsers.filter(u => u.sessionAccess === 'paid').length;
+      const blocked = allUsers.filter(u => u.sessionAccess === 'blocked').length;
+      const online = allUsers.filter(u => u.isOnline).length;
+
+      document.getElementById('sum-total').textContent = total;
+      document.getElementById('sum-beta').textContent = beta;
+      document.getElementById('sum-paid').textContent = paid;
+      document.getElementById('sum-blocked').textContent = blocked;
+      document.getElementById('sum-online').textContent = online;
     }
 
-    async function fetchStats() {
-      try {
-        const res = await fetch('/admin/api/stats');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.ok && data.stats) {
-            const s = data.stats;
-            document.getElementById('health-uptime').textContent = '⏱️ Uptime: ' + formatUptime(s.uptimeSeconds);
-            document.getElementById('health-online').textContent = '🟢 ' + s.onlineUsers + ' Online';
-            document.getElementById('health-active-sessions').textContent = '🎙️ ' + s.activeSessions + ' Active Calls';
-            document.getElementById('stat-online').textContent = s.onlineUsers;
-            document.getElementById('stat-active-sessions').textContent = s.activeSessions;
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to fetch stats:', err);
+    function updateBulkActionBar() {
+      const bar = document.getElementById('bulk-bar');
+      const countEl = document.getElementById('bulk-count');
+      const count = selectedUserIds.size;
+      if (count > 0) {
+        bar.classList.add('active');
+        countEl.textContent = count + (count === 1 ? ' user selected' : ' users selected');
+      } else {
+        bar.classList.remove('active');
       }
     }
 
+    function updateSelectAllCheckbox() {
+      const selectAll = document.getElementById('select-all-checkbox');
+      const visible = getFilteredUsers();
+      if (visible.length === 0) {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+        return;
+      }
+      const selectedCount = visible.filter(u => selectedUserIds.has(u.id)).length;
+      if (selectedCount === 0) {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+      } else if (selectedCount === visible.length) {
+        selectAll.checked = true;
+        selectAll.indeterminate = false;
+      } else {
+        selectAll.checked = false;
+        selectAll.indeterminate = true;
+      }
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('users-tbody');
+      const visible = getFilteredUsers();
+
+      if (visible.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No matching users found</td></tr>';
+        updateSelectAllCheckbox();
+        return;
+      }
+
+      tbody.innerHTML = '';
+      visible.forEach((u, index) => {
+        const tr = document.createElement('tr');
+        const isSelected = selectedUserIds.has(u.id);
+        if (isSelected) tr.classList.add('selected');
+
+        // 1. Checkbox
+        const tdCheck = document.createElement('td');
+        tdCheck.className = 'col-checkbox';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = isSelected;
+        checkbox.setAttribute('aria-label', 'Select user ' + (u.displayName || u.username));
+        checkbox.addEventListener('click', (e) => {
+          e.stopPropagation();
+          handleCheckboxClick(e, index, u.id);
+        });
+        tdCheck.appendChild(checkbox);
+
+        // 2. Name
+        const tdName = document.createElement('td');
+        tdName.className = 'cell-clickable';
+        tdName.textContent = u.displayName || u.username || '-';
+        tdName.addEventListener('click', () => openUserDetail(u.id));
+
+        // 3. Email
+        const tdEmail = document.createElement('td');
+        tdEmail.textContent = u.email || '-';
+
+        // 4. Username
+        const tdUsername = document.createElement('td');
+        tdUsername.className = 'text-mono';
+        tdUsername.textContent = u.username ? '@' + u.username : '-';
+
+        // 5. Access
+        const tdAccess = document.createElement('td');
+        const accessSpan = document.createElement('span');
+        accessSpan.className = 'access-tag ' + (u.sessionAccess || 'blocked');
+        accessSpan.textContent = u.sessionAccess || 'blocked';
+        tdAccess.appendChild(accessSpan);
+
+        if (u.sessionAccess === 'beta' && u.betaExpiresAt) {
+          const expSpan = document.createElement('span');
+          expSpan.className = 'expiry-note';
+          const isExpired = Date.now() >= u.betaExpiresAt;
+          expSpan.textContent = isExpired ? '(Expired)' : '(' + new Date(u.betaExpiresAt).toLocaleDateString() + ')';
+          tdAccess.appendChild(expSpan);
+        }
+
+        // 6. Joined
+        const tdJoined = document.createElement('td');
+        tdJoined.textContent = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-';
+
+        // 7. Last Active
+        const tdActive = document.createElement('td');
+        if (u.isOnline) {
+          const onlineSpan = document.createElement('span');
+          onlineSpan.className = 'status-online';
+          onlineSpan.textContent = 'Online';
+          tdActive.appendChild(onlineSpan);
+        } else if (u.lastActiveAt) {
+          const offlineSpan = document.createElement('span');
+          offlineSpan.className = 'status-offline';
+          offlineSpan.textContent = new Date(u.lastActiveAt).toLocaleDateString();
+          tdActive.appendChild(offlineSpan);
+        } else {
+          tdActive.textContent = 'Never';
+        }
+
+        // 8. Platform
+        const tdPlatform = document.createElement('td');
+        tdPlatform.textContent = u.clientPlatform || 'Unknown';
+
+        // 9. Version
+        const tdVersion = document.createElement('td');
+        tdVersion.textContent = (u.clientVersion && u.clientVersion !== 'Unknown') ? u.clientVersion : 'Unknown';
+
+        // 10. Sessions
+        const tdSessions = document.createElement('td');
+        tdSessions.style.textAlign = 'right';
+        tdSessions.textContent = (u.sessionsHostedCount || 0);
+
+        tr.appendChild(tdCheck);
+        tr.appendChild(tdName);
+        tr.appendChild(tdEmail);
+        tr.appendChild(tdUsername);
+        tr.appendChild(tdAccess);
+        tr.appendChild(tdJoined);
+        tr.appendChild(tdActive);
+        tr.appendChild(tdPlatform);
+        tr.appendChild(tdVersion);
+        tr.appendChild(tdSessions);
+
+        tr.addEventListener('click', (e) => {
+          if (e.target.tagName !== 'INPUT') {
+            openUserDetail(u.id);
+          }
+        });
+
+        tbody.appendChild(tr);
+      });
+
+      updateSelectAllCheckbox();
+    }
+
+    function handleCheckboxClick(e, index, userId) {
+      const visible = getFilteredUsers();
+      if (e.shiftKey && lastClickedIndex !== -1 && lastClickedIndex !== index) {
+        const start = Math.min(lastClickedIndex, index);
+        const end = Math.max(lastClickedIndex, index);
+        const targetChecked = e.target.checked;
+
+        for (let i = start; i <= end; i++) {
+          const user = visible[i];
+          if (user) {
+            if (targetChecked) {
+              selectedUserIds.add(user.id);
+            } else {
+              selectedUserIds.delete(user.id);
+            }
+          }
+        }
+        renderTable();
+      } else {
+        if (e.target.checked) {
+          selectedUserIds.add(userId);
+        } else {
+          selectedUserIds.delete(userId);
+        }
+        lastClickedIndex = index;
+        renderTable();
+      }
+      updateBulkActionBar();
+    }
+
+    // Select All Checkbox
+    document.getElementById('select-all-checkbox').addEventListener('click', (e) => {
+      const visible = getFilteredUsers();
+      const targetChecked = e.target.checked;
+      visible.forEach(u => {
+        if (targetChecked) {
+          selectedUserIds.add(u.id);
+        } else {
+          selectedUserIds.delete(u.id);
+        }
+      });
+      renderTable();
+      updateBulkActionBar();
+    });
+
+    // Clear Selection
+    document.getElementById('bulk-clear').addEventListener('click', () => {
+      selectedUserIds.clear();
+      lastClickedIndex = -1;
+      renderTable();
+      updateBulkActionBar();
+    });
+
+    // Bulk Access Operations
+    async function bulkSetAccess(access) {
+      if (selectedUserIds.size === 0) return;
+      const userIds = Array.from(selectedUserIds);
+      try {
+        const res = await fetch('/admin/api/users/bulk-access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userIds, access })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || 'Bulk update failed');
+        
+        showToast('Updated ' + (data.updatedCount || userIds.length) + ' users to ' + access, 'success');
+        await fetchUsers();
+      } catch (err) {
+        showToast(err.message || 'Bulk update failed', 'error');
+      }
+    }
+
+    document.getElementById('bulk-set-beta').addEventListener('click', () => bulkSetAccess('beta'));
+    document.getElementById('bulk-set-paid').addEventListener('click', () => bulkSetAccess('paid'));
+    document.getElementById('bulk-set-blocked').addEventListener('click', () => bulkSetAccess('blocked'));
+
+    document.getElementById('bulk-set-expiry').addEventListener('click', async () => {
+      if (selectedUserIds.size === 0) return;
+      const input = prompt('Enter Beta Expiration Date (YYYY-MM-DD) or leave blank to clear expiration:');
+      if (input === null) return;
+
+      let timestamp = null;
+      if (input.trim()) {
+        const parsed = new Date(input.trim());
+        if (isNaN(parsed.getTime())) {
+          showToast('Invalid date format. Use YYYY-MM-DD.', 'error');
+          return;
+        }
+        parsed.setHours(23, 59, 59, 999);
+        timestamp = parsed.getTime();
+      }
+
+      const userIds = Array.from(selectedUserIds);
+      try {
+        const res = await fetch('/admin/api/users/bulk-beta-expiry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userIds, betaExpiresAt: timestamp })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || 'Bulk expiration update failed');
+
+        showToast('Updated beta expiration for ' + (data.updatedCount || userIds.length) + ' users', 'success');
+        await fetchUsers();
+      } catch (err) {
+        showToast(err.message || 'Bulk expiration update failed', 'error');
+      }
+    });
+
+    // CSV Export
+    document.getElementById('btn-export-csv').addEventListener('click', () => {
+      const visible = getFilteredUsers();
+      if (visible.length === 0) {
+        showToast('No users to export', 'error');
+        return;
+      }
+
+      const escapeCSV = (val) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val);
+        return '"' + str.replace(/"/g, '""') + '"';
+      };
+
+      const headers = [
+        'Name',
+        'Email',
+        'Username',
+        'Access',
+        'Beta Expiration',
+        'Joined',
+        'Last Active',
+        'Platform',
+        'Version',
+        'Sessions'
+      ];
+
+      const rows = visible.map(u => [
+        escapeCSV(u.displayName || u.username || ''),
+        escapeCSV(u.email || ''),
+        escapeCSV(u.username || ''),
+        escapeCSV(u.sessionAccess || 'blocked'),
+        escapeCSV(u.betaExpiresAt ? new Date(u.betaExpiresAt).toISOString() : ''),
+        escapeCSV(u.createdAt ? new Date(u.createdAt).toISOString() : ''),
+        escapeCSV(u.isOnline ? 'Online' : (u.lastActiveAt ? new Date(u.lastActiveAt).toISOString() : 'Never')),
+        escapeCSV(u.clientPlatform || 'Unknown'),
+        escapeCSV(u.clientVersion || 'Unknown'),
+        escapeCSV(u.sessionsHostedCount || 0)
+      ]);
+
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\\r\\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', 'jameet-users-' + dateStr + '.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showToast('Exported ' + visible.length + ' users to CSV', 'success');
+    });
+
+    // Fetch User List
     async function fetchUsers() {
       try {
         const res = await fetch('/admin/api/users');
-        if (!res.ok) {
-          if (res.status === 401) {
-            window.location.href = '/admin';
-            return;
-          }
-          throw new Error('HTTP ' + res.status);
+        if (res.status === 401) {
+          window.location.reload();
+          return;
         }
         const data = await res.json();
         if (data.ok && Array.isArray(data.users)) {
           allUsers = data.users;
-          updateSummaryMetrics();
+          updateSummaryCounts();
           renderTable();
         }
       } catch (err) {
@@ -1299,194 +1313,7 @@ function renderAdminDashboard(): string {
       }
     }
 
-    function updateSummaryMetrics() {
-      document.getElementById('stat-total').textContent = allUsers.length;
-      document.getElementById('stat-online').textContent = allUsers.filter(u => u.isOnline).length;
-      document.getElementById('stat-beta').textContent = allUsers.filter(u => u.sessionAccess === 'beta').length;
-      document.getElementById('stat-paid').textContent = allUsers.filter(u => u.sessionAccess === 'paid').length;
-      document.getElementById('stat-blocked').textContent = allUsers.filter(u => u.sessionAccess === 'blocked').length;
-    }
-
-    function renderTable() {
-      const tbody = document.getElementById('users-table-body');
-      tbody.innerHTML = '';
-
-      const filtered = allUsers.filter(u => {
-        if (currentFilter === 'online' && !u.isOnline) return false;
-        if (currentFilter !== 'all' && currentFilter !== 'online' && u.sessionAccess !== currentFilter) return false;
-        if (searchQuery) {
-          const q = searchQuery.toLowerCase();
-          const matchName = u.displayName && u.displayName.toLowerCase().includes(q);
-          const matchUser = u.username && u.username.toLowerCase().includes(q);
-          const matchEmail = u.email && u.email.toLowerCase().includes(q);
-          return matchName || matchUser || matchEmail;
-        }
-        return true;
-      });
-
-      if (filtered.length === 0) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 7;
-        td.className = 'empty-state';
-        td.textContent = 'No matching musicians found.';
-        tr.appendChild(td);
-        tbody.appendChild(tr);
-        return;
-      }
-
-      filtered.forEach(u => {
-        const tr = document.createElement('tr');
-
-        // Musician & Presence
-        const tdUser = document.createElement('td');
-        const userCell = document.createElement('div');
-        userCell.className = 'user-cell';
-
-        const avatar = document.createElement('div');
-        avatar.className = 'avatar';
-        avatar.style.backgroundColor = u.avatarColor || '#3b82f6';
-        avatar.textContent = (u.displayName || u.username || '?').charAt(0).toUpperCase();
-
-        const userInfo = document.createElement('div');
-        userInfo.className = 'user-info';
-
-        const displayNameRow = document.createElement('div');
-        displayNameRow.className = 'display-name';
-        displayNameRow.textContent = u.displayName || u.username;
-
-        const presenceBadge = document.createElement('span');
-        presenceBadge.className = 'presence-badge ' + (u.isOnline ? 'online' : 'offline');
-        presenceBadge.innerHTML = '<span class="presence-dot"></span>' + (u.isOnline ? 'Online' : (u.lastActiveAt ? formatRelativeTime(u.lastActiveAt) : 'Offline'));
-        displayNameRow.appendChild(presenceBadge);
-
-        const usernameSub = document.createElement('div');
-        usernameSub.className = 'username-sub';
-        usernameSub.textContent = '@' + u.username;
-
-        userInfo.appendChild(displayNameRow);
-        userInfo.appendChild(usernameSub);
-        userCell.appendChild(avatar);
-        userCell.appendChild(userInfo);
-        tdUser.appendChild(userCell);
-
-        // Email
-        const tdEmail = document.createElement('td');
-        tdEmail.textContent = u.email || '-';
-
-        // Client Platform
-        const tdClient = document.createElement('td');
-        const clientTag = document.createElement('span');
-        clientTag.className = 'client-tag';
-        let clientTagStr = 'Unknown';
-        const hasPlatform = u.clientPlatform && u.clientPlatform !== 'Unknown';
-        const hasVersion = u.clientVersion && u.clientVersion !== 'Unknown';
-        if (hasPlatform && hasVersion) {
-          clientTagStr = u.clientPlatform + ' • JaMeet ' + u.clientVersion;
-        } else if (hasPlatform) {
-          clientTagStr = u.clientPlatform;
-        } else if (hasVersion) {
-          clientTagStr = 'JaMeet ' + u.clientVersion;
-        }
-        clientTag.textContent = clientTagStr;
-        tdClient.appendChild(clientTag);
-
-        // Registered
-        const tdCreated = document.createElement('td');
-        tdCreated.textContent = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-';
-
-        // Hosted Sessions
-        const tdHosted = document.createElement('td');
-        tdHosted.textContent = (u.sessionsHostedCount || 0) + ' hosted';
-
-        // Access State
-        const tdAccess = document.createElement('td');
-        const badge = document.createElement('span');
-        badge.className = 'badge badge-' + (u.sessionAccess || 'blocked');
-        badge.textContent = u.sessionAccess || 'blocked';
-        tdAccess.appendChild(badge);
-
-        if (u.sessionAccess === 'beta' && u.betaExpiresAt) {
-          const expNote = document.createElement('span');
-          expNote.className = 'expiry-note';
-          const isExpired = Date.now() >= u.betaExpiresAt;
-          expNote.textContent = isExpired ? '⚠️ Expired' : 'Expires ' + new Date(u.betaExpiresAt).toLocaleDateString();
-          tdAccess.appendChild(expNote);
-        }
-
-        // Actions
-        const tdActions = document.createElement('td');
-        tdActions.style.textAlign = 'right';
-
-        const actionGroup = document.createElement('div');
-        actionGroup.className = 'action-group';
-        actionGroup.style.justifyContent = 'flex-end';
-
-        const seg = document.createElement('div');
-        seg.className = 'segmented-control';
-
-        ['blocked', 'beta', 'paid'].forEach(state => {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'segment-btn ' + state + (u.sessionAccess === state ? ' active' : '');
-          btn.textContent = state.charAt(0).toUpperCase() + state.slice(1);
-          btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (u.sessionAccess !== state) {
-              updateUserAccess(u.id, state);
-            }
-          });
-          seg.appendChild(btn);
-        });
-
-        const inspectBtn = document.createElement('button');
-        inspectBtn.type = 'button';
-        inspectBtn.className = 'btn-inspect';
-        inspectBtn.textContent = 'Details';
-        inspectBtn.addEventListener('click', () => openUserDetail(u.id));
-
-        actionGroup.appendChild(seg);
-        actionGroup.appendChild(inspectBtn);
-        tdActions.appendChild(actionGroup);
-
-        tr.appendChild(tdUser);
-        tr.appendChild(tdEmail);
-        tr.appendChild(tdClient);
-        tr.appendChild(tdCreated);
-        tr.appendChild(tdHosted);
-        tr.appendChild(tdAccess);
-        tr.appendChild(tdActions);
-
-        tbody.appendChild(tr);
-      });
-    }
-
-    async function updateUserAccess(userId, newAccess) {
-      try {
-        const res = await fetch('/admin/api/users/' + encodeURIComponent(userId) + '/access', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ access: newAccess })
-        });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-          throw new Error(data.message || 'Failed to update access');
-        }
-        showToast('Updated access to ' + newAccess, 'success');
-        const user = allUsers.find(u => u.id === userId);
-        if (user) {
-          user.sessionAccess = newAccess;
-          updateSummaryMetrics();
-          renderTable();
-          if (selectedUserId === userId) {
-            openUserDetail(userId);
-          }
-        }
-      } catch (err) {
-        showToast(err.message || 'Update failed', 'error');
-      }
-    }
-
+    // User Detail Inspector
     async function openUserDetail(userId) {
       selectedUserId = userId;
       const modal = document.getElementById('user-detail-modal');
@@ -1494,104 +1321,68 @@ function renderAdminDashboard(): string {
 
       try {
         const res = await fetch('/admin/api/users/' + encodeURIComponent(userId));
-        if (!res.ok) throw new Error('Failed to load user details');
+        if (!res.ok) throw new Error('Failed to load user detail');
         const data = await res.json();
         if (data.ok && data.user) {
           populateModal(data.user);
         }
       } catch (err) {
-        showToast('Failed to load details', 'error');
+        showToast('Failed to load user detail', 'error');
       }
     }
 
     function populateModal(u) {
-      document.getElementById('modal-avatar').style.backgroundColor = u.avatarColor || '#3b82f6';
-      document.getElementById('modal-avatar').textContent = (u.displayName || u.username || '?').charAt(0).toUpperCase();
-      document.getElementById('modal-display-name').textContent = u.displayName || u.username;
-      document.getElementById('modal-username').textContent = '@' + u.username + ' • ' + u.email;
-
+      document.getElementById('modal-title').textContent = (u.displayName || u.username) + ' (@' + u.username + ')';
       document.getElementById('modal-id').textContent = u.id;
-      document.getElementById('modal-presence').textContent = u.isOnline ? '🟢 Online Now' : (u.lastActiveAt ? '⚪ Active ' + formatRelativeTime(u.lastActiveAt) : '⚪ Offline');
-      let clientModalStr = 'Unknown';
-      const hasModalPlatform = u.clientPlatform && u.clientPlatform !== 'Unknown';
-      const hasModalVersion = u.clientVersion && u.clientVersion !== 'Unknown';
-      if (hasModalPlatform && hasModalVersion) {
-        clientModalStr = u.clientPlatform + ' • JaMeet ' + u.clientVersion;
-      } else if (hasModalPlatform) {
-        clientModalStr = u.clientPlatform;
-      } else if (hasModalVersion) {
-        clientModalStr = 'JaMeet ' + u.clientVersion;
-      }
-      document.getElementById('modal-client').textContent = clientModalStr;
+      document.getElementById('modal-display-name').textContent = u.displayName || u.username;
+      document.getElementById('modal-username').textContent = '@' + u.username;
+      document.getElementById('modal-email').textContent = u.email || '-';
+      document.getElementById('modal-access-select').value = u.sessionAccess || 'blocked';
+      document.getElementById('modal-presence').textContent = u.isOnline ? 'Online' : (u.lastActiveAt ? 'Offline (Last active ' + new Date(u.lastActiveAt).toLocaleString() + ')' : 'Offline');
+      
+      const clientStr = (u.clientPlatform || 'Unknown') + ' • JaMeet ' + (u.clientVersion || 'Unknown');
+      document.getElementById('modal-client').textContent = clientStr;
       document.getElementById('modal-last-active').textContent = u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleString() : 'Never';
       document.getElementById('modal-last-login').textContent = u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never';
       document.getElementById('modal-hosted-count').textContent = (u.sessionsHostedCount || 0) + ' sessions';
       document.getElementById('modal-created-at').textContent = u.createdAt ? new Date(u.createdAt).toLocaleString() : '-';
-      document.getElementById('modal-access-updated').textContent = u.accessUpdatedAt ? new Date(u.accessUpdatedAt).toLocaleString() : '-';
 
-      // Beta Expiry Box
-      const statusEl = document.getElementById('modal-expiry-status');
+      const expiryInput = document.getElementById('modal-expiry-input');
+      const expiryStatus = document.getElementById('modal-expiry-status');
       if (u.betaExpiresAt) {
-        const expDate = new Date(u.betaExpiresAt);
+        const d = new Date(u.betaExpiresAt);
+        expiryInput.value = d.toISOString().split('T')[0];
         const isPassed = Date.now() >= u.betaExpiresAt;
-        statusEl.textContent = isPassed
-          ? '⚠️ Expired on ' + expDate.toLocaleDateString()
-          : '⏳ Active until ' + expDate.toLocaleDateString() + ' (' + formatRelativeTime(u.betaExpiresAt).replace('ago', 'left') + ')';
-        document.getElementById('modal-expiry-date').value = expDate.toISOString().slice(0, 10);
+        expiryStatus.textContent = isPassed ? '(Expired)' : '(Expires ' + d.toLocaleDateString() + ')';
       } else {
-        statusEl.textContent = 'Status: No expiration configured (Standard Beta).';
-        document.getElementById('modal-expiry-date').value = '';
+        expiryInput.value = '';
+        expiryStatus.textContent = '(No expiration set)';
       }
 
-      // Timeline
-      const timeline = document.getElementById('modal-timeline');
-      timeline.innerHTML = '';
+      // Activity Table
+      const actTbody = document.getElementById('modal-activity-tbody');
       if (Array.isArray(u.activityHistory) && u.activityHistory.length > 0) {
-        u.activityHistory.forEach(ev => {
-          const item = document.createElement('div');
-          item.className = 'timeline-item';
-
-          const dot = document.createElement('div');
-          dot.className = 'timeline-dot';
-
-          const desc = document.createElement('div');
-          desc.className = 'timeline-desc';
-          desc.textContent = ev.description || ev.type;
-
-          const time = document.createElement('div');
-          time.className = 'timeline-time';
-          time.textContent = ev.timestamp ? new Date(ev.timestamp).toLocaleString() + ' (' + formatRelativeTime(ev.timestamp) + ')' : '';
-
-          item.appendChild(dot);
-          item.appendChild(desc);
-          item.appendChild(time);
-          timeline.appendChild(item);
+        actTbody.innerHTML = '';
+        u.activityHistory.forEach(act => {
+          const tr = document.createElement('tr');
+          const tdTime = document.createElement('td');
+          tdTime.textContent = act.timestamp ? new Date(act.timestamp).toLocaleString() : '-';
+          const tdType = document.createElement('td');
+          tdType.className = 'text-mono';
+          tdType.textContent = act.type || 'activity';
+          const tdDesc = document.createElement('td');
+          tdDesc.textContent = act.description || '-';
+          tr.appendChild(tdTime);
+          tr.appendChild(tdType);
+          tr.appendChild(tdDesc);
+          actTbody.appendChild(tr);
         });
       } else {
-        timeline.innerHTML = '<div style="font-size: 0.8125rem; color: var(--text-muted);">No recorded operational activity.</div>';
+        actTbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:var(--text-muted);">No activity recorded</td></tr>';
       }
     }
 
-    async function setBetaExpiry(userId, betaExpiresAt) {
-      try {
-        const res = await fetch('/admin/api/users/' + encodeURIComponent(userId) + '/beta-expiry', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ betaExpiresAt })
-        });
-        const data = await res.json();
-        if (!res.ok || !data.ok) throw new Error(data.message || 'Failed to update expiry');
-        showToast('Beta expiration updated', 'success');
-        fetchUsers();
-        if (selectedUserId === userId && data.user) {
-          populateModal(data.user);
-        }
-      } catch (err) {
-        showToast(err.message || 'Failed to set expiration', 'error');
-      }
-    }
-
-    // Modal listeners
+    // Modal Action Handlers
     document.getElementById('modal-close-btn').addEventListener('click', () => {
       document.getElementById('user-detail-modal').classList.remove('open');
       selectedUserId = null;
@@ -1604,71 +1395,84 @@ function renderAdminDashboard(): string {
       }
     });
 
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        document.getElementById('user-detail-modal').classList.remove('open');
-        selectedUserId = null;
+    document.getElementById('modal-update-access-btn').addEventListener('click', async () => {
+      if (!selectedUserId) return;
+      const newAccess = document.getElementById('modal-access-select').value;
+      try {
+        const res = await fetch('/admin/api/users/' + encodeURIComponent(selectedUserId) + '/access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ access: newAccess })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || 'Access update failed');
+        showToast('Updated access to ' + newAccess, 'success');
+        await fetchUsers();
+        if (selectedUserId) openUserDetail(selectedUserId);
+      } catch (err) {
+        showToast(err.message || 'Update failed', 'error');
       }
     });
 
-    // Preset buttons
-    document.querySelectorAll('.preset-btn[data-days]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (!selectedUserId) return;
-        const days = parseInt(btn.dataset.days, 10);
-        const expiryMs = Date.now() + (days * 24 * 60 * 60 * 1000);
-        setBetaExpiry(selectedUserId, expiryMs);
-      });
-    });
-
-    document.getElementById('btn-modal-clear-expiry').addEventListener('click', () => {
+    document.getElementById('modal-set-expiry-btn').addEventListener('click', async () => {
       if (!selectedUserId) return;
-      setBetaExpiry(selectedUserId, null);
-    });
-
-    document.getElementById('btn-modal-apply-expiry').addEventListener('click', () => {
-      if (!selectedUserId) return;
-      const dateVal = document.getElementById('modal-expiry-date').value;
-      if (!dateVal) {
-        showToast('Please select a valid date', 'error');
+      const val = document.getElementById('modal-expiry-input').value;
+      if (!val) {
+        showToast('Please select a date first', 'error');
         return;
       }
-      const expiryMs = new Date(dateVal + 'T23:59:59Z').getTime();
-      setBetaExpiry(selectedUserId, expiryMs);
+      const d = new Date(val);
+      d.setHours(23, 59, 59, 999);
+      try {
+        const res = await fetch('/admin/api/users/' + encodeURIComponent(selectedUserId) + '/beta-expiry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ betaExpiresAt: d.getTime() })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || 'Expiry update failed');
+        showToast('Beta expiration updated', 'success');
+        await fetchUsers();
+        if (selectedUserId) openUserDetail(selectedUserId);
+      } catch (err) {
+        showToast(err.message || 'Update failed', 'error');
+      }
     });
 
-    // Search filter
-    document.getElementById('user-search').addEventListener('input', (e) => {
-      searchQuery = e.target.value.trim();
-      renderTable();
+    document.getElementById('modal-clear-expiry-btn').addEventListener('click', async () => {
+      if (!selectedUserId) return;
+      try {
+        const res = await fetch('/admin/api/users/' + encodeURIComponent(selectedUserId) + '/beta-expiry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ betaExpiresAt: null })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || 'Expiry clear failed');
+        showToast('Beta expiration cleared', 'success');
+        await fetchUsers();
+        if (selectedUserId) openUserDetail(selectedUserId);
+      } catch (err) {
+        showToast(err.message || 'Update failed', 'error');
+      }
     });
 
-    // Tab filter buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentFilter = btn.dataset.filter;
-        renderTable();
-      });
-    });
-
-    // Refresh button
+    // Event Listeners for Filters & Search
+    document.getElementById('search-input').addEventListener('input', () => renderTable());
+    document.getElementById('access-filter').addEventListener('change', () => renderTable());
+    document.getElementById('status-filter').addEventListener('change', () => renderTable());
     document.getElementById('btn-refresh').addEventListener('click', () => {
       fetchUsers();
-      fetchStats();
-      showToast('Refreshed registry & telemetry', 'info');
+      showToast('Refreshed user list', 'info');
     });
 
     // Auto-refresh every 20 seconds
     setInterval(() => {
       fetchUsers();
-      fetchStats();
     }, 20000);
 
     // Initial load
     fetchUsers();
-    fetchStats();
   </script>
 </body>
 </html>`;
@@ -1908,7 +1712,90 @@ export function registerAdminPanel(
     });
   });
 
-  // 8. GET /admin/api/stats - Server Health & Telemetry Metrics
+  // 8. POST /admin/api/users/bulk-access - Modify Session Access for Multiple Users
+  app.post('/admin/api/users/bulk-access', async (request, reply) => {
+    const adminSecret = config.JAMEET_ADMIN_SECRET?.trim();
+    if (!adminSecret) {
+      return reply.code(404).send({ ok: false, message: 'Not Found' });
+    }
+
+    if (!validateSameOrigin(request, config)) {
+      return reply.code(403).send({ ok: false, message: 'Forbidden: invalid origin or cross-site request.' });
+    }
+
+    if (!isRequestAdminAuthenticated(request, config)) {
+      return reply.code(401).send({ ok: false, message: 'Unauthorized' });
+    }
+
+    const body = (request.body || {}) as any;
+    const userIds = Array.isArray(body?.userIds) ? body.userIds : [];
+    const newAccess = typeof body === 'object' && body ? body.access : undefined;
+    const betaExpiresAt = typeof body === 'object' && body && body.betaExpiresAt !== undefined ? body.betaExpiresAt : undefined;
+
+    if (!newAccess || typeof newAccess !== 'string') {
+      return reply.code(400).send({ ok: false, message: 'Missing target access state.' });
+    }
+
+    const normalizedAccess = newAccess.trim().toLowerCase() as SessionAccessState;
+    if (!ALLOWED_SESSION_ACCESS_STATES.includes(normalizedAccess)) {
+      return reply.code(400).send({
+        ok: false,
+        message: `Invalid sessionAccess: "${newAccess}". Allowed values: ${ALLOWED_SESSION_ACCESS_STATES.join(', ')}.`
+      });
+    }
+
+    let updatedCount = 0;
+    for (const id of userIds) {
+      if (typeof id === 'string' && id.trim()) {
+        const stored = userStore.getStoredUser(id) || (userStore.findByUsernameOrEmail(id) ? userStore.getStoredUser(userStore.findByUsernameOrEmail(id)!.id) : null);
+        if (stored) {
+          userStore.setSessionAccess(stored.id, normalizedAccess, betaExpiresAt);
+          updatedCount++;
+        }
+      }
+    }
+
+    return reply.send({ ok: true, updatedCount });
+  });
+
+  // 9. POST /admin/api/users/bulk-beta-expiry - Configure Beta Expiration for Multiple Users
+  app.post('/admin/api/users/bulk-beta-expiry', async (request, reply) => {
+    const adminSecret = config.JAMEET_ADMIN_SECRET?.trim();
+    if (!adminSecret) {
+      return reply.code(404).send({ ok: false, message: 'Not Found' });
+    }
+
+    if (!validateSameOrigin(request, config)) {
+      return reply.code(403).send({ ok: false, message: 'Forbidden: invalid origin or cross-site request.' });
+    }
+
+    if (!isRequestAdminAuthenticated(request, config)) {
+      return reply.code(401).send({ ok: false, message: 'Unauthorized' });
+    }
+
+    const body = (request.body || {}) as any;
+    const userIds = Array.isArray(body?.userIds) ? body.userIds : [];
+    let betaExpiresAt = typeof body === 'object' && body ? body.betaExpiresAt : undefined;
+
+    if (betaExpiresAt !== null && typeof betaExpiresAt !== 'number' && typeof betaExpiresAt !== 'undefined') {
+      return reply.code(400).send({ ok: false, message: 'Invalid betaExpiresAt timestamp provided.' });
+    }
+
+    let updatedCount = 0;
+    for (const id of userIds) {
+      if (typeof id === 'string' && id.trim()) {
+        const stored = userStore.getStoredUser(id) || (userStore.findByUsernameOrEmail(id) ? userStore.getStoredUser(userStore.findByUsernameOrEmail(id)!.id) : null);
+        if (stored) {
+          userStore.setBetaExpiration(stored.id, betaExpiresAt ?? null);
+          updatedCount++;
+        }
+      }
+    }
+
+    return reply.send({ ok: true, updatedCount });
+  });
+
+  // 10. GET /admin/api/stats - Server Health & Telemetry Metrics
   app.get('/admin/api/stats', async (request, reply) => {
     const adminSecret = config.JAMEET_ADMIN_SECRET?.trim();
     if (!adminSecret) {
