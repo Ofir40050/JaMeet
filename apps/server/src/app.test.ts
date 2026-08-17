@@ -5573,6 +5573,76 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('maps task_updated Project Activity to Task Session Summary events during active linked sessions', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-updated-summary-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-task-updated-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const hostAuth = await createTestAccount(url, 'host_task_upd', 'beta', userStore);
+      const project = projectStore.createProject(hostAuth.user, { name: 'Task Update Summary Project' });
+
+      // Initially populate a task
+      projectStore.updateWorkspace(project.id, hostAuth.user, {
+        tasks: {
+          tasks: [{ id: 'task-lead-synth', title: 'Record Synth', status: 'todo' }]
+        }
+      });
+
+      // Host creates meeting linked to project
+      const hostSocket = await connected(url);
+      const createAck: any = await ack(hostSocket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        projectId: project.id,
+        authToken: hostAuth.token,
+        media
+      });
+      expect(createAck.ok).toBe(true);
+
+      // Mutate workspace during active linked session: update task note and title
+      const updateAck: any = await ack(hostSocket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: hostAuth.token,
+        updates: {
+          tasks: {
+            tasks: [{ id: 'task-lead-synth', title: 'Record Analog Synth Solo', note: 'Use Prophet-6', status: 'todo' }]
+          }
+        }
+      });
+      expect(updateAck.ok).toBe(true);
+
+      // Host leaves meeting
+      hostSocket.emit('meeting:leave');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify host's finalized session summary contains the task_updated event with action 'updated'
+      const history = userStore.getSessionHistory(hostAuth.user.id);
+      expect(history.length).toBe(1);
+      const summary = history[0]?.summary;
+      expect(summary).toBeDefined();
+      expect(summary?.events.length).toBe(1);
+
+      const event = summary?.events[0];
+      expect(event?.category).toBe('task');
+      expect(event?.action).toBe('updated');
+      expect(event?.description).toContain('Record Analog Synth Solo');
+
+      hostSocket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

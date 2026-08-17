@@ -1403,11 +1403,11 @@ describe('ProjectStore & Workspace', () => {
       })!;
       expect(p5.activities[0].type).toBe('task_reopened');
 
-      // 6. Update without changing status -> does NOT record duplicate status activity
+      // 6. Update without changing status or content -> does NOT record duplicate activity
       const p6 = store.updateWorkspace(project.id, owner, {
         tasks: {
           tasks: [
-            { id: 'task-1', title: 'Master Audio Track', status: 'in_progress', note: 'Added some notes' }
+            { id: 'task-1', title: 'Master Audio Track', status: 'in_progress' }
           ]
         }
       })!;
@@ -1786,6 +1786,128 @@ describe('ProjectStore & Workspace', () => {
       const p4 = store.getProject(project.id, owner.id);
       expect(p4?.activities.length).toBe(countAfterSetup + 2);
       expect(p4?.activities[0].type).toBe('structure_changed');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('records task_updated on title, note, or dueDate changes and ignores metadata-only or order changes', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-updated-test-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'usr_owner_t_upd',
+        username: 'owner_t_upd',
+        displayName: 'Task Update Owner',
+        email: 'owner_t_upd@test.com',
+        avatarColor: '#2563eb',
+        createdAt: Date.now()
+      };
+      const project = store.createProject(owner, { name: 'Task Update Test' });
+
+      // 1. Initial tasks setup
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 't1', title: 'Record Keys', status: 'todo', note: 'Use Rhodes preset', dueDate: '2026-09-01', createdAt: 1000, updatedAt: 1000 },
+            { id: 't2', title: 'Record Bass', status: 'todo', createdAt: 1000, updatedAt: 1000 }
+          ]
+        }
+      });
+      const p1 = store.getProject(project.id, owner.id);
+      expect(p1?.activities.length).toBe(3); // project_created + 2 task_created
+      const baseCount = p1?.activities.length || 0;
+
+      // 2. Metadata change only (createdAt, updatedAt, completedAt) -> should NOT record task_updated
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 't1', title: 'Record Keys', status: 'todo', note: 'Use Rhodes preset', dueDate: '2026-09-01', createdAt: 5000, updatedAt: 9000 },
+            { id: 't2', title: 'Record Bass', status: 'todo', createdAt: 5000, updatedAt: 9000 }
+          ]
+        }
+      });
+      const p2 = store.getProject(project.id, owner.id);
+      expect(p2?.activities.length).toBe(baseCount);
+
+      // 3. Task ordering change only -> should NOT record task_updated
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 't2', title: 'Record Bass', status: 'todo', createdAt: 5000, updatedAt: 9000 },
+            { id: 't1', title: 'Record Keys', status: 'todo', note: 'Use Rhodes preset', dueDate: '2026-09-01', createdAt: 5000, updatedAt: 9000 }
+          ]
+        }
+      });
+      const p3 = store.getProject(project.id, owner.id);
+      expect(p3?.activities.length).toBe(baseCount);
+
+      // 4. Change task title -> records task_updated
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 't2', title: 'Record Bass (5-string)', status: 'todo' },
+            { id: 't1', title: 'Record Keys', status: 'todo', note: 'Use Rhodes preset', dueDate: '2026-09-01' }
+          ]
+        }
+      });
+      const p4 = store.getProject(project.id, owner.id);
+      expect(p4?.activities.length).toBe(baseCount + 1);
+      expect(p4?.activities[0].type).toBe('task_updated');
+      expect(p4?.activities[0].summary).toContain('updated task "Record Bass (5-string)"');
+
+      // 5. Change task note -> records task_updated
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 't2', title: 'Record Bass (5-string)', status: 'todo' },
+            { id: 't1', title: 'Record Keys', status: 'todo', note: 'Use Wurli preset instead', dueDate: '2026-09-01' }
+          ]
+        }
+      });
+      const p5 = store.getProject(project.id, owner.id);
+      expect(p5?.activities.length).toBe(baseCount + 2);
+      expect(p5?.activities[0].type).toBe('task_updated');
+      expect(p5?.activities[0].summary).toContain('updated task "Record Keys"');
+
+      // 6. Change task dueDate -> records task_updated
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 't2', title: 'Record Bass (5-string)', status: 'todo' },
+            { id: 't1', title: 'Record Keys', status: 'todo', note: 'Use Wurli preset instead', dueDate: '2026-09-15' }
+          ]
+        }
+      });
+      const p6 = store.getProject(project.id, owner.id);
+      expect(p6?.activities.length).toBe(baseCount + 3);
+      expect(p6?.activities[0].type).toBe('task_updated');
+
+      // 7. Change title AND status between todo and in_progress in same update -> task_status_changed takes priority
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 't2', title: 'Record Bass (Final)', status: 'in_progress' },
+            { id: 't1', title: 'Record Keys', status: 'todo', note: 'Use Wurli preset instead', dueDate: '2026-09-15' }
+          ]
+        }
+      });
+      const p7 = store.getProject(project.id, owner.id);
+      expect(p7?.activities.length).toBe(baseCount + 4);
+      expect(p7?.activities[0].type).toBe('task_status_changed');
+
+      // 8. Change title AND complete task -> task_completed takes priority
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 't2', title: 'Record Bass (Done)', status: 'done' },
+            { id: 't1', title: 'Record Keys', status: 'todo', note: 'Use Wurli preset instead', dueDate: '2026-09-15' }
+          ]
+        }
+      });
+      const p8 = store.getProject(project.id, owner.id);
+      expect(p8?.activities.length).toBe(baseCount + 5);
+      expect(p8?.activities[0].type).toBe('task_completed');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

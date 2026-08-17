@@ -818,6 +818,20 @@ export class ProjectStore {
                 undefined,
                 false
               );
+            } else if (
+              oldT.title !== t.title ||
+              (oldT.note || undefined) !== (t.note || undefined) ||
+              (oldT.dueDate || undefined) !== (t.dueDate || undefined)
+            ) {
+              this.recordActivity(
+                projectId,
+                user,
+                'task_updated',
+                `${user.displayName} updated task "${t.title}"`,
+                t.title,
+                undefined,
+                false
+              );
             }
           }
         }

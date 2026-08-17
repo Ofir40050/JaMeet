@@ -60,6 +60,10 @@ function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSumm
     category = 'task';
     action = 'unassigned';
     description = act.summary || `Unassigned task "${act.title}"`;
+  } else if (act.type === 'task_updated') {
+    category = 'task';
+    action = 'updated';
+    description = act.summary || `Updated task "${act.title}"`;
   } else if (act.type === 'task_deleted') {
     category = 'task';
     action = 'deleted';
