@@ -678,16 +678,31 @@ export class ProjectStore {
           );
         }
       }
-      if (updates.notes.content !== undefined && updates.notes.content !== oldContent && updates.notes.content.trim()) {
-        this.recordActivity(
-          projectId,
-          user,
-          'notes_edited',
-          `${user.displayName} updated Project Notes`,
-          'Project Notes',
-          undefined,
-          false
-        );
+      const normalizedOldContent = oldContent ? oldContent.trim() : '';
+      const normalizedNewContent = updates.notes.content !== undefined ? (updates.notes.content ? updates.notes.content.trim() : '') : undefined;
+
+      if (normalizedNewContent !== undefined && normalizedNewContent !== normalizedOldContent) {
+        if (normalizedNewContent) {
+          this.recordActivity(
+            projectId,
+            user,
+            'notes_edited',
+            `${user.displayName} updated Project Notes`,
+            'Project Notes',
+            undefined,
+            false
+          );
+        } else if (normalizedOldContent) {
+          this.recordActivity(
+            projectId,
+            user,
+            'notes_edited',
+            `${user.displayName} cleared Project Notes`,
+            'Project Notes',
+            undefined,
+            false
+          );
+        }
       }
     }
 

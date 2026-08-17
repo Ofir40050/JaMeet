@@ -1565,6 +1565,40 @@ describe('ProjectStore & Workspace', () => {
         notes: { key: '' }
       });
       expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterKeyClear);
+
+      // Initially set Notes content
+      store.updateWorkspace(project.id, owner, {
+        notes: { content: 'Bridge: Am -> D7 -> G' }
+      });
+      const pWithContent = store.getProject(project.id, owner.id);
+      expect(pWithContent?.workspace.notes.content).toBe('Bridge: Am -> D7 -> G');
+      expect(pWithContent?.activities[0].type).toBe('notes_edited');
+      expect(pWithContent?.activities[0].summary).toContain('updated Project Notes');
+
+      const countBeforeContentClear = pWithContent?.activities.length || 0;
+
+      // Updating with same content should not record new activity
+      store.updateWorkspace(project.id, owner, {
+        notes: { content: 'Bridge: Am -> D7 -> G' }
+      });
+      expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countBeforeContentClear);
+
+      // Clear Notes content
+      store.updateWorkspace(project.id, owner, {
+        notes: { content: '   ' }
+      });
+      const pContentCleared = store.getProject(project.id, owner.id);
+      expect(pContentCleared?.workspace.notes.content).toBe('   ');
+      expect(pContentCleared?.activities[0].type).toBe('notes_edited');
+      expect(pContentCleared?.activities[0].summary).toContain('cleared Project Notes');
+      expect(pContentCleared?.activities[0].userId).toBe(owner.id);
+
+      // Clearing already-cleared Notes content should not record new activity
+      const countAfterContentClear = pContentCleared?.activities.length || 0;
+      store.updateWorkspace(project.id, owner, {
+        notes: { content: '' }
+      });
+      expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterContentClear);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
