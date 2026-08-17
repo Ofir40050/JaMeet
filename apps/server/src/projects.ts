@@ -481,10 +481,10 @@ export class ProjectStore {
         ];
         curLyrics.activeDocumentId = 'doc-main';
       }
+      const initialDocsList = (curLyrics.documents || []).map((d) => ({ ...d }));
 
       if (updates.lyrics.documents) {
-        const oldDocsList = curLyrics.documents || [];
-        const oldDocs = new Map(oldDocsList.map((d) => [d.id, { ...d }]));
+        const oldDocs = new Map(initialDocsList.map((d) => [d.id, { ...d }]));
         curLyrics.documents = updates.lyrics.documents.map((incDoc) => {
           const existing = oldDocs.get(incDoc.id);
           if (existing) {
@@ -527,21 +527,6 @@ export class ProjectStore {
             { id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now, updatedBy: user.id, updatedByName: user.displayName }
           ];
           curLyrics.activeDocumentId = 'doc-main';
-        }
-
-        const resultingDocIds = new Set(curLyrics.documents.map((d) => d.id));
-        for (const oldDoc of oldDocsList) {
-          if (!resultingDocIds.has(oldDoc.id)) {
-            this.recordActivity(
-              projectId,
-              user,
-              'lyrics_doc_deleted',
-              `${user.displayName} deleted lyrics draft "${oldDoc.title}"`,
-              oldDoc.title,
-              undefined,
-              false
-            );
-          }
         }
       }
 
@@ -626,6 +611,23 @@ export class ProjectStore {
       curLyrics.updatedAt = now;
       curLyrics.updatedBy = user.id;
       curLyrics.updatedByName = user.displayName;
+
+      if (updates.lyrics.documents) {
+        const finalDocIds = new Set(curLyrics.documents.map((d) => d.id));
+        for (const initialDoc of initialDocsList) {
+          if (!finalDocIds.has(initialDoc.id)) {
+            this.recordActivity(
+              projectId,
+              user,
+              'lyrics_doc_deleted',
+              `${user.displayName} deleted lyrics draft "${initialDoc.title}"`,
+              initialDoc.title,
+              undefined,
+              false
+            );
+          }
+        }
+      }
     }
 
     if (updates.notes) {

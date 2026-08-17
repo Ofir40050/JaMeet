@@ -1981,6 +1981,35 @@ describe('ProjectStore & Workspace', () => {
       expect(p4?.activities.length).toBe(countAfterSetup + 2);
       expect(p4?.activities[0].type).toBe('lyrics_doc_deleted');
       expect(p4?.activities[0].summary).toContain('deleted lyrics draft "Outro Draft"');
+
+      // 5. Setup 2 documents again
+      store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documents: [
+            { id: 'doc-main', title: 'Main Lyrics', content: 'Main text' },
+            { id: 'doc-chorus', title: 'Chorus Draft', content: 'Chorus text' }
+          ]
+        }
+      });
+      const p5 = store.getProject(project.id, owner.id);
+      const countBeforeCombinedUpdate = p5?.activities.length || 0;
+
+      // 6. Update with documents array omitting doc-chorus, but targeting doc-chorus via documentId
+      store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documents: [
+            { id: 'doc-main', title: 'Main Lyrics', content: 'Main text' }
+          ],
+          documentId: 'doc-chorus',
+          content: 'Chorus updated content'
+        }
+      });
+      const p6 = store.getProject(project.id, owner.id);
+      expect(p6?.workspace.lyrics.documents.some((d) => d.id === 'doc-chorus')).toBe(true);
+      // lyrics_doc_deleted should NOT have been recorded for doc-chorus
+      const deletedActivities = p6?.activities.slice(0, (p6?.activities.length || 0) - countBeforeCombinedUpdate)
+        .filter((a) => a.type === 'lyrics_doc_deleted');
+      expect(deletedActivities?.length).toBe(0);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
