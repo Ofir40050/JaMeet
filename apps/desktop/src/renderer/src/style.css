@@ -4014,24 +4014,37 @@ select option {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 6px 8px;
+  padding: 4px 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .account-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 7px 10px;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 12px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 8px 16px !important;
   background: transparent;
   border: none;
-  border-radius: var(--radius-xs);
+  border-radius: 0;
   color: var(--text-main);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
-  text-align: left;
+  text-align: left !important;
   cursor: pointer;
-  transition: all 0.1s ease;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.account-menu-item span:not(.account-menu-item-icon) {
+  text-align: left !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  flex: 1;
 }
 
 .account-menu-item:hover {
@@ -4039,28 +4052,35 @@ select option {
 }
 
 .account-menu-item-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   color: var(--text-secondary);
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
+  width: 16px !important;
+  height: 16px !important;
+  flex-shrink: 0 !important;
+  margin: 0 !important;
+}
+
+.account-menu-item-icon svg {
+  width: 16px !important;
+  height: 16px !important;
+  display: block;
 }
 
 /* 3. Sign Out (Quiet Destructive Row) */
 .account-menu-item.danger {
-  color: #f87171;
+  color: #f87171 !important;
   background: transparent;
 }
 
 .account-menu-item.danger .account-menu-item-icon {
-  color: #f87171;
+  color: #f87171 !important;
 }
 
 .account-menu-item.danger:hover {
-  background: rgba(239, 68, 68, 0.08);
-  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08) !important;
+  color: #ef4444 !important;
 }
 
 /* --- DEDICATED SETTINGS & ACCOUNT WORKSPACE VIEW --- */
