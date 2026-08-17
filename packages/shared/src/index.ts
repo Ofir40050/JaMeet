@@ -259,6 +259,25 @@ export const projectWorkspaceStructureSchema = z.object({
 export const projectTaskStatusSchema = z.enum(['todo', 'in_progress', 'done']);
 export type ProjectTaskStatus = z.infer<typeof projectTaskStatusSchema>;
 
+export const projectTaskDueDateSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (expected YYYY-MM-DD)')
+  .refine((val) => {
+    const parts = val.split('-');
+    if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return false;
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+    const date = new Date(Date.UTC(y, m - 1, d));
+    return (
+      date.getUTCFullYear() === y &&
+      date.getUTCMonth() === m - 1 &&
+      date.getUTCDate() === d
+    );
+  }, 'Invalid calendar date');
+
 export const projectTaskItemSchema = z.object({
   id: z.string().trim().min(1, 'Task ID is required'),
   title: z.string().trim().min(1, 'Task title is required').max(150),
@@ -266,7 +285,7 @@ export const projectTaskItemSchema = z.object({
   assigneeId: z.string().optional(),
   assigneeName: z.string().optional(),
   note: z.string().trim().max(500).optional(),
-  dueDate: z.string().optional(),
+  dueDate: projectTaskDueDateSchema.optional(),
   createdAt: z.number().default(0),
   completedAt: z.number().optional(),
   updatedAt: z.number().default(0)

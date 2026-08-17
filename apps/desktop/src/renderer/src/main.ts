@@ -6777,9 +6777,9 @@ function renderTasksWorkspace(): void {
           dueHtml = `
             <div class="task-meta-wrap">
               <button type="button" class="task-meta-badge due-badge btn-trigger-due" title="Change Due Date">
-                <span>📅 ${formatShortDate(task.dueDate)}</span>
+                <span>📅 ${escapeHtml(formatShortDate(task.dueDate))}</span>
               </button>
-              <input type="date" class="task-card-inline-date task-due-input hidden" value="${task.dueDate}" />
+              <input type="date" class="task-card-inline-date task-due-input hidden" value="${escapeHtml(task.dueDate)}" />
             </div>
           `;
         } else {

@@ -1429,6 +1429,75 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('rejects workspace updates containing invalid task dueDate values without mutating state', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-due-val-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'owner-task-due-1',
+        displayName: 'Owner Alice',
+        username: 'alice',
+        email: 'alice@music.com',
+        avatarColor: '#6366f1',
+        isGuest: false,
+        createdAt: 1000
+      };
+
+      const project = store.createProject(owner, { name: 'Task Due Date Validation Song' });
+
+      // Baseline state
+      const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
+
+      // 1. Reject malicious HTML / script in dueDate
+      const xssDueRes = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Vocal Track', status: 'todo', dueDate: '<script>alert(1)</script>' }
+          ]
+        }
+      });
+      expect(xssDueRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 2. Reject non-ISO date formats
+      const slashDueRes = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Vocal Track', status: 'todo', dueDate: '08/25/2026' }
+          ]
+        }
+      });
+      expect(slashDueRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 3. Reject invalid calendar dates (e.g. Feb 31)
+      const feb31DueRes = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Vocal Track', status: 'todo', dueDate: '2026-02-31' }
+          ]
+        }
+      });
+      expect(feb31DueRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 4. Accept valid YYYY-MM-DD date and absent dueDate
+      const validDueRes = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Vocal Track', status: 'todo', dueDate: '  2026-08-25  ' },
+            { id: 'task-2', title: 'Mix Track', status: 'todo' }
+          ]
+        }
+      });
+      expect(validDueRes).not.toBeNull();
+      expect(validDueRes?.workspace.tasks.tasks[0].dueDate).toBe('2026-08-25');
+      expect(validDueRes?.workspace.tasks.tasks[1].dueDate).toBeUndefined();
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

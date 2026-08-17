@@ -4988,6 +4988,78 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('rejects REST and Socket.IO workspace updates containing invalid task dueDate values', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-taskdue-rest-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-taskdue-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_task_due', 'beta', userStore);
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Task Due REST Integration Song' });
+
+      // 1. REST update with invalid date format -> 400 Bad Request
+      const xssRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          tasks: {
+            tasks: [{ id: 'task-1', title: 'Vocals', status: 'todo', dueDate: '<img src=x onerror=alert(1)>' }]
+          }
+        })
+      });
+      expect(xssRes.status).toBe(400);
+
+      // 2. REST update with invalid calendar date -> 400 Bad Request
+      const invalidCalRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          tasks: {
+            tasks: [{ id: 'task-1', title: 'Vocals', status: 'todo', dueDate: '2026-02-30' }]
+          }
+        })
+      });
+      expect(invalidCalRes.status).toBe(400);
+
+      // Verify project tasks remain untouched
+      const projAfter = projectStore.getProject(project.id, ownerAuth.user.id);
+      expect(projAfter?.workspace.tasks.tasks.length).toBe(0);
+
+      // 3. Socket update with invalid dueDate -> ack with ok: false
+      const socket = await connected(url);
+      const joinAck = await ack(socket, 'project:workspace:join', {
+        projectId: project.id,
+        authToken: ownerAuth.token
+      });
+      expect(joinAck.ok).toBe(true);
+
+      const socketRes: any = await ack(socket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: ownerAuth.token,
+        updates: {
+          tasks: {
+            tasks: [{ id: 'task-1', title: 'Vocals', status: 'todo', dueDate: 'not-a-date' }]
+          }
+        }
+      });
+      expect(socketRes.ok).toBe(false);
+
+      socket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

@@ -388,7 +388,7 @@ export class ProjectStore {
       }
     }
 
-    // Validate tasks (identities and assignees) before performing any workspace mutation or activity recording
+    // Validate tasks (identities, dueDates, and assignees) before performing any workspace mutation or activity recording
     if (updates.tasks && updates.tasks.tasks !== undefined) {
       const seenTaskIds = new Set<string>();
       for (const t of updates.tasks.tasks) {
@@ -399,6 +399,35 @@ export class ProjectStore {
           return null;
         }
         seenTaskIds.add(t.id);
+
+        if (t.dueDate !== undefined) {
+          if (typeof t.dueDate !== 'string') {
+            return null;
+          }
+          const trimmedDue = t.dueDate.trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDue)) {
+            return null;
+          }
+          const parts = trimmedDue.split('-');
+          if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
+            return null;
+          }
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10);
+          const d = parseInt(parts[2], 10);
+          if (m < 1 || m > 12 || d < 1 || d > 31) {
+            return null;
+          }
+          const date = new Date(Date.UTC(y, m - 1, d));
+          if (
+            date.getUTCFullYear() !== y ||
+            date.getUTCMonth() !== m - 1 ||
+            date.getUTCDate() !== d
+          ) {
+            return null;
+          }
+          t.dueDate = trimmedDue;
+        }
 
         if (t.assigneeId) {
           let memberName: string | null = null;

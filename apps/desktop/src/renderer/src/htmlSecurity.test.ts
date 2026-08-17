@@ -224,5 +224,12 @@ describe('Desktop HTML Security & Safe Rendering', () => {
       expect(safeName).toContain('&lt;img src=x onerror=alert(&quot;hacked&quot;)&gt;');
       expect(safeName).not.toContain('<img');
     });
+
+    it('ensures task dueDate attributes and labels are safely escaped', () => {
+      const maliciousDueDate = '2026-08-25" onfocus="alert(1)" data-x="';
+      const safeAttr = escapeHtml(maliciousDueDate);
+      expect(safeAttr).toBe('2026-08-25&quot; onfocus=&quot;alert(1)&quot; data-x=&quot;');
+      expect(safeAttr).not.toContain('"');
+    });
   });
 });
