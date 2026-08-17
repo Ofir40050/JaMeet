@@ -18,7 +18,7 @@ import { WebRtcSession } from './webrtc';
 import { cameraConstraints, performanceVideoQuality } from './videoQuality';
 import { icons } from './icons';
 import { presenter } from './presenter';
-import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor } from './htmlSecurity';
+import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor, findSectionCard, findTimelineBlocks, findTimelineBlock } from './htmlSecurity';
 import { initActivityHistory, renderProjectActivities } from './activity';
 import { initSessionChat, resetChatUi } from './chat';
 import { startRemoteVoiceBridge, stopRemoteVoiceBridge } from './remoteVoiceBridge';
@@ -5909,7 +5909,7 @@ function renderStructureWorkspace(): void {
         <span class="timeline-block-bars">${sec.bars ? `${sec.bars} Bars` : '—'}</span>
       `;
       block.addEventListener('click', () => {
-        const card = document.querySelector(`.structure-section-card[data-section-id="${sec.id}"], .drawer-section-card[data-section-id="${sec.id}"]`);
+        const card = findSectionCard(sec.id);
         if (card) {
           card.scrollIntoView({ behavior: 'smooth', block: 'center' });
           card.classList.add('focused');
@@ -6070,14 +6070,14 @@ function renderStructureWorkspace(): void {
       // Highlight corresponding timeline block on card focus
       card.addEventListener('focusin', () => {
         document.querySelectorAll('.timeline-block').forEach((b) => b.classList.remove('active-section'));
-        const matchingBlock = document.querySelector(`.timeline-block[data-section-id="${sec.id}"]`);
-        matchingBlock?.classList.add('active-section');
+        const matchingBlocks = findTimelineBlocks(sec.id);
+        matchingBlocks.forEach((b) => b.classList.add('active-section'));
       });
 
       card.addEventListener('focusout', (e) => {
         if (!card.contains(e.relatedTarget as Node)) {
-          const matchingBlock = document.querySelector(`.timeline-block[data-section-id="${sec.id}"]`);
-          matchingBlock?.classList.remove('active-section');
+          const matchingBlocks = findTimelineBlocks(sec.id);
+          matchingBlocks.forEach((b) => b.classList.remove('active-section'));
         }
       });
 
@@ -6087,8 +6087,10 @@ function renderStructureWorkspace(): void {
         sec.name = (e.target as HTMLInputElement).value;
         sec.updatedAt = Date.now();
         // Update timeline title live
-        const blockName = document.querySelector(`.timeline-block[data-section-id="${sec.id}"] .timeline-block-name`);
-        if (blockName) blockName.textContent = sec.name || SECTION_TYPE_LABELS[sec.type] || 'Section';
+        findTimelineBlocks(sec.id).forEach((block) => {
+          const blockName = block.querySelector('.timeline-block-name');
+          if (blockName) blockName.textContent = sec.name || SECTION_TYPE_LABELS[sec.type] || 'Section';
+        });
         debounceSaveStructure();
       });
 
@@ -6100,14 +6102,13 @@ function renderStructureWorkspace(): void {
         sec.bars = val && val > 0 ? val : 8;
         sec.updatedAt = Date.now();
         // Update timeline block display live and adjust width
-        const block = document.querySelector<HTMLElement>(`.timeline-block[data-section-id="${sec.id}"]`);
-        if (block) {
+        findTimelineBlocks(sec.id).forEach((block) => {
           const blockBars = block.querySelector('.timeline-block-bars');
           if (blockBars) blockBars.textContent = `${sec.bars} Bars`;
           const bVal = sec.bars;
           block.style.minWidth = `${Math.max(76, bVal * 8.5)}px`;
           block.style.flex = `${bVal} 0 auto`;
-        }
+        });
         const totalBars = sections.reduce((sum, s) => sum + (Number(s.bars) || 0), 0);
         setText('structure-summary-bars', `${totalBars} Total Bars`);
         setText('session-structure-summary', `${sections.length} ${sections.length === 1 ? 'Section' : 'Sections'} · ${totalBars} Bars`);
@@ -6243,7 +6244,7 @@ function addStructureSection(type: string): void {
   debounceSaveStructure();
 
   setTimeout(() => {
-    const card = document.querySelector(`.structure-section-card[data-section-id="${newId}"]`);
+    const card = findSectionCard(newId);
     if (card) {
       card.scrollIntoView({ behavior: 'smooth', block: 'center' });
       card.querySelector<HTMLInputElement>('.section-name-input')?.focus();

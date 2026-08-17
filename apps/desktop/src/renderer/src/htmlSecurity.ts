@@ -435,3 +435,52 @@ export function sanitizeLyricsHtml(html: string): string {
   cleanDomNode(root);
   return root.innerHTML;
 }
+
+/**
+ * Safely resolves a Song Structure section card element from a section ID without CSS selector interpolation.
+ */
+export function findSectionCard(sectionId: string, root?: ParentNode): HTMLElement | null {
+  if (!sectionId || typeof sectionId !== 'string') return null;
+  const targetRoot = root ?? (typeof document !== 'undefined' ? document : null);
+  if (!targetRoot || typeof targetRoot.querySelectorAll !== 'function') return null;
+  const cards = targetRoot.querySelectorAll<HTMLElement>('.structure-section-card, .drawer-section-card');
+  for (const card of cards) {
+    if (card.dataset?.sectionId === sectionId || card.getAttribute?.('data-section-id') === sectionId) {
+      return card;
+    }
+  }
+  return null;
+}
+
+/**
+ * Safely resolves all timeline block elements matching a section ID without CSS selector interpolation.
+ */
+export function findTimelineBlocks(sectionId: string, root?: ParentNode): HTMLElement[] {
+  if (!sectionId || typeof sectionId !== 'string') return [];
+  const targetRoot = root ?? (typeof document !== 'undefined' ? document : null);
+  if (!targetRoot || typeof targetRoot.querySelectorAll !== 'function') return [];
+  const matches: HTMLElement[] = [];
+  const blocks = targetRoot.querySelectorAll<HTMLElement>('.timeline-block');
+  for (const block of blocks) {
+    if (block.dataset?.sectionId === sectionId || block.getAttribute?.('data-section-id') === sectionId) {
+      matches.push(block);
+    }
+  }
+  return matches;
+}
+
+/**
+ * Safely resolves the first timeline block element matching a section ID without CSS selector interpolation.
+ */
+export function findTimelineBlock(sectionId: string, root?: ParentNode): HTMLElement | null {
+  if (!sectionId || typeof sectionId !== 'string') return null;
+  const targetRoot = root ?? (typeof document !== 'undefined' ? document : null);
+  if (!targetRoot || typeof targetRoot.querySelectorAll !== 'function') return null;
+  const blocks = targetRoot.querySelectorAll<HTMLElement>('.timeline-block');
+  for (const block of blocks) {
+    if (block.dataset?.sectionId === sectionId || block.getAttribute?.('data-section-id') === sectionId) {
+      return block;
+    }
+  }
+  return null;
+}

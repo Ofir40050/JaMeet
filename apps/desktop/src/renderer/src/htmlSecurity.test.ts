@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor, isSafeCssValue } from './htmlSecurity';
+import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor, isSafeCssValue, findSectionCard, findTimelineBlocks, findTimelineBlock } from './htmlSecurity';
 
 describe('Desktop HTML Security & Safe Rendering', () => {
   describe('escapeHtml utility', () => {
@@ -230,6 +230,81 @@ describe('Desktop HTML Security & Safe Rendering', () => {
       const safeAttr = escapeHtml(maliciousDueDate);
       expect(safeAttr).toBe('2026-08-25&quot; onfocus=&quot;alert(1)&quot; data-x=&quot;');
       expect(safeAttr).not.toContain('"');
+    });
+  });
+
+  describe('Safe Song Structure section DOM lookups', () => {
+    function createMockElement(className: string, sectionId: string) {
+      return {
+        className,
+        dataset: { sectionId },
+        getAttribute(name: string) {
+          return name === 'data-section-id' ? sectionId : null;
+        }
+      };
+    }
+
+    function createMockRoot(elements: any[]) {
+      return {
+        querySelectorAll(selector: string) {
+          const classNames = selector.split(',').map((s) => s.trim().replace(/^\./, ''));
+          return elements.filter((el) => classNames.some((cls) => el.className.includes(cls)));
+        }
+      } as any;
+    }
+
+    it('safely finds section cards with special characters in IDs without CSS selector syntax errors', () => {
+      const specialIds = [
+        'sec:123',
+        'sec"456',
+        'sec\'789',
+        'sec]abc',
+        'sec[def',
+        'sec#xyz',
+        'sec.dot',
+        'sec\\backslash',
+        'sec(parens)',
+        'sec 123'
+      ];
+
+      const elements: any[] = specialIds.map((id) =>
+        createMockElement('structure-section-card', id)
+      );
+      elements.push(createMockElement('drawer-section-card', 'sec:special-drawer'));
+      const container = createMockRoot(elements);
+
+      specialIds.forEach((id) => {
+        const found = findSectionCard(id, container);
+        expect(found).not.toBeNull();
+        expect(found?.dataset.sectionId).toBe(id);
+      });
+
+      const foundDrawer = findSectionCard('sec:special-drawer', container);
+      expect(foundDrawer).not.toBeNull();
+      expect(foundDrawer?.dataset.sectionId).toBe('sec:special-drawer');
+
+      expect(findSectionCard('non-existent', container)).toBeNull();
+      expect(findSectionCard('', container)).toBeNull();
+    });
+
+    it('safely finds timeline blocks with special characters in IDs without CSS selector syntax errors', () => {
+      const specialId = 'sec:special"id\'[test]';
+
+      const block1 = createMockElement('timeline-block', specialId);
+      const block2 = createMockElement('timeline-block', specialId);
+      const otherBlock = createMockElement('timeline-block', 'sec_normal');
+      const container = createMockRoot([block1, block2, otherBlock]);
+
+      const allFound = findTimelineBlocks(specialId, container);
+      expect(allFound.length).toBe(2);
+      expect(allFound[0]).toBe(block1);
+      expect(allFound[1]).toBe(block2);
+
+      const firstFound = findTimelineBlock(specialId, container);
+      expect(firstFound).toBe(block1);
+
+      expect(findTimelineBlocks('non-existent', container)).toEqual([]);
+      expect(findTimelineBlock('non-existent', container)).toBeNull();
     });
   });
 });
