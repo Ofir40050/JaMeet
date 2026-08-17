@@ -3901,17 +3901,27 @@ select option {
   text-decoration: underline;
 }
 
-/* 4. Desktop Profile Card & Comprehensive Profile Editor */
+/* 4. Desktop Account Profile Modal & Profile Editor */
+.auth-dialog-modal {
+  width: min(700px, 94vw);
+  max-width: 720px;
+}
+
+#panel-auth-profile {
+  padding: 16px 20px;
+}
+
+/* Profile Header Summary */
 .profile-hero-preview {
   display: flex;
   align-items: center;
-  gap: 16px;
-  background: var(--bg-elevated);
+  gap: 14px;
+  background: var(--bg-input);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 16px 18px;
-  box-shadow: var(--shadow-sm);
-  margin-bottom: 14px;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  box-shadow: none;
+  margin-bottom: 12px;
 }
 
 .profile-avatar-wrap {
@@ -3920,19 +3930,18 @@ select option {
 }
 
 .profile-avatar-circle {
-  width: 58px;
-  height: 58px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  background: var(--bg-card);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-medium);
   color: var(--text-secondary);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: var(--shadow-sm);
   overflow: hidden;
   background-size: cover;
   background-position: center;
@@ -3943,12 +3952,12 @@ select option {
   position: absolute;
   bottom: -2px;
   right: -2px;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: var(--accent-primary);
   color: #ffffff;
-  border: 2px solid var(--bg-app);
+  border: 2px solid var(--bg-input);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3962,10 +3971,15 @@ select option {
   background: var(--accent-primary-hover);
 }
 
+.btn-avatar-edit-badge svg {
+  width: 10px;
+  height: 10px;
+}
+
 .profile-meta {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
   flex: 1;
   text-align: left;
@@ -3979,7 +3993,7 @@ select option {
 }
 
 .profile-title-row h3 {
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--text-main);
   margin: 0;
@@ -3989,7 +4003,7 @@ select option {
 .profile-role-pill {
   font-size: 10.5px;
   font-weight: 600;
-  padding: 2px 7px;
+  padding: 1px 7px;
   border-radius: var(--radius-xs);
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
@@ -3997,6 +4011,11 @@ select option {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.profile-role-pill svg {
+  width: 11px;
+  height: 11px;
 }
 
 .profile-sub-row {
@@ -4007,7 +4026,7 @@ select option {
 }
 
 .profile-handle {
-  color: var(--text-main);
+  color: var(--text-secondary);
   font-weight: 600;
 }
 
@@ -4019,14 +4038,14 @@ select option {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  margin-top: 2px;
   flex-wrap: wrap;
 }
 
 .profile-chip {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 500;
-  padding: 2px 6px;
+  padding: 1px 6px;
   border-radius: var(--radius-xs);
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
@@ -4036,31 +4055,36 @@ select option {
   gap: 4px;
 }
 
-/* Profile Sub-Tabs Bar */
+.profile-chip svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* Profile Sub-Tabs Bar (Desktop Segmented Navigation) */
 .profile-sub-tabs {
   display: flex;
-  gap: 4px;
-  background: var(--bg-elevated);
-  padding: 3px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  margin-bottom: 14px;
+  gap: 6px;
+  background: transparent;
+  padding: 0 0 6px 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 12px;
 }
 
 .profile-subtab-btn {
   flex: 1;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-muted);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 6px 10px;
   border-radius: var(--radius-xs);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 6px;
   transition: all 0.15s ease;
 }
 
@@ -4071,27 +4095,81 @@ select option {
 
 .profile-subtab-btn.active {
   background: var(--accent-primary-dim);
-  color: var(--accent-primary);
-  border: 1px solid var(--accent-primary);
+  color: #ffffff;
+  border-color: rgba(59, 130, 246, 0.35);
+  font-weight: 600;
 }
 
+.profile-subtab-btn.active svg {
+  color: var(--accent-primary);
+}
+
+/* Subpanels & Form Groups */
 .profile-subpanel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+}
+
+.profile-subpanel .auth-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.profile-subpanel .auth-form-group label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+
+.profile-subpanel .label-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.profile-subpanel .label-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.profile-subpanel .custom-input,
+.profile-subpanel .custom-select {
+  height: 32px;
+  font-size: 12.5px;
+  padding: 4px 9px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.profile-subpanel .custom-input:focus,
+.profile-subpanel .custom-select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+  outline: none;
 }
 
 /* Quick Role Presets */
 .profile-role-presets {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
-  margin-top: 4px;
+  margin: 1px 0 3px 0;
 }
 
 .presets-label {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-dim);
   text-transform: uppercase;
@@ -4100,12 +4178,12 @@ select option {
 }
 
 .btn-role-preset {
-  background: var(--bg-card);
+  background: var(--bg-input);
   border: 1px solid var(--border-subtle);
   color: var(--text-muted);
   border-radius: var(--radius-xs);
   padding: 2px 7px;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -4119,99 +4197,120 @@ select option {
 
 .auth-textarea {
   resize: vertical;
-  min-height: 70px;
+  min-height: 52px;
+  height: 52px;
   font-family: inherit;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  line-height: 1.4;
+  padding: 6px 9px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+}
+
+.auth-textarea:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+  outline: none;
 }
 
 .auth-select {
-  font-size: 13px !important;
+  font-size: 12.5px !important;
 }
 
 /* Avatar Management UI */
 .avatar-manager-card {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 16px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
 .avatar-upload-dropzone {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px;
-  background: var(--bg-card);
-  border: 1px dashed var(--border-medium);
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
 }
 
 .avatar-large-preview {
-  width: 64px;
-  height: 64px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-voice), #0284c7);
-  color: #040609;
-  font-size: 26px;
-  font-weight: 800;
+  background: linear-gradient(135deg, var(--accent-primary), #0284c7);
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   background-size: cover;
   background-position: center;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--border-medium);
+  box-shadow: var(--shadow-sm);
 }
 
 .avatar-upload-controls {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   align-items: flex-start;
 }
 
 .btn-avatar-upload {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: var(--accent-primary-dim);
-  border: 1px solid var(--accent-primary);
-  color: var(--accent-primary);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 12px;
+  gap: 5px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-medium);
+  color: var(--text-main);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 5px 10px;
   border-radius: var(--radius-xs);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .btn-avatar-upload:hover {
-  background: var(--accent-primary);
-  color: #ffffff;
-  border-color: var(--accent-primary);
+  background: var(--bg-card-hover);
+  border-color: var(--border-highlight);
+}
+
+.btn-avatar-upload svg {
+  width: 13px;
+  height: 13px;
 }
 
 .btn-avatar-remove {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  background: rgba(239, 68, 68, 0.1);
+  gap: 4px;
+  background: transparent;
   border: 1px solid rgba(239, 68, 68, 0.25);
   color: #f87171;
   font-size: 11px;
   font-weight: 500;
-  padding: 3px 8px;
+  padding: 4px 8px;
   border-radius: var(--radius-xs);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .btn-avatar-remove:hover {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.15);
   border-color: rgba(239, 68, 68, 0.45);
   color: #ffffff;
+}
+
+.btn-avatar-remove svg {
+  width: 12px;
+  height: 12px;
 }
 
 .avatar-upload-hint {
@@ -4220,11 +4319,19 @@ select option {
   margin: 0;
 }
 
+.avatar-color-picker-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
 .section-sublabel {
   display: block;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   margin-bottom: 8px;
 }
 
@@ -4235,12 +4342,12 @@ select option {
 }
 
 .color-swatch-btn {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  border: 2px solid transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
   cursor: pointer;
-  transition: transform 0.15s ease;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
   padding: 0;
 }
 
@@ -4253,41 +4360,32 @@ select option {
   box-shadow: 0 0 0 2px var(--accent-primary);
 }
 
-/* Security Card */
+/* Security & Password Section */
 .security-card {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 16px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
 .security-card-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding-bottom: 10px;
+  gap: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .security-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-xs);
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  color: #fbbf24;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  font-size: 14px;
+  display: none;
 }
 
 .security-card-header h4 {
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--text-main);
-  margin: 0 0 2px 0;
+  margin: 0 0 1px 0;
 }
 
 .security-card-header p {
@@ -4301,31 +4399,51 @@ select option {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding-top: 12px;
+  gap: 10px;
+  padding-top: 10px;
+  margin-top: 12px;
   border-top: 1px solid var(--border-subtle);
 }
 
 .btn-profile-save {
-  padding: 8px 18px !important;
+  background: var(--accent-primary) !important;
+  border: 1px solid var(--accent-primary) !important;
+  color: #ffffff !important;
   font-weight: 600 !important;
-  font-size: 13px !important;
+  font-size: 12px !important;
+  padding: 6px 16px !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: none !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-profile-save:hover {
+  background: var(--accent-primary-hover) !important;
+  border-color: var(--accent-primary-hover) !important;
 }
 
 .btn-auth-logout {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  color: #fca5a5;
-  font-weight: 600;
-  font-size: 12px;
-  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  font-weight: 500;
+  font-size: 11.5px;
+  padding: 6px 12px;
   border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .btn-auth-logout:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.4);
   color: #ffffff;
 }
 
