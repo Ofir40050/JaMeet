@@ -1883,20 +1883,23 @@ async function initializeActiveCall(ack: MeetingAck): Promise<void> {
     sessionProjectId = ack.projectId;
     const t = auth.getToken();
     if (t) {
+      resetWorkspaceGenerations();
+      const loadContextGen = currentWorkspaceContextGen;
       void projectsApi.fetchProject(t, ack.projectId).then((p) => {
-        resetWorkspaceGenerations();
+        if (loadContextGen !== currentWorkspaceContextGen) return;
         activeProject = p;
         activeProjectId = p.id;
         setText('session-workspace-project-name', p.name);
         syncWorkspaceInputsFromProject(true);
         void signaling.joinProjectWorkspace(p.id, t).then((joinRes) => {
-          if (joinRes?.ok && joinRes.workspace && activeProject && activeProject.id === p.id) {
+          if (joinRes?.ok && joinRes.workspace && activeProject && activeProject.id === p.id && loadContextGen === currentWorkspaceContextGen) {
             activeProject.workspace = joinRes.workspace;
             syncWorkspaceInputsFromProject(true);
           }
         });
         $('toggle-session-workspace')?.classList.remove('hidden');
       }).catch(() => {
+        if (loadContextGen !== currentWorkspaceContextGen) return;
         $('toggle-session-workspace')?.classList.add('hidden');
       });
     } else {
@@ -4258,9 +4261,11 @@ async function openProjectView(projectId: string): Promise<void> {
     showView('auth-view');
     return;
   }
+  resetWorkspaceGenerations();
+  const loadContextGen = currentWorkspaceContextGen;
   try {
-    resetWorkspaceGenerations();
     const project = await projectsApi.fetchProject(token, projectId);
+    if (loadContextGen !== currentWorkspaceContextGen) return;
     activeProject = project;
     activeProjectId = projectId;
     showView('project-view');
@@ -4269,12 +4274,13 @@ async function openProjectView(projectId: string): Promise<void> {
     syncWorkspaceInputsFromProject(true);
 
     void signaling.joinProjectWorkspace(projectId, token).then((joinRes) => {
-      if (joinRes?.ok && joinRes.workspace && activeProject && activeProject.id === projectId) {
+      if (joinRes?.ok && joinRes.workspace && activeProject && activeProject.id === projectId && loadContextGen === currentWorkspaceContextGen) {
         activeProject.workspace = joinRes.workspace;
         syncWorkspaceInputsFromProject(true);
       }
     }).catch((e) => console.warn('[Signaling] Failed to join project workspace socket room:', e));
   } catch (err) {
+    if (loadContextGen !== currentWorkspaceContextGen) return;
     console.error('Failed to open project:', err);
     alert(`Could not open project: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }

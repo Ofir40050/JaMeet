@@ -415,6 +415,62 @@ describe('Dual-Generation & Project Context Stale Save Protection', () => {
       expect(currentWorkspace.notes.content).toBe('Session Project Fresh Notes');
       expect(status).toBe('saving');
     });
+
+    it('ignores delayed fetchProject response if a newer workspace context was created while the fetch was in flight', async () => {
+      let activeProject: any = undefined;
+      let activeProjectId: string | undefined = undefined;
+      let currentContextGen = 0;
+
+      // 1. User starts opening Project A (contextGen becomes 1)
+      currentContextGen++;
+      const loadContextGenA = currentContextGen;
+
+      // 2. While Project A fetch is in flight, user clicks Project B (contextGen becomes 2)
+      currentContextGen++;
+      const loadContextGenB = currentContextGen;
+      const projectB = { id: 'proj_B', name: 'Project B', workspace: { lyrics: { content: 'Project B Lyrics' } } };
+      
+      // Project B fetch finishes
+      if (loadContextGenB === currentContextGen) {
+        activeProject = projectB;
+        activeProjectId = projectB.id;
+      }
+      expect(activeProject.id).toBe('proj_B');
+
+      // 3. Delayed fetch for Project A arrives later
+      const projectA = { id: 'proj_A', name: 'Project A', workspace: { lyrics: { content: 'Project A Lyrics' } } };
+      if (loadContextGenA === currentContextGen) {
+        activeProject = projectA;
+        activeProjectId = projectA.id;
+      }
+
+      // Project A must NOT overwrite active Project B
+      expect(activeProject.id).toBe('proj_B');
+      expect(activeProjectId).toBe('proj_B');
+    });
+
+    it('ignores delayed joinProjectWorkspace response if a newer workspace context was created after join dispatch', async () => {
+      let activeProject: any = { id: 'proj_A', workspace: { lyrics: { content: 'Project A Fresh Lyrics' } } };
+      let currentContextGen = 1;
+
+      // Join dispatched for Project A in contextGen = 1
+      const joinContextGenA = currentContextGen;
+      const joinProjectIdA = 'proj_A';
+
+      // User reloads or returns to Project A in contextGen = 2
+      currentContextGen++;
+
+      // Delayed join response arrives with old workspace
+      const staleJoinWorkspace = { lyrics: { content: 'Stale Join Workspace from Visit 1' } };
+      const canApplyJoin = Boolean(activeProject && activeProject.id === joinProjectIdA && joinContextGenA === currentContextGen);
+
+      if (canApplyJoin) {
+        activeProject.workspace = staleJoinWorkspace;
+      }
+
+      // Stale join workspace must NOT overwrite the active workspace
+      expect(activeProject.workspace.lyrics.content).toBe('Project A Fresh Lyrics');
+    });
   });
 
   describe('Newer Local Edits During In-Flight Save', () => {
