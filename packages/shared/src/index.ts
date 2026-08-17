@@ -381,7 +381,7 @@ export const updateProjectWorkspaceRequestSchema = z.object({
     activeDocumentId: z.string().optional(),
     documents: z.array(lyricsDocumentSchema).optional(),
     content: z.string().optional(),
-    documentId: z.string().optional(),
+    documentId: z.string().trim().min(1, 'Document ID is required').optional(),
     title: z.string().optional()
   }).optional(),
   notes: z.object({

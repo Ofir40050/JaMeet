@@ -4841,6 +4841,84 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('rejects REST and Socket.IO workspace updates containing empty or whitespace-only lyrics documentId', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-docid-rest-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-docid-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_docid_val', 'beta', userStore);
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Doc ID Validation Song' });
+
+      // 1. REST update with empty documentId -> 400 Bad Request
+      const emptyDocIdRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          lyrics: {
+            documentId: '',
+            title: 'Empty Doc Title',
+            content: 'Words'
+          }
+        })
+      });
+      expect(emptyDocIdRes.status).toBe(400);
+
+      // 2. REST update with whitespace documentId -> 400 Bad Request
+      const wsDocIdRes = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          lyrics: {
+            documentId: '   ',
+            title: 'Whitespace Doc Title',
+            content: 'Words'
+          }
+        })
+      });
+      expect(wsDocIdRes.status).toBe(400);
+
+      // Verify project lyrics documents remain untouched
+      const projAfter = projectStore.getProject(project.id, ownerAuth.user.id);
+      expect(projAfter?.workspace.lyrics.documents.length).toBe(1);
+
+      // 3. Socket update with empty documentId -> ack with ok: false
+      const socket = await connected(url);
+      const joinAck = await ack(socket, 'project:workspace:join', {
+        projectId: project.id,
+        authToken: ownerAuth.token
+      });
+      expect(joinAck.ok).toBe(true);
+
+      const socketEmptyRes = await ack(socket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: ownerAuth.token,
+        updates: {
+          lyrics: {
+            documentId: '',
+            title: 'Empty Socket Title',
+            content: 'Words'
+          }
+        }
+      });
+      expect(socketEmptyRes.ok).toBe(false);
+
+      socket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

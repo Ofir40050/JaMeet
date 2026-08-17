@@ -1276,6 +1276,63 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('rejects workspace updates containing empty or whitespace-only lyrics documentId without mutating state', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-target-doc-val-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'owner-target-doc-1',
+        displayName: 'Owner Alice',
+        username: 'alice',
+        email: 'alice@music.com',
+        avatarColor: '#6366f1',
+        isGuest: false,
+        createdAt: 1000
+      };
+
+      const project = store.createProject(owner, { name: 'Target Doc ID Validation Song' });
+
+      // Baseline state
+      const beforeState = JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)));
+
+      // 1. Reject empty documentId
+      const emptyDocIdRes = store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documentId: '',
+          title: 'New Document Title',
+          content: 'Some lyrics content'
+        }
+      });
+      expect(emptyDocIdRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 2. Reject whitespace-only documentId
+      const wsDocIdRes = store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documentId: '   \t  ',
+          title: 'Whitespace Document Title',
+          content: 'Some lyrics content'
+        }
+      });
+      expect(wsDocIdRes).toBeNull();
+      expect(JSON.parse(JSON.stringify(store.getProject(project.id, owner.id)))).toEqual(beforeState);
+
+      // 3. Accept valid documentId and trim whitespace
+      const validDocIdRes = store.updateWorkspace(project.id, owner, {
+        lyrics: {
+          documentId: '  doc-trimmed-1  ',
+          title: 'Trimmed Document Title',
+          content: 'Trimmed lyrics content'
+        }
+      });
+      expect(validDocIdRes).not.toBeNull();
+      expect(validDocIdRes?.workspace.lyrics.documents.length).toBe(2);
+      expect(validDocIdRes?.workspace.lyrics.documents.find((d) => d.id === 'doc-trimmed-1')).toBeDefined();
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

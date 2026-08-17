@@ -347,17 +347,30 @@ export class ProjectStore {
       return null;
     }
 
-    // Validate lyrics documents (identities and uniqueness) before performing any workspace mutation or activity recording
-    if (updates.lyrics && updates.lyrics.documents !== undefined) {
-      const seenDocIds = new Set<string>();
-      for (const d of updates.lyrics.documents) {
-        if (!d.id || typeof d.id !== 'string' || d.id.trim().length === 0) {
+    // Validate lyrics documents and documentId before performing any workspace mutation or activity recording
+    if (updates.lyrics) {
+      if (updates.lyrics.documentId !== undefined) {
+        if (
+          !updates.lyrics.documentId ||
+          typeof updates.lyrics.documentId !== 'string' ||
+          updates.lyrics.documentId.trim().length === 0
+        ) {
           return null;
         }
-        if (seenDocIds.has(d.id)) {
-          return null;
+        updates.lyrics.documentId = updates.lyrics.documentId.trim();
+      }
+
+      if (updates.lyrics.documents !== undefined) {
+        const seenDocIds = new Set<string>();
+        for (const d of updates.lyrics.documents) {
+          if (!d.id || typeof d.id !== 'string' || d.id.trim().length === 0) {
+            return null;
+          }
+          if (seenDocIds.has(d.id)) {
+            return null;
+          }
+          seenDocIds.add(d.id);
         }
-        seenDocIds.add(d.id);
       }
     }
 
