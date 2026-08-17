@@ -32,9 +32,13 @@ export class SignalingClient {
       if (this.activeProjectWorkspace) {
         this.socket.emit('project:workspace:join', this.activeProjectWorkspace, (_err: Error | null, res: any) => {
           if (res?.ok && res.workspace && this.activeProjectWorkspace) {
-            this.socket.emit('project:workspace:synced', {
+            const syncPayload = {
               projectId: this.activeProjectWorkspace.projectId,
               workspace: res.workspace
+            };
+            const listeners = (this.socket as any).listeners?.('project:workspace:synced') || [];
+            listeners.forEach((listener: Listener) => {
+              try { listener(syncPayload); } catch (e) { logger.warn('workspace_sync_listener_error', 'Error in workspace sync listener', undefined, e as Error); }
             });
           }
         });

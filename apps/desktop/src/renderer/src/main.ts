@@ -4727,6 +4727,10 @@ for (const modalId of ['new-project-modal', 'rename-project-modal', 'add-collab-
 // ========================================================
 let lyricsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 let notesSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+let currentLyricsStatus: 'saving' | 'saved' | 'unsaved' = 'saved';
+let currentNotesStatus: 'saving' | 'saved' | 'unsaved' = 'saved';
+let currentStructureStatus: 'saving' | 'saved' | 'unsaved' = 'saved';
+let currentTasksStatus: 'saving' | 'saved' | 'unsaved' = 'saved';
 let sessionWorkspaceOpen = false;
 
 // Snapshot of last confirmed server state for 3-way merging
@@ -5153,6 +5157,7 @@ function updateLyricsStatsFromHtml(html: string): void {
 }
 
 function setLyricsStatus(status: 'saving' | 'saved' | 'unsaved'): void {
+  currentLyricsStatus = status;
   const badges = [$('project-lyrics-status'), $('session-workspace-status')];
   const label = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save failed';
   badges.forEach((b) => {
@@ -5168,6 +5173,7 @@ function setLyricsStatus(status: 'saving' | 'saved' | 'unsaved'): void {
 }
 
 function setNotesStatus(status: 'saving' | 'saved' | 'unsaved'): void {
+  currentNotesStatus = status;
   const badges = [$('project-notes-status'), $('session-workspace-status')];
   const label = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save failed';
   badges.forEach((b) => {
@@ -5290,10 +5296,18 @@ function syncWorkspaceInputsFromProject(force = false): void {
   renderTasksWorkspace();
   renderProjectActivities(activeProject ?? null);
 
-  setLyricsStatus('saved');
-  setNotesStatus('saved');
-  setStructureStatus('saved');
-  setTasksStatus('saved');
+  if (force || (currentLyricsStatus !== 'unsaved' && currentLyricsStatus !== 'saving' && lyricsSaveTimeout === null)) {
+    setLyricsStatus('saved');
+  }
+  if (force || (currentNotesStatus !== 'unsaved' && currentNotesStatus !== 'saving' && notesSaveTimeout === null)) {
+    setNotesStatus('saved');
+  }
+  if (force || (currentStructureStatus !== 'unsaved' && currentStructureStatus !== 'saving' && structureSaveTimeout === null)) {
+    setStructureStatus('saved');
+  }
+  if (force || (currentTasksStatus !== 'unsaved' && currentTasksStatus !== 'saving' && tasksSaveTimeout === null)) {
+    setTasksStatus('saved');
+  }
 }
 
 function handleLyricsEditorInput(source: 'project' | 'session'): void {
@@ -5875,6 +5889,7 @@ function getStructureSections(): any[] {
 }
 
 function setStructureStatus(status: 'saving' | 'saved' | 'unsaved'): void {
+  currentStructureStatus = status;
   const badge = $('project-structure-status');
   const label = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save failed';
   if (badge) {
@@ -6341,85 +6356,102 @@ signaling.on('project:workspace:synced', (data: { projectId: string; workspace: 
   const matchesCurrent = activeProject?.id === data.projectId || sessionProjectId === data.projectId;
   if (!matchesCurrent) return;
 
-  if (activeProject) {
-    activeProject.workspace = data.workspace;
+  if (!activeProject) return;
+  if (!activeProject.workspace) {
+    activeProject.workspace = {
+      lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: Date.now() }], content: '', updatedAt: Date.now() },
+      notes: { content: '', updatedAt: Date.now() },
+      structure: { sections: [], updatedAt: Date.now() },
+      tasks: { tasks: [], updatedAt: Date.now() }
+    };
   }
 
   // 1. Sync Lyrics Documents & Active Document
-  renderLyricsDocTabs();
-  const activeDoc = getActiveLyricsDoc();
-  const incomingLyrics = activeDoc.content || '';
+  const hasPendingLyrics = lyricsSaveTimeout !== null || currentLyricsStatus === 'saving' || currentLyricsStatus === 'unsaved';
+  if (!hasPendingLyrics && data.workspace.lyrics) {
+    activeProject.workspace.lyrics = data.workspace.lyrics;
+    renderLyricsDocTabs();
+    const activeDoc = getActiveLyricsDoc();
+    const incomingLyrics = activeDoc.content || '';
 
-  const projectEditor = $('project-lyrics-editor');
-  const sessionEditor = $('session-lyrics-editor');
-  const isEditingProject = document.activeElement === projectEditor;
-  const isEditingSession = document.activeElement === sessionEditor;
+    const projectEditor = $('project-lyrics-editor');
+    const sessionEditor = $('session-lyrics-editor');
+    const isEditingProject = document.activeElement === projectEditor;
+    const isEditingSession = document.activeElement === sessionEditor;
 
-  if (!isEditingProject && projectEditor) {
-    projectEditor.innerHTML = sanitizeLyricsHtml(incomingLyrics);
+    if (!isEditingProject && projectEditor) {
+      projectEditor.innerHTML = sanitizeLyricsHtml(incomingLyrics);
+    }
+    if (!isEditingSession && sessionEditor) {
+      sessionEditor.innerHTML = sanitizeLyricsHtml(incomingLyrics);
+    }
+    updateLyricsStatsFromHtml(incomingLyrics);
+    lastSyncedLyrics = incomingLyrics;
+    setLyricsStatus('saved');
   }
-  if (!isEditingSession && sessionEditor) {
-    sessionEditor.innerHTML = sanitizeLyricsHtml(incomingLyrics);
-  }
-  updateLyricsStatsFromHtml(incomingLyrics);
-  setLyricsStatus('saved');
 
   // 2. Converge Notes
   const projectNotesInput = $<HTMLTextAreaElement>('project-notes-input');
   const sessionNotesInput = $<HTMLTextAreaElement>('session-notes-input');
   const incomingNotes = data.workspace.notes?.content ?? '';
   const currentLocalNotes = activeProject?.workspace?.notes?.content ?? '';
+  const hasPendingNotes = notesSaveTimeout !== null || currentNotesStatus === 'saving' || currentNotesStatus === 'unsaved' || currentLocalNotes !== lastSyncedNotes;
 
-  if (incomingNotes !== currentLocalNotes) {
-    if (notesSaveTimeout !== null || currentLocalNotes !== lastSyncedNotes) {
+  if (hasPendingNotes) {
+    if (incomingNotes !== currentLocalNotes) {
       const mergedNotes = threeWayLineMerge(lastSyncedNotes, currentLocalNotes, incomingNotes);
       if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, mergedNotes);
       if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, mergedNotes);
-      if (activeProject) activeProject.workspace.notes.content = mergedNotes;
+      if (activeProject.workspace.notes) activeProject.workspace.notes.content = mergedNotes;
       lastSyncedNotes = incomingNotes;
       if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
+      setNotesStatus('saving');
       notesSaveTimeout = setTimeout(() => {
         notesSaveTimeout = null;
-        void saveNotesWorkspace(mergedNotes, activeProject?.workspace.notes.bpm || '', activeProject?.workspace.notes.key || '');
+        void saveNotesWorkspace(mergedNotes, activeProject?.workspace?.notes?.bpm || '', activeProject?.workspace?.notes?.key || '');
       }, 350);
-    } else {
-      if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, incomingNotes);
-      if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, incomingNotes);
-      if (activeProject) activeProject.workspace.notes.content = incomingNotes;
-      lastSyncedNotes = incomingNotes;
     }
   } else {
-    lastSyncedNotes = incomingNotes;
+    if (data.workspace.notes) {
+      if (activeProject.workspace.notes) activeProject.workspace.notes.content = incomingNotes;
+      lastSyncedNotes = incomingNotes;
+      if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, incomingNotes);
+      if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, incomingNotes);
+
+      const projectBpm = $<HTMLInputElement>('project-notes-bpm');
+      const sessionBpm = $<HTMLInputElement>('session-notes-bpm');
+      const incomingBpm = data.workspace.notes?.bpm ?? '';
+      const incomingKey = data.workspace.notes?.key ?? '';
+
+      if (projectBpm && document.activeElement !== projectBpm) projectBpm.value = incomingBpm;
+      if (sessionBpm && document.activeElement !== sessionBpm) sessionBpm.value = incomingBpm;
+      if (activeProject.workspace.notes) activeProject.workspace.notes.bpm = incomingBpm;
+
+      if (activeProject.workspace.notes) activeProject.workspace.notes.key = incomingKey;
+      applyKeyToControls(incomingKey, false);
+
+      setNotesStatus('saved');
+    }
   }
 
-  // BPM & Key
-  const projectBpm = $<HTMLInputElement>('project-notes-bpm');
-  const sessionBpm = $<HTMLInputElement>('session-notes-bpm');
-  const incomingBpm = data.workspace.notes?.bpm ?? '';
-  const incomingKey = data.workspace.notes?.key ?? '';
-
-  if (projectBpm && document.activeElement !== projectBpm) projectBpm.value = incomingBpm;
-  if (sessionBpm && document.activeElement !== sessionBpm) sessionBpm.value = incomingBpm;
-  if (activeProject) activeProject.workspace.notes.bpm = incomingBpm;
-
-  if (activeProject) activeProject.workspace.notes.key = incomingKey;
-  applyKeyToControls(incomingKey, false);
-
-  setNotesStatus('saved');
-
   // 3. Sync Song Structure
-  const activeInputInStructure = document.activeElement && (
-    document.activeElement.classList.contains('section-name-input') ||
-    document.activeElement.classList.contains('section-bars-input') ||
-    document.activeElement.classList.contains('section-note-input')
-  );
-  if (!activeInputInStructure) {
-    renderStructureWorkspace();
-    setStructureStatus('saved');
+  const hasPendingStructure = structureSaveTimeout !== null || currentStructureStatus === 'saving' || currentStructureStatus === 'unsaved';
+  if (!hasPendingStructure && data.workspace.structure) {
+    const activeInputInStructure = document.activeElement && (
+      document.activeElement.classList.contains('section-name-input') ||
+      document.activeElement.classList.contains('section-bars-input') ||
+      document.activeElement.classList.contains('section-note-input')
+    );
+    if (!activeInputInStructure) {
+      activeProject.workspace.structure = data.workspace.structure;
+      renderStructureWorkspace();
+      setStructureStatus('saved');
+    }
   }
 
   // 4. Sync Project Tasks with non-intrusive convergence
-  if (data.workspace?.tasks) {
+  const hasPendingTasks = tasksSaveTimeout !== null || currentTasksStatus === 'saving' || currentTasksStatus === 'unsaved';
+  if (!hasPendingTasks && data.workspace?.tasks) {
     const activeTaskEl = document.activeElement;
     const isEditingTask = activeTaskEl && (
       activeTaskEl.classList.contains('task-title-input') ||
@@ -6428,12 +6460,10 @@ signaling.on('project:workspace:synced', (data: { projectId: string; workspace: 
     );
 
     if (!isEditingTask) {
-      if (activeProject) {
-        activeProject.workspace.tasks = {
-          tasks: Array.isArray(data.workspace.tasks.tasks) ? data.workspace.tasks.tasks : [],
-          updatedAt: data.workspace.tasks.updatedAt || Date.now()
-        };
-      }
+      activeProject.workspace.tasks = {
+        tasks: Array.isArray(data.workspace.tasks.tasks) ? data.workspace.tasks.tasks : [],
+        updatedAt: data.workspace.tasks.updatedAt || Date.now()
+      };
       renderTasksWorkspace();
       setTasksStatus('saved');
     }
@@ -6583,6 +6613,7 @@ function getProjectTasks(): ProjectTaskItem[] {
 }
 
 function setTasksStatus(status: 'saving' | 'saved' | 'unsaved'): void {
+  currentTasksStatus = status;
   const label = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save failed';
   const badge = $('project-tasks-status');
   if (badge) {

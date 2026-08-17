@@ -36,6 +36,71 @@ export async function executeWorkspaceSave<T>(
   }
 }
 
+/**
+ * Mirror of realtime sync protection logic in main.ts
+ */
+export function handleRealtimeWorkspaceSync(
+  local: {
+    workspace: any;
+    lyricsStatus: WorkspaceSaveStatus;
+    hasPendingLyrics: boolean;
+    notesStatus: WorkspaceSaveStatus;
+    hasPendingNotes: boolean;
+    lastSyncedNotes: string;
+    structureStatus: WorkspaceSaveStatus;
+    hasPendingStructure: boolean;
+    tasksStatus: WorkspaceSaveStatus;
+    hasPendingTasks: boolean;
+  },
+  incomingWorkspace: any
+): {
+  workspace: any;
+  lyricsStatus: WorkspaceSaveStatus;
+  notesStatus: WorkspaceSaveStatus;
+  structureStatus: WorkspaceSaveStatus;
+  tasksStatus: WorkspaceSaveStatus;
+} {
+  const resultWorkspace = { ...local.workspace };
+  let newLyricsStatus = local.lyricsStatus;
+  let newNotesStatus = local.notesStatus;
+  let newStructureStatus = local.structureStatus;
+  let newTasksStatus = local.tasksStatus;
+
+  // 1. Lyrics
+  if (!local.hasPendingLyrics && local.lyricsStatus === 'saved' && incomingWorkspace.lyrics) {
+    resultWorkspace.lyrics = incomingWorkspace.lyrics;
+    newLyricsStatus = 'saved';
+  }
+
+  // 2. Notes
+  if (!local.hasPendingNotes && local.notesStatus === 'saved' && incomingWorkspace.notes) {
+    resultWorkspace.notes = incomingWorkspace.notes;
+    newNotesStatus = 'saved';
+  } else if (local.hasPendingNotes || local.notesStatus !== 'saved') {
+    // Preserves local notes and does not overwrite with saved
+  }
+
+  // 3. Structure
+  if (!local.hasPendingStructure && local.structureStatus === 'saved' && incomingWorkspace.structure) {
+    resultWorkspace.structure = incomingWorkspace.structure;
+    newStructureStatus = 'saved';
+  }
+
+  // 4. Tasks
+  if (!local.hasPendingTasks && local.tasksStatus === 'saved' && incomingWorkspace.tasks) {
+    resultWorkspace.tasks = incomingWorkspace.tasks;
+    newTasksStatus = 'saved';
+  }
+
+  return {
+    workspace: resultWorkspace,
+    lyricsStatus: newLyricsStatus,
+    notesStatus: newNotesStatus,
+    structureStatus: newStructureStatus,
+    tasksStatus: newTasksStatus
+  };
+}
+
 describe('Workspace Save Status & Failure Recovery', () => {
   it('correctly maps status badge classes and labels', () => {
     expect(getStatusBadgeData('saved')).toEqual({
@@ -155,5 +220,87 @@ describe('Workspace Save Status & Failure Recovery', () => {
     );
     expect(status).toBe('saved');
     expect(localWorkspace.tasks.tasks[0]?.title).toBe('Record Vocals');
+  });
+
+  describe('Realtime Sync & Reconnect Protection', () => {
+    it('preserves unsaved Lyrics when incoming realtime sync arrives', () => {
+      const state = {
+        workspace: {
+          lyrics: { content: 'Unsaved draft chorus lyrics' },
+          notes: { content: 'Clean notes' },
+          structure: { sections: [] },
+          tasks: { tasks: [] }
+        },
+        lyricsStatus: 'unsaved' as WorkspaceSaveStatus,
+        hasPendingLyrics: true,
+        notesStatus: 'saved' as WorkspaceSaveStatus,
+        hasPendingNotes: false,
+        lastSyncedNotes: 'Clean notes',
+        structureStatus: 'saved' as WorkspaceSaveStatus,
+        hasPendingStructure: false,
+        tasksStatus: 'saved' as WorkspaceSaveStatus,
+        hasPendingTasks: false
+      };
+
+      const incoming = {
+        lyrics: { content: 'Remote old lyrics' },
+        notes: { content: 'Updated remote notes' },
+        structure: { sections: [{ id: 's1', type: 'intro', bars: 4 }] },
+        tasks: { tasks: [{ id: 't1', title: 'Remote Task', status: 'todo' }] }
+      };
+
+      const result = handleRealtimeWorkspaceSync(state, incoming);
+
+      // Local unsaved lyrics preserved and status stays unsaved
+      expect(result.workspace.lyrics.content).toBe('Unsaved draft chorus lyrics');
+      expect(result.lyricsStatus).toBe('unsaved');
+
+      // Clean areas (notes, structure, tasks) updated to remote server state
+      expect(result.workspace.notes.content).toBe('Updated remote notes');
+      expect(result.notesStatus).toBe('saved');
+      expect(result.workspace.structure.sections.length).toBe(1);
+      expect(result.structureStatus).toBe('saved');
+      expect(result.workspace.tasks.tasks.length).toBe(1);
+      expect(result.tasksStatus).toBe('saved');
+    });
+
+    it('preserves unsaved Structure and Tasks across socket sync without marking saved', () => {
+      const state = {
+        workspace: {
+          lyrics: { content: 'Clean lyrics' },
+          notes: { content: 'Clean notes' },
+          structure: { sections: [{ id: 's_local', type: 'outro', bars: 16 }] },
+          tasks: { tasks: [{ id: 't_local', title: 'Local Task In Progress', status: 'in_progress' }] }
+        },
+        lyricsStatus: 'saved' as WorkspaceSaveStatus,
+        hasPendingLyrics: false,
+        notesStatus: 'saved' as WorkspaceSaveStatus,
+        hasPendingNotes: false,
+        lastSyncedNotes: 'Clean notes',
+        structureStatus: 'unsaved' as WorkspaceSaveStatus,
+        hasPendingStructure: true,
+        tasksStatus: 'unsaved' as WorkspaceSaveStatus,
+        hasPendingTasks: true
+      };
+
+      const incoming = {
+        lyrics: { content: 'Clean lyrics updated' },
+        notes: { content: 'Clean notes updated' },
+        structure: { sections: [] },
+        tasks: { tasks: [] }
+      };
+
+      const result = handleRealtimeWorkspaceSync(state, incoming);
+
+      expect(result.workspace.structure.sections[0]?.id).toBe('s_local');
+      expect(result.structureStatus).toBe('unsaved');
+      expect(result.workspace.tasks.tasks[0]?.id).toBe('t_local');
+      expect(result.tasksStatus).toBe('unsaved');
+
+      expect(result.workspace.lyrics.content).toBe('Clean lyrics updated');
+      expect(result.lyricsStatus).toBe('saved');
+      expect(result.workspace.notes.content).toBe('Clean notes updated');
+      expect(result.notesStatus).toBe('saved');
+    });
   });
 });
