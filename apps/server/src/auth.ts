@@ -16,6 +16,23 @@ import { type ServerConfig, parseBetaEndAt } from './config.js';
 
 export type SessionAccessState = 'beta' | 'paid' | 'blocked';
 
+export type UserActivityType =
+  | 'account_creation'
+  | 'login'
+  | 'session_hosted'
+  | 'session_joined'
+  | 'access_state_changed'
+  | 'beta_expiration_changed';
+
+export interface UserActivityEvent {
+  id: string;
+  type: UserActivityType;
+  timestamp: number;
+  description: string;
+  clientVersion?: string;
+  clientPlatform?: string;
+}
+
 export interface AdminUserSummary {
   id: string;
   displayName: string;
@@ -24,7 +41,33 @@ export interface AdminUserSummary {
   createdAt: number;
   sessionsHostedCount: number;
   sessionAccess: SessionAccessState;
+  accessUpdatedAt?: number;
+  betaExpiresAt?: number | null;
   avatarColor: string;
+  isOnline: boolean;
+  lastLoginAt?: number;
+  lastActiveAt?: number;
+  clientVersion?: string;
+  clientPlatform?: string;
+}
+
+export interface AdminUserDetail {
+  id: string;
+  displayName: string;
+  username: string;
+  email: string;
+  createdAt: number;
+  sessionsHostedCount: number;
+  sessionAccess: SessionAccessState;
+  accessUpdatedAt?: number;
+  betaExpiresAt?: number | null;
+  avatarColor: string;
+  isOnline: boolean;
+  lastLoginAt?: number;
+  lastActiveAt?: number;
+  clientVersion?: string;
+  clientPlatform?: string;
+  activityHistory: UserActivityEvent[];
 }
 
 export interface StoredUser {
@@ -34,6 +77,8 @@ export interface StoredUser {
   displayName: string;
   passwordHash: string; // salt:hashHex
   sessionAccess: SessionAccessState;
+  accessUpdatedAt?: number;
+  betaExpiresAt?: number | null;
   avatarColor: string;
   avatarUrl?: string;
   location?: string;
@@ -46,6 +91,11 @@ export interface StoredUser {
   createdAt: number;
   updatedAt: number;
   sessionsHostedCount: number;
+  lastLoginAt?: number;
+  lastActiveAt?: number;
+  clientVersion?: string;
+  clientPlatform?: string;
+  activityHistory?: UserActivityEvent[];
   passwordChangedAt?: number;
   metadata?: Record<string, unknown>;
 }
@@ -183,6 +233,12 @@ export class UserStore {
         if (u.sessionAccess === undefined || u.sessionAccess === null) {
           u.sessionAccess = 'beta';
           needsSave = true;
+        }
+        if (u.accessUpdatedAt === undefined || u.accessUpdatedAt === null) {
+          u.accessUpdatedAt = u.createdAt || Date.now();
+        }
+        if (!Array.isArray(u.activityHistory)) {
+          u.activityHistory = [];
         }
         this.users.set(u.id, u);
         this.usernameIndex.set(u.username.toLowerCase(), u.id);
@@ -373,7 +429,7 @@ export class UserStore {
     return token;
   }
 
-  async register(req: RegisterRequest): Promise<{ token: string; user: UserProfile }> {
+  async register(req: RegisterRequest, clientInfo?: { version?: string; platform?: string }): Promise<{ token: string; user: UserProfile }> {
     const lowerUsername = req.username.toLowerCase();
     const lowerEmail = req.email.toLowerCase();
 
@@ -392,6 +448,15 @@ export class UserStore {
       const id = crypto.randomUUID();
       const now = Date.now();
 
+      const initialActivity: UserActivityEvent = {
+        id: crypto.randomUUID(),
+        type: 'account_creation',
+        timestamp: now,
+        description: 'Account created',
+        clientVersion: clientInfo?.version,
+        clientPlatform: clientInfo?.platform
+      };
+
       const storedUser: StoredUser = {
         id,
         username: req.username,
@@ -399,9 +464,14 @@ export class UserStore {
         displayName: req.displayName,
         passwordHash,
         sessionAccess: 'blocked',
+        accessUpdatedAt: now,
         avatarColor: randomAvatarColor(),
         createdAt: now,
         updatedAt: now,
+        lastActiveAt: now,
+        clientVersion: clientInfo?.version,
+        clientPlatform: clientInfo?.platform,
+        activityHistory: [initialActivity],
         sessionsHostedCount: 0
       };
 
@@ -515,21 +585,229 @@ export class UserStore {
     return guest;
   }
 
-  incrementHostedCount(userId: string): void {
+  incrementHostedCount(userId: string, sessionCode?: string): void {
     const user = this.users.get(userId);
     if (user) {
       const prevCount = user.sessionsHostedCount;
       const prevUpdatedAt = user.updatedAt;
+      const prevLastActive = user.lastActiveAt;
+      const now = Date.now();
       user.sessionsHostedCount = (user.sessionsHostedCount || 0) + 1;
-      user.updatedAt = Date.now();
+      user.updatedAt = now;
+      user.lastActiveAt = now;
+
+      const event: UserActivityEvent = {
+        id: crypto.randomUUID(),
+        type: 'session_hosted',
+        timestamp: now,
+        description: sessionCode ? `Hosted session ${sessionCode}` : 'Hosted a session'
+      };
+      if (!Array.isArray(user.activityHistory)) {
+        user.activityHistory = [];
+      }
+      user.activityHistory.unshift(event);
+      if (user.activityHistory.length > 50) {
+        user.activityHistory = user.activityHistory.slice(0, 50);
+      }
+
       try {
         this.saveToDisk();
       } catch (err) {
         user.sessionsHostedCount = prevCount;
         user.updatedAt = prevUpdatedAt;
+        user.lastActiveAt = prevLastActive;
+        user.activityHistory.shift();
         throw err;
       }
     }
+  }
+
+  recordSessionJoined(userId: string, sessionCode: string): void {
+    const user = this.users.get(userId);
+    if (!user) return;
+    const now = Date.now();
+    user.lastActiveAt = now;
+
+    const event: UserActivityEvent = {
+      id: crypto.randomUUID(),
+      type: 'session_joined',
+      timestamp: now,
+      description: `Joined session ${sessionCode}`
+    };
+    if (!Array.isArray(user.activityHistory)) {
+      user.activityHistory = [];
+    }
+    user.activityHistory.unshift(event);
+    if (user.activityHistory.length > 50) {
+      user.activityHistory = user.activityHistory.slice(0, 50);
+    }
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      console.warn('Could not save session joined activity:', err);
+    }
+  }
+
+  recordLogin(userId: string, clientInfo?: { version?: string; platform?: string }): void {
+    const user = this.users.get(userId);
+    if (!user) return;
+    const now = Date.now();
+    user.lastLoginAt = now;
+    user.lastActiveAt = now;
+    if (clientInfo?.version) user.clientVersion = clientInfo.version;
+    if (clientInfo?.platform) user.clientPlatform = clientInfo.platform;
+
+    const platformLabel = user.clientPlatform || 'Desktop';
+    const versionLabel = user.clientVersion ? `v${user.clientVersion}` : '';
+    const desc = versionLabel ? `Logged in (${platformLabel} • ${versionLabel})` : `Logged in (${platformLabel})`;
+
+    const event: UserActivityEvent = {
+      id: crypto.randomUUID(),
+      type: 'login',
+      timestamp: now,
+      description: desc,
+      clientVersion: user.clientVersion,
+      clientPlatform: user.clientPlatform
+    };
+    if (!Array.isArray(user.activityHistory)) {
+      user.activityHistory = [];
+    }
+    user.activityHistory.unshift(event);
+    if (user.activityHistory.length > 50) {
+      user.activityHistory = user.activityHistory.slice(0, 50);
+    }
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      console.warn('Could not save login activity to disk:', err);
+    }
+  }
+
+  setSessionAccess(userId: string, access: SessionAccessState, betaExpiresAt?: number | null): boolean {
+    const user = this.users.get(userId);
+    if (!user) return false;
+    const prevAccess = user.sessionAccess;
+    const prevAccessUpdatedAt = user.accessUpdatedAt;
+    const prevBetaExpiresAt = user.betaExpiresAt;
+    const prevUpdatedAt = user.updatedAt;
+    const now = Date.now();
+
+    user.sessionAccess = access;
+    user.accessUpdatedAt = now;
+    user.updatedAt = now;
+    if (betaExpiresAt !== undefined) {
+      user.betaExpiresAt = betaExpiresAt;
+    }
+
+    const event: UserActivityEvent = {
+      id: crypto.randomUUID(),
+      type: 'access_state_changed',
+      timestamp: now,
+      description: `Access state changed from ${prevAccess} to ${access}`
+    };
+    if (!Array.isArray(user.activityHistory)) {
+      user.activityHistory = [];
+    }
+    user.activityHistory.unshift(event);
+    if (user.activityHistory.length > 50) {
+      user.activityHistory = user.activityHistory.slice(0, 50);
+    }
+
+    try {
+      this.saveToDisk();
+      return true;
+    } catch (err) {
+      user.sessionAccess = prevAccess;
+      user.accessUpdatedAt = prevAccessUpdatedAt;
+      user.betaExpiresAt = prevBetaExpiresAt;
+      user.updatedAt = prevUpdatedAt;
+      user.activityHistory.shift();
+      throw err;
+    }
+  }
+
+  setBetaExpiration(userId: string, betaExpiresAt: number | null): boolean {
+    const user = this.users.get(userId);
+    if (!user) return false;
+    const prevBetaExpiresAt = user.betaExpiresAt;
+    const prevUpdatedAt = user.updatedAt;
+    const now = Date.now();
+
+    user.betaExpiresAt = betaExpiresAt;
+    user.updatedAt = now;
+
+    const desc = betaExpiresAt
+      ? `Beta expiration set to ${new Date(betaExpiresAt).toISOString().slice(0, 10)}`
+      : 'Beta expiration cleared (no expiration)';
+
+    const event: UserActivityEvent = {
+      id: crypto.randomUUID(),
+      type: 'beta_expiration_changed',
+      timestamp: now,
+      description: desc
+    };
+    if (!Array.isArray(user.activityHistory)) {
+      user.activityHistory = [];
+    }
+    user.activityHistory.unshift(event);
+    if (user.activityHistory.length > 50) {
+      user.activityHistory = user.activityHistory.slice(0, 50);
+    }
+
+    try {
+      this.saveToDisk();
+      return true;
+    } catch (err) {
+      user.betaExpiresAt = prevBetaExpiresAt;
+      user.updatedAt = prevUpdatedAt;
+      user.activityHistory.shift();
+      throw err;
+    }
+  }
+
+  listAdminUsers(onlineUserIds?: Set<string>): AdminUserSummary[] {
+    return Array.from(this.users.values())
+      .map((u) => ({
+        id: u.id,
+        displayName: u.displayName,
+        username: u.username,
+        email: u.email,
+        createdAt: u.createdAt,
+        sessionsHostedCount: u.sessionsHostedCount || 0,
+        sessionAccess: u.sessionAccess ?? 'blocked',
+        accessUpdatedAt: u.accessUpdatedAt || u.createdAt,
+        betaExpiresAt: u.betaExpiresAt,
+        avatarColor: u.avatarColor,
+        isOnline: Boolean(onlineUserIds && onlineUserIds.has(u.id)),
+        lastLoginAt: u.lastLoginAt,
+        lastActiveAt: u.lastActiveAt,
+        clientVersion: u.clientVersion,
+        clientPlatform: u.clientPlatform
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  getAdminUserDetail(userId: string, isOnline: boolean = false): AdminUserDetail | null {
+    const u = this.users.get(userId);
+    if (!u) return null;
+    return {
+      id: u.id,
+      displayName: u.displayName,
+      username: u.username,
+      email: u.email,
+      createdAt: u.createdAt,
+      sessionsHostedCount: u.sessionsHostedCount || 0,
+      sessionAccess: u.sessionAccess ?? 'blocked',
+      accessUpdatedAt: u.accessUpdatedAt || u.createdAt,
+      betaExpiresAt: u.betaExpiresAt,
+      avatarColor: u.avatarColor,
+      isOnline,
+      lastLoginAt: u.lastLoginAt,
+      lastActiveAt: u.lastActiveAt,
+      clientVersion: u.clientVersion,
+      clientPlatform: u.clientPlatform,
+      activityHistory: (u.activityHistory || []).map((e) => ({ ...e }))
+    };
   }
 
   recordSessionStart(
@@ -845,38 +1123,6 @@ export class UserStore {
     return true;
   }
 
-  setSessionAccess(userId: string, access: SessionAccessState): boolean {
-    const user = this.users.get(userId);
-    if (!user) return false;
-    const prevAccess = user.sessionAccess;
-    const prevUpdatedAt = user.updatedAt;
-    user.sessionAccess = access;
-    user.updatedAt = Date.now();
-    try {
-      this.saveToDisk();
-      return true;
-    } catch (err) {
-      user.sessionAccess = prevAccess;
-      user.updatedAt = prevUpdatedAt;
-      throw err;
-    }
-  }
-
-  listAdminUsers(): AdminUserSummary[] {
-    return Array.from(this.users.values())
-      .map((u) => ({
-        id: u.id,
-        displayName: u.displayName,
-        username: u.username,
-        email: u.email,
-        createdAt: u.createdAt,
-        sessionsHostedCount: u.sessionsHostedCount || 0,
-        sessionAccess: u.sessionAccess ?? 'blocked',
-        avatarColor: u.avatarColor
-      }))
-      .sort((a, b) => b.createdAt - a.createdAt);
-  }
-
   private toProfile(stored: StoredUser): UserProfile {
     return {
       id: stored.id,
@@ -950,6 +1196,15 @@ export function validateStoredUserSessionAccess(
   }
 
   if (storedUser.sessionAccess === 'beta') {
+    if (storedUser.betaExpiresAt !== undefined && storedUser.betaExpiresAt !== null) {
+      if (now >= storedUser.betaExpiresAt) {
+        return {
+          ok: false,
+          code: 'BETA_ENDED',
+          message: 'Your JaMeet Beta access has expired. A JaMeet subscription will be required to continue creating or joining sessions.'
+        };
+      }
+    }
     if (config.BETA_END_AT && config.BETA_END_AT.trim()) {
       const betaEndMs = parseBetaEndAt(config.BETA_END_AT);
       if (betaEndMs !== null && now >= betaEndMs) {

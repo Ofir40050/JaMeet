@@ -538,6 +538,14 @@ else {
       isRendererMediaActive = Boolean(active);
     });
 
+    ipcMain.handle('get-app-info', (event) => {
+      if (!isTrustedSender(event)) return null;
+      return {
+        version: app.getVersion(),
+        platform: process.platform === 'darwin' ? 'macOS' : (process.platform === 'win32' ? 'Windows' : 'Unknown')
+      };
+    });
+
     ipcMain.handle('get-initial-deep-link', (event) => {
       if (!isTrustedSender(event)) return null;
       const value = pendingDeepLink;

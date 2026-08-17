@@ -182,6 +182,62 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   const runtimeAdminToken = randomUUID();
   let entitlementInterval: NodeJS.Timeout | undefined;
 
+  // In-Memory Presence Tracking for Authenticated Users
+  const authenticatedUserSockets = new Map<string, Set<string>>(); // userId -> Set<socketId>
+  const socketToUser = new Map<string, string>(); // socketId -> userId
+
+  const associateUserSocket = (userId: string, socketId: string) => {
+    if (!userId || !socketId) return;
+    let sockets = authenticatedUserSockets.get(userId);
+    if (!sockets) {
+      sockets = new Set();
+      authenticatedUserSockets.set(userId, sockets);
+    }
+    sockets.add(socketId);
+    socketToUser.set(socketId, userId);
+  };
+
+  const removeUserSocket = (socketId: string) => {
+    const userId = socketToUser.get(socketId);
+    if (userId) {
+      socketToUser.delete(socketId);
+      const sockets = authenticatedUserSockets.get(userId);
+      if (sockets) {
+        sockets.delete(socketId);
+        if (sockets.size === 0) {
+          authenticatedUserSockets.delete(userId);
+        }
+      }
+    }
+  };
+
+  const getOnlineUserIds = (): Set<string> => new Set(authenticatedUserSockets.keys());
+  const isUserOnline = (userId: string): boolean => (authenticatedUserSockets.get(userId)?.size ?? 0) > 0;
+  const getActiveRoomsCount = (): number => {
+    let count = 0;
+    for (const r of rooms.rooms.values()) {
+      if (Array.from(r.participants.values()).some((p) => p.socketId !== null)) {
+        count++;
+      }
+    }
+    return count;
+  };
+
+  const extractClientInfo = (req: FastifyRequest | { headers: Record<string, string | string[] | undefined> }): { version?: string; platform?: string } => {
+    const h = req.headers;
+    let version = typeof h['x-client-version'] === 'string' ? h['x-client-version'].trim() : undefined;
+    let platform = typeof h['x-client-platform'] === 'string' ? h['x-client-platform'].trim() : undefined;
+    const ua = typeof h['user-agent'] === 'string' ? h['user-agent'] : '';
+
+    if (!platform && ua) {
+      if (ua.includes('Mac') || ua.includes('Darwin')) platform = 'macOS';
+      else if (ua.includes('Win')) platform = 'Windows';
+      else platform = 'Unknown';
+    }
+    if (!platform) platform = 'macOS';
+    return { version, platform };
+  };
+
   // Internal Loopback-Only Administration Endpoint
   app.post('/api/internal/admin/session-access', async (request, reply) => {
     const remoteIp = request.socket.remoteAddress || request.ip;
@@ -211,7 +267,12 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     }
   });
 
-  registerAdminPanel(app, userStore, config);
+  registerAdminPanel(app, userStore, config, {
+    getOnlineUserIds,
+    isUserOnline,
+    getActiveRoomsCount,
+    getUptimeSeconds: () => Math.floor(process.uptime())
+  });
 
   const syncRuntimeInfo = () => {
     const address = app.server.address();
@@ -329,8 +390,9 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       logger.warn('auth_register_failed', 'Registration payload validation failed', { reason: parsed.error.issues[0]?.message });
       return reply.code(400).send({ ok: false, message: parsed.error.issues[0]?.message || 'Invalid registration data.' });
     }
+    const clientInfo = extractClientInfo(request);
     try {
-      const result = await userStore.register(parsed.data);
+      const result = await userStore.register(parsed.data, clientInfo);
       logger.info('auth_register_success', 'User registration successful', { userId: result.user.id, username: result.user.username });
       return reply.code(201).send({ ok: true, token: result.token, user: result.user });
     } catch (err: unknown) {
@@ -348,8 +410,10 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       return reply.code(400).send({ ok: false, message: 'Please enter your username/email and password.' });
     }
     const identifierType = parsed.data.usernameOrEmail.includes('@') ? 'email' : 'username';
+    const clientInfo = extractClientInfo(request);
     try {
       const result = await userStore.login(parsed.data);
+      userStore.recordLogin(result.user.id, clientInfo);
       logger.info('auth_login_success', 'User login successful', { userId: result.user.id, username: result.user.username });
       return reply.send({ ok: true, token: result.token, user: result.user });
     } catch (err: unknown) {
@@ -381,6 +445,11 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     const user = userStore.verifyToken(token);
     if (!user) {
       return reply.code(401).send({ ok: false, message: 'Unauthorized or session expired.' });
+    }
+    const clientInfo = extractClientInfo(request);
+    const stored = userStore.getStoredUser(user.id);
+    if (stored && clientInfo.version && clientInfo.version !== stored.clientVersion) {
+      userStore.recordActivity(user.id, 'login', `Session active (${clientInfo.platform || 'Desktop'} • v${clientInfo.version})`, clientInfo);
     }
     return reply.send({ ok: true, user });
   });
@@ -1148,6 +1217,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         socketData.projectSubscriptions = new Map<string, ProjectSubscription>();
       }
       socketData.projectSubscriptions.set(raw.projectId, { userId: user.id, authToken: raw.authToken });
+      associateUserSocket(user.id, socket.id);
       void socket.join(`project:${raw.projectId}`);
       const project = projectStore.getProject(raw.projectId, user.id);
       ack?.({ ok: true, workspace: project?.workspace });
@@ -1261,7 +1331,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
       try {
         if (!identity.isGuest && identity.id) {
-          userStore.incrementHostedCount(identity.id);
+          associateUserSocket(identity.id, socket.id);
         }
 
         // Verify Project modification permission if projectId provided by Host
@@ -1275,6 +1345,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         const reconnectToken = randomUUID();
         createdRoom = rooms.create(parsed.data.participantId, socket.id, parsed.data.media, identity, verifiedProjectId, parsed.data.waitingRoomEnabled, reconnectToken, parsed.data.authToken);
         if (!identity.isGuest && identity.id) {
+          userStore.incrementHostedCount(identity.id, createdRoom.code);
           userStore.recordSessionStart(createdRoom.sessionId, createdRoom.code, identity.id, 'host', null);
         }
 
@@ -1364,6 +1435,10 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
               : 'Session not found';
         logger.warn('session_join_failed', `Session join rejected (${joined.reason})`, { code: parsed.data.code, reason: joined.reason }, { sessionCode: parsed.data.code });
         return ack(failure(joined.reason, message));
+      }
+
+      if (!identity.isGuest && identity.id) {
+        associateUserSocket(identity.id, socket.id);
       }
 
       if (joined.waiting) {
@@ -1995,8 +2070,14 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         delete socketData.identity;
       }
     };
-    socket.on('meeting:leave', () => leave(true));
-    socket.on('disconnect', () => leave(false));
+    socket.on('meeting:leave', () => {
+      removeUserSocket(socket.id);
+      leave(true);
+    });
+    socket.on('disconnect', () => {
+      removeUserSocket(socket.id);
+      leave(false);
+    });
   });
 
   return { app, io, rooms, userStore, projectStore, crashStore, runtimeAdminToken, datastoreLock };

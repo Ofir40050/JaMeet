@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 const jameetApi = {
+  getAppInfo: (): Promise<{ version: string; platform: string }> => ipcRenderer.invoke('get-app-info'),
   getInitialDeepLink: (): Promise<string | null> => ipcRenderer.invoke('get-initial-deep-link'),
   onDeepLink: (listener: (url: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, url: string) => listener(url);

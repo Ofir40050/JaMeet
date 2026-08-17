@@ -3,6 +3,26 @@ import { logger } from './logger';
 
 export type AuthStateListener = (user: UserProfile | null, guestName?: string) => void;
 
+async function getClientHeaders(): Promise<Record<string, string>> {
+  try {
+    const api = (typeof window !== 'undefined') ? (window.jameet || window.musiczoom) : undefined;
+    if (api?.getAppInfo) {
+      const info = await api.getAppInfo();
+      if (info && typeof info === 'object') {
+        return {
+          'X-Client-Version': String(info.version || '0.1.0'),
+          'X-Client-Platform': String(info.platform || 'macOS')
+        };
+      }
+    }
+  } catch {}
+  const platform = typeof navigator !== 'undefined' && navigator.userAgent.includes('Win') ? 'Windows' : 'macOS';
+  return {
+    'X-Client-Version': '0.1.0',
+    'X-Client-Platform': platform
+  };
+}
+
 export class AuthManager {
   private serverUrl: string;
   private currentUser: UserProfile | null = null;
@@ -107,10 +127,14 @@ export class AuthManager {
       const saved = await this.readPersistedSession();
       if (saved?.token) {
         this.currentToken = saved.token;
+        const clientHeaders = await getClientHeaders();
         let res: Response;
         try {
           res = await fetch(`${this.serverUrl}/api/auth/me`, {
-            headers: { Authorization: `Bearer ${saved.token}` }
+            headers: {
+              Authorization: `Bearer ${saved.token}`,
+              ...clientHeaders
+            }
           });
         } catch {
           // If network is offline, maintain local cached identity
@@ -143,11 +167,15 @@ export class AuthManager {
 
   async register(req: RegisterRequest): Promise<UserProfile> {
     logger.info('auth_register_attempt', 'Attempting user registration', { username: req.username });
+    const clientHeaders = await getClientHeaders();
     let res: Response;
     try {
       res = await fetch(`${this.serverUrl}/api/auth/register`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...clientHeaders
+        },
         body: JSON.stringify(req)
       });
     } catch (err) {
@@ -180,11 +208,15 @@ export class AuthManager {
   async login(req: LoginRequest): Promise<UserProfile> {
     const identifierType = req.usernameOrEmail?.includes('@') ? 'email' : 'username';
     logger.info('auth_login_attempt', 'Attempting user login', { identifierType });
+    const clientHeaders = await getClientHeaders();
     let res: Response;
     try {
       res = await fetch(`${this.serverUrl}/api/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...clientHeaders
+        },
         body: JSON.stringify(req)
       });
     } catch (err) {

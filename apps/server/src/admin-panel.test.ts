@@ -218,7 +218,8 @@ describe('JaMeet Secure Admin Panel', () => {
 
       expect(resDash.statusCode).toBe(200);
       expect(resDash.headers['content-type']).toContain('text/html');
-      expect(resDash.body).toContain('JaMeet Admin • User & Beta Access');
+      expect(resDash.body).toContain('JaMeet Admin');
+      expect(resDash.body).toContain('Beta Ops');
       expect(resDash.body).toContain('users-table');
       expect(resDash.body).toContain('btn-logout');
 
@@ -528,6 +529,248 @@ describe('JaMeet Secure Admin Panel', () => {
         payload: { access: 'beta' }
       });
       expect(resMaliciousOrigin.statusCode).toBe(403);
+
+      await app.close();
+    });
+  });
+
+  describe('User Details Inspection & Activity History (GET /admin/api/users/:userId)', () => {
+    it('returns sanitized user detail with operational activity history and client metadata', async () => {
+      const userStore = new UserStore(testDir);
+      const reg = await userStore.register({
+        username: 'artist_elena',
+        email: 'elena@vocalist.com',
+        password: 'PasswordElena123!',
+        displayName: 'Elena Vocals'
+      }, { version: '0.1.0', platform: 'macOS' });
+
+      // Log in
+      userStore.recordLogin(reg.user.id, { version: '0.1.0', platform: 'macOS' });
+      // Host a session
+      userStore.incrementHostedCount(reg.user.id, 'JAM-9988');
+      // Change access
+      userStore.setSessionAccess(reg.user.id, 'beta');
+
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: testDir,
+        ALLOWED_ORIGINS: 'http://localhost:3000',
+        JAMEET_ADMIN_SECRET: TEST_ADMIN_SECRET
+      });
+      const { app } = await createApp(config);
+      const sessionToken = createAdminSessionToken(TEST_ADMIN_SECRET);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/admin/api/users/${reg.user.id}`,
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`
+        }
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = JSON.parse(res.body);
+      expect(data.ok).toBe(true);
+      expect(data.user).toBeDefined();
+      expect(data.user.id).toBe(reg.user.id);
+      expect(data.user.username).toBe('artist_elena');
+      expect(data.user.displayName).toBe('Elena Vocals');
+      expect(data.user.email).toBe('elena@vocalist.com');
+      expect(data.user.clientPlatform).toBe('macOS');
+      expect(data.user.clientVersion).toBe('0.1.0');
+      expect(data.user.sessionsHostedCount).toBe(1);
+      expect(data.user.sessionAccess).toBe('beta');
+      expect(Array.isArray(data.user.activityHistory)).toBe(true);
+      expect(data.user.activityHistory.length).toBeGreaterThanOrEqual(4);
+
+      // Verify strict security: sensitive data is never exposed
+      expect(data.user.passwordHash).toBeUndefined();
+      expect(data.user.passwordChangedAt).toBeUndefined();
+      expect(data.user.tokens).toBeUndefined();
+      expect(data.user.metadata).toBeUndefined();
+
+      await app.close();
+    });
+
+    it('returns 404 for non-existent user identifier', async () => {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: testDir,
+        ALLOWED_ORIGINS: 'http://localhost:3000',
+        JAMEET_ADMIN_SECRET: TEST_ADMIN_SECRET
+      });
+      const { app } = await createApp(config);
+      const sessionToken = createAdminSessionToken(TEST_ADMIN_SECRET);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/admin/api/users/unknown-user-id',
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`
+        }
+      });
+      expect(res.statusCode).toBe(404);
+
+      await app.close();
+    });
+  });
+
+  describe('Beta Expiration Configuration & Enforcement', () => {
+    it('sets and clears per-user beta expiration date via API', async () => {
+      const userStore = new UserStore(testDir);
+      const reg = await userStore.register({
+        username: 'beta_tester',
+        email: 'beta@tester.com',
+        password: 'PasswordTester123!',
+        displayName: 'Beta Tester'
+      });
+      userStore.setSessionAccess(reg.user.id, 'beta');
+
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: testDir,
+        ALLOWED_ORIGINS: 'http://localhost:3000',
+        JAMEET_ADMIN_SECRET: TEST_ADMIN_SECRET
+      });
+      const { app } = await createApp(config);
+      const sessionToken = createAdminSessionToken(TEST_ADMIN_SECRET);
+
+      const futureExpiry = Date.now() + 7 * 24 * 60 * 60 * 1000;
+
+      // 1. Set beta expiration
+      const resSet = await app.inject({
+        method: 'POST',
+        url: `/admin/api/users/${reg.user.id}/beta-expiry`,
+        headers: {
+          host: 'localhost:3000',
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`,
+          'content-type': 'application/json'
+        },
+        payload: { betaExpiresAt: futureExpiry }
+      });
+      expect(resSet.statusCode).toBe(200);
+      const setData = JSON.parse(resSet.body);
+      expect(setData.ok).toBe(true);
+      expect(setData.user.betaExpiresAt).toBe(futureExpiry);
+
+      // Verify on disk
+      const diskStore1 = new UserStore(testDir);
+      expect(diskStore1.getStoredUser(reg.user.id)?.betaExpiresAt).toBe(futureExpiry);
+
+      // 2. Clear beta expiration
+      const resClear = await app.inject({
+        method: 'POST',
+        url: `/admin/api/users/${reg.user.id}/beta-expiry`,
+        headers: {
+          host: 'localhost:3000',
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`,
+          'content-type': 'application/json'
+        },
+        payload: { betaExpiresAt: null }
+      });
+      expect(resClear.statusCode).toBe(200);
+      const clearData = JSON.parse(resClear.body);
+      expect(clearData.ok).toBe(true);
+      expect(clearData.user.betaExpiresAt).toBeNull();
+
+      // Verify on disk
+      const diskStore2 = new UserStore(testDir);
+      expect(diskStore2.getStoredUser(reg.user.id)?.betaExpiresAt).toBeNull();
+
+      await app.close();
+    });
+
+    it('enforces per-user beta expiration in validateStoredUserSessionAccess', async () => {
+      const { validateStoredUserSessionAccess } = await import('./auth.js');
+      const userStore = new UserStore(testDir);
+      const reg = await userStore.register({
+        username: 'musician_tim',
+        email: 'tim@musician.com',
+        password: 'PasswordTim123!',
+        displayName: 'Tim Musician'
+      });
+
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: testDir,
+        ALLOWED_ORIGINS: 'http://localhost:3000'
+      });
+
+      const now = Date.now();
+      const pastTime = now - 60000;
+      const futureTime = now + 60000;
+
+      // 1. Beta with past expiration -> Rejected with BETA_ENDED
+      userStore.setSessionAccess(reg.user.id, 'beta', pastTime);
+      const checkExpired = validateStoredUserSessionAccess(userStore, reg.user.id, config, false, now);
+      expect(checkExpired.ok).toBe(false);
+      if (!checkExpired.ok) {
+        expect(checkExpired.code).toBe('BETA_ENDED');
+      }
+
+      // 2. Beta with future expiration -> Authorized
+      userStore.setSessionAccess(reg.user.id, 'beta', futureTime);
+      const checkFuture = validateStoredUserSessionAccess(userStore, reg.user.id, config, false, now);
+      expect(checkFuture.ok).toBe(true);
+
+      // 3. Beta with no expiration (null/undefined) -> Authorized
+      userStore.setSessionAccess(reg.user.id, 'beta', null);
+      const checkNoExpiry = validateStoredUserSessionAccess(userStore, reg.user.id, config, false, now);
+      expect(checkNoExpiry.ok).toBe(true);
+
+      // 4. Paid account with past beta expiration -> Paid accounts bypass beta expiration!
+      userStore.setSessionAccess(reg.user.id, 'paid', pastTime);
+      const checkPaid = validateStoredUserSessionAccess(userStore, reg.user.id, config, false, now);
+      expect(checkPaid.ok).toBe(true);
+
+      // 5. Blocked account -> Denied
+      userStore.setSessionAccess(reg.user.id, 'blocked', futureTime);
+      const checkBlocked = validateStoredUserSessionAccess(userStore, reg.user.id, config, false, now);
+      expect(checkBlocked.ok).toBe(false);
+      if (!checkBlocked.ok) {
+        expect(checkBlocked.code).toBe('ACCESS_DENIED');
+      }
+    });
+  });
+
+  describe('Server Telemetry & Operational Stats (GET /admin/api/stats)', () => {
+    it('returns accurate summary and health telemetry metrics', async () => {
+      const userStore = new UserStore(testDir);
+      const u1 = await userStore.register({ username: 'user1', email: 'u1@test.com', password: 'Password1!', displayName: 'U1' });
+      const u2 = await userStore.register({ username: 'user2', email: 'u2@test.com', password: 'Password2!', displayName: 'U2' });
+      const u3 = await userStore.register({ username: 'user3', email: 'u3@test.com', password: 'Password3!', displayName: 'U3' });
+
+      userStore.setSessionAccess(u1.user.id, 'beta');
+      userStore.setSessionAccess(u2.user.id, 'paid');
+      userStore.setSessionAccess(u3.user.id, 'blocked');
+
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: testDir,
+        ALLOWED_ORIGINS: 'http://localhost:3000',
+        JAMEET_ADMIN_SECRET: TEST_ADMIN_SECRET
+      });
+      const { app } = await createApp(config);
+      const sessionToken = createAdminSessionToken(TEST_ADMIN_SECRET);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/admin/api/stats',
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`
+        }
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = JSON.parse(res.body);
+      expect(data.ok).toBe(true);
+      expect(data.stats).toBeDefined();
+      expect(data.stats.totalUsers).toBe(3);
+      expect(data.stats.betaUsers).toBe(1);
+      expect(data.stats.paidUsers).toBe(1);
+      expect(data.stats.blockedUsers).toBe(1);
+      expect(data.stats.isOperational).toBe(true);
+      expect(typeof data.stats.uptimeSeconds).toBe('number');
 
       await app.close();
     });
