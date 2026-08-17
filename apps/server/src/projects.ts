@@ -617,6 +617,12 @@ export class ProjectStore {
       const oldKey = project.workspace.notes.key;
       const oldContent = project.workspace.notes.content;
 
+      const normalizedOldBpm = oldBpm ? oldBpm.trim() : '';
+      const normalizedNewBpm = updates.notes.bpm !== undefined ? (updates.notes.bpm ? updates.notes.bpm.trim() : '') : undefined;
+
+      const normalizedOldKey = oldKey ? oldKey.trim() : '';
+      const normalizedNewKey = updates.notes.key !== undefined ? (updates.notes.key ? updates.notes.key.trim() : '') : undefined;
+
       project.workspace.notes = {
         content: updates.notes.content !== undefined ? updates.notes.content : project.workspace.notes.content,
         bpm: updates.notes.bpm !== undefined ? updates.notes.bpm : project.workspace.notes.bpm,
@@ -626,27 +632,51 @@ export class ProjectStore {
         updatedByName: user.displayName
       };
 
-      if (updates.notes.bpm !== undefined && updates.notes.bpm !== oldBpm && updates.notes.bpm.trim()) {
-        this.recordActivity(
-          projectId,
-          user,
-          'notes_bpm_changed',
-          `${user.displayName} set tempo to ${updates.notes.bpm} BPM`,
-          `${updates.notes.bpm} BPM`,
-          undefined,
-          false
-        );
+      if (normalizedNewBpm !== undefined && normalizedNewBpm !== normalizedOldBpm) {
+        if (normalizedNewBpm) {
+          this.recordActivity(
+            projectId,
+            user,
+            'notes_bpm_changed',
+            `${user.displayName} set tempo to ${updates.notes.bpm} BPM`,
+            `${updates.notes.bpm} BPM`,
+            undefined,
+            false
+          );
+        } else if (normalizedOldBpm) {
+          this.recordActivity(
+            projectId,
+            user,
+            'notes_bpm_changed',
+            `${user.displayName} cleared Project tempo`,
+            undefined,
+            undefined,
+            false
+          );
+        }
       }
-      if (updates.notes.key !== undefined && updates.notes.key !== oldKey && updates.notes.key.trim()) {
-        this.recordActivity(
-          projectId,
-          user,
-          'notes_key_changed',
-          `${user.displayName} changed key to ${updates.notes.key}`,
-          updates.notes.key,
-          undefined,
-          false
-        );
+      if (normalizedNewKey !== undefined && normalizedNewKey !== normalizedOldKey) {
+        if (normalizedNewKey) {
+          this.recordActivity(
+            projectId,
+            user,
+            'notes_key_changed',
+            `${user.displayName} changed key to ${updates.notes.key}`,
+            updates.notes.key,
+            undefined,
+            false
+          );
+        } else if (normalizedOldKey) {
+          this.recordActivity(
+            projectId,
+            user,
+            'notes_key_changed',
+            `${user.displayName} cleared Project key`,
+            undefined,
+            undefined,
+            false
+          );
+        }
       }
       if (updates.notes.content !== undefined && updates.notes.content !== oldContent && updates.notes.content.trim()) {
         this.recordActivity(

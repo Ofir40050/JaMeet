@@ -1498,6 +1498,77 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('records notes_bpm_changed and notes_key_changed activities when BPM or Key is cleared', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-notes-clear-test-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'usr_owner_clear',
+        username: 'owner_clear',
+        displayName: 'Project Owner',
+        email: 'owner_clear@test.com',
+        avatarColor: '#2563eb',
+        createdAt: Date.now()
+      };
+      const project = store.createProject(owner, { name: 'Clear BPM Key Project' });
+
+      // Initially set BPM and Key
+      store.updateWorkspace(project.id, owner, {
+        notes: { bpm: '124', key: 'E Minor' }
+      });
+      const pWithValues = store.getProject(project.id, owner.id);
+      expect(pWithValues?.activities[0].type).toBe('notes_key_changed');
+      expect(pWithValues?.activities[0].summary).toContain('E Minor');
+      expect(pWithValues?.activities[1].type).toBe('notes_bpm_changed');
+      expect(pWithValues?.activities[1].summary).toContain('124 BPM');
+
+      const countBefore = pWithValues?.activities.length || 0;
+
+      // Updating with same values should not record new activity
+      store.updateWorkspace(project.id, owner, {
+        notes: { bpm: '124', key: 'E Minor' }
+      });
+      const pUnchanged = store.getProject(project.id, owner.id);
+      expect(pUnchanged?.activities.length).toBe(countBefore);
+
+      // Clear BPM
+      store.updateWorkspace(project.id, owner, {
+        notes: { bpm: '' }
+      });
+      const pBpmCleared = store.getProject(project.id, owner.id);
+      expect(pBpmCleared?.workspace.notes.bpm).toBe('');
+      expect(pBpmCleared?.activities[0].type).toBe('notes_bpm_changed');
+      expect(pBpmCleared?.activities[0].summary).toContain('cleared Project tempo');
+      expect(pBpmCleared?.activities[0].userId).toBe(owner.id);
+
+      // Clearing already-cleared BPM should not record new activity
+      const countAfterBpmClear = pBpmCleared?.activities.length || 0;
+      store.updateWorkspace(project.id, owner, {
+        notes: { bpm: '   ' }
+      });
+      expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterBpmClear);
+
+      // Clear Key
+      store.updateWorkspace(project.id, owner, {
+        notes: { key: '' }
+      });
+      const pKeyCleared = store.getProject(project.id, owner.id);
+      expect(pKeyCleared?.workspace.notes.key).toBe('');
+      expect(pKeyCleared?.activities[0].type).toBe('notes_key_changed');
+      expect(pKeyCleared?.activities[0].summary).toContain('cleared Project key');
+      expect(pKeyCleared?.activities[0].userId).toBe(owner.id);
+
+      // Clearing already-cleared Key should not record new activity
+      const countAfterKeyClear = pKeyCleared?.activities.length || 0;
+      store.updateWorkspace(project.id, owner, {
+        notes: { key: '' }
+      });
+      expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterKeyClear);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

@@ -5267,6 +5267,82 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('maps cleared BPM and Key Project Activity to Notes Session Summary events during active linked sessions', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-notes-clear-summary-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-notes-clear-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const hostAuth = await createTestAccount(url, 'host_notes_clr', 'beta', userStore);
+      const project = projectStore.createProject(hostAuth.user, { name: 'Notes Clear Summary Project' });
+
+      // Initially populate BPM and Key
+      projectStore.updateWorkspace(project.id, hostAuth.user, {
+        notes: { bpm: '120', key: 'C Minor' }
+      });
+
+      // Host creates meeting linked to project
+      const hostSocket = await connected(url);
+      const createAck: any = await ack(hostSocket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        projectId: project.id,
+        authToken: hostAuth.token,
+        media
+      });
+      expect(createAck.ok).toBe(true);
+
+      // Mutate workspace during active linked session: clear BPM and Key
+      const updateAck: any = await ack(hostSocket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: hostAuth.token,
+        updates: {
+          notes: {
+            bpm: '',
+            key: '   '
+          }
+        }
+      });
+      expect(updateAck.ok).toBe(true);
+
+      // Host leaves meeting
+      hostSocket.emit('meeting:leave');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify host's finalized session summary contains both cleared notes events
+      const history = userStore.getSessionHistory(hostAuth.user.id);
+      expect(history.length).toBe(1);
+      const summary = history[0]?.summary;
+      expect(summary).toBeDefined();
+      expect(summary?.events.length).toBe(2);
+
+      const bpmClearEvent = summary?.events.find((e) => e.description.toLowerCase().includes('tempo'));
+      expect(bpmClearEvent).toBeDefined();
+      expect(bpmClearEvent?.category).toBe('note');
+      expect(bpmClearEvent?.action).toBe('updated');
+      expect(bpmClearEvent?.description).toContain('cleared Project tempo');
+
+      const keyClearEvent = summary?.events.find((e) => e.description.toLowerCase().includes('key'));
+      expect(keyClearEvent).toBeDefined();
+      expect(keyClearEvent?.category).toBe('note');
+      expect(keyClearEvent?.action).toBe('updated');
+      expect(keyClearEvent?.description).toContain('cleared Project key');
+
+      hostSocket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 
