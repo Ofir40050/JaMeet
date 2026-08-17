@@ -28,6 +28,7 @@ import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from 
 import { updateAccountSessionAccess, writeAdminRuntimeFile, cleanupAdminRuntimeFile } from './admin-access.js';
 import { acquireDatastoreLock, type DatastoreLock } from './datastore-lock.js';
 import { logger } from './logger.js';
+import { getClientIp } from './client-ip.js';
 
 type ProjectSubscription = { userId: string; authToken: string };
 type SocketData = { code?: string; participantId?: string; identity?: ParticipantIdentity; isWaiting?: boolean; limiter?: SocketRateLimiter; projectSubscriptions?: Map<string, ProjectSubscription> };
@@ -115,7 +116,11 @@ function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSumm
 
 export async function createApp(config: ServerConfig, customSocketLimits?: Partial<Record<RateLimitCategory, RateLimitConfig>>) {
   logger.setupGlobalHandlers();
-  const app = Fastify({ logger: config.NODE_ENV !== 'test', bodyLimit: 2_097_152 });
+  const app = Fastify({
+    logger: config.NODE_ENV !== 'test',
+    bodyLimit: 2_097_152,
+    trustProxy: 1
+  });
   const origins = config.ALLOWED_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean);
   const isOriginAllowed = (origin?: string): boolean => {
     if (!origin) return true;
@@ -139,7 +144,11 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With'],
     credentials: true
   });
-  await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
+  await app.register(rateLimit, {
+    max: 120,
+    timeWindow: '1 minute',
+    keyGenerator: (request) => getClientIp(request)
+  });
 
   app.setErrorHandler((error: any, request, reply) => {
     const statusCode = error.statusCode || 500;
