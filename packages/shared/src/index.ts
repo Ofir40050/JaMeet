@@ -196,7 +196,7 @@ export type ProjectSessionItem = z.infer<typeof projectSessionItemSchema>;
 
 export const lyricsDocumentSchema = z.object({
   id: z.string().trim().min(1, 'Document ID is required'),
-  title: z.string().trim().min(1).max(80).default('Main Lyrics'),
+  title: z.string().trim().min(1).default('Main Lyrics'),
   content: z.string().default(''),
   updatedAt: z.number().default(0),
   updatedBy: z.string().optional(),
@@ -244,9 +244,9 @@ export type SongSectionType = z.infer<typeof songSectionTypeSchema>;
 export const songSectionItemSchema = z.object({
   id: z.string().trim().min(1, 'Section ID is required'),
   type: songSectionTypeSchema.default('verse'),
-  name: z.string().trim().min(1).max(80).default('Verse'),
+  name: z.string().trim().min(1).default('Verse'),
   bars: z.number().int().min(1).max(256).optional(),
-  note: z.string().trim().max(300).optional(),
+  note: z.string().trim().optional(),
   color: z.string().optional(),
   updatedAt: z.number().default(0)
 });
@@ -283,11 +283,11 @@ export const projectTaskDueDateSchema = z
 
 export const projectTaskItemSchema = z.object({
   id: z.string().trim().min(1, 'Task ID is required'),
-  title: z.string().trim().min(1, 'Task title is required').max(150),
+  title: z.string().trim().min(1, 'Task title is required'),
   status: projectTaskStatusSchema.default('todo'),
   assigneeId: z.string().optional(),
   assigneeName: z.string().optional(),
-  note: z.string().trim().max(500).optional(),
+  note: z.string().trim().optional(),
   dueDate: projectTaskDueDateSchema.optional(),
   createdAt: z.number().default(0),
   completedAt: z.number().optional(),

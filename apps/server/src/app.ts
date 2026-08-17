@@ -21,7 +21,7 @@ import {
 import type { ServerConfig } from './config.js';
 import { RoomStore, type Room, type Participant } from './rooms.js';
 import { UserStore, authorizeSessionAccess, validateStoredUserSessionAccess } from './auth.js';
-import { ProjectStore, WorkspaceConflictError, ProjectLimitError, WorkspaceLimitError } from './projects.js';
+import { ProjectStore, WorkspaceConflictError, ProjectLimitError, WorkspaceLimitError, PROJECT_LIMITS } from './projects.js';
 import { CrashReportStore } from './crash-store.js';
 import { createIceServers } from './turn.js';
 import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from './rate-limiter.js';
@@ -118,7 +118,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   logger.setupGlobalHandlers();
   const app = Fastify({
     logger: config.NODE_ENV !== 'test',
-    bodyLimit: 2_097_152,
+    bodyLimit: PROJECT_LIMITS.MAX_WORKSPACE_PAYLOAD_BYTES,
     trustProxy: 1
   });
   const origins = config.ALLOWED_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean);
@@ -830,7 +830,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       methods: ['GET', 'POST'],
       credentials: true
     },
-    maxHttpBufferSize: 2_097_152,
+    maxHttpBufferSize: PROJECT_LIMITS.MAX_WORKSPACE_PAYLOAD_BYTES,
     transports: ['websocket', 'polling']
   });
 

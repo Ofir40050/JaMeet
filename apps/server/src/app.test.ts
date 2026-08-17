@@ -6655,6 +6655,112 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('safely transmits combined multi-area Unicode UTF-8 workspace updates across Lyrics, Notes, Structure, and Tasks', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-socket-combined-utf8-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-combined-utf8'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'utf8_owner', 'paid', userStore);
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Combined UTF8 Project' });
+
+      const socket1 = await connected(url);
+      const socket2 = await connected(url);
+
+      let syncedWorkspace: any = null;
+      socket2.on('project:workspace:synced', (data) => {
+        syncedWorkspace = data.workspace;
+      });
+
+      await ack(socket1, 'project:workspace:join', {
+        projectId: project.id,
+        authToken: ownerAuth.token
+      });
+      await ack(socket2, 'project:workspace:join', {
+        projectId: project.id,
+        authToken: ownerAuth.token
+      });
+
+      // Construct combined update with multi-byte 4-byte UTF-8 emojis/characters across all 4 areas
+      // 1. Lyrics: 5 documents of 2,000 4-byte Unicode characters each = 10,000 chars (~40KB raw UTF8)
+      const unicodeLyricsChunk = '🎵✨🎹🎸'.repeat(500); // 2000 code units
+      const documents = Array.from({ length: 5 }, (_, i) => ({
+        id: `doc-utf8-${i}`,
+        title: `🎼 Song Part ${i} 🎶`,
+        content: unicodeLyricsChunk,
+        updatedAt: Date.now()
+      }));
+
+      // 2. Notes: 10,000 4-byte Unicode characters (~40KB)
+      const unicodeNotes = '📝 Melody note: 🎼'.repeat(500);
+
+      // 3. Structure: 30 sections with Unicode names and notes
+      const sections = Array.from({ length: 30 }, (_, i) => ({
+        id: `sec-utf8-${i}`,
+        type: 'verse' as const,
+        name: `Verse 🥁 ${i}`,
+        note: `Dynamic shift at bar 🎚️ ${i}`,
+        bars: 16,
+        color: '#3b82f6',
+        updatedAt: Date.now()
+      }));
+
+      // 4. Tasks: 50 tasks with Unicode titles and notes
+      const tasks = Array.from({ length: 50 }, (_, i) => ({
+        id: `task-utf8-${i}`,
+        title: `Record lead vocals 🎙️ ${i}`,
+        status: 'todo' as const,
+        note: `Microphone setting 🎛️ with reverb 🌊 #${i}`,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }));
+
+      const combinedUpdateAck: any = await ack(socket1, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: ownerAuth.token,
+        updates: {
+          lyrics: { baseRevision: 1, documents, activeDocumentId: 'doc-utf8-0' },
+          notes: { baseRevision: 1, content: unicodeNotes, bpm: '128.5', key: 'C# minor' },
+          structure: { baseRevision: 1, sections },
+          tasks: { baseRevision: 1, tasks }
+        }
+      });
+
+      expect(combinedUpdateAck.ok).toBe(true);
+      expect(combinedUpdateAck.workspace.lyrics.documents.length).toBe(5);
+      expect(combinedUpdateAck.workspace.lyrics.revision).toBe(2);
+      expect(combinedUpdateAck.workspace.notes.content).toBe(unicodeNotes);
+      expect(combinedUpdateAck.workspace.notes.revision).toBe(2);
+      expect(combinedUpdateAck.workspace.structure.sections.length).toBe(30);
+      expect(combinedUpdateAck.workspace.structure.revision).toBe(2);
+      expect(combinedUpdateAck.workspace.tasks.tasks.length).toBe(50);
+      expect(combinedUpdateAck.workspace.tasks.revision).toBe(2);
+
+      // Verify sync was delivered to socket2
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(syncedWorkspace).not.toBeNull();
+      expect(syncedWorkspace.lyrics.documents.length).toBe(5);
+      expect(syncedWorkspace.notes.content).toBe(unicodeNotes);
+      expect(syncedWorkspace.structure.sections.length).toBe(30);
+      expect(syncedWorkspace.tasks.tasks.length).toBe(50);
+
+      socket1.disconnect();
+      socket2.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

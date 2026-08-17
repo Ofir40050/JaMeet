@@ -64,16 +64,20 @@ export const PROJECT_LIMITS = {
   MAX_LYRICS_DOCUMENTS: 50,
   MAX_LYRICS_DOCUMENT_CONTENT_LENGTH: 100_000,
   MAX_LYRICS_DOCUMENT_TITLE_LENGTH: 150,
+  MAX_LYRICS_DOCUMENT_ID_LENGTH: 100,
   MAX_LYRICS_TOTAL_CONTENT_LENGTH: 500_000,
   MAX_NOTES_CONTENT_LENGTH: 100_000,
   MAX_NOTES_BPM_LENGTH: 20,
   MAX_NOTES_KEY_LENGTH: 30,
   MAX_STRUCTURE_SECTIONS: 150,
+  MAX_STRUCTURE_SECTION_ID_LENGTH: 100,
   MAX_STRUCTURE_SECTION_NAME_LENGTH: 100,
   MAX_STRUCTURE_SECTION_NOTE_LENGTH: 500,
   MAX_TASKS: 300,
+  MAX_TASK_ID_LENGTH: 100,
   MAX_TASK_TITLE_LENGTH: 200,
-  MAX_TASK_NOTE_LENGTH: 2_000
+  MAX_TASK_NOTE_LENGTH: 2_000,
+  MAX_WORKSPACE_PAYLOAD_BYTES: 8_388_608
 };
 
 export interface ProjectDatabaseSchema {
@@ -617,9 +621,15 @@ export class ProjectStore {
         );
       }
 
-      // 2. Validate each document title, individual content size, and total cumulative content length
+      // 2. Validate each document id, title, individual content size, and total cumulative content length
       let totalLyricsLength = 0;
       for (const d of projectedDocs) {
+        if (d.id && d.id.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_ID_LENGTH) {
+          throw new WorkspaceLimitError(
+            'lyrics',
+            `Lyrics document ID exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_ID_LENGTH} characters.`
+          );
+        }
         if (d.title && d.title.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH) {
           throw new WorkspaceLimitError(
             'lyrics',
@@ -673,6 +683,12 @@ export class ProjectStore {
         );
       }
       for (const s of updates.structure.sections) {
+        if (s.id && s.id.length > PROJECT_LIMITS.MAX_STRUCTURE_SECTION_ID_LENGTH) {
+          throw new WorkspaceLimitError(
+            'structure',
+            `Section ID exceeds maximum length of ${PROJECT_LIMITS.MAX_STRUCTURE_SECTION_ID_LENGTH} characters.`
+          );
+        }
         if (s.name && s.name.length > PROJECT_LIMITS.MAX_STRUCTURE_SECTION_NAME_LENGTH) {
           throw new WorkspaceLimitError(
             'structure',
@@ -696,6 +712,12 @@ export class ProjectStore {
         );
       }
       for (const t of updates.tasks.tasks) {
+        if (t.id && t.id.length > PROJECT_LIMITS.MAX_TASK_ID_LENGTH) {
+          throw new WorkspaceLimitError(
+            'tasks',
+            `Task ID exceeds maximum length of ${PROJECT_LIMITS.MAX_TASK_ID_LENGTH} characters.`
+          );
+        }
         if (t.title && t.title.length > PROJECT_LIMITS.MAX_TASK_TITLE_LENGTH) {
           throw new WorkspaceLimitError(
             'tasks',
