@@ -4,6 +4,7 @@ import { join, normalize, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { getNativeBinaryPath } from './binaryUtils';
 import { logger } from './logger';
+import { isTrustedOrigin, isTrustedSender, setupWebContentsSecurity } from './trustBoundary';
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'jameet-app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
@@ -239,6 +240,7 @@ function createWindow(): void {
   });
 
   logger.trackWebContents(mainWindow.webContents, 'mainWindow');
+  setupWebContentsSecurity(mainWindow.webContents);
 
   // Content protection disabled to allow normal screenshots and screen recordings
   try {
@@ -370,6 +372,7 @@ function createOrGetPresenterToolbarWindow(): BrowserWindow {
   });
 
   logger.trackWebContents(presenterToolbarWindow.webContents, 'presenterToolbarWindow');
+  setupWebContentsSecurity(presenterToolbarWindow.webContents);
 
   try {
     presenterToolbarWindow.setContentProtection(false);
@@ -437,6 +440,7 @@ function createOrGetPresenterVideoWindow(): BrowserWindow {
   });
 
   logger.trackWebContents(presenterVideoWindow.webContents, 'presenterVideoWindow');
+  setupWebContentsSecurity(presenterVideoWindow.webContents);
 
   try {
     presenterVideoWindow.setContentProtection(false);
@@ -485,6 +489,10 @@ else {
     registerDeepLinkHandler();
     pendingDeepLink = findDeepLink(process.argv);
 
+    app.on('web-contents-created', (_event, contents) => {
+      setupWebContentsSecurity(contents);
+    });
+
     const rendererRoot = normalize(join(__dirname, '../renderer'));
     const handleBundleProtocol = (request: Request) => {
       const requestUrl = new URL(request.url);
@@ -496,14 +504,13 @@ else {
     protocol.handle('jameet-app', handleBundleProtocol);
     protocol.handle('musiczoom-app', handleBundleProtocol);
 
-    const allowedOrigin = (url?: string) => !url || url.startsWith('jameet-app://bundle') || url.startsWith('musiczoom-app://bundle') || url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:');
     session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin) =>
-      allowedOrigin(requestingOrigin) && ['media', 'speaker-selection'].includes(permission));
+      isTrustedOrigin(requestingOrigin) && ['media', 'speaker-selection'].includes(permission));
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) =>
-      callback(allowedOrigin(webContents.getURL()) && ['media', 'speaker-selection'].includes(permission)));
+      callback(isTrustedOrigin(webContents.getURL()) && ['media', 'speaker-selection'].includes(permission)));
 
     session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
-      if (!allowedOrigin(request.securityOrigin) || !request.videoRequested) {
+      if (!isTrustedOrigin(request.securityOrigin) || !request.videoRequested) {
         callback({});
         return;
       }
@@ -526,14 +533,23 @@ else {
       callback(response);
     });
 
-    ipcMain.on('set-media-active', (_event, active: boolean) => {
+    ipcMain.on('set-media-active', (event, active: boolean) => {
+      if (!isTrustedSender(event)) return;
       isRendererMediaActive = Boolean(active);
     });
 
-    ipcMain.handle('get-initial-deep-link', () => { const value = pendingDeepLink; pendingDeepLink = null; return value; });
-    ipcMain.handle('copy-text', (_event, value: string) => clipboard.writeText(value));
+    ipcMain.handle('get-initial-deep-link', (event) => {
+      if (!isTrustedSender(event)) return null;
+      const value = pendingDeepLink;
+      pendingDeepLink = null;
+      return value;
+    });
+    ipcMain.handle('copy-text', (event, value: string) => {
+      if (!isTrustedSender(event) || typeof value !== 'string') return;
+      clipboard.writeText(value);
+    });
     ipcMain.handle('list-display-sources', async (event) => {
-      if (!allowedOrigin(event.sender.getURL())) return [];
+      if (!isTrustedSender(event)) return [];
       const sources = await desktopCapturer.getSources({
         types: ['screen', 'window'],
         thumbnailSize: { width: 320, height: 180 },
@@ -550,7 +566,7 @@ else {
       return filtered.map((source) => ({ id: source.id, name: source.name, thumbnail: source.thumbnail.toDataURL() }));
     });
     ipcMain.on('select-display-source', (event, id: string) => {
-      if (!allowedOrigin(event.sender.getURL()) || typeof id !== 'string' || id.length > 200) {
+      if (!isTrustedSender(event) || typeof id !== 'string' || id.length > 200) {
         event.returnValue = false;
         return;
       }
@@ -559,7 +575,8 @@ else {
     });
 
     // Native ScreenCaptureKit Screen Capture (macOS)
-    ipcMain.handle('start-native-screen-capture', async (_event, displayId?: number, options?: { fps?: number; width?: number; height?: number }) => {
+    ipcMain.handle('start-native-screen-capture', async (event, displayId?: number, options?: { fps?: number; width?: number; height?: number }) => {
+      if (!isTrustedSender(event)) return false;
       if (process.platform !== 'darwin') return false;
       stopActiveNativeScreenCapture();
       const currentSessionId = ++activeNativeScreenCaptureSessionId;
@@ -773,13 +790,15 @@ else {
       }
     });
 
-    ipcMain.handle('stop-native-screen-capture', async () => {
+    ipcMain.handle('stop-native-screen-capture', async (event) => {
+      if (!isTrustedSender(event)) return false;
       stopActiveNativeScreenCapture();
       return true;
     });
 
     // Presenter Mode IPC
-    ipcMain.handle('enter-presenter-mode', async (_event, initialState: unknown) => {
+    ipcMain.handle('enter-presenter-mode', async (event, initialState: unknown) => {
+      if (!isTrustedSender(event)) return false;
       isPresenterModeActive = true;
       if (mainWindow && !mainWindow.isDestroyed()) {
         savedMainWindowBounds = mainWindow.getBounds();
@@ -801,7 +820,8 @@ else {
       return true;
     });
 
-    ipcMain.handle('exit-presenter-mode', async () => {
+    ipcMain.handle('exit-presenter-mode', async (event) => {
+      if (!isTrustedSender(event)) return false;
       isPresenterModeActive = false;
       if (presenterToolbarWindow && !presenterToolbarWindow.isDestroyed()) {
         presenterToolbarWindow.hide();
@@ -820,7 +840,8 @@ else {
       return true;
     });
 
-    ipcMain.handle('show-main-window', async () => {
+    ipcMain.handle('show-main-window', async (event) => {
+      if (!isTrustedSender(event)) return false;
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.show();
         if (mainWindow.isMinimized()) mainWindow.restore();
@@ -832,13 +853,15 @@ else {
       return true;
     });
 
-    ipcMain.handle('update-presenter-state', async (_event, state: unknown) => {
+    ipcMain.handle('update-presenter-state', async (event, state: unknown) => {
+      if (!isTrustedSender(event)) return;
       if (presenterToolbarWindow && !presenterToolbarWindow.isDestroyed()) {
         safeSend(presenterToolbarWindow, 'presenter-state-update', state);
       }
     });
 
-    ipcMain.handle('send-presenter-action', async (_event, action: string, data?: unknown) => {
+    ipcMain.handle('send-presenter-action', async (event, action: string, data?: unknown) => {
+      if (!isTrustedSender(event)) return;
       if (action === 'toggle-floating-video') {
         if (presenterVideoWindow && !presenterVideoWindow.isDestroyed()) {
           if (presenterVideoWindow.isVisible()) presenterVideoWindow.hide();
@@ -851,19 +874,22 @@ else {
     });
 
     // Forward video frame to floating participant window
-    ipcMain.on('presenter-video-frame', (_event, frame: unknown) => {
+    ipcMain.on('presenter-video-frame', (event, frame: unknown) => {
+      if (!isTrustedSender(event)) return;
       if (presenterVideoWindow && !presenterVideoWindow.isDestroyed()) {
         safeSend(presenterVideoWindow, 'presenter-video-frame', frame);
       }
     });
 
     // Allow toolbar renderer to toggle click-through for transparent areas
-    ipcMain.on('set-presenter-mouse-ignore', (_event, ignore: boolean) => {
+    ipcMain.on('set-presenter-mouse-ignore', (event, ignore: boolean) => {
+      if (!isTrustedSender(event)) return;
       if (presenterToolbarWindow && !presenterToolbarWindow.isDestroyed()) {
         presenterToolbarWindow.setIgnoreMouseEvents(ignore, { forward: true });
       }
     });
-    ipcMain.handle('open-system-audio-settings', async () => {
+    ipcMain.handle('open-system-audio-settings', async (event) => {
+      if (!isTrustedSender(event)) return;
       const { exec } = await import('child_process');
       if (process.platform === 'darwin') {
         exec('open "/System/Applications/Utilities/Audio MIDI Setup.app" || open -b com.apple.audio.AudioMIDISetup');
@@ -871,7 +897,8 @@ else {
         exec('control mmsys.cpl sounds');
       }
     });
-    ipcMain.handle('set-system-sample-rate', async (_event, sampleRate: number, deviceName?: string) => {
+    ipcMain.handle('set-system-sample-rate', async (event, sampleRate: number, deviceName?: string) => {
+      if (!isTrustedSender(event)) return false;
       if (process.platform === 'darwin' && sampleRate > 0) {
         const { execFile, execSync } = await import('child_process');
         const { join } = await import('path');
@@ -904,7 +931,8 @@ else {
       }
       return false;
     });
-    ipcMain.handle('set-system-input-volume', async (_event, volume: number) => {
+    ipcMain.handle('set-system-input-volume', async (event, volume: number) => {
+      if (!isTrustedSender(event)) return false;
       if (process.platform === 'darwin' && typeof volume === 'number') {
         const { execFile, execSync } = await import('child_process');
         const { join } = await import('path');
@@ -931,7 +959,8 @@ else {
       }
       return false;
     });
-    ipcMain.handle('get-hardware-audio-devices', async () => {
+    ipcMain.handle('get-hardware-audio-devices', async (event) => {
+      if (!isTrustedSender(event)) return [];
       if (process.platform === 'darwin') {
         const { execFile, execSync } = await import('child_process');
         const { join } = await import('path');
@@ -968,7 +997,8 @@ else {
       return [];
     });
 
-    ipcMain.handle('list-audio-applications', async () => {
+    ipcMain.handle('list-audio-applications', async (event) => {
+      if (!isTrustedSender(event)) return [];
       if (process.platform === 'darwin') {
         const { execFile, execSync } = await import('child_process');
         const { join } = await import('path');
@@ -1005,7 +1035,8 @@ else {
       return [];
     });
 
-    ipcMain.handle('start-app-audio-capture', async (_event, target: number | string, channelRoute?: string) => {
+    ipcMain.handle('start-app-audio-capture', async (event, target: number | string, channelRoute?: string) => {
+      if (!isTrustedSender(event)) return false;
       if (process.platform === 'darwin' && target !== undefined && target !== null) {
         const targetStr = String(target).trim();
         if (targetStr.length === 0) return false;
@@ -1082,7 +1113,8 @@ else {
       return false;
     });
 
-    ipcMain.handle('stop-app-audio-capture', async () => {
+    ipcMain.handle('stop-app-audio-capture', async (event) => {
+      if (!isTrustedSender(event)) return false;
       if (activeAudioTapProcess) {
         try { activeAudioTapProcess.kill('SIGTERM'); } catch { }
         activeAudioTapProcess = null;
@@ -1091,7 +1123,8 @@ else {
       return false;
     });
 
-    ipcMain.handle('start-hardware-audio-capture', async (_event, deviceId?: string) => {
+    ipcMain.handle('start-hardware-audio-capture', async (event, deviceId?: string) => {
+      if (!isTrustedSender(event)) return false;
       if (process.platform === 'darwin') {
         const targetArg = deviceId && deviceId.length > 0 ? deviceId : 'default';
         if (activeHardwareAudioProcess && activeHardwareDeviceId === targetArg) {
@@ -1167,7 +1200,8 @@ else {
       return false;
     });
 
-    ipcMain.handle('stop-hardware-audio-capture', async () => {
+    ipcMain.handle('stop-hardware-audio-capture', async (event) => {
+      if (!isTrustedSender(event)) return false;
       if (activeHardwareAudioProcess) {
         try { activeHardwareAudioProcess.kill('SIGTERM'); } catch { }
         activeHardwareAudioProcess = null;
@@ -1179,7 +1213,8 @@ else {
 
     const sessionPath = join(app.getPath('userData'), 'auth-session.bin');
 
-    ipcMain.handle('auth:get-session', async () => {
+    ipcMain.handle('auth:get-session', async (event) => {
+      if (!isTrustedSender(event)) return null;
       if (!existsSync(sessionPath)) return null;
       try {
         const raw = readFileSync(sessionPath);
@@ -1196,7 +1231,8 @@ else {
       }
     });
 
-    ipcMain.handle('auth:set-session', async (_event, sessionData: unknown) => {
+    ipcMain.handle('auth:set-session', async (event, sessionData: unknown) => {
+      if (!isTrustedSender(event)) return false;
       try {
         const jsonStr = JSON.stringify(sessionData);
         let dataBuffer: Buffer;
@@ -1213,7 +1249,8 @@ else {
       }
     });
 
-    ipcMain.handle('auth:clear-session', async () => {
+    ipcMain.handle('auth:clear-session', async (event) => {
+      if (!isTrustedSender(event)) return false;
       try {
         if (existsSync(sessionPath)) unlinkSync(sessionPath);
         return true;
@@ -1223,7 +1260,8 @@ else {
       }
     });
 
-    ipcMain.handle('show-scheduled-notification', async (_event, payload: { title: string; body: string; sessionId: string }) => {
+    ipcMain.handle('show-scheduled-notification', async (event, payload: { title: string; body: string; sessionId: string }) => {
+      if (!isTrustedSender(event)) return false;
       try {
         if (!Notification.isSupported()) return false;
         const notification = new Notification({
@@ -1314,7 +1352,8 @@ else {
       }
     }
 
-    ipcMain.handle('start-remote-voice-bridge', async () => {
+    ipcMain.handle('start-remote-voice-bridge', async (event) => {
+      if (!isTrustedSender(event)) return false;
       if (process.platform !== 'darwin' && process.platform !== 'win32') return false;
       if (remoteVoiceProducerProcess && !remoteVoiceProducerProcess.killed) return true;
 
@@ -1376,13 +1415,15 @@ else {
       }
     });
 
-    ipcMain.on('send-remote-voice-pcm', (_event, pcmData: Float32Array, isRouteActive: boolean) => {
+    ipcMain.on('send-remote-voice-pcm', (event, pcmData: Float32Array, isRouteActive: boolean) => {
+      if (!isTrustedSender(event)) return;
       if (remoteVoiceProducerProcess) {
         writePcmToRemoteVoiceProducer(remoteVoiceProducerProcess, pcmData, isRouteActive);
       }
     });
 
-    ipcMain.handle('stop-remote-voice-bridge', async () => {
+    ipcMain.handle('stop-remote-voice-bridge', async (event) => {
+      if (!isTrustedSender(event)) return false;
       stopRemoteVoiceProducer();
       return true;
     });

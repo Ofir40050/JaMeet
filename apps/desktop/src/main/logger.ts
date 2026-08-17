@@ -13,6 +13,7 @@ import {
   sanitizeLogString,
   serializeError
 } from '@jameet/shared';
+import { isTrustedSender } from './trustBoundary';
 
 const MAX_LOG_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 const MAX_CRASH_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -594,7 +595,9 @@ export class DesktopLogger {
   private setupIpcHandlers(): void {
     try {
       if (!ipcMain?.on) return;
-      ipcMain.on('logger:log', (_event, entry: unknown) => {
+
+      ipcMain.on('logger:log', (event, entry: unknown) => {
+        if (!isTrustedSender(event)) return;
         if (!entry || typeof entry !== 'object') return;
         const raw = entry as Record<string, unknown>;
 
@@ -608,7 +611,7 @@ export class DesktopLogger {
         }
 
         // Validate and normalize event name
-        const event = typeof raw.event === 'string' && raw.event.trim().length > 0
+        const eventName = typeof raw.event === 'string' && raw.event.trim().length > 0
           ? raw.event.trim()
           : 'renderer_event';
 
@@ -629,7 +632,7 @@ export class DesktopLogger {
 
         this.log({
           level,
-          event,
+          event: eventName,
           message,
           sessionId,
           sessionCode,
@@ -640,7 +643,8 @@ export class DesktopLogger {
         });
       });
 
-      ipcMain.handle('logger:crash', async (_event, crashData: unknown) => {
+      ipcMain.handle('logger:crash', async (event, crashData: unknown) => {
+        if (!isTrustedSender(event)) return null;
         if (!crashData || typeof crashData !== 'object') {
           return this.recordCrash({
             process: 'renderer',
@@ -654,7 +658,8 @@ export class DesktopLogger {
         });
       });
 
-      ipcMain.handle('logger:get-log-paths', async () => {
+      ipcMain.handle('logger:get-log-paths', async (event) => {
+        if (!isTrustedSender(event)) return null;
         return this.getLogPaths();
       });
     } catch (err) {

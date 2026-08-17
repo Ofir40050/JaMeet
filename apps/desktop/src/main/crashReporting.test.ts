@@ -260,7 +260,8 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
     freshLogger.setupGlobalHandlers();
 
     expect(crashHandler).toBeDefined();
-    const result = await crashHandler!({}, {
+    const trustedEvent = { senderFrame: { url: 'jameet-app://bundle/index.html' } };
+    const result = await crashHandler!(trustedEvent, {
       process: 'main', // Attempt to spoof or override as main process
       reason: 'renderer_syntax_error',
       sessionCode: 'XYZ12345'
@@ -291,10 +292,11 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
     freshLogger.setupGlobalHandlers();
 
     expect(logHandler).toBeDefined();
+    const trustedEvent = { senderFrame: { url: 'jameet-app://bundle/index.html' } };
 
     // 1. Malformed level (numeric, invalid string, object) and empty event
     expect(() => {
-      logHandler!({}, {
+      logHandler!(trustedEvent, {
         level: 12345, // Invalid level type
         event: '   ',  // Empty event
         message: 'Normal message',
@@ -311,13 +313,13 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
 
     // 2. Completely malformed payload (null, undefined, non-object)
     expect(() => {
-      logHandler!({}, null);
-      logHandler!({}, undefined);
-      logHandler!({}, 'just a string');
+      logHandler!(trustedEvent, null);
+      logHandler!(trustedEvent, undefined);
+      logHandler!(trustedEvent, 'just a string');
     }).not.toThrow();
 
     // 3. Valid levels (debug, warn, error)
-    logHandler!({}, {
+    logHandler!(trustedEvent, {
       level: 'WARN', // Case-insensitive normalization
       event: 'webrtc_ice_failure',
       message: 'ICE connection disconnected',
