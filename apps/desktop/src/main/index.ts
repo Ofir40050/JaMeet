@@ -538,24 +538,45 @@ else {
       isRendererMediaActive = Boolean(active);
     });
 
+function getDesktopAppVersion(): string {
+  try {
+    const v = app.getVersion();
+    if (typeof v === 'string' && v.trim() && v.trim() !== 'Unknown' && !v.includes('Electron')) {
+      return v.trim();
+    }
+  } catch {}
+  try {
+    const pkgPath = join(app.getAppPath(), 'package.json');
+    if (existsSync(pkgPath)) {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+      if (pkg && typeof pkg.version === 'string' && pkg.version.trim()) {
+        return pkg.version.trim();
+      }
+    }
+  } catch {}
+  try {
+    const pkgPath = join(__dirname, '../../package.json');
+    if (existsSync(pkgPath)) {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+      if (pkg && typeof pkg.version === 'string' && pkg.version.trim()) {
+        return pkg.version.trim();
+      }
+    }
+  } catch {}
+  return 'Unknown';
+}
+
+function getDesktopAppPlatform(): string {
+  if (process.platform === 'darwin') return 'macOS';
+  if (process.platform === 'win32') return 'Windows';
+  return 'Unknown';
+}
+
     ipcMain.handle('get-app-info', (event) => {
       if (!isTrustedSender(event)) return null;
-      let version = 'Unknown';
-      try {
-        const v = app.getVersion();
-        if (typeof v === 'string' && v.trim()) {
-          version = v.trim();
-        }
-      } catch {}
-      let platform = 'Unknown';
-      if (process.platform === 'darwin') {
-        platform = 'macOS';
-      } else if (process.platform === 'win32') {
-        platform = 'Windows';
-      }
       return {
-        version,
-        platform
+        version: getDesktopAppVersion(),
+        platform: getDesktopAppPlatform()
       };
     });
 

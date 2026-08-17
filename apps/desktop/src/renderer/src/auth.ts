@@ -255,12 +255,14 @@ export class AuthManager {
       throw new Error('You must be signed in to update your profile.');
     }
     let res: Response;
+    const clientHeaders = await getClientHeaders();
     try {
       res = await fetch(`${this.serverUrl}/api/auth/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.currentToken}`
+          Authorization: `Bearer ${this.currentToken}`,
+          ...clientHeaders
         },
         body: JSON.stringify(req)
       });

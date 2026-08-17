@@ -655,8 +655,16 @@ export class UserStore {
     const now = Date.now();
     user.lastLoginAt = now;
     user.lastActiveAt = now;
-    if (clientInfo?.version) user.clientVersion = clientInfo.version;
-    if (clientInfo?.platform) user.clientPlatform = clientInfo.platform;
+    if (clientInfo?.version && clientInfo.version !== 'Unknown') {
+      user.clientVersion = clientInfo.version;
+    } else if (!user.clientVersion && clientInfo?.version) {
+      user.clientVersion = clientInfo.version;
+    }
+    if (clientInfo?.platform && clientInfo.platform !== 'Unknown') {
+      user.clientPlatform = clientInfo.platform;
+    } else if (!user.clientPlatform && clientInfo?.platform) {
+      user.clientPlatform = clientInfo.platform;
+    }
 
     const platformLabel = user.clientPlatform || 'Unknown';
     const versionLabel = user.clientVersion && user.clientVersion !== 'Unknown' ? `v${user.clientVersion}` : '';
