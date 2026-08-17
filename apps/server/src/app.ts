@@ -13,6 +13,7 @@ import {
   updateScheduledSessionSchema, type MeetingAck, type MeetingErrorCode,
   type ParticipantIdentity, type MediaMetadata,
   type UserProfile, type UpdateProfileRequest, type ProjectWorkspace, type UpdateProjectWorkspaceRequest,
+  type UpdateProjectWorkspaceResponse,
   type SessionChatMessage, type WaitingParticipantItem, type ScheduledSession,
   type SessionSummaryEvent, type ProjectActivityItem,
   crashReportSchema, type CrashReport, sanitizeLogData
@@ -1070,7 +1071,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
     });
 
-    socket.on('project:workspace:update', (raw: { projectId: string; authToken?: string; updates: unknown }, ack?: (res: { ok: boolean; workspace?: ProjectWorkspace; message?: string }) => void) => {
+    socket.on('project:workspace:update', (raw: { projectId: string; authToken?: string; updates: unknown }, ack?: (res: UpdateProjectWorkspaceResponse) => void) => {
       if (!limiter.consume('workspace')) { ack?.({ ok: false, message: 'Too many requests. Please slow down.' }); return; }
       if (!raw?.projectId || !raw?.updates) { ack?.({ ok: false, message: 'Invalid payload' }); return; }
       const user = userStore.verifyToken(raw.authToken);

@@ -1097,6 +1097,207 @@ describe('Dual-Generation & Project Context Stale Save Protection', () => {
       expect(localWorkspace.notes.revision).toBe(2);
     });
 
+    it('reconciles mixed Notes concurrency: local text edit while remote collaborator updates BPM (preserves remote BPM)', () => {
+      function threeWayLineMerge(base: string, local: string, remote: string): string {
+        if (local === remote) return local;
+        if (local === base) return remote;
+        if (remote === base) return local;
+        const localLines = local.split('\n');
+        const remoteLines = remote.split('\n');
+        const resultLines = [...localLines];
+        for (const r of remoteLines) {
+          if (!resultLines.includes(r)) resultLines.push(r);
+        }
+        return resultLines.join('\n');
+      }
+
+      function reconcileNotes(
+        base: { content: string; bpm: string; key: string },
+        local: { content: string; bpm: string; key: string },
+        remote: { content: string; bpm: string; key: string }
+      ) {
+        const mergedContent = threeWayLineMerge(base.content, local.content, remote.content);
+        const bpmChangedLocally = (local.bpm || '').trim() !== (base.bpm || '').trim();
+        const bpmChangedRemotely = (remote.bpm || '').trim() !== (base.bpm || '').trim();
+        let resolvedBpm = local.bpm;
+        let bpmConflict = false;
+
+        if (bpmChangedLocally && bpmChangedRemotely) {
+          if (local.bpm === remote.bpm) resolvedBpm = local.bpm;
+          else { bpmConflict = true; resolvedBpm = local.bpm; }
+        } else if (bpmChangedRemotely) {
+          resolvedBpm = remote.bpm;
+        }
+
+        const keyChangedLocally = (local.key || '').trim() !== (base.key || '').trim();
+        const keyChangedRemotely = (remote.key || '').trim() !== (base.key || '').trim();
+        let resolvedKey = local.key;
+        let keyConflict = false;
+
+        if (keyChangedLocally && keyChangedRemotely) {
+          if (local.key === remote.key) resolvedKey = local.key;
+          else { keyConflict = true; resolvedKey = local.key; }
+        } else if (keyChangedRemotely) {
+          resolvedKey = remote.key;
+        }
+
+        return {
+          content: mergedContent,
+          bpm: resolvedBpm,
+          key: resolvedKey,
+          hasUnresolvableConflict: bpmConflict || keyConflict,
+          bpmChangedRemotely: !bpmConflict && bpmChangedRemotely,
+          keyChangedRemotely: !keyConflict && keyChangedRemotely
+        };
+      }
+
+      const base = { content: 'Original lyrics/notes', bpm: '120', key: 'C Major' };
+      const clientALocal = { content: 'Original lyrics/notes\nClient A added guitar solo note', bpm: '120', key: 'C Major' };
+      const serverRemote = { content: 'Original lyrics/notes', bpm: '130', key: 'C Major' };
+
+      const result = reconcileNotes(base, clientALocal, serverRemote);
+
+      expect(result.hasUnresolvableConflict).toBe(false);
+      expect(result.content).toBe('Original lyrics/notes\nClient A added guitar solo note');
+      expect(result.bpm).toBe('130'); // Remote BPM 130 preserved!
+      expect(result.key).toBe('C Major');
+      expect(result.bpmChangedRemotely).toBe(true);
+    });
+
+    it('reconciles mixed Notes concurrency: local text edit while remote collaborator updates Key (preserves remote Key)', () => {
+      function threeWayLineMerge(base: string, local: string, remote: string): string {
+        if (local === remote) return local;
+        if (local === base) return remote;
+        if (remote === base) return local;
+        const localLines = local.split('\n');
+        const remoteLines = remote.split('\n');
+        const resultLines = [...localLines];
+        for (const r of remoteLines) {
+          if (!resultLines.includes(r)) resultLines.push(r);
+        }
+        return resultLines.join('\n');
+      }
+
+      function reconcileNotes(
+        base: { content: string; bpm: string; key: string },
+        local: { content: string; bpm: string; key: string },
+        remote: { content: string; bpm: string; key: string }
+      ) {
+        const mergedContent = threeWayLineMerge(base.content, local.content, remote.content);
+        const bpmChangedLocally = (local.bpm || '').trim() !== (base.bpm || '').trim();
+        const bpmChangedRemotely = (remote.bpm || '').trim() !== (base.bpm || '').trim();
+        let resolvedBpm = local.bpm;
+        let bpmConflict = false;
+
+        if (bpmChangedLocally && bpmChangedRemotely) {
+          if (local.bpm === remote.bpm) resolvedBpm = local.bpm;
+          else { bpmConflict = true; resolvedBpm = local.bpm; }
+        } else if (bpmChangedRemotely) {
+          resolvedBpm = remote.bpm;
+        }
+
+        const keyChangedLocally = (local.key || '').trim() !== (base.key || '').trim();
+        const keyChangedRemotely = (remote.key || '').trim() !== (base.key || '').trim();
+        let resolvedKey = local.key;
+        let keyConflict = false;
+
+        if (keyChangedLocally && keyChangedRemotely) {
+          if (local.key === remote.key) resolvedKey = local.key;
+          else { keyConflict = true; resolvedKey = local.key; }
+        } else if (keyChangedRemotely) {
+          resolvedKey = remote.key;
+        }
+
+        return {
+          content: mergedContent,
+          bpm: resolvedBpm,
+          key: resolvedKey,
+          hasUnresolvableConflict: bpmConflict || keyConflict,
+          bpmChangedRemotely: !bpmConflict && bpmChangedRemotely,
+          keyChangedRemotely: !keyConflict && keyChangedRemotely
+        };
+      }
+
+      const base = { content: 'Intro notes', bpm: '120', key: 'C Major' };
+      const clientALocal = { content: 'Intro notes\nClient A bass tab', bpm: '120', key: 'C Major' };
+      const serverRemote = { content: 'Intro notes', bpm: '120', key: 'G Minor' };
+
+      const result = reconcileNotes(base, clientALocal, serverRemote);
+
+      expect(result.hasUnresolvableConflict).toBe(false);
+      expect(result.content).toBe('Intro notes\nClient A bass tab');
+      expect(result.bpm).toBe('120');
+      expect(result.key).toBe('G Minor'); // Remote Key G Minor preserved!
+      expect(result.keyChangedRemotely).toBe(true);
+    });
+
+    it('detects unresolvable conflict when both sides modify BPM differently and prevents silent overwrite', () => {
+      function reconcileNotes(
+        base: { content: string; bpm: string; key: string },
+        local: { content: string; bpm: string; key: string },
+        remote: { content: string; bpm: string; key: string }
+      ) {
+        const bpmChangedLocally = (local.bpm || '').trim() !== (base.bpm || '').trim();
+        const bpmChangedRemotely = (remote.bpm || '').trim() !== (base.bpm || '').trim();
+        let resolvedBpm = local.bpm;
+        let bpmConflict = false;
+
+        if (bpmChangedLocally && bpmChangedRemotely) {
+          if (local.bpm === remote.bpm) resolvedBpm = local.bpm;
+          else { bpmConflict = true; resolvedBpm = local.bpm; }
+        } else if (bpmChangedRemotely) {
+          resolvedBpm = remote.bpm;
+        }
+
+        return {
+          bpm: resolvedBpm,
+          hasUnresolvableConflict: bpmConflict
+        };
+      }
+
+      const base = { content: '', bpm: '120', key: '' };
+      const clientALocal = { content: '', bpm: '140', key: '' };
+      const serverRemote = { content: '', bpm: '130', key: '' };
+
+      const result = reconcileNotes(base, clientALocal, serverRemote);
+
+      expect(result.hasUnresolvableConflict).toBe(true);
+      expect(result.bpm).toBe('140'); // Keeps local in-flight edit preserved without overwriting server
+    });
+
+    it('detects unresolvable conflict when both sides modify Key differently', () => {
+      function reconcileNotes(
+        base: { content: string; bpm: string; key: string },
+        local: { content: string; bpm: string; key: string },
+        remote: { content: string; bpm: string; key: string }
+      ) {
+        const keyChangedLocally = (local.key || '').trim() !== (base.key || '').trim();
+        const keyChangedRemotely = (remote.key || '').trim() !== (base.key || '').trim();
+        let resolvedKey = local.key;
+        let keyConflict = false;
+
+        if (keyChangedLocally && keyChangedRemotely) {
+          if (local.key === remote.key) resolvedKey = local.key;
+          else { keyConflict = true; resolvedKey = local.key; }
+        } else if (keyChangedRemotely) {
+          resolvedKey = remote.key;
+        }
+
+        return {
+          key: resolvedKey,
+          hasUnresolvableConflict: keyConflict
+        };
+      }
+
+      const base = { content: '', bpm: '', key: 'C Major' };
+      const clientALocal = { content: '', bpm: '', key: 'D Major' };
+      const serverRemote = { content: '', bpm: '', key: 'A Minor' };
+
+      const result = reconcileNotes(base, clientALocal, serverRemote);
+
+      expect(result.hasUnresolvableConflict).toBe(true);
+    });
+
     it('does not update local area revision during realtime sync if local area has pending edits', () => {
       const state = {
         workspace: {

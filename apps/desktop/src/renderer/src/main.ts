@@ -4767,6 +4767,8 @@ let tasksSaveGen = 0;
 // Snapshot of last confirmed server state for 3-way merging
 let lastSyncedLyrics = '';
 let lastSyncedNotes = '';
+let lastSyncedNotesBpm = '';
+let lastSyncedNotesKey = '';
 
 /**
  * Applies text update to a textarea (e.g. Notes) while preserving active cursor position
@@ -4856,6 +4858,95 @@ function threeWayLineMerge(base: string, local: string, remote: string): string 
   }
 
   return resultLines.join('\n');
+}
+
+interface NotesStateValues {
+  content?: string;
+  bpm?: string;
+  key?: string;
+}
+
+interface NotesReconciliationResult {
+  content: string;
+  bpm: string;
+  key: string;
+  hasUnresolvableConflict: boolean;
+  bpmChangedRemotely: boolean;
+  keyChangedRemotely: boolean;
+  bpmChangedLocally: boolean;
+  keyChangedLocally: boolean;
+}
+
+function reconcileNotesWorkspace(
+  base: NotesStateValues,
+  local: NotesStateValues,
+  remote: NotesStateValues
+): NotesReconciliationResult {
+  const baseContent = base.content || '';
+  const localContent = local.content || '';
+  const remoteContent = remote.content || '';
+
+  const baseBpm = (base.bpm || '').trim();
+  const localBpm = (local.bpm || '').trim();
+  const remoteBpm = (remote.bpm || '').trim();
+
+  const baseKey = (base.key || '').trim();
+  const localKey = (local.key || '').trim();
+  const remoteKey = (remote.key || '').trim();
+
+  // 1. Text reconciliation using 3-way line merge
+  const mergedContent = threeWayLineMerge(baseContent, localContent, remoteContent);
+
+  // 2. BPM reconciliation
+  const bpmChangedLocally = localBpm !== baseBpm;
+  const bpmChangedRemotely = remoteBpm !== baseBpm;
+  let resolvedBpm = localBpm;
+  let bpmConflict = false;
+
+  if (bpmChangedLocally && bpmChangedRemotely) {
+    if (localBpm === remoteBpm) {
+      resolvedBpm = localBpm;
+    } else {
+      bpmConflict = true;
+      resolvedBpm = localBpm;
+    }
+  } else if (bpmChangedRemotely) {
+    resolvedBpm = remoteBpm;
+  } else {
+    resolvedBpm = localBpm;
+  }
+
+  // 3. Key reconciliation
+  const keyChangedLocally = localKey !== baseKey;
+  const keyChangedRemotely = remoteKey !== baseKey;
+  let resolvedKey = localKey;
+  let keyConflict = false;
+
+  if (keyChangedLocally && keyChangedRemotely) {
+    if (localKey === remoteKey) {
+      resolvedKey = localKey;
+    } else {
+      keyConflict = true;
+      resolvedKey = localKey;
+    }
+  } else if (keyChangedRemotely) {
+    resolvedKey = remoteKey;
+  } else {
+    resolvedKey = localKey;
+  }
+
+  const hasUnresolvableConflict = bpmConflict || keyConflict;
+
+  return {
+    content: mergedContent,
+    bpm: resolvedBpm,
+    key: resolvedKey,
+    hasUnresolvableConflict,
+    bpmChangedRemotely: !bpmConflict && bpmChangedRemotely,
+    keyChangedRemotely: !keyConflict && keyChangedRemotely,
+    bpmChangedLocally,
+    keyChangedLocally
+  };
 }
 
 function getActiveLyricsDoc(): { id: string; title: string; content: string; updatedAt: number } {
@@ -5328,6 +5419,8 @@ function syncWorkspaceInputsFromProject(force = false): void {
   if (force) {
     lastSyncedLyrics = lyricsHtml;
     lastSyncedNotes = notesContent;
+    lastSyncedNotesBpm = notesBpm;
+    lastSyncedNotesKey = notesKey;
   }
 
   const projectEditor = $('project-lyrics-editor');
@@ -5915,29 +6008,78 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
     if (res?.ok && res.workspace && activeProject) {
       applyAuthoritativeWorkspaceUpdate('notes', res.workspace);
       lastSyncedNotes = res.workspace.notes?.content ?? content;
+      lastSyncedNotesBpm = res.workspace.notes?.bpm ?? bpm;
+      lastSyncedNotesKey = res.workspace.notes?.key ?? key;
       setNotesStatus('saved');
     } else if ((res?.conflict || res?.code === 'WORKSPACE_CONFLICT') && res.workspace?.notes && activeProject) {
-      // Confirmed WORKSPACE_CONFLICT on Notes: perform 3-way line merge
-      const incomingNotesContent = res.workspace.notes.content ?? '';
-      const localContent = activeProject.workspace?.notes?.content ?? content;
-      const mergedNotes = threeWayLineMerge(lastSyncedNotes, localContent, incomingNotesContent);
-      lastSyncedNotes = incomingNotesContent;
+      // Confirmed WORKSPACE_CONFLICT on Notes: safely reconcile content, BPM, and Key against authoritative server state
+      const baseNotes: NotesStateValues = {
+        content: lastSyncedNotes,
+        bpm: lastSyncedNotesBpm,
+        key: lastSyncedNotesKey
+      };
+      const localNotes: NotesStateValues = {
+        content: activeProject.workspace?.notes?.content ?? content,
+        bpm: activeProject.workspace?.notes?.bpm ?? bpm,
+        key: activeProject.workspace?.notes?.key ?? key
+      };
+      const remoteNotes: NotesStateValues = {
+        content: res.workspace.notes.content ?? '',
+        bpm: res.workspace.notes.bpm ?? '',
+        key: res.workspace.notes.key ?? ''
+      };
 
+      const reconciliation = reconcileNotesWorkspace(baseNotes, localNotes, remoteNotes);
+
+      // If both sides changed the same BPM or Key field differently, preserve unresolved local work
+      // and leave Notes unsaved without automatically overwriting persisted collaborator data.
+      if (reconciliation.hasUnresolvableConflict) {
+        if (activeProject.workspace?.notes) {
+          activeProject.workspace.notes.content = reconciliation.content;
+        }
+        const projectNotesInput = $<HTMLTextAreaElement>('project-notes-input');
+        const sessionNotesInput = $<HTMLTextAreaElement>('session-notes-input');
+        if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, reconciliation.content);
+        if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, reconciliation.content);
+        setNotesStatus('unsaved');
+        return;
+      }
+
+      // Safe reconciliation: update UI controls for remote updates
       const projectNotesInput = $<HTMLTextAreaElement>('project-notes-input');
       const sessionNotesInput = $<HTMLTextAreaElement>('session-notes-input');
-      if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, mergedNotes);
-      if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, mergedNotes);
+      if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, reconciliation.content);
+      if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, reconciliation.content);
 
+      if (reconciliation.bpmChangedRemotely) {
+        const projectBpm = $<HTMLInputElement>('project-notes-bpm');
+        const sessionBpm = $<HTMLInputElement>('session-notes-bpm');
+        if (projectBpm && document.activeElement !== projectBpm) projectBpm.value = reconciliation.bpm;
+        if (sessionBpm && document.activeElement !== sessionBpm) sessionBpm.value = reconciliation.bpm;
+      }
+
+      if (reconciliation.keyChangedRemotely) {
+        applyKeyToControls(reconciliation.key, false);
+      }
+
+      // Update authoritative baseline tracking and activeProject state
+      lastSyncedNotes = remoteNotes.content || '';
+      lastSyncedNotesBpm = remoteNotes.bpm || '';
+      lastSyncedNotesKey = remoteNotes.key || '';
+
+      const nextRevision = res.workspace.notes.revision ?? (res.currentRevision ?? activeProject.workspace?.notes?.revision ?? 1);
       if (activeProject.workspace?.notes) {
-        activeProject.workspace.notes.content = mergedNotes;
-        activeProject.workspace.notes.revision = res.workspace.notes.revision ?? (res.currentRevision ?? activeProject.workspace.notes.revision);
+        activeProject.workspace.notes.content = reconciliation.content;
+        activeProject.workspace.notes.bpm = reconciliation.bpm;
+        activeProject.workspace.notes.key = reconciliation.key;
+        activeProject.workspace.notes.revision = nextRevision;
       }
 
       setNotesStatus('saving');
       if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
       notesSaveTimeout = setTimeout(() => {
         notesSaveTimeout = null;
-        void saveNotesWorkspace(mergedNotes, activeProject?.workspace?.notes?.bpm || bpm, activeProject?.workspace?.notes?.key || key);
+        void saveNotesWorkspace(reconciliation.content, reconciliation.bpm, reconciliation.key);
       }, 350);
     } else {
       setNotesStatus('unsaved');
@@ -6540,39 +6682,109 @@ signaling.on('project:workspace:synced', (data: { projectId: string; workspace: 
   }
 
   // 2. Converge Notes
-  const projectNotesInput = $<HTMLTextAreaElement>('project-notes-input');
-  const sessionNotesInput = $<HTMLTextAreaElement>('session-notes-input');
-  const incomingNotes = data.workspace.notes?.content ?? '';
-  const currentLocalNotes = activeProject?.workspace?.notes?.content ?? '';
-  const hasPendingNotes = notesSaveTimeout !== null || currentNotesStatus === 'saving' || currentNotesStatus === 'unsaved' || currentLocalNotes !== lastSyncedNotes;
+  const incomingNotesContent = data.workspace.notes?.content ?? '';
+  const incomingNotesBpm = data.workspace.notes?.bpm ?? '';
+  const incomingNotesKey = data.workspace.notes?.key ?? '';
+
+  const currentLocalContent = activeProject?.workspace?.notes?.content ?? '';
+  const currentLocalBpm = activeProject?.workspace?.notes?.bpm ?? '';
+  const currentLocalKey = activeProject?.workspace?.notes?.key ?? '';
+
+  const hasPendingNotes =
+    notesSaveTimeout !== null ||
+    currentNotesStatus === 'saving' ||
+    currentNotesStatus === 'unsaved' ||
+    currentLocalContent !== lastSyncedNotes ||
+    currentLocalBpm !== lastSyncedNotesBpm ||
+    currentLocalKey !== lastSyncedNotesKey;
 
   if (hasPendingNotes) {
-    if (incomingNotes !== currentLocalNotes) {
-      const mergedNotes = threeWayLineMerge(lastSyncedNotes, currentLocalNotes, incomingNotes);
-      if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, mergedNotes);
-      if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, mergedNotes);
-      if (activeProject.workspace.notes) {
-        activeProject.workspace.notes.content = mergedNotes;
+    const baseNotes: NotesStateValues = {
+      content: lastSyncedNotes,
+      bpm: lastSyncedNotesBpm,
+      key: lastSyncedNotesKey
+    };
+    const localNotes: NotesStateValues = {
+      content: currentLocalContent,
+      bpm: currentLocalBpm,
+      key: currentLocalKey
+    };
+    const remoteNotes: NotesStateValues = {
+      content: incomingNotesContent,
+      bpm: incomingNotesBpm,
+      key: incomingNotesKey
+    };
+
+    const reconciliation = reconcileNotesWorkspace(baseNotes, localNotes, remoteNotes);
+
+    if (reconciliation.hasUnresolvableConflict) {
+      if (activeProject.workspace?.notes) {
+        activeProject.workspace.notes.content = reconciliation.content;
+      }
+      const projectNotesInput = $<HTMLTextAreaElement>('project-notes-input');
+      const sessionNotesInput = $<HTMLTextAreaElement>('session-notes-input');
+      if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, reconciliation.content);
+      if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, reconciliation.content);
+      setNotesStatus('unsaved');
+    } else {
+      const projectNotesInput = $<HTMLTextAreaElement>('project-notes-input');
+      const sessionNotesInput = $<HTMLTextAreaElement>('session-notes-input');
+      if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, reconciliation.content);
+      if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, reconciliation.content);
+
+      if (reconciliation.bpmChangedRemotely) {
+        const projectBpm = $<HTMLInputElement>('project-notes-bpm');
+        const sessionBpm = $<HTMLInputElement>('session-notes-bpm');
+        if (projectBpm && document.activeElement !== projectBpm) projectBpm.value = reconciliation.bpm;
+        if (sessionBpm && document.activeElement !== sessionBpm) sessionBpm.value = reconciliation.bpm;
+      }
+
+      if (reconciliation.keyChangedRemotely) {
+        applyKeyToControls(reconciliation.key, false);
+      }
+
+      lastSyncedNotes = incomingNotesContent;
+      lastSyncedNotesBpm = incomingNotesBpm;
+      lastSyncedNotesKey = incomingNotesKey;
+
+      if (activeProject.workspace?.notes) {
+        activeProject.workspace.notes.content = reconciliation.content;
+        activeProject.workspace.notes.bpm = reconciliation.bpm;
+        activeProject.workspace.notes.key = reconciliation.key;
         if (data.workspace.notes?.revision !== undefined) {
           activeProject.workspace.notes.revision = data.workspace.notes.revision;
         }
       }
-      lastSyncedNotes = incomingNotes;
-      if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
-      setNotesStatus('saving');
-      notesSaveTimeout = setTimeout(() => {
-        notesSaveTimeout = null;
-        void saveNotesWorkspace(mergedNotes, activeProject?.workspace?.notes?.bpm || '', activeProject?.workspace?.notes?.key || '');
-      }, 350);
+
+      const hasLocalRemainingChanges =
+        reconciliation.content !== incomingNotesContent ||
+        reconciliation.bpm !== incomingNotesBpm ||
+        reconciliation.key !== incomingNotesKey;
+
+      if (hasLocalRemainingChanges) {
+        if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
+        setNotesStatus('saving');
+        notesSaveTimeout = setTimeout(() => {
+          notesSaveTimeout = null;
+          void saveNotesWorkspace(reconciliation.content, reconciliation.bpm, reconciliation.key);
+        }, 350);
+      } else {
+        setNotesStatus('saved');
+      }
     }
   } else {
     if (data.workspace.notes) {
-      if (activeProject.workspace.notes) {
+      if (activeProject.workspace?.notes) {
         activeProject.workspace.notes = data.workspace.notes;
       }
-      lastSyncedNotes = incomingNotes;
-      if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, incomingNotes);
-      if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, incomingNotes);
+      lastSyncedNotes = incomingNotesContent;
+      lastSyncedNotesBpm = incomingNotesBpm;
+      lastSyncedNotesKey = incomingNotesKey;
+
+      const projectNotesInput = $<HTMLTextAreaElement>('project-notes-input');
+      const sessionNotesInput = $<HTMLTextAreaElement>('session-notes-input');
+      if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, incomingNotesContent);
+      if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, incomingNotesContent);
 
       const projectBpm = $<HTMLInputElement>('project-notes-bpm');
       const sessionBpm = $<HTMLInputElement>('session-notes-bpm');
@@ -6581,9 +6793,7 @@ signaling.on('project:workspace:synced', (data: { projectId: string; workspace: 
 
       if (projectBpm && document.activeElement !== projectBpm) projectBpm.value = incomingBpm;
       if (sessionBpm && document.activeElement !== sessionBpm) sessionBpm.value = incomingBpm;
-      if (activeProject.workspace.notes) activeProject.workspace.notes.bpm = incomingBpm;
 
-      if (activeProject.workspace.notes) activeProject.workspace.notes.key = incomingKey;
       applyKeyToControls(incomingKey, false);
 
       setNotesStatus('saved');
