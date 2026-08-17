@@ -1312,6 +1312,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       if (!limiter.consume('session')) return ack(failure('BAD_REQUEST', 'Too many requests. Please slow down.'));
       const parsed = joinMeetingSchema.safeParse(raw);
       if (!parsed.success) return ack(failure('BAD_REQUEST', 'Invalid session code or participant'));
+      if (socketData.code) return ack(failure('BAD_REQUEST', 'Already in a session'));
       
       const authResult = authorizeSessionAccess(userStore, parsed.data.authToken, config, false);
       if (!authResult.ok) {

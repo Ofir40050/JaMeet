@@ -1,4 +1,5 @@
 import type { AddressInfo } from 'node:net';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -6274,6 +6275,132 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       expect(finalProject.activities.length).toBe(initialActivitiesCount);
 
       socket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('prevents a socket from joining another meeting while in an active or waiting session, unless cleanly left', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-socket-multi-session-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-multi-session'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const host1 = await createTestAccount(url, 'host_one', 'beta', userStore);
+      const host2 = await createTestAccount(url, 'host_two', 'beta', userStore);
+      const guest = await createTestAccount(url, 'guest_user', 'beta', userStore);
+
+      const hostSocket1 = await connected(url);
+      const hostSocket2 = await connected(url);
+      const guestSocket = await connected(url);
+
+      const host1PartId = randomUUID();
+      const host2PartId = randomUUID();
+      const guestPartId = randomUUID();
+
+      // 1. Host 1 creates Room 1 (with waiting room enabled)
+      const room1Created = await ack(hostSocket1, 'meeting:create', {
+        participantId: host1PartId,
+        authToken: host1.token,
+        waitingRoomEnabled: true,
+        media
+      });
+      expect(room1Created.ok).toBe(true);
+      const code1 = room1Created.code;
+
+      // 2. Host 2 creates Room 2
+      const room2Created = await ack(hostSocket2, 'meeting:create', {
+        participantId: host2PartId,
+        authToken: host2.token,
+        waitingRoomEnabled: false,
+        media
+      });
+      expect(room2Created.ok).toBe(true);
+      const code2 = room2Created.code;
+
+      // 3. Guest joins Room 1 waiting room
+      const guestJoinRoom1 = await ack(guestSocket, 'meeting:join', {
+        code: code1,
+        participantId: guestPartId,
+        authToken: guest.token,
+        media
+      });
+      expect(guestJoinRoom1.ok).toBe(true);
+      expect(guestJoinRoom1.waiting).toBe(true);
+
+      // 4. Guest attempts to join Room 2 while still waiting in Room 1 -> REJECTED
+      const guestAttemptRoom2 = await ack(guestSocket, 'meeting:join', {
+        code: code2,
+        participantId: guestPartId,
+        authToken: guest.token,
+        media
+      });
+      expect(guestAttemptRoom2.ok).toBe(false);
+      expect(guestAttemptRoom2.code).toBe('BAD_REQUEST');
+      expect(guestAttemptRoom2.message).toBe('Already in a session');
+
+      // 5. Host 1 admits Guest into Room 1 active session
+      const guestAdmittedPromise = new Promise<any>((resolve) => {
+        guestSocket.once('waiting:admitted', resolve);
+      });
+      const admitRes: any = await ack(hostSocket1, 'meeting:admit', {
+        code: code1,
+        participantId: guestPartId
+      });
+      expect(admitRes.ok).toBe(true);
+      const admittedPayload = await guestAdmittedPromise;
+      expect(admittedPayload.ok).toBe(true);
+
+      // 6. Guest attempts to join Room 2 while active in Room 1 -> REJECTED
+      const guestAttemptRoom2WhileActive = await ack(guestSocket, 'meeting:join', {
+        code: code2,
+        participantId: guestPartId,
+        authToken: guest.token,
+        media
+      });
+      expect(guestAttemptRoom2WhileActive.ok).toBe(false);
+      expect(guestAttemptRoom2WhileActive.code).toBe('BAD_REQUEST');
+      expect(guestAttemptRoom2WhileActive.message).toBe('Already in a session');
+
+      // 7. Host 1 also cannot join Room 2 while hosting Room 1 -> REJECTED
+      const host1AttemptJoinRoom2 = await ack(hostSocket1, 'meeting:join', {
+        code: code2,
+        participantId: host1PartId,
+        authToken: host1.token,
+        media
+      });
+      expect(host1AttemptJoinRoom2.ok).toBe(false);
+      expect(host1AttemptJoinRoom2.code).toBe('BAD_REQUEST');
+      expect(host1AttemptJoinRoom2.message).toBe('Already in a session');
+
+      // 8. Guest cleanly leaves Room 1
+      guestSocket.emit('meeting:leave');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // 9. Guest now joins Room 2 on the same socket connection -> SUCCEEDS
+      const guestJoinRoom2Clean = await ack(guestSocket, 'meeting:join', {
+        code: code2,
+        participantId: guestPartId,
+        authToken: guest.token,
+        media
+      });
+      expect(guestJoinRoom2Clean.ok).toBe(true);
+      expect(guestJoinRoom2Clean.code).toBe(code2);
+      expect(guestJoinRoom2Clean.role).toBe('guest');
+
+      guestSocket.disconnect();
+      hostSocket1.disconnect();
+      hostSocket2.disconnect();
       await app.close();
     } finally {
       if (fs.existsSync(tmpDataDir)) {
