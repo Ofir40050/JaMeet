@@ -954,6 +954,10 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
   function revalidateActiveSessions(now: number = Date.now()) {
     for (const room of Array.from(rooms.rooms.values())) {
+      if (rooms.isExpired(room, now)) {
+        rooms.close(room.code);
+        continue;
+      }
       ensureRoomProjectAccess(room);
 
       // 1. Validate host access

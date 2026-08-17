@@ -41,6 +41,36 @@ export class RoomStore {
     return result;
   }
 
+  isOccupied(room: Room): boolean {
+    for (const p of room.participants.values()) {
+      if (p.socketId !== null || p.timer !== undefined) return true;
+    }
+    for (const p of room.waitingParticipants.values()) {
+      if (p.socketId !== null || p.timer !== undefined) return true;
+    }
+    return false;
+  }
+
+  isExpired(room: Room, now: number = Date.now()): boolean {
+    if (this.isOccupied(room)) return false;
+    return room.expiresAt <= now;
+  }
+
+  touch(room: Room, now: number = Date.now()): void {
+    room.expiresAt = now + this.ttlMs;
+  }
+
+  cleanupExpiredRooms(now: number = Date.now()): number {
+    let cleaned = 0;
+    for (const [code, room] of Array.from(this.rooms.entries())) {
+      if (this.isExpired(room, now)) {
+        this.close(code);
+        cleaned++;
+      }
+    }
+    return cleaned;
+  }
+
   create(
     participantId: string,
     socketId: string,
@@ -54,10 +84,11 @@ export class RoomStore {
     let code = this.code();
     while (this.rooms.has(code)) code = this.code();
     const hostParticipant: Participant = { id: participantId, role: 'host', socketId, media, identity, reconnectToken, authToken };
+    const now = Date.now();
     const room: Room = {
       sessionId: randomUUID(),
       code,
-      startedAt: Date.now(),
+      startedAt: now,
       projectId,
       waitingRoomEnabled: Boolean(waitingRoomEnabled),
       isLocked: false,
@@ -67,7 +98,7 @@ export class RoomStore {
       allJoinedParticipants: new Map([[participantId, identity]]),
       chatMessagesCount: 0,
       events: [],
-      expiresAt: Date.now() + this.ttlMs
+      expiresAt: now + this.ttlMs
     };
     this.rooms.set(code, room);
     return room;
@@ -86,9 +117,13 @@ export class RoomStore {
     | { ok: true; room: Room; participant: Participant; waiting: true; reconnected?: boolean }
     | { ok: false; reason: 'INVALID_CODE' | 'ROOM_FULL' | 'ROOM_LOCKED' | 'UNAUTHORIZED' } {
     const room = this.rooms.get(code);
-    if (!room || room.expiresAt < Date.now()) {
+    if (!room || this.isExpired(room)) {
       if (room) this.close(code);
       return { ok: false, reason: 'INVALID_CODE' };
+    }
+
+    if (this.isOccupied(room)) {
+      this.touch(room);
     }
     const existing = room.participants.get(participantId);
     if (existing) {
@@ -116,6 +151,7 @@ export class RoomStore {
         existing.authToken = authToken;
       }
       room.allJoinedParticipants.set(participantId, existing.identity);
+      this.touch(room);
       return { ok: true, room, participant: existing, reconnected: true, waiting: false };
     }
 
@@ -142,6 +178,7 @@ export class RoomStore {
           room.participants.set(participantId, existingAuthParticipant);
         }
         room.allJoinedParticipants.set(participantId, existingAuthParticipant.identity);
+        this.touch(room);
         return { ok: true, room, participant: existingAuthParticipant, reconnected: true, waiting: false };
       }
     }
@@ -168,6 +205,7 @@ export class RoomStore {
       if (authToken) {
         existingWaiting.authToken = authToken;
       }
+      this.touch(room);
       return { ok: true, room, participant: existingWaiting, reconnected: true, waiting: true };
     }
 
@@ -189,6 +227,7 @@ export class RoomStore {
           existingAuthWaiting.id = participantId;
           room.waitingParticipants.set(participantId, existingAuthWaiting);
         }
+        this.touch(room);
         return { ok: true, room, participant: existingAuthWaiting, reconnected: true, waiting: true };
       }
     }
@@ -205,6 +244,7 @@ export class RoomStore {
       }
       const waitingParticipant: Participant = { id: participantId, role: 'guest', socketId, media, identity, reconnectToken: newReconnectToken, authToken };
       room.waitingParticipants.set(participantId, waitingParticipant);
+      this.touch(room);
       return { ok: true, room, participant: waitingParticipant, reconnected: false, waiting: true };
     }
 
@@ -212,6 +252,7 @@ export class RoomStore {
     const participant: Participant = { id: participantId, role: 'guest', socketId, media, identity, reconnectToken: newReconnectToken, authToken };
     room.participants.set(participantId, participant);
     room.allJoinedParticipants.set(participantId, identity);
+    this.touch(room);
     return { ok: true, room, participant, reconnected: false, waiting: false };
   }
 
@@ -232,17 +273,24 @@ export class RoomStore {
     }
     room.participants.set(participantId, waiting);
     room.allJoinedParticipants.set(participantId, waiting.identity);
+    this.touch(room);
     return { ok: true, room, participant: waiting };
   }
 
   incrementChat(code: string): void {
     const room = this.rooms.get(code);
-    if (room) room.chatMessagesCount = (room.chatMessagesCount || 0) + 1;
+    if (room) {
+      room.chatMessagesCount = (room.chatMessagesCount || 0) + 1;
+      this.touch(room);
+    }
   }
 
   recordActivity(code: string, event: SessionSummaryEvent): void {
     const room = this.rooms.get(code);
-    if (room) room.events.push(event);
+    if (room) {
+      room.events.push(event);
+      this.touch(room);
+    }
   }
 
   removeWaiting(code: string, participantId: string, socketId?: string): boolean {
@@ -252,7 +300,9 @@ export class RoomStore {
     if (!waiting) return false;
     if (socketId && waiting.socketId && waiting.socketId !== socketId) return false;
     if (waiting.timer) clearTimeout(waiting.timer);
-    return room.waitingParticipants.delete(participantId);
+    const removed = room.waitingParticipants.delete(participantId);
+    this.touch(room);
+    return removed;
   }
 
   disconnectWaiting(code: string, participantId: string, onExpired?: () => void, socketId?: string): void {
@@ -262,10 +312,12 @@ export class RoomStore {
     if (socketId && waiting.socketId && waiting.socketId !== socketId) return;
     waiting.socketId = null;
     if (waiting.timer) clearTimeout(waiting.timer);
+    this.touch(room);
     waiting.timer = setTimeout(() => {
       const current = room.waitingParticipants.get(participantId);
       if (!current || (socketId ? current.socketId !== null : current.socketId)) return;
       room.waitingParticipants.delete(participantId);
+      this.touch(room);
       onExpired?.();
     }, this.graceMs);
   }
@@ -274,6 +326,7 @@ export class RoomStore {
     const room = this.rooms.get(code);
     if (!room) return { ok: false, reason: 'NOT_FOUND' };
     room.isLocked = Boolean(locked);
+    this.touch(room);
     return { ok: true, room };
   }
 
@@ -288,6 +341,7 @@ export class RoomStore {
 
     if (target.timer) clearTimeout(target.timer);
     room.participants.delete(participantId);
+    this.touch(room);
     const peer = this.peer(room, participantId);
     return { ok: true, room, removed: target, peer };
   }
@@ -303,12 +357,16 @@ export class RoomStore {
     if (socketId && participant.socketId && participant.socketId !== socketId) return;
     participant.socketId = null;
     if (participant.timer) clearTimeout(participant.timer);
+    this.touch(room);
     participant.timer = setTimeout(() => {
       const current = room.participants.get(participantId);
       if (!current || (socketId ? current.socketId !== null : current.socketId)) return;
       const peer = this.peer(room, participantId);
       if (current.role === 'host') this.close(code);
-      else room.participants.delete(participantId);
+      else {
+        room.participants.delete(participantId);
+        this.touch(room);
+      }
       onExpired(current.role, peer, current);
     }, this.graceMs);
   }
@@ -321,7 +379,10 @@ export class RoomStore {
     if (participant.timer) clearTimeout(participant.timer);
     const peer = this.peer(room, participantId);
     if (participant.role === 'host') this.close(code);
-    else room.participants.delete(participantId);
+    else {
+      room.participants.delete(participantId);
+      this.touch(room);
+    }
     return { role: participant.role, peer, participant };
   }
 

@@ -276,4 +276,64 @@ describe('room lifecycle', () => {
     expect(reconnectRes.ok).toBe(true);
     expect(room.waitingParticipants.size).toBe(MAX_WAITING_PARTICIPANTS);
   });
+
+  it('keeps active occupied meetings valid indefinitely past empty room TTL', () => {
+    vi.useFakeTimers();
+    const store = new RoomStore(30_000, 60_000); // 1-minute empty room TTL
+    const hostUser = { id: 'host-acc', displayName: 'Host', isGuest: false, isHost: true, avatarColor: '#06b6d4' };
+    const room = store.create('host-part', 'socket-host', media, hostUser);
+
+    // Meeting runs for 3 hours (180 minutes, far beyond 1-minute empty room TTL)
+    vi.advanceTimersByTime(3 * 60 * 60 * 1000);
+
+    // Host is still connected -> room must NOT be expired
+    expect(store.isExpired(room)).toBe(false);
+    expect(store.rooms.has(room.code)).toBe(true);
+
+    // Guest joins after 3 hours -> succeeds!
+    const guestUser = { id: 'guest-acc', displayName: 'Guest Musician', isGuest: true, isHost: false, avatarColor: '#64748b' };
+    const joinRes = store.join(room.code, 'guest-part', 'socket-guest', media, guestUser);
+    expect(joinRes.ok).toBe(true);
+    expect(room.participants.size).toBe(2);
+
+    // Advance another 2 hours
+    vi.advanceTimersByTime(2 * 60 * 60 * 1000);
+
+    // Host reconnects after 5 total hours -> succeeds!
+    const reconnectRes = store.join(room.code, 'host-part', 'socket-host-new', media, hostUser);
+    expect(reconnectRes.ok).toBe(true);
+    expect(room.participants.get('host-part')?.socketId).toBe('socket-host-new');
+  });
+
+  it('expires empty rooms once emptyRoomTTL has elapsed without active participants', () => {
+    vi.useFakeTimers();
+    const store = new RoomStore(30_000, 60_000); // 1-minute empty room TTL
+    const hostUser = { id: 'host-acc', displayName: 'Host', isGuest: false, isHost: true, avatarColor: '#06b6d4' };
+    const room = store.create('host-part', 'socket-host', media, hostUser);
+
+    // Guest joins
+    const guestUser = { id: 'guest-acc', displayName: 'Guest Musician', isGuest: true, isHost: false, avatarColor: '#64748b' };
+    store.join(room.code, 'guest-part', 'socket-guest', media, guestUser);
+
+    // Both leave cleanly, but room was left open without host closing it explicitly (or mock empty state)
+    room.participants.clear();
+    room.waitingParticipants.clear();
+    store.touch(room); // empty room TTL starts now
+
+    expect(store.isOccupied(room)).toBe(false);
+    expect(store.isExpired(room)).toBe(false);
+
+    // Advance 30 seconds -> still within 60-second empty room TTL
+    vi.advanceTimersByTime(30_000);
+    expect(store.isExpired(room)).toBe(false);
+
+    // Advance another 35 seconds -> total 65 seconds elapsed since room became empty
+    vi.advanceTimersByTime(35_000);
+    expect(store.isExpired(room)).toBe(true);
+
+    // Attempting to join expired empty room returns INVALID_CODE and closes room
+    const attemptJoin = store.join(room.code, 'new-guest', 'socket-new', media, guestUser);
+    expect(attemptJoin).toEqual({ ok: false, reason: 'INVALID_CODE' });
+    expect(store.rooms.has(room.code)).toBe(false);
+  });
 });
