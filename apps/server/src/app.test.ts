@@ -5060,6 +5060,79 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('maps task_assigned Project Activity to Task Session Summary events during active linked sessions', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-assign-summary-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-task-assign-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const hostAuth = await createTestAccount(url, 'host_task_assign', 'beta', userStore);
+      const collabAuth = await createTestAccount(url, 'collab_task_assign', 'beta', userStore);
+
+      const project = projectStore.createProject(hostAuth.user, { name: 'Task Assign Summary Project' });
+      projectStore.addCollaborator(project.id, hostAuth.user.id, collabAuth.user, 'editor');
+
+      // Populate an initial task
+      projectStore.updateWorkspace(project.id, hostAuth.user, {
+        tasks: {
+          tasks: [{ id: 'task-lead-vocals', title: 'Record Lead Vocals', status: 'todo' }]
+        }
+      });
+
+      // Host creates meeting linked to project
+      const hostSocket = await connected(url);
+      const createAck: any = await ack(hostSocket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        projectId: project.id,
+        authToken: hostAuth.token,
+        media
+      });
+      expect(createAck.ok).toBe(true);
+
+      // Mutate workspace during active linked session: assign task to collaborator
+      const updateAck: any = await ack(hostSocket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: hostAuth.token,
+        updates: {
+          tasks: {
+            tasks: [{ id: 'task-lead-vocals', title: 'Record Lead Vocals', status: 'todo', assigneeId: collabAuth.user.id }]
+          }
+        }
+      });
+      expect(updateAck.ok).toBe(true);
+
+      // Host leaves meeting
+      hostSocket.emit('meeting:leave');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify host's finalized session summary contains the task_assigned event
+      const history = userStore.getSessionHistory(hostAuth.user.id);
+      expect(history.length).toBe(1);
+      const summary = history[0]?.summary;
+      expect(summary).toBeDefined();
+      expect(summary?.events.length).toBe(1);
+      const event = summary?.events[0];
+      expect(event?.category).toBe('task');
+      expect(event?.action).toBe('assigned');
+      expect(event?.description).toContain('Record Lead Vocals');
+      expect(event?.description).toContain(collabAuth.user.displayName);
+
+      hostSocket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 
