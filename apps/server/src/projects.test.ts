@@ -1599,6 +1599,23 @@ describe('ProjectStore & Workspace', () => {
         notes: { content: '' }
       });
       expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterContentClear);
+
+      // Re-populate notes
+      store.updateWorkspace(project.id, owner, {
+        notes: { content: 'Outro chords' }
+      });
+      const pOutro = store.getProject(project.id, owner.id);
+      expect(pOutro?.activities[0].type).toBe('notes_edited');
+      expect(pOutro?.activities[0].summary).toContain('updated Project Notes');
+
+      // Update that differs ONLY by trailing whitespace should record updated activity
+      store.updateWorkspace(project.id, owner, {
+        notes: { content: 'Outro chords\n' }
+      });
+      const pOutroWs = store.getProject(project.id, owner.id);
+      expect(pOutroWs?.workspace.notes.content).toBe('Outro chords\n');
+      expect(pOutroWs?.activities[0].type).toBe('notes_edited');
+      expect(pOutroWs?.activities[0].summary).toContain('updated Project Notes');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

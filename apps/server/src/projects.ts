@@ -678,26 +678,26 @@ export class ProjectStore {
           );
         }
       }
-      const normalizedOldContent = oldContent ? oldContent.trim() : '';
-      const normalizedNewContent = updates.notes.content !== undefined ? (updates.notes.content ? updates.notes.content.trim() : '') : undefined;
+      if (updates.notes.content !== undefined) {
+        const isOldEmpty = (oldContent ?? '').trim().length === 0;
+        const isNewEmpty = updates.notes.content.trim().length === 0;
 
-      if (normalizedNewContent !== undefined && normalizedNewContent !== normalizedOldContent) {
-        if (normalizedNewContent) {
-          this.recordActivity(
-            projectId,
-            user,
-            'notes_edited',
-            `${user.displayName} updated Project Notes`,
-            'Project Notes',
-            undefined,
-            false
-          );
-        } else if (normalizedOldContent) {
+        if (!isOldEmpty && isNewEmpty) {
           this.recordActivity(
             projectId,
             user,
             'notes_edited',
             `${user.displayName} cleared Project Notes`,
+            'Project Notes',
+            undefined,
+            false
+          );
+        } else if (!isNewEmpty && updates.notes.content !== oldContent) {
+          this.recordActivity(
+            projectId,
+            user,
+            'notes_edited',
+            `${user.displayName} updated Project Notes`,
             'Project Notes',
             undefined,
             false
