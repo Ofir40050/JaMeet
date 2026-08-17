@@ -2923,6 +2923,82 @@ describe('ProjectStore & Workspace', () => {
       expect(fs.existsSync(legacyProjectsFile)).toBe(false);
       expect(fs.existsSync(`${legacyProjectsFile}.migrated.bak`)).toBe(true);
     });
+
+    it('fails initialization and stops startup when an authoritative per-project file is corrupted or unreadable', async () => {
+      const corruptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-corrupt-per-proj-'));
+      const projectsSubdir = path.join(corruptDir, 'projects');
+      fs.mkdirSync(projectsSubdir, { recursive: true });
+
+      const corruptFile = path.join(projectsSubdir, 'proj-broken.json');
+      fs.writeFileSync(corruptFile, '{"name": "Broken project unclosed json...', 'utf-8');
+
+      // Instantiating ProjectStore must fail closed and throw with clear error
+      expect(() => new ProjectStore(corruptDir)).toThrow(/Failed to parse project file/i);
+
+      // Verify the corrupted file was preserved untouched
+      expect(fs.readFileSync(corruptFile, 'utf-8')).toBe('{"name": "Broken project unclosed json...');
+    });
+
+    it('fails initialization when an authoritative per-project file has invalid structure or missing id', async () => {
+      const invalidDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-invalid-per-proj-'));
+      const projectsSubdir = path.join(invalidDir, 'projects');
+      fs.mkdirSync(projectsSubdir, { recursive: true });
+
+      const invalidFile = path.join(projectsSubdir, 'proj-no-id.json');
+      fs.writeFileSync(invalidFile, JSON.stringify({ name: 'Project without id', ownerId: 'user-1' }), 'utf-8');
+
+      // Instantiating ProjectStore must throw on missing id
+      expect(() => new ProjectStore(invalidDir)).toThrow(/missing or invalid 'id' field/i);
+    });
+
+    it('does not overwrite a corrupt existing per-project file with a legacy consolidated copy and halts startup', async () => {
+      const mixedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-corrupt-mixed-'));
+      const projectsSubdir = path.join(mixedDir, 'projects');
+      fs.mkdirSync(projectsSubdir, { recursive: true });
+
+      const corruptFile = path.join(projectsSubdir, 'proj-1.json');
+      const corruptText = '{ corrupt json content...';
+      fs.writeFileSync(corruptFile, corruptText, 'utf-8');
+
+      const legacyProjectsFile = path.join(mixedDir, 'jameet-projects.json');
+      const legacyData = {
+        version: 1,
+        projects: [
+          {
+            id: 'proj-1',
+            name: 'Stale Project 1',
+            ownerId: mockOwner.id,
+            ownerDisplayName: mockOwner.displayName,
+            ownerUsername: mockOwner.username,
+            ownerAvatarColor: mockOwner.avatarColor,
+            collaborators: [],
+            sessions: [],
+            sessionCount: 0,
+            workspace: {
+              lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [], content: '', updatedAt: 1000 },
+              notes: { revision: 1, content: '', updatedAt: 1000 },
+              structure: { revision: 1, sections: [], updatedAt: 1000 },
+              tasks: { revision: 1, tasks: [], updatedAt: 1000 }
+            },
+            activities: [],
+            createdAt: 1000,
+            updatedAt: 1000,
+            lastActivityAt: 1000
+          }
+        ]
+      };
+      fs.writeFileSync(legacyProjectsFile, JSON.stringify(legacyData, null, 2), 'utf-8');
+
+      // Initialization must fail closed and halt
+      expect(() => new ProjectStore(mixedDir)).toThrow(/Failed to parse project file/i);
+
+      // Corrupt per-project file must NOT be overwritten
+      expect(fs.readFileSync(corruptFile, 'utf-8')).toBe(corruptText);
+
+      // Legacy datastore must NOT be archived
+      expect(fs.existsSync(legacyProjectsFile)).toBe(true);
+      expect(fs.existsSync(`${legacyProjectsFile}.migrated.bak`)).toBe(false);
+    });
   });
 });
 

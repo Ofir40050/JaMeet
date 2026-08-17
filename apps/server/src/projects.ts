@@ -193,25 +193,40 @@ export class ProjectStore {
     // 3. Load standalone authoritative per-project files from projectsDir if present
     const existingPerProjectIds = new Set<string>();
     if (fs.existsSync(this.projectsDir)) {
+      let files: string[] = [];
       try {
-        const files = fs.readdirSync(this.projectsDir);
-        for (const file of files) {
-          if (!file.endsWith('.json') || file.includes('.tmp') || file.includes('.corrupted')) continue;
-          const filePath = path.join(this.projectsDir, file);
-          try {
-            const raw = fs.readFileSync(filePath, 'utf-8');
-            const p = JSON.parse(raw) as Project;
-            if (p && p.id) {
-              this.normalizeLoadedProject(p);
-              this.projects.set(p.id, p);
-              existingPerProjectIds.add(p.id);
-            }
-          } catch {
-            // ignore corrupt individual file during initial load
-          }
+        files = fs.readdirSync(this.projectsDir);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`Failed to read projects directory ${this.projectsDir}: ${message}`);
+      }
+
+      for (const file of files) {
+        if (!file.endsWith('.json') || file.includes('.tmp')) continue;
+        const filePath = path.join(this.projectsDir, file);
+        let raw: string;
+        try {
+          raw = fs.readFileSync(filePath, 'utf-8');
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new Error(`Failed to read project file ${filePath}: ${message}`);
         }
-      } catch {
-        // ignore
+
+        let p: Project;
+        try {
+          p = JSON.parse(raw) as Project;
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new Error(`Failed to parse project file ${filePath}: ${message}`);
+        }
+
+        if (!p || typeof p !== 'object' || Array.isArray(p) || typeof p.id !== 'string' || !p.id.trim()) {
+          throw new Error(`Invalid project structure in ${filePath}: missing or invalid 'id' field`);
+        }
+
+        this.normalizeLoadedProject(p);
+        this.projects.set(p.id, p);
+        existingPerProjectIds.add(p.id);
       }
     }
 
