@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import vm from 'node:vm';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { UserStore } from './auth.js';
@@ -136,6 +137,15 @@ describe('JaMeet Secure Admin Panel', () => {
       expect(res.body).toContain('admin-secret-input');
       expect(res.body).toContain('admin-login-submit');
 
+      const loginScriptMatches = res.body.match(/<script[\s\S]*?>([\s\S]*?)<\/script>/gi) || [];
+      expect(loginScriptMatches.length).toBeGreaterThan(0);
+      for (const tag of loginScriptMatches) {
+        const jsCode = tag.replace(/<script[\s\S]*?>/i, '').replace(/<\/script>/i, '');
+        expect(() => {
+          new vm.Script(jsCode);
+        }).not.toThrow();
+      }
+
       await app.close();
     });
 
@@ -221,6 +231,16 @@ describe('JaMeet Secure Admin Panel', () => {
       expect(resDash.body).toContain('JaMeet Admin');
       expect(resDash.body).toContain('users-table');
       expect(resDash.body).toContain('btn-logout');
+
+      // Verify embedded browser script is syntactically valid JavaScript
+      const scriptMatches = resDash.body.match(/<script[\s\S]*?>([\s\S]*?)<\/script>/gi) || [];
+      expect(scriptMatches.length).toBeGreaterThan(0);
+      for (const tag of scriptMatches) {
+        const jsCode = tag.replace(/<script[\s\S]*?>/i, '').replace(/<\/script>/i, '');
+        expect(() => {
+          new vm.Script(jsCode);
+        }).not.toThrow();
+      }
 
       await app.close();
     });
