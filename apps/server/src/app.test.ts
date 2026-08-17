@@ -5411,6 +5411,79 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('maps task_unassigned Project Activity to Task Session Summary events during active linked sessions', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-unassign-summary-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-task-unassign-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const hostAuth = await createTestAccount(url, 'host_task_unassign', 'beta', userStore);
+      const collabAuth = await createTestAccount(url, 'collab_task_unassign', 'beta', userStore);
+
+      const project = projectStore.createProject(hostAuth.user, { name: 'Task Unassign Summary Project' });
+      projectStore.addCollaborator(project.id, hostAuth.user.id, collabAuth.user, 'editor');
+
+      // Populate an assigned task
+      projectStore.updateWorkspace(project.id, hostAuth.user, {
+        tasks: {
+          tasks: [{ id: 'task-guitar-solo', title: 'Record Guitar Solo', status: 'todo', assigneeId: collabAuth.user.id }]
+        }
+      });
+
+      // Host creates meeting linked to project
+      const hostSocket = await connected(url);
+      const createAck: any = await ack(hostSocket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        projectId: project.id,
+        authToken: hostAuth.token,
+        media
+      });
+      expect(createAck.ok).toBe(true);
+
+      // Mutate workspace during active linked session: unassign task
+      const updateAck: any = await ack(hostSocket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: hostAuth.token,
+        updates: {
+          tasks: {
+            tasks: [{ id: 'task-guitar-solo', title: 'Record Guitar Solo', status: 'todo', assigneeId: undefined }]
+          }
+        }
+      });
+      expect(updateAck.ok).toBe(true);
+
+      // Host leaves meeting
+      hostSocket.emit('meeting:leave');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify host's finalized session summary contains the task_unassigned event with action 'unassigned'
+      const history = userStore.getSessionHistory(hostAuth.user.id);
+      expect(history.length).toBe(1);
+      const summary = history[0]?.summary;
+      expect(summary).toBeDefined();
+      expect(summary?.events.length).toBe(1);
+
+      const event = summary?.events[0];
+      expect(event?.category).toBe('task');
+      expect(event?.action).toBe('unassigned');
+      expect(event?.description).toContain('Record Guitar Solo');
+
+      hostSocket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

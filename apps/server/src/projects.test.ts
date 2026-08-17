@@ -1620,6 +1620,106 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('records task_unassigned activity when task changes from assigned to unassigned', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-unassign-test-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'usr_owner_unassign',
+        username: 'owner_unassign',
+        displayName: 'Owner User',
+        email: 'owner_unassign@test.com',
+        avatarColor: '#2563eb',
+        createdAt: Date.now()
+      };
+      const collab: UserProfile = {
+        id: 'usr_collab_unassign',
+        username: 'collab_unassign',
+        displayName: 'Collab User',
+        email: 'collab_unassign@test.com',
+        avatarColor: '#10b981',
+        createdAt: Date.now()
+      };
+
+      const project = store.createProject(owner, { name: 'Task Unassign Project' });
+      store.addCollaborator(project.id, owner.id, collab, 'editor');
+
+      // 1. Create an assigned task
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Record Bass', status: 'todo', assigneeId: collab.id }
+          ]
+        }
+      });
+      const p1 = store.getProject(project.id, owner.id);
+      expect(p1?.activities[0].type).toBe('task_created');
+
+      // 2. Unassign task
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Record Bass', status: 'todo', assigneeId: undefined }
+          ]
+        }
+      });
+      const p2 = store.getProject(project.id, owner.id);
+      expect(p2?.workspace.tasks.tasks[0].assigneeId).toBeUndefined();
+      expect(p2?.workspace.tasks.tasks[0].assigneeName).toBeUndefined();
+      expect(p2?.activities[0].type).toBe('task_unassigned');
+      expect(p2?.activities[0].summary).toContain('unassigned "Record Bass"');
+      expect(p2?.activities[0].userId).toBe(owner.id);
+
+      const countAfterUnassign = p2?.activities.length || 0;
+
+      // 3. Updating an already unassigned task without assigning does not record unassigned activity
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Record Bass', status: 'todo' }
+          ]
+        }
+      });
+      expect(store.getProject(project.id, owner.id)?.activities.length).toBe(countAfterUnassign);
+
+      // 4. Reassign task to collaborator -> records task_assigned
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Record Bass', status: 'todo', assigneeId: collab.id }
+          ]
+        }
+      });
+      const pReassigned = store.getProject(project.id, owner.id);
+      expect(pReassigned?.activities[0].type).toBe('task_assigned');
+      expect(pReassigned?.activities[0].summary).toContain('assigned "Record Bass" to Collab User');
+
+      // 5. Unassign and change status to in_progress in same update -> unassigned takes priority over status change
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Record Bass', status: 'in_progress', assigneeId: undefined }
+          ]
+        }
+      });
+      const pUnassignStatus = store.getProject(project.id, owner.id);
+      expect(pUnassignStatus?.activities[0].type).toBe('task_unassigned');
+
+      // 6. Complete task while also unassigning -> completed takes top priority
+      store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Record Bass', status: 'done', assigneeId: undefined }
+          ]
+        }
+      });
+      const pComplete = store.getProject(project.id, owner.id);
+      expect(pComplete?.activities[0].type).toBe('task_completed');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

@@ -92,6 +92,7 @@ describe('Project Activity Engine & Helpers', () => {
     expect(getActivityIconSvg('notes_key_changed')).toContain('<svg');
     expect(getActivityIconSvg('structure_changed')).toContain('<svg');
     expect(getActivityIconSvg('task_completed')).toContain('<svg');
+    expect(getActivityIconSvg('task_unassigned')).toContain('<svg');
     expect(getActivityIconSvg('collaborator_added')).toContain('<svg');
     expect(getActivityIconSvg('session_started')).toContain('<svg');
   });

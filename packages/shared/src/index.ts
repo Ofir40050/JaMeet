@@ -324,6 +324,7 @@ export const projectActivityTypeSchema = z.enum([
   'structure_changed',
   'task_created',
   'task_assigned',
+  'task_unassigned',
   'task_status_changed',
   'task_completed',
   'task_reopened',

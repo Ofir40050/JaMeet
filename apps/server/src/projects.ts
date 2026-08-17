@@ -774,6 +774,16 @@ export class ProjectStore {
                 undefined,
                 false
               );
+            } else if (oldT.assigneeId && !t.assigneeId) {
+              this.recordActivity(
+                projectId,
+                user,
+                'task_unassigned',
+                `${user.displayName} unassigned "${t.title}"`,
+                t.title,
+                undefined,
+                false
+              );
             } else if (
               (oldT.status === 'todo' && t.status === 'in_progress') ||
               (oldT.status === 'in_progress' && t.status === 'todo')
