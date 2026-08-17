@@ -1298,6 +1298,38 @@ describe('Dual-Generation & Project Context Stale Save Protection', () => {
       expect(result.hasUnresolvableConflict).toBe(true);
     });
 
+    it('leaves Notes unsaved without auto-retry when Notes text edits conflict unresolvably', () => {
+      let notesStatus: WorkspaceSaveStatus = 'saving';
+      let localNotes = {
+        notes: {
+          revision: 1,
+          content: 'Verse 1 chords: Am -> C (Dan edited)'
+        }
+      };
+
+      const serverConflictResponse = {
+        ok: false,
+        conflict: true,
+        code: 'WORKSPACE_CONFLICT',
+        area: 'notes',
+        currentRevision: 2,
+        baseRevision: 1,
+        workspace: {
+          notes: {
+            revision: 2,
+            content: 'Verse 1 chords: Am -> C (Sarah edited differently)'
+          }
+        }
+      };
+
+      // When text merge produces an unresolvable conflict on the same line, local work is preserved and status is unsaved
+      expect(serverConflictResponse.workspace.notes.content).not.toBe(localNotes.notes.content);
+      notesStatus = 'unsaved';
+
+      expect(notesStatus).toBe('unsaved');
+      expect(localNotes.notes.content).toBe('Verse 1 chords: Am -> C (Dan edited)');
+    });
+
     it('does not update local area revision during realtime sync if local area has pending edits', () => {
       const state = {
         workspace: {

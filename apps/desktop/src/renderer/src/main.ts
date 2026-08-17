@@ -4810,54 +4810,208 @@ function applyTextareaUpdatePreservingCursor(
   }
 }
 
+interface Change {
+  baseStart: number;
+  baseEnd: number;
+  lines: string[];
+}
+
+function computeLcs(a: string[], b: string[]): Array<{ aIdx: number; bIdx: number }> {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  const matches: Array<{ aIdx: number; bIdx: number }> = [];
+  let i = m, j = n;
+  while (i > 0 && j > 0) {
+    if (a[i - 1] === b[j - 1]) {
+      matches.push({ aIdx: i - 1, bIdx: j - 1 });
+      i--;
+      j--;
+    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+  matches.reverse();
+  return matches;
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function getChanges(base: string[], target: string[]): Change[] {
+  const matches = computeLcs(base, target);
+  const changes: Change[] = [];
+  let lastBase = 0;
+  let lastTarget = 0;
+
+  for (const m of matches) {
+    if (m.aIdx > lastBase || m.bIdx > lastTarget) {
+      changes.push({
+        baseStart: lastBase,
+        baseEnd: m.aIdx,
+        lines: target.slice(lastTarget, m.bIdx)
+      });
+    }
+    lastBase = m.aIdx + 1;
+    lastTarget = m.bIdx + 1;
+  }
+
+  if (lastBase < base.length || lastTarget < target.length) {
+    changes.push({
+      baseStart: lastBase,
+      baseEnd: base.length,
+      lines: target.slice(lastTarget)
+    });
+  }
+
+  return changes;
+}
+
+function mergeIntervals(changesA: Change[], changesB: Change[], baseLength: number): Array<{ start: number; end: number }> {
+  const allIntervals: Array<{ start: number; end: number }> = [];
+  for (const c of changesA) allIntervals.push({ start: c.baseStart, end: c.baseEnd });
+  for (const c of changesB) allIntervals.push({ start: c.baseStart, end: c.baseEnd });
+
+  if (allIntervals.length === 0) return [];
+
+  allIntervals.sort((x, y) => x.start - y.start || x.end - y.end);
+
+  const merged: Array<{ start: number; end: number }> = [];
+  let curr = { ...allIntervals[0] };
+
+  for (let i = 1; i < allIntervals.length; i++) {
+    const next = allIntervals[i];
+    if (next.start < curr.end || (next.start === curr.end && (next.start === next.end || curr.start === curr.end || next.start < baseLength))) {
+      curr.end = Math.max(curr.end, next.end);
+    } else {
+      merged.push(curr);
+      curr = { ...next };
+    }
+  }
+  merged.push(curr);
+
+  return merged;
+}
+
+function reconstructSlice(base: string[], changes: Change[], start: number, end: number): string[] {
+  const relevant = changes.filter((c) => c.baseStart >= start && c.baseEnd <= end);
+  if (relevant.length === 0) {
+    return base.slice(start, end);
+  }
+
+  const result: string[] = [];
+  let currBase = start;
+
+  for (const c of relevant) {
+    if (c.baseStart > currBase) {
+      result.push(...base.slice(currBase, c.baseStart));
+    }
+    result.push(...c.lines);
+    currBase = c.baseEnd;
+  }
+
+  if (currBase < end) {
+    result.push(...base.slice(currBase, end));
+  }
+
+  return result;
+}
+
+interface ThreeWayMergeResult {
+  merged: string;
+  hasConflict: boolean;
+}
+
 /**
  * Intelligent 3-way non-destructive line merge for collaborative notes & text
  */
-function threeWayLineMerge(base: string, local: string, remote: string): string {
-  if (local === remote) return local;
-  if (local === base) return remote;
-  if (remote === base) return local;
-
-  if (local.startsWith(base) && base.length > 0) {
-    const appended = local.slice(base.length);
-    return remote + appended;
-  }
-  if (remote.startsWith(base) && base.length > 0) {
-    const appended = remote.slice(base.length);
-    return local + appended;
-  }
+function threeWayLineMergeDetailed(base: string, local: string, remote: string): ThreeWayMergeResult {
+  if (local === remote) return { merged: local, hasConflict: false };
+  if (local === base) return { merged: remote, hasConflict: false };
+  if (remote === base) return { merged: local, hasConflict: false };
 
   const baseLines = base.split('\n');
   const localLines = local.split('\n');
   const remoteLines = remote.split('\n');
 
+  const changesLocal = getChanges(baseLines, localLines);
+  const changesRemote = getChanges(baseLines, remoteLines);
+
+  const combinedIntervals = mergeIntervals(changesLocal, changesRemote, baseLines.length);
+
   const resultLines: string[] = [];
-  let bIdx = 0, lIdx = 0, rIdx = 0;
+  let prevEnd = 0;
+  let hasConflict = false;
 
-  while (lIdx < localLines.length || rIdx < remoteLines.length) {
-    const bLine = bIdx < baseLines.length ? baseLines[bIdx] : undefined;
-    const lLine = lIdx < localLines.length ? localLines[lIdx] : undefined;
-    const rLine = rIdx < remoteLines.length ? remoteLines[rIdx] : undefined;
-
-    if (lLine === rLine) {
-      if (lLine !== undefined) resultLines.push(lLine);
-      bIdx++; lIdx++; rIdx++;
-    } else if (lLine === bLine) {
-      if (rLine !== undefined) resultLines.push(rLine);
-      bIdx++; lIdx++; rIdx++;
-    } else if (rLine === bLine) {
-      if (lLine !== undefined) resultLines.push(lLine);
-      bIdx++; lIdx++; rIdx++;
-    } else {
-      if (lLine !== undefined) resultLines.push(lLine);
-      if (rLine !== undefined && rLine !== lLine && !localLines.includes(rLine)) {
-        resultLines.push(rLine);
-      }
-      bIdx++; lIdx++; rIdx++;
+  for (const interval of combinedIntervals) {
+    if (interval.start > prevEnd) {
+      resultLines.push(...baseLines.slice(prevEnd, interval.start));
     }
+
+    const localSlice = reconstructSlice(baseLines, changesLocal, interval.start, interval.end);
+    const remoteSlice = reconstructSlice(baseLines, changesRemote, interval.start, interval.end);
+    const baseSlice = baseLines.slice(interval.start, interval.end);
+
+    const localChanged = !arraysEqual(localSlice, baseSlice);
+    const remoteChanged = !arraysEqual(remoteSlice, baseSlice);
+
+    if (localChanged && remoteChanged) {
+      if (arraysEqual(localSlice, remoteSlice)) {
+        resultLines.push(...localSlice);
+      } else if (interval.start === interval.end) {
+        // Pure simultaneous boundary insertion: preserve distinct lines from both collaborators
+        const combined = [...localSlice];
+        for (const r of remoteSlice) {
+          if (!combined.includes(r)) {
+            combined.push(r);
+          }
+        }
+        resultLines.push(...combined);
+      } else {
+        hasConflict = true;
+        resultLines.push(...localSlice);
+      }
+    } else if (localChanged) {
+      resultLines.push(...localSlice);
+    } else if (remoteChanged) {
+      resultLines.push(...remoteSlice);
+    } else {
+      resultLines.push(...baseSlice);
+    }
+
+    prevEnd = interval.end;
   }
 
-  return resultLines.join('\n');
+  if (prevEnd < baseLines.length) {
+    resultLines.push(...baseLines.slice(prevEnd));
+  }
+
+  return {
+    merged: hasConflict ? local : resultLines.join('\n'),
+    hasConflict
+  };
+}
+
+function threeWayLineMerge(base: string, local: string, remote: string): string {
+  return threeWayLineMergeDetailed(base, local, remote).merged;
 }
 
 interface NotesStateValues {
@@ -4894,8 +5048,8 @@ function reconcileNotesWorkspace(
   const localKey = (local.key || '').trim();
   const remoteKey = (remote.key || '').trim();
 
-  // 1. Text reconciliation using 3-way line merge
-  const mergedContent = threeWayLineMerge(baseContent, localContent, remoteContent);
+  // 1. Text reconciliation using robust 3-way line merge
+  const textMerge = threeWayLineMergeDetailed(baseContent, localContent, remoteContent);
 
   // 2. BPM reconciliation
   const bpmChangedLocally = localBpm !== baseBpm;
@@ -4935,10 +5089,10 @@ function reconcileNotesWorkspace(
     resolvedKey = localKey;
   }
 
-  const hasUnresolvableConflict = bpmConflict || keyConflict;
+  const hasUnresolvableConflict = textMerge.hasConflict || bpmConflict || keyConflict;
 
   return {
-    content: mergedContent,
+    content: textMerge.merged,
     bpm: resolvedBpm,
     key: resolvedKey,
     hasUnresolvableConflict,
