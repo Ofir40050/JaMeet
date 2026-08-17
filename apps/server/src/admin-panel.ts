@@ -1449,7 +1449,7 @@ function renderAdminDashboard(): string {
         if (!res.ok || !data.ok) throw new Error(data.message || 'Bulk update failed');
         
         showToast('Updated ' + (data.updatedCount || userIds.length) + ' users to ' + access, 'success');
-        await fetchUsers(true);
+        await fetchUsers();
       } catch (err) {
         showToast(err.message || 'Bulk update failed', 'error');
       }
@@ -1486,7 +1486,7 @@ function renderAdminDashboard(): string {
         if (!res.ok || !data.ok) throw new Error(data.message || 'Bulk expiration update failed');
 
         showToast('Updated beta expiration for ' + (data.updatedCount || userIds.length) + ' users', 'success');
-        await fetchUsers(true);
+        await fetchUsers();
       } catch (err) {
         showToast(err.message || 'Bulk expiration update failed', 'error');
       }
@@ -1560,8 +1560,8 @@ function renderAdminDashboard(): string {
       showToast('Exported ' + usersToExport.length + ' user' + (usersToExport.length === 1 ? '' : 's') + ' to CSV', 'success');
     });
 
-    // Fetch User List (preserves state)
-    async function fetchUsers(preserveSelection = false) {
+    // Fetch User List (preserves search, filters, sorting, and prunes selection to visible users)
+    async function fetchUsers() {
       try {
         const res = await fetch('/admin/api/users');
         if (res.status === 401) {
@@ -1571,16 +1571,8 @@ function renderAdminDashboard(): string {
         const data = await res.json();
         if (data.ok && Array.isArray(data.users)) {
           allUsers = data.users;
-          if (!preserveSelection) {
-            // prune any deleted users from selection
-            const validIds = new Set(allUsers.map(u => u.id));
-            selectedUserIds.forEach(id => {
-              if (!validIds.has(id)) selectedUserIds.delete(id);
-            });
-          }
           updateSummaryCounts();
-          renderTable();
-          updateBulkActionBar();
+          pruneSelectionToVisible();
         }
       } catch (err) {
         showToast('Failed to load user list', 'error');
@@ -1687,7 +1679,7 @@ function renderAdminDashboard(): string {
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.message || 'Access update failed');
         showToast('Updated access to ' + newAccess, 'success');
-        await fetchUsers(true);
+        await fetchUsers();
         if (selectedUserId) openUserDetail(selectedUserId);
       } catch (err) {
         showToast(err.message || 'Update failed', 'error');
@@ -1712,7 +1704,7 @@ function renderAdminDashboard(): string {
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.message || 'Expiry update failed');
         showToast('Beta expiration updated', 'success');
-        await fetchUsers(true);
+        await fetchUsers();
         if (selectedUserId) openUserDetail(selectedUserId);
       } catch (err) {
         showToast(err.message || 'Update failed', 'error');
@@ -1730,7 +1722,7 @@ function renderAdminDashboard(): string {
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.message || 'Expiry clear failed');
         showToast('Beta expiration cleared', 'success');
-        await fetchUsers(true);
+        await fetchUsers();
         if (selectedUserId) openUserDetail(selectedUserId);
       } catch (err) {
         showToast(err.message || 'Update failed', 'error');
@@ -1753,7 +1745,7 @@ function renderAdminDashboard(): string {
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.message || 'Note update failed');
         showToast('Admin note saved', 'success');
-        await fetchUsers(true);
+        await fetchUsers();
         if (selectedUserId) openUserDetail(selectedUserId);
       } catch (err) {
         showToast(err.message || 'Save note failed', 'error');
@@ -1780,17 +1772,17 @@ function renderAdminDashboard(): string {
     document.getElementById('access-filter').addEventListener('change', () => pruneSelectionToVisible());
     document.getElementById('status-filter').addEventListener('change', () => pruneSelectionToVisible());
     document.getElementById('btn-refresh').addEventListener('click', () => {
-      fetchUsers(true);
+      fetchUsers();
       showToast('Refreshed user list', 'info');
     });
 
-    // Auto-refresh every 20 seconds (preserves filters and selection)
+    // Auto-refresh every 20 seconds (prunes selection against newly visible set)
     setInterval(() => {
-      fetchUsers(true);
+      fetchUsers();
     }, 20000);
 
     // Initial load
-    fetchUsers(false);
+    fetchUsers();
   </script>
 </body>
 </html>`;
