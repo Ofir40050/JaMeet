@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
-import type { MediaMetadata, MeetingAck, SessionChatMessage } from '@jameet/shared';
+import type { MediaMetadata, MeetingAck, SessionChatMessage, UpdateProjectWorkspaceRequest, UpdateProjectWorkspaceResponse } from '@jameet/shared';
 import { logger } from './logger';
 
 type Listener = (...args: any[]) => void;
@@ -199,12 +199,16 @@ export class SignalingClient {
     }
   }
 
-  async updateProjectWorkspace(projectId: string, updates: any, authToken?: string): Promise<{ ok: boolean; workspace?: any; message?: string }> {
+  async updateProjectWorkspace(
+    projectId: string,
+    updates: UpdateProjectWorkspaceRequest,
+    authToken?: string
+  ): Promise<UpdateProjectWorkspaceResponse> {
     await this.connect();
     return new Promise((resolve) => {
       this.socket.timeout(5_000).emit('project:workspace:update', { projectId, authToken, updates }, (err: Error | null, res: any) => {
         if (err || !res) resolve({ ok: false, message: err?.message || 'Timeout updating workspace' });
-        else resolve(res);
+        else resolve(res as UpdateProjectWorkspaceResponse);
       });
     });
   }

@@ -23,14 +23,14 @@ export interface WorkspaceSaveContext {
 }
 
 export async function executeWorkspaceSave<T>(
-  saveCall: () => Promise<{ ok: boolean; workspace?: T; message?: string }>,
+  saveCall: () => Promise<{ ok: boolean; workspace?: T; message?: string; conflict?: boolean; code?: string; area?: string; currentRevision?: number; baseRevision?: number }>,
   currentLocalState: T,
   callbacks: {
     setStatus: (status: WorkspaceSaveStatus) => void;
     updateAuthoritativeState: (serverWorkspace: T) => void;
   },
   context?: WorkspaceSaveContext
-): Promise<{ ok: boolean; state: T }> {
+): Promise<{ ok: boolean; state: T; conflict?: boolean }> {
   const isStaleDispatch = context?.targetSaveGen !== undefined && context?.saveAttemptGen !== undefined && context.targetSaveGen < context.saveAttemptGen;
   if (!isStaleDispatch) {
     callbacks.setStatus('saving');
@@ -47,13 +47,17 @@ export async function executeWorkspaceSave<T>(
 
     if (!isLatest) {
       // Stale response from older save attempt or previous project/visit: do not overwrite local state or change status
-      return { ok: res?.ok ?? false, state: currentLocalState };
+      return { ok: res?.ok ?? false, state: currentLocalState, conflict: res?.conflict };
     }
 
     if (res?.ok && res.workspace) {
       callbacks.updateAuthoritativeState(res.workspace);
       callbacks.setStatus('saved');
       return { ok: true, state: res.workspace };
+    } else if (res?.conflict || res?.code === 'WORKSPACE_CONFLICT') {
+      // Confirmed WORKSPACE_CONFLICT: preserve local state as-is, set status to unsaved
+      callbacks.setStatus('unsaved');
+      return { ok: false, state: currentLocalState, conflict: true };
     } else {
       callbacks.setStatus('unsaved');
       return { ok: false, state: currentLocalState };

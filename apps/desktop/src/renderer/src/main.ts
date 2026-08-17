@@ -5441,6 +5441,9 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
       const syncedDoc = getActiveLyricsDoc();
       lastSyncedLyrics = syncedDoc.content ?? content;
       setLyricsStatus('saved');
+    } else if (res?.conflict || res?.code === 'WORKSPACE_CONFLICT') {
+      // Confirmed WORKSPACE_CONFLICT: preserve local edits exactly, keep unsaved, do not overwrite local content
+      setLyricsStatus('unsaved');
     } else {
       setLyricsStatus('unsaved');
     }
@@ -5913,8 +5916,8 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
       applyAuthoritativeWorkspaceUpdate('notes', res.workspace);
       lastSyncedNotes = res.workspace.notes?.content ?? content;
       setNotesStatus('saved');
-    } else if (res?.conflict && res.workspace?.notes && activeProject) {
-      // Confirmed revision conflict on Notes: perform 3-way line merge
+    } else if ((res?.conflict || res?.code === 'WORKSPACE_CONFLICT') && res.workspace?.notes && activeProject) {
+      // Confirmed WORKSPACE_CONFLICT on Notes: perform 3-way line merge
       const incomingNotesContent = res.workspace.notes.content ?? '';
       const localContent = activeProject.workspace?.notes?.content ?? content;
       const mergedNotes = threeWayLineMerge(lastSyncedNotes, localContent, incomingNotesContent);
@@ -5927,7 +5930,7 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
 
       if (activeProject.workspace?.notes) {
         activeProject.workspace.notes.content = mergedNotes;
-        activeProject.workspace.notes.revision = res.workspace.notes.revision ?? activeProject.workspace.notes.revision;
+        activeProject.workspace.notes.revision = res.workspace.notes.revision ?? (res.currentRevision ?? activeProject.workspace.notes.revision);
       }
 
       setNotesStatus('saving');
@@ -6384,6 +6387,9 @@ async function saveStructureWorkspace(): Promise<void> {
     if (res?.ok && res.workspace && activeProject) {
       applyAuthoritativeWorkspaceUpdate('structure', res.workspace);
       setStructureStatus('saved');
+    } else if (res?.conflict || res?.code === 'WORKSPACE_CONFLICT') {
+      // Confirmed WORKSPACE_CONFLICT: preserve local edits exactly, keep unsaved, do not overwrite local content
+      setStructureStatus('unsaved');
     } else {
       setStructureStatus('unsaved');
     }
@@ -6814,6 +6820,9 @@ async function saveTasksWorkspace(): Promise<void> {
     if (res?.ok && res.workspace && activeProject) {
       applyAuthoritativeWorkspaceUpdate('tasks', res.workspace);
       setTasksStatus('saved');
+    } else if (res?.conflict || res?.code === 'WORKSPACE_CONFLICT') {
+      // Confirmed WORKSPACE_CONFLICT: preserve local edits exactly, keep unsaved, do not overwrite local content
+      setTasksStatus('unsaved');
     } else {
       setTasksStatus('unsaved');
     }

@@ -430,6 +430,18 @@ export const updateProjectWorkspaceRequestSchema = z.object({
 });
 export type UpdateProjectWorkspaceRequest = z.infer<typeof updateProjectWorkspaceRequestSchema>;
 
+export interface UpdateProjectWorkspaceResponse {
+  ok: boolean;
+  workspace?: ProjectWorkspace;
+  project?: Project;
+  conflict?: boolean;
+  code?: string;
+  area?: 'lyrics' | 'notes' | 'structure' | 'tasks';
+  currentRevision?: number;
+  baseRevision?: number;
+  message?: string;
+}
+
 export const addCollaboratorRequestSchema = z.object({
   usernameOrEmail: z.string().trim().min(1, 'Username or email is required'),
   role: projectCollaboratorRoleSchema.default('collaborator')
