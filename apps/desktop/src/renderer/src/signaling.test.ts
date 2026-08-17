@@ -182,4 +182,85 @@ describe('SignalingClient Reconnect Identity Preservation', () => {
     connectHandler();
     expect(emitSpy).not.toHaveBeenCalledWith('meeting:join', expect.anything(), expect.anything());
   });
+
+  it('correctly resyncs project workspace on Socket.IO reconnect using single-argument ack callback', async () => {
+    const client = new SignalingClient('http://localhost:3000');
+    const connectHandler = mockSocket.on.mock.calls.find(([event]) => event === 'connect')?.[1];
+    expect(connectHandler).toBeDefined();
+
+    const mockWorkspace = {
+      lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main', content: 'Verse 1', updatedAt: 12345 }], revision: 3 },
+      notes: { content: 'BPM 120 Key C Major', bpm: '120', key: 'C Major', revision: 2 },
+      structure: { sections: [], revision: 1 },
+      tasks: { tasks: [], revision: 1 }
+    };
+
+    // Join project workspace
+    mockSocket.timeout.mockReturnValue({
+      emit: vi.fn((event: string, payload: any, callback: any) => {
+        if (event === 'project:workspace:join') {
+          callback(null, { ok: true, workspace: mockWorkspace });
+        }
+      })
+    });
+
+    await client.joinProjectWorkspace('proj-123', 'auth-token-123');
+
+    // Register a listener for 'project:workspace:synced'
+    const syncedHandler = vi.fn();
+    client.on('project:workspace:synced', syncedHandler);
+
+    // Mock the standard socket.emit for reconnect
+    const updatedServerWorkspace = {
+      ...mockWorkspace,
+      lyrics: { ...mockWorkspace.lyrics, content: 'Updated lyrics on server during reconnect', revision: 4 }
+    };
+
+    mockSocket.emit.mockImplementation((event: string, payload: any, callback: any) => {
+      if (event === 'project:workspace:join') {
+        expect(payload).toEqual({ projectId: 'proj-123', authToken: 'auth-token-123' });
+        // Standard Socket.IO server ack invokes callback with single response argument
+        callback({ ok: true, workspace: updatedServerWorkspace });
+      }
+    });
+
+    // Mock listeners method on socket
+    (mockSocket as any).listeners = vi.fn().mockImplementation((event: string) => {
+      if (event === 'project:workspace:synced') return [syncedHandler];
+      return [];
+    });
+
+    // Trigger reconnect
+    connectHandler();
+
+    // Verify the returned authoritative workspace is dispatched to the sync listener
+    expect(syncedHandler).toHaveBeenCalledWith({
+      projectId: 'proj-123',
+      workspace: updatedServerWorkspace
+    });
+  });
+
+  it('does not attempt workspace resync on reconnect after leaving project workspace', async () => {
+    const client = new SignalingClient('http://localhost:3000');
+    const connectHandler = mockSocket.on.mock.calls.find(([event]) => event === 'connect')?.[1];
+
+    mockSocket.timeout.mockReturnValue({
+      emit: vi.fn((event: string, payload: any, callback: any) => {
+        if (event === 'project:workspace:join') {
+          callback(null, { ok: true, workspace: {} });
+        }
+      })
+    });
+
+    await client.joinProjectWorkspace('proj-456', 'auth-token-456');
+    client.leaveProjectWorkspace('proj-456');
+
+    const emitSpy = vi.fn();
+    mockSocket.emit = emitSpy;
+
+    // Trigger reconnect
+    connectHandler();
+
+    expect(emitSpy).not.toHaveBeenCalledWith('project:workspace:join', expect.anything(), expect.anything());
+  });
 });

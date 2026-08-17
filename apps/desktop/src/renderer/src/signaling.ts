@@ -30,7 +30,7 @@ export class SignalingClient {
         });
       }
       if (this.activeProjectWorkspace) {
-        this.socket.emit('project:workspace:join', this.activeProjectWorkspace, (_err: Error | null, res: any) => {
+        this.socket.emit('project:workspace:join', this.activeProjectWorkspace, (res: { ok: boolean; workspace?: any; message?: string }) => {
           if (res?.ok && res.workspace && this.activeProjectWorkspace) {
             const syncPayload = {
               projectId: this.activeProjectWorkspace.projectId,
