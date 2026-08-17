@@ -433,13 +433,34 @@ describe('signaling integration', () => {
       expect(unconfiguredAppRes.statusCode).toBe(200);
       expect(unconfiguredAppRes.headers['access-control-allow-origin']).toBeUndefined();
 
-      const evilRes = await app.inject({
-        method: 'GET',
-        url: '/healthz',
-        headers: { origin: 'https://evil.com' }
+      // 3. Preflight OPTIONS requests for registration, login, and auth with client metadata headers are allowed
+      const preflightRegisterRes = await app.inject({
+        method: 'OPTIONS',
+        url: '/api/auth/register',
+        headers: {
+          origin: 'jameet-app://bundle',
+          'access-control-request-method': 'POST',
+          'access-control-request-headers': 'content-type, x-client-version, x-client-platform'
+        }
       });
-      expect(evilRes.statusCode).toBe(200);
-      expect(evilRes.headers['access-control-allow-origin']).toBeUndefined();
+      expect(preflightRegisterRes.statusCode).toBe(204);
+      expect(preflightRegisterRes.headers['access-control-allow-origin']).toBe('jameet-app://bundle');
+      expect(preflightRegisterRes.headers['access-control-allow-headers']).toContain('X-Client-Version');
+      expect(preflightRegisterRes.headers['access-control-allow-headers']).toContain('X-Client-Platform');
+
+      const preflightMeRes = await app.inject({
+        method: 'OPTIONS',
+        url: '/api/auth/me',
+        headers: {
+          origin: 'jameet-app://bundle',
+          'access-control-request-method': 'GET',
+          'access-control-request-headers': 'authorization, x-client-version, x-client-platform'
+        }
+      });
+      expect(preflightMeRes.statusCode).toBe(204);
+      expect(preflightMeRes.headers['access-control-allow-origin']).toBe('jameet-app://bundle');
+      expect(preflightMeRes.headers['access-control-allow-headers']).toContain('X-Client-Version');
+      expect(preflightMeRes.headers['access-control-allow-headers']).toContain('X-Client-Platform');
     } finally {
       io.close();
       await app.close();

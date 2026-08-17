@@ -142,7 +142,15 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       cb(null, isOriginAllowed(origin));
     },
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Origin',
+      'Accept',
+      'X-Requested-With',
+      'X-Client-Version',
+      'X-Client-Platform'
+    ],
     credentials: true
   });
   await app.register(rateLimit, {
