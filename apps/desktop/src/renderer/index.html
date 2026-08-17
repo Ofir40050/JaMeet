@@ -2130,285 +2130,660 @@
         </aside>
       </section>
 
-      <!-- 4. ADVANCED STUDIO HARDWARE & AUDIO SETTINGS MODAL -->
-      <dialog id="devices-dialog" class="studio-dialog">
-        <form method="dialog" class="dialog-content">
-          <div class="dialog-head">
-            <div class="dialog-title-wrap">
-              <span class="dialog-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-              </span>
-              <div>
-                <h2>Studio Hardware & Audio Settings</h2>
-                <p class="dialog-subtitle-top">Configure real-time audio routing, hardware clock rates, monitoring, and video performance.</p>
+      <!-- 4. DEDICATED SETTINGS & ACCOUNT WORKSPACE VIEW -->
+      <section id="settings-view" class="view hidden">
+        <div class="settings-view-container">
+          <!-- Topbar -->
+          <header class="settings-topbar">
+            <div class="settings-topbar-left">
+              <button id="btn-settings-back" type="button" class="btn-ghost-back" title="Back to Previous View">
+                <span class="btn-back-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                </span>
+                <span id="btn-settings-back-label">Back</span>
+              </button>
+              <div class="settings-breadcrumbs">
+                <span class="crumb-brand">JAMEET</span>
+                <span class="crumb-sep">/</span>
+                <span class="crumb-current" id="settings-view-crumb">Settings</span>
               </div>
             </div>
-            <button value="cancel" class="dialog-close" aria-label="Close">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </button>
-          </div>
+            <div class="settings-topbar-right">
+              <button id="btn-settings-done" type="button" class="btn-settings-done" title="Close Settings">
+                <span>Done</span>
+              </button>
+            </div>
+          </header>
 
-          <div class="dialog-body">
-            <!-- CARD 1: INPUT CHANNELS & MULTI-MICROPHONES -->
-            <div class="dialog-card">
-              <div class="dialog-card-header">
-                <div class="dialog-card-title">
-                  <span class="card-icon-mini">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
-                  </span>
-                  <strong>Input Channels & Multi-Microphones</strong>
-                </div>
-                <span id="call-voice-count-badge" class="dialog-card-pill">1 Active Mic</span>
+          <!-- Split Workspace Layout -->
+          <div class="settings-workspace-layout">
+            <!-- Left Sidebar Navigation -->
+            <aside class="settings-sidebar" aria-label="Settings Categories">
+              <div class="settings-sidebar-header">
+                <span class="settings-sidebar-title">Settings</span>
               </div>
-              
-              <div class="form-row-2 mb-3">
-                <div class="field-group">
-                  <div class="label-with-val">
-                    <label>Voice Microphones (Host, Singers, Guests, Room)</label>
-                  </div>
-                  <div id="call-voice-mics-list" class="voice-mics-list mb-2"></div>
-                  <button id="call-add-voice-mic-btn" type="button" class="btn-add-mic mb-2">
-                    <span class="btn-icon-inner">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-                    </span>
-                    <span>Add Another Microphone</span>
-                  </button>
-                  <span class="field-hint">Connect multiple microphones simultaneously for singing, instruments, and room ambience.</span>
-                </div>
-                <div class="field-group">
-                  <div class="label-with-val">
-                    <label for="call-music-source-type-select">Music / DAW Source</label>
-                  </div>
-                  <select id="call-music-source-type-select" class="custom-select mb-2">
-                    <option value="app" selected>Application Audio (DAW / App)</option>
-                    <option value="interface">Audio Interface Output</option>
-                    <option value="system">Computer Audio (System)</option>
-                    <option value="none">None (Disabled)</option>
-                  </select>
+              <nav class="settings-nav-list">
+                <button type="button" class="settings-nav-item active" data-settings-tab="general">
+                  <span class="settings-nav-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </span>
+                  <span>General</span>
+                </button>
+                <button type="button" class="settings-nav-item" data-settings-tab="audio">
+                  <span class="settings-nav-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                  </span>
+                  <span>Audio</span>
+                </button>
+                <button type="button" class="settings-nav-item" data-settings-tab="video">
+                  <span class="settings-nav-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.934a.5.5 0 0 0-.777-.416L16 11"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>
+                  </span>
+                  <span>Video</span>
+                </button>
+                <button type="button" class="settings-nav-item" data-settings-tab="screenshare">
+                  <span class="settings-nav-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+                  </span>
+                  <span>Screen Sharing</span>
+                </button>
+                <button type="button" class="settings-nav-item" data-settings-tab="account">
+                  <span class="settings-nav-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+                  </span>
+                  <span>Account</span>
+                </button>
+              </nav>
+            </aside>
 
-                  <!-- APPLICATION AUDIO PICKER IN CALL -->
-                  <div id="call-music-app-group" class="app-audio-container">
-                    <div class="app-picker-row">
-                      <div id="call-music-app-icon-wrap" class="app-icon-wrap hidden">
-                        <img id="call-music-app-icon" class="app-icon-badge" alt="" />
+            <!-- Right Main Content Area -->
+            <main class="settings-content-area">
+              <!-- PANEL 1: GENERAL -->
+              <div id="settings-panel-general" class="settings-panel">
+                <div class="settings-panel-header">
+                  <h3>General Preferences</h3>
+                  <p>Application defaults and session startup behavior.</p>
+                </div>
+
+                <div class="settings-section">
+                  <h4 class="settings-section-title">Session Audio Processing Default</h4>
+                  <div class="settings-field-group">
+                    <label class="settings-radio-row">
+                      <input type="radio" name="settings-default-mode" value="music" checked />
+                      <div class="settings-radio-content">
+                        <strong>Music Mode (Default)</strong>
+                        <span>High-fidelity 48 kHz stereo without acoustic echo cancellation or noise suppression filters.</span>
                       </div>
-                      <select id="call-music-app-select" class="custom-select app-select-flex mb-1"></select>
-                      <button id="call-refresh-apps-button" type="button" class="btn-mini-refresh" title="Refresh Running Applications">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                    </label>
+                    <label class="settings-radio-row mt-2">
+                      <input type="radio" name="settings-default-mode" value="talk" />
+                      <div class="settings-radio-content">
+                        <strong>Talk Mode</strong>
+                        <span>Speech enhanced with acoustic echo cancellation and background noise suppression.</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="settings-section mt-4">
+                  <h4 class="settings-section-title">Network & Performance Diagnostics</h4>
+                  <p class="settings-hint">Inspect real-time network throughput, WebRTC statistics, and audio buffer latency during active sessions.</p>
+                  <button id="btn-settings-open-stats" type="button" class="btn-sub-test mt-2">
+                    <span class="btn-icon-inner">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                    </span>
+                    <span>View Session Diagnostics</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- PANEL 2: AUDIO -->
+              <div id="settings-panel-audio" class="settings-panel hidden">
+                <div class="settings-panel-header">
+                  <h3>Audio & Hardware</h3>
+                  <p>Input channels, Multi-Mic routing, Music/DAW sources, and Monitoring outputs.</p>
+                </div>
+
+                <!-- CARD 1: INPUT CHANNELS & MULTI-MICROPHONES -->
+                <div class="dialog-card">
+                  <div class="dialog-card-header">
+                    <div class="dialog-card-title">
+                      <span class="card-icon-mini">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                      </span>
+                      <strong>Input Channels & Multi-Microphones</strong>
+                    </div>
+                    <span id="call-voice-count-badge" class="dialog-card-pill">1 Active Mic</span>
+                  </div>
+                  
+                  <div class="form-row-2 mb-3">
+                    <div class="field-group">
+                      <div class="label-with-val">
+                        <label>Voice Microphones (Host, Singers, Guests, Room)</label>
+                      </div>
+                      <div id="call-voice-mics-list" class="voice-mics-list mb-2"></div>
+                      <button id="call-add-voice-mic-btn" type="button" class="btn-add-mic mb-2">
+                        <span class="btn-icon-inner">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                        </span>
+                        <span>Add Another Microphone</span>
+                      </button>
+                      <span class="field-hint">Connect multiple microphones simultaneously for singing, instruments, and room ambience.</span>
+                    </div>
+                    <div class="field-group">
+                      <div class="label-with-val">
+                        <label for="call-music-source-type-select">Music / DAW Source</label>
+                      </div>
+                      <select id="call-music-source-type-select" class="custom-select mb-2">
+                        <option value="app" selected>Application Audio (DAW / App)</option>
+                        <option value="interface">Audio Interface Output</option>
+                        <option value="system">Computer Audio (System)</option>
+                        <option value="none">None (Disabled)</option>
+                      </select>
+
+                      <!-- APPLICATION AUDIO PICKER IN CALL -->
+                      <div id="call-music-app-group" class="app-audio-container">
+                        <div class="app-picker-row">
+                          <div id="call-music-app-icon-wrap" class="app-icon-wrap hidden">
+                            <img id="call-music-app-icon" class="app-icon-badge" alt="" />
+                          </div>
+                          <select id="call-music-app-select" class="custom-select app-select-flex mb-1"></select>
+                          <button id="call-refresh-apps-button" type="button" class="btn-mini-refresh" title="Refresh Running Applications">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                          </button>
+                        </div>
+                        <div class="app-status-bar">
+                          <span class="status-dot"></span>
+                          <span id="call-music-app-status" class="app-status-text">Ready · Native Stereo 48 kHz Process Tap</span>
+                        </div>
+                      </div>
+
+                      <!-- AUDIO INTERFACE HARDWARE OUTPUT PICKER IN CALL -->
+                      <div id="call-music-interface-group" class="interface-audio-container hidden">
+                        <div class="channel-picker-row mb-2">
+                          <span class="sub-field-label">Audio Interface:</span>
+                          <select id="call-music-input-select" class="custom-select mini-channel-select"></select>
+                        </div>
+                        <div class="channel-picker-row">
+                          <span class="sub-field-label">Hardware Output:</span>
+                          <select id="call-music-channel-select" class="custom-select mini-channel-select"></select>
+                        </div>
+                      </div>
+
+                      <!-- COMPUTER AUDIO SYSTEM LOOPBACK STATUS IN CALL -->
+                      <div id="call-music-system-group" class="app-audio-container hidden">
+                        <div class="app-status-bar">
+                          <span class="status-dot"></span>
+                          <span class="app-status-text">Ready · Capturing Computer Audio (Excluding JaMeet Session Playback)</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CARD 2: MONITORING & HEADPHONES -->
+                <div class="dialog-card">
+                  <div class="dialog-card-header">
+                    <div class="dialog-card-title">
+                      <span class="card-icon-mini">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></svg>
+                      </span>
+                      <strong>Monitoring & Output Routing</strong>
+                    </div>
+                    <span class="dialog-card-pill">Listening</span>
+                  </div>
+
+                  <div class="form-row-2 mb-3">
+                    <div class="field-group">
+                      <label for="call-audio-output-select">Sound Output Device</label>
+                      <select id="call-audio-output-select" class="custom-select mb-2"></select>
+                      <div class="channel-picker-row">
+                        <span class="sub-field-label">Output Channels:</span>
+                        <select id="call-output-channel-select" class="custom-select mini-channel-select">
+                          <option value="1-2" selected>Outputs 1 & 2 (Main Stereo L/R)</option>
+                          <option value="3-4">Outputs 3 & 4 (Headphones 1 / Cue)</option>
+                          <option value="5-6">Outputs 5 & 6 (Headphones 2 / Line 5-6)</option>
+                          <option value="7-8">Outputs 7 & 8 (Line Out 7-8)</option>
+                          <option value="1">Output 1 (Mono Left)</option>
+                          <option value="2">Output 2 (Mono Right)</option>
+                          <option value="all">All Outputs (Mirror Mix)</option>
+                        </select>
+                      </div>
+                      <span class="field-hint">Route session monitor audio to specific physical outputs on your audio interface.</span>
+                    </div>
+
+                    <div class="field-group">
+                      <div class="label-with-val">
+                        <label for="call-output-volume">Output Monitoring Volume</label>
+                        <output id="call-output-volume-val" class="badge-value">100%</output>
+                      </div>
+                      <input id="call-output-volume" type="range" min="0" max="1" step="0.05" value="1" class="custom-slider mb-2" />
+                      
+                      <div class="speaker-test-buttons-row">
+                        <button id="test-output-both" type="button" class="btn-sub-test" title="Test Stereo Both Channels">
+                          <span class="btn-icon-inner">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                          </span>
+                          <span>Stereo Test</span>
+                        </button>
+                        <button id="test-output-left" type="button" class="btn-sub-test" title="Test Left Channel Only">
+                          <span class="btn-icon-inner">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                          </span>
+                          <span>Left</span>
+                        </button>
+                        <button id="test-output-right" type="button" class="btn-sub-test" title="Test Right Channel Only">
+                          <span class="btn-icon-inner">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                          </span>
+                          <span>Right</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="headphone-tip-box">
+                    <span class="tip-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
+                    </span>
+                    <span><strong>Pro Studio Tip:</strong> For audio interfaces with dedicated headphone outputs (Apollo, Focusrite, RME), select <strong>Outputs 3 & 4 (Headphones)</strong> to isolate your cue mix from main monitors.</span>
+                  </div>
+                </div>
+
+                <!-- CARD 3: HARDWARE STREAM & OPUS QUALITY -->
+                <div class="dialog-card">
+                  <div class="dialog-card-header">
+                    <div class="dialog-card-title">
+                      <span class="card-icon-mini">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
+                      </span>
+                      <strong>Studio Audio Quality & Hardware Clock</strong>
+                    </div>
+                    <span class="dialog-card-pill accent">High Fidelity</span>
+                  </div>
+
+                  <div class="form-row-2 mb-3">
+                    <div class="field-group">
+                      <label for="call-channel-mode-select">Audio Channel Layout</label>
+                      <select id="call-channel-mode-select" class="custom-select">
+                        <option value="stereo" selected>Stereo (2 Channels · Left & Right)</option>
+                        <option value="mono">Mono (1 Channel · Speech Only)</option>
+                      </select>
+                      <span class="field-hint">Stereo delivers full spatial width for musical audio.</span>
+                    </div>
+
+                    <div class="field-group">
+                      <div class="label-with-val">
+                        <label for="call-sample-rate-select">Hardware Sample Rate (Hz Clock)</label>
+                        <span id="call-active-sample-rate" class="badge-value">44,100 Hz</span>
+                      </div>
+                      <select id="call-sample-rate-select" class="custom-select">
+                        <option value="44100" selected>44.1 kHz (44,100 Hz · CD Music Standard)</option>
+                        <option value="48000">48.0 kHz (48,000 Hz · Studio Standard)</option>
+                        <option value="88200">88.2 kHz (88,200 Hz · High-Res Audio)</option>
+                        <option value="96000">96.0 kHz (96,000 Hz · Pro Studio Master)</option>
+                        <option value="192000">192.0 kHz (192,000 Hz · Ultra Master)</option>
+                        <option value="0">Device Default (Auto-detect)</option>
+                      </select>
+                      <span class="field-hint">Directly adjusts your audio interface hardware clock.</span>
+                    </div>
+                  </div>
+
+                  <div class="form-row-2 mb-3">
+                    <div class="field-group">
+                      <label for="call-music-quality-select">Opus Music Quality Target</label>
+                      <select id="call-music-quality-select" class="custom-select">
+                        <option value="510000" selected>510 kbps · Studio Master (Max Opus Bitrate · 48 kHz Stereo)</option>
+                        <option value="384000">384 kbps · Ultra High Definition (Pro Mastering Quality)</option>
+                        <option value="320000">320 kbps · Broadcast High-Fidelity (Transparent Audio)</option>
+                        <option value="256000">256 kbps · Studio Standard (256 kbps)</option>
+                        <option value="192000">192 kbps · High Quality</option>
+                        <option value="128000">128 kbps · Efficient (Bandwidth Saver)</option>
+                      </select>
+                      <span class="field-hint">Opus transmission bitrate target for the dedicated high-fidelity Music channel.</span>
+                    </div>
+
+                    <div class="field-group flex-col-end">
+                      <button id="call-open-system-audio" type="button" class="btn-system-audio">
+                        <span class="btn-icon">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
+                        </span>
+                        <span>Open macOS Audio MIDI Setup</span>
+                      </button>
+                      <span class="field-hint text-center">Open system control panel for external sound cards.</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p id="device-dialog-status" class="message"></p>
+              </div>
+
+              <!-- PANEL 3: VIDEO -->
+              <div id="settings-panel-video" class="settings-panel hidden">
+                <div class="settings-panel-header">
+                  <h3>Video & Camera</h3>
+                  <p>Select camera hardware, transmission resolution, and performance profile.</p>
+                </div>
+
+                <div class="dialog-card">
+                  <div class="dialog-card-header">
+                    <div class="dialog-card-title">
+                      <span class="card-icon-mini">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.934a.5.5 0 0 0-.777-.416L16 11"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>
+                      </span>
+                      <strong>Video Camera & Computer Performance</strong>
+                    </div>
+                    <span class="dialog-card-pill">Visuals</span>
+                  </div>
+
+                  <div class="form-row-3">
+                    <div class="field-group">
+                      <label for="call-camera-select">Camera Source</label>
+                      <select id="call-camera-select" class="custom-select"></select>
+                    </div>
+                    <div class="field-group">
+                      <label for="call-camera-quality-select">Sent Camera Quality</label>
+                      <select id="call-camera-quality-select" class="custom-select">
+                        <option value="standard" selected>Standard · 540p / 24 fps</option>
+                        <option value="high">High · 720p / 30 fps</option>
+                        <option value="low">Low · 360p (Save CPU)</option>
+                      </select>
+                    </div>
+                    <div class="field-group">
+                      <label for="call-performance-select">Performance Profile</label>
+                      <select id="call-performance-select" class="custom-select">
+                        <option value="balanced" selected>Balanced (Recommended)</option>
+                        <option value="quality">High Quality (Prioritize Fidelity)</option>
+                        <option value="low">Low CPU (Battery / Older Laptops)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- PANEL 4: SCREEN SHARING -->
+              <div id="settings-panel-screenshare" class="settings-panel hidden">
+                <div class="settings-panel-header">
+                  <h3>Screen Sharing</h3>
+                  <p>Configure screen and DAW window capture options.</p>
+                </div>
+
+                <div class="dialog-card">
+                  <div class="dialog-card-header">
+                    <div class="dialog-card-title">
+                      <span class="card-icon-mini">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+                      </span>
+                      <strong>DAW & Display Share Settings</strong>
+                    </div>
+                    <span class="dialog-card-pill">Sharing</span>
+                  </div>
+                  <p class="settings-hint">Screen sharing is initiated directly during active studio calls via the in-call Share button. Supports full desktop or isolated DAW application windows with synchronized stereo audio.</p>
+                </div>
+              </div>
+
+              <!-- PANEL 5: ACCOUNT -->
+              <div id="settings-panel-account" class="settings-panel hidden">
+                <div class="settings-panel-header">
+                  <h3>Account Profile</h3>
+                  <p>Manage your musician identity, studio setup info, and security credentials.</p>
+                </div>
+
+                <div id="panel-auth-profile" class="auth-panel">
+                  <!-- 1. Live Musician Profile Card Preview -->
+                  <div class="profile-hero-preview">
+                    <div class="profile-avatar-wrap">
+                      <div id="profile-avatar-circle" class="profile-avatar-circle">DB</div>
+                      <button id="btn-trigger-avatar-upload" type="button" class="btn-avatar-edit-badge" title="Change profile picture">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>
                       </button>
                     </div>
-                    <div class="app-status-bar">
-                      <span class="status-dot"></span>
-                      <span id="call-music-app-status" class="app-status-text">Ready · Native Stereo 48 kHz Process Tap</span>
+                    <div class="profile-meta">
+                      <div class="profile-title-row">
+                        <h3 id="profile-display-name">Dan Smith</h3>
+                        <span id="profile-role-badge" class="profile-role-pill">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                          <span id="profile-role-text">Musician</span>
+                        </span>
+                      </div>
+                      <div class="profile-sub-row">
+                        <span id="profile-username" class="profile-handle">@dansmith</span>
+                        <span class="meta-dot">·</span>
+                        <span id="profile-email" class="profile-email">dan@music.com</span>
+                      </div>
+                      <div class="profile-tags">
+                        <span id="profile-location-chip" class="profile-chip hidden">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+                          <span id="profile-location-text">Tel Aviv</span>
+                        </span>
+                        <span id="profile-daw-chip" class="profile-chip hidden">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
+                          <span id="profile-daw-text">Ableton Live</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <!-- AUDIO INTERFACE HARDWARE OUTPUT PICKER IN CALL -->
-                  <div id="call-music-interface-group" class="interface-audio-container hidden">
-                    <div class="channel-picker-row mb-2">
-                      <span class="sub-field-label">Audio Interface:</span>
-                      <select id="call-music-input-select" class="custom-select mini-channel-select"></select>
+                  <!-- 2. Musician Profile Information -->
+                  <div class="settings-section mt-4">
+                    <h4 class="settings-section-title">Musician Information</h4>
+                    <div class="auth-form-row-2">
+                      <div class="auth-form-group">
+                        <label for="profile-edit-display-name">
+                          <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg></span>
+                          <span>Display Name</span>
+                        </label>
+                        <input id="profile-edit-display-name" class="custom-input auth-input" placeholder="e.g. Dan Smith" maxlength="40" />
+                      </div>
+                      <div class="auth-form-group">
+                        <label for="profile-edit-role">
+                          <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg></span>
+                          <span>Profession / Musical Role</span>
+                        </label>
+                        <input id="profile-edit-role" class="custom-input auth-input" placeholder="e.g. Music Producer, Vocalist, Mixing Engineer" maxlength="60" />
+                      </div>
                     </div>
-                    <div class="channel-picker-row">
-                      <span class="sub-field-label">Hardware Output:</span>
-                      <select id="call-music-channel-select" class="custom-select mini-channel-select"></select>
+
+                    <!-- Quick Role Presets -->
+                    <div class="profile-role-presets">
+                      <span class="presets-label">Quick select:</span>
+                      <button type="button" class="btn-role-preset" data-role="Music Producer">Producer</button>
+                      <button type="button" class="btn-role-preset" data-role="Singer & Songwriter">Vocalist</button>
+                      <button type="button" class="btn-role-preset" data-role="Mixing & Mastering Engineer">Mix Engineer</button>
+                      <button type="button" class="btn-role-preset" data-role="Guitarist & Composer">Guitarist</button>
+                      <button type="button" class="btn-role-preset" data-role="Beatmaker / Sound Designer">Beatmaker</button>
+                      <button type="button" class="btn-role-preset" data-role="Multi-Instrumentalist">Musician</button>
+                    </div>
+
+                    <div class="auth-form-row-2 mt-2">
+                      <div class="auth-form-group">
+                        <label for="profile-edit-location">
+                          <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg></span>
+                          <span>Location (City / Country)</span>
+                        </label>
+                        <input id="profile-edit-location" class="custom-input auth-input" placeholder="e.g. Tel Aviv, Israel or London, UK" maxlength="80" />
+                      </div>
+                      <div class="auth-form-group">
+                        <label for="profile-edit-daw">
+                          <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg></span>
+                          <span>Primary DAW / Software</span>
+                        </label>
+                        <select id="profile-edit-daw" class="custom-select auth-select">
+                          <option value="">Select Primary DAW…</option>
+                          <option value="Ableton Live">Ableton Live</option>
+                          <option value="Logic Pro">Logic Pro</option>
+                          <option value="Pro Tools">Pro Tools</option>
+                          <option value="FL Studio">FL Studio</option>
+                          <option value="Studio One">Studio One</option>
+                          <option value="Cubase / Nuendo">Cubase / Nuendo</option>
+                          <option value="Reaper">Reaper</option>
+                          <option value="Bitwig Studio">Bitwig Studio</option>
+                          <option value="GarageBand">GarageBand</option>
+                          <option value="Hardware / Analog Studio">Hardware / Analog</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div class="auth-form-row-2 mt-2">
+                      <div class="auth-form-group">
+                        <label for="profile-edit-genres">
+                          <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
+                          <span>Musical Genres &amp; Styles</span>
+                        </label>
+                        <input id="profile-edit-genres" class="custom-input auth-input" placeholder="e.g. Electronic, Indie Pop, R&B, Rock, Hip-Hop" />
+                      </div>
+                      <div class="auth-form-group">
+                        <label for="profile-edit-social">
+                          <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+                          <span>SoundCloud, Spotify, or Link</span>
+                        </label>
+                        <input id="profile-edit-social" class="custom-input auth-input" placeholder="e.g. soundcloud.com/artist or instagram.com/producer" maxlength="120" />
+                      </div>
+                    </div>
+
+                    <div class="auth-form-group mt-2">
+                      <label for="profile-edit-bio">
+                        <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg></span>
+                        <span>Bio, Studio Setup &amp; Gear</span>
+                      </label>
+                      <textarea id="profile-edit-bio" class="custom-input auth-textarea" placeholder="Tell other musicians about your musical background, studio equipment, microphones, and preferred collaboration style…" rows="2" maxlength="500"></textarea>
                     </div>
                   </div>
 
-                  <!-- COMPUTER AUDIO SYSTEM LOOPBACK STATUS IN CALL -->
-                  <div id="call-music-system-group" class="app-audio-container hidden">
-                    <div class="app-status-bar">
-                      <span class="status-dot"></span>
-                      <span class="app-status-text">Ready · Capturing Computer Audio (Excluding JaMeet Session Playback)</span>
+                  <div class="settings-divider"></div>
+
+                  <!-- 3. Profile Photo & Avatar Palette -->
+                  <div class="settings-section">
+                    <h4 class="settings-section-title">Profile Photo &amp; Avatar Palette</h4>
+                    <div class="avatar-manager-card">
+                      <div class="avatar-upload-dropzone" id="avatar-dropzone">
+                        <div id="avatar-upload-preview" class="avatar-large-preview">DB</div>
+                        <div class="avatar-upload-controls">
+                          <label for="profile-avatar-file-input" class="btn-avatar-upload">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                            <span>Upload Profile Photo</span>
+                          </label>
+                          <input id="profile-avatar-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden" />
+                          <button id="btn-remove-avatar-photo" type="button" class="btn-avatar-remove hidden">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/></svg>
+                            <span>Remove Photo</span>
+                          </button>
+                          <p class="avatar-upload-hint">Supports PNG, JPG, WebP up to 2MB. Saved with your profile.</p>
+                        </div>
+                      </div>
+
+                      <div class="avatar-color-picker-section mt-3">
+                        <label class="section-sublabel">Studio Avatar Gradient Color Palette:</label>
+                        <div class="avatar-color-swatches" id="avatar-color-swatches">
+                          <button type="button" class="color-swatch-btn active" data-color="#06b6d4" style="background: linear-gradient(135deg, #06b6d4, #0284c7);" title="Cyan Blue"></button>
+                          <button type="button" class="color-swatch-btn" data-color="#8b5cf6" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9);" title="Deep Purple"></button>
+                          <button type="button" class="color-swatch-btn" data-color="#ec4899" style="background: linear-gradient(135deg, #ec4899, #be185d);" title="Magenta Rose"></button>
+                          <button type="button" class="color-swatch-btn" data-color="#10b981" style="background: linear-gradient(135deg, #10b981, #047857);" title="Emerald Green"></button>
+                          <button type="button" class="color-swatch-btn" data-color="#f59e0b" style="background: linear-gradient(135deg, #f59e0b, #b45309);" title="Amber Gold"></button>
+                          <button type="button" class="color-swatch-btn" data-color="#3b82f6" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);" title="Electric Blue"></button>
+                          <button type="button" class="color-swatch-btn" data-color="#d946ef" style="background: linear-gradient(135deg, #d946ef, #a21caf);" title="Neon Fuchsia"></button>
+                          <button type="button" class="color-swatch-btn" data-color="#64748b" style="background: linear-gradient(135deg, #64748b, #334155);" title="Slate Grey"></button>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            </div>
 
-            <!-- CARD 2: MONITORING & HEADPHONES -->
-            <div class="dialog-card">
-              <div class="dialog-card-header">
-                <div class="dialog-card-title">
-                  <span class="card-icon-mini">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></svg>
-                  </span>
-                  <strong>Monitoring & Output Routing</strong>
-                </div>
-                <span class="dialog-card-pill">Listening</span>
-              </div>
+                  <div class="settings-divider"></div>
 
-              <div class="form-row-2 mb-3">
-                <div class="field-group">
-                  <label for="call-audio-output-select">Sound Output Device</label>
-                  <select id="call-audio-output-select" class="custom-select mb-2"></select>
-                  <div class="channel-picker-row">
-                    <span class="sub-field-label">Output Channels:</span>
-                    <select id="call-output-channel-select" class="custom-select mini-channel-select">
-                      <option value="1-2" selected>Outputs 1 & 2 (Main Stereo L/R)</option>
-                      <option value="3-4">Outputs 3 & 4 (Headphones 1 / Cue)</option>
-                      <option value="5-6">Outputs 5 & 6 (Headphones 2 / Line 5-6)</option>
-                      <option value="7-8">Outputs 7 & 8 (Line Out 7-8)</option>
-                      <option value="1">Output 1 (Mono Left)</option>
-                      <option value="2">Output 2 (Mono Right)</option>
-                      <option value="all">All Outputs (Mirror Mix)</option>
-                    </select>
+                  <!-- 4. Security & Password Section -->
+                  <div class="settings-section">
+                    <h4 class="settings-section-title">Account Security</h4>
+                    <p class="settings-hint">Change your account password. Requires your current password and at least 8 characters.</p>
+
+                    <div class="auth-form-group mt-2">
+                      <label for="profile-input-cur-password">
+                        <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+                        <span>Current Password</span>
+                      </label>
+                      <input id="profile-input-cur-password" type="password" class="custom-input auth-input" placeholder="Enter current password" autocomplete="current-password" />
+                    </div>
+
+                    <div class="auth-form-row-2 mt-2">
+                      <div class="auth-form-group">
+                        <label for="profile-input-new-password">
+                          <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg></span>
+                          <span>New Password (8+ chars)</span>
+                        </label>
+                        <input id="profile-input-new-password" type="password" class="custom-input auth-input" placeholder="New password" autocomplete="new-password" />
+                      </div>
+                      <div class="auth-form-group">
+                        <label for="profile-input-confirm-password">
+                          <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polyline points="20 6 9 17 4 12"/></svg></span>
+                          <span>Confirm New Password</span>
+                        </label>
+                        <input id="profile-input-confirm-password" type="password" class="custom-input auth-input" placeholder="Confirm new password" autocomplete="new-password" />
+                      </div>
+                    </div>
                   </div>
-                  <span class="field-hint">Route session monitor audio to specific physical outputs on your audio interface.</span>
-                </div>
 
-                <div class="field-group">
-                  <div class="label-with-val">
-                    <label for="call-output-volume">Output Monitoring Volume</label>
-                    <output id="call-output-volume-val" class="badge-value">100%</output>
-                  </div>
-                  <input id="call-output-volume" type="range" min="0" max="1" step="0.05" value="1" class="custom-slider mb-2" />
-                  
-                  <div class="speaker-test-buttons-row">
-                    <button id="test-output-both" type="button" class="btn-sub-test" title="Test Stereo Both Channels">
+                  <!-- Feedback Message Banner -->
+                  <p id="profile-feedback-msg" class="message hidden" role="alert"></p>
+
+                  <!-- Bottom Actions -->
+                  <div class="profile-actions-bar mt-4">
+                    <button id="btn-auth-logout" type="button" class="secondary danger btn-auth-logout">
                       <span class="btn-icon-inner">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
                       </span>
-                      <span>Stereo Test</span>
+                      <span>Sign Out</span>
                     </button>
-                    <button id="test-output-left" type="button" class="btn-sub-test" title="Test Left Channel Only">
+
+                    <button id="btn-profile-save" type="button" class="primary glow btn-profile-save">
                       <span class="btn-icon-inner">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polyline points="20 6 9 17 4 12"/></svg>
                       </span>
-                      <span>Left</span>
-                    </button>
-                    <button id="test-output-right" type="button" class="btn-sub-test" title="Test Right Channel Only">
-                      <span class="btn-icon-inner">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                      </span>
-                      <span>Right</span>
+                      <span>Save Profile Changes</span>
                     </button>
                   </div>
                 </div>
               </div>
-
-              <div class="headphone-tip-box">
-                <span class="tip-icon">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
-                </span>
-                <span><strong>Pro Studio Tip:</strong> For audio interfaces with dedicated headphone outputs (Apollo, Focusrite, RME), select <strong>Outputs 3 & 4 (Headphones)</strong> to isolate your cue mix from main monitors.</span>
-              </div>
-            </div>
-
-            <!-- CARD 3: HARDWARE STREAM & OPUS QUALITY -->
-            <div class="dialog-card">
-              <div class="dialog-card-header">
-                <div class="dialog-card-title">
-                  <span class="card-icon-mini">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
-                  </span>
-                  <strong>Studio Audio Quality & Hardware Clock</strong>
-                </div>
-                <span class="dialog-card-pill accent">High Fidelity</span>
-              </div>
-
-              <div class="form-row-2 mb-3">
-                <div class="field-group">
-                  <label for="call-channel-mode-select">Audio Channel Layout</label>
-                  <select id="call-channel-mode-select" class="custom-select">
-                    <option value="stereo" selected>Stereo (2 Channels · Left & Right)</option>
-                    <option value="mono">Mono (1 Channel · Speech Only)</option>
-                  </select>
-                  <span class="field-hint">Stereo delivers full spatial width for musical audio.</span>
-                </div>
-
-                <div class="field-group">
-                  <div class="label-with-val">
-                    <label for="call-sample-rate-select">Hardware Sample Rate (Hz Clock)</label>
-                    <span id="call-active-sample-rate" class="badge-value">44,100 Hz</span>
-                  </div>
-                  <select id="call-sample-rate-select" class="custom-select">
-                    <option value="44100" selected>44.1 kHz (44,100 Hz · CD Music Standard)</option>
-                    <option value="48000">48.0 kHz (48,000 Hz · Studio Standard)</option>
-                    <option value="88200">88.2 kHz (88,200 Hz · High-Res Audio)</option>
-                    <option value="96000">96.0 kHz (96,000 Hz · Pro Studio Master)</option>
-                    <option value="192000">192.0 kHz (192,000 Hz · Ultra Master)</option>
-                    <option value="0">Device Default (Auto-detect)</option>
-                  </select>
-                  <span class="field-hint">Directly adjusts your audio interface hardware clock.</span>
-                </div>
-              </div>
-
-              <div class="form-row-2 mb-3">
-                <div class="field-group">
-                  <label for="call-music-quality-select">Opus Music Quality Target</label>
-                  <select id="call-music-quality-select" class="custom-select">
-                    <option value="510000" selected>510 kbps · Studio Master (Max Opus Bitrate · 48 kHz Stereo)</option>
-                    <option value="384000">384 kbps · Ultra High Definition (Pro Mastering Quality)</option>
-                    <option value="320000">320 kbps · Broadcast High-Fidelity (Transparent Audio)</option>
-                    <option value="256000">256 kbps · Studio Standard (256 kbps)</option>
-                    <option value="192000">192 kbps · High Quality</option>
-                    <option value="128000">128 kbps · Efficient (Bandwidth Saver)</option>
-                  </select>
-                  <span class="field-hint">Opus transmission bitrate target for the dedicated high-fidelity Music channel.</span>
-                </div>
-
-                <div class="field-group flex-col-end">
-                  <button id="call-open-system-audio" type="button" class="btn-system-audio">
-                    <span class="btn-icon">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
-                    </span>
-                    <span>Open macOS Audio MIDI Setup</span>
-                  </button>
-                  <span class="field-hint text-center">Open system control panel for external sound cards.</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- CARD 4: VIDEO CAMERA & PERFORMANCE -->
-            <div class="dialog-card">
-              <div class="dialog-card-header">
-                <div class="dialog-card-title">
-                  <span class="card-icon-mini">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.934a.5.5 0 0 0-.777-.416L16 11"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>
-                  </span>
-                  <strong>Video Camera & Computer Performance</strong>
-                </div>
-                <span class="dialog-card-pill">Visuals</span>
-              </div>
-
-              <div class="form-row-3">
-                <div class="field-group">
-                  <label for="call-camera-select">Camera Source</label>
-                  <select id="call-camera-select" class="custom-select"></select>
-                </div>
-                <div class="field-group">
-                  <label for="call-camera-quality-select">Sent Camera Quality</label>
-                  <select id="call-camera-quality-select" class="custom-select">
-                    <option value="standard" selected>Standard · 540p / 24 fps</option>
-                    <option value="high">High · 720p / 30 fps</option>
-                    <option value="low">Low · 360p (Save CPU)</option>
-                  </select>
-                </div>
-                <div class="field-group">
-                  <label for="call-performance-select">Performance Profile</label>
-                  <select id="call-performance-select" class="custom-select">
-                    <option value="balanced" selected>Balanced (Recommended)</option>
-                    <option value="quality">High Quality (Prioritize Fidelity)</option>
-                    <option value="low">Low CPU (Battery / Older Laptops)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <p id="device-dialog-status" class="message"></p>
+            </main>
           </div>
+        </div>
+      </section>
 
-          <div class="dialog-actions">
-            <button value="done" class="primary large w-full">
-              <span class="btn-icon-inner">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polyline points="20 6 9 17 4 12"/></svg>
-              </span>
-              <span>Save & Apply Settings</span>
-            </button>
+      <!-- ACCOUNT MENU (ANCHORED DROPDOWN) -->
+      <div id="account-menu" class="account-menu hidden" role="menu" aria-label="Account Menu">
+        <div class="account-menu-identity">
+          <div id="account-menu-avatar" class="account-menu-avatar">DB</div>
+          <div class="account-menu-user-info">
+            <div class="account-menu-name-row">
+              <strong id="account-menu-name">User</strong>
+              <span id="account-menu-role" class="account-menu-role-pill hidden">Musician</span>
+            </div>
+            <span id="account-menu-handle" class="account-menu-subtext">@handle</span>
           </div>
-        </form>
-      </dialog>
+        </div>
+        <div class="account-menu-divider"></div>
+        <div class="account-menu-items">
+          <button id="account-menu-profile-btn" type="button" class="account-menu-item" role="menuitem">
+            <span class="account-menu-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+            </span>
+            <span>Profile</span>
+          </button>
+          <button id="account-menu-settings-btn" type="button" class="account-menu-item" role="menuitem">
+            <span class="account-menu-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            </span>
+            <span>Settings</span>
+          </button>
+        </div>
+        <div class="account-menu-divider"></div>
+        <div class="account-menu-items">
+          <button id="account-menu-logout-btn" type="button" class="account-menu-item danger" role="menuitem">
+            <span class="account-menu-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+            </span>
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </div>
 
       <!-- 5. SCREEN & DAW SHARE DIALOG (ZOOM STYLE) -->
       <dialog id="screen-dialog" class="studio-dialog screen-dialog-lg">
@@ -2513,7 +2888,7 @@
               </span>
               <div>
                 <h2>Session Telemetry & WebRTC Stats</h2>
-                <p class="dialog-subtitle-top">Real-time studio network quality, audio bitrates, and video stream telemetry.</p>
+                <p class="dialog-subtitle-top">Real-time bitrates, audio packet loss, latency, and video pipeline telemetry.</p>
               </div>
             </div>
             <button value="cancel" class="dialog-close" aria-label="Close">
@@ -2522,364 +2897,52 @@
           </div>
 
           <div class="dialog-body">
+            <!-- IN-CALL TELEMETRY CARDS -->
             <div class="stats-grid">
-              <!-- Card 1: Connection & Latency -->
-              <div class="dialog-card">
-                <div class="dialog-card-header">
-                  <div class="dialog-card-title">
-                    <span class="card-icon-mini">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    </span>
-                    <strong>Connection & Latency</strong>
-                  </div>
-                  <span id="stat-conn-state" class="dialog-card-pill accent">Connecting</span>
-                </div>
-                <div class="stats-metrics-list">
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Round-Trip Latency (RTT):</span>
-                    <span id="stat-rtt" class="metric-value highlight">Measuring…</span>
-                  </div>
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Audio Jitter Buffer:</span>
-                    <span id="stat-jitter" class="metric-value">0 ms</span>
-                  </div>
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Packet Loss Rate:</span>
-                    <span id="stat-loss" class="metric-value">0.0%</span>
-                  </div>
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Transport Route:</span>
-                    <span id="stat-ice-state" class="metric-value">Direct P2P (UDP)</span>
-                  </div>
-                </div>
+              <div class="stat-card">
+                <span class="stat-label">Audio Latency (RTT)</span>
+                <span id="stat-rtt" class="stat-value">-- ms</span>
+                <span class="stat-sub">Round-trip audio ping</span>
               </div>
-
-              <!-- Card 2: Audio Fidelity & Bitrates -->
-              <div class="dialog-card">
-                <div class="dialog-card-header">
-                  <div class="dialog-card-title">
-                    <span class="card-icon-mini">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M2 10v4"/><path d="M6 6v12"/><path d="M10 3v18"/><path d="M14 8v8"/><path d="M18 5v14"/><path d="M22 10v4"/></svg>
-                    </span>
-                    <strong>Audio Streams Fidelity & Clock</strong>
-                  </div>
-                  <span class="dialog-card-pill">Studio Engine</span>
-                </div>
-                <div class="stats-metrics-list">
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Active Audio Profile:</span>
-                    <span id="stat-audio-profile" class="metric-value accent">Music Mode (Unprocessed)</span>
-                  </div>
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Live Audio Bandwidth:</span>
-                    <span id="stat-audio-bitrate" class="metric-value highlight">Tx: 0 kbps · Rx: 0 kbps</span>
-                  </div>
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Audio Codec:</span>
-                    <span id="stat-audio-codec" class="metric-value">Opus · 48 kHz Stereo</span>
-                  </div>
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Hardware Sample Rate:</span>
-                    <span id="stat-sample-rate" class="metric-value">44,100 Hz</span>
-                  </div>
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Active Voice Inputs:</span>
-                    <span id="stat-active-mics" class="metric-value">1 Active Mic</span>
-                  </div>
-                </div>
+              <div class="stat-card">
+                <span class="stat-label">Audio Packet Loss</span>
+                <span id="stat-audio-loss" class="stat-value">0.0%</span>
+                <span class="stat-sub">Voice & Music channels</span>
               </div>
+              <div class="stat-card">
+                <span class="stat-label">Music Channel Bitrate</span>
+                <span id="stat-music-bitrate" class="stat-value">-- kbps</span>
+                <span class="stat-sub">High-fidelity Opus stream</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Video FPS / Resolution</span>
+                <span id="stat-video-res" class="stat-value">-- / --</span>
+                <span class="stat-sub">Sent camera stream</span>
+              </div>
+            </div>
 
-              <!-- Card 3: Video & Screen Transmission -->
-              <div class="dialog-card">
-                <div class="dialog-card-header">
-                  <div class="dialog-card-title">
-                    <span class="card-icon-mini">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.934a.5.5 0 0 0-.777-.416L16 11"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>
-                    </span>
-                    <strong>Video & Screen Performance</strong>
-                  </div>
-                  <span class="dialog-card-pill">Visuals</span>
-                </div>
-                <div class="stats-metrics-list">
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Outgoing Video / Screen:</span>
-                    <span id="stat-video-out" class="metric-value">1280×720 @ 30 FPS</span>
-                  </div>
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Incoming Video / Screen:</span>
-                    <span id="stat-video-in" class="metric-value">Waiting for video…</span>
-                  </div>
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Live Video Bandwidth:</span>
-                    <span id="stat-video-bitrate" class="metric-value">Tx: 0 kbps · Rx: 0 kbps</span>
-                  </div>
-                  <div class="stats-metric-row">
-                    <span class="metric-label">Video Codec:</span>
-                    <span id="stat-video-codec" class="metric-value">VP8 / WebRTC</span>
-                  </div>
-                </div>
+            <div class="stats-audio-engine-card mt-3">
+              <div class="stats-engine-header">
+                <strong>Audio Engine & Clock State</strong>
+                <span id="stat-engine-state" class="badge-engine-running">Active · 48 kHz</span>
+              </div>
+              <div class="stats-engine-details">
+                <div class="stat-line"><span>Hardware Clock:</span> <strong id="stat-sample-rate">48,000 Hz</strong></div>
+                <div class="stat-line"><span>Audio Context Buffer:</span> <strong id="stat-buffer-size">128 samples (2.67 ms)</strong></div>
+                <div class="stat-line"><span>Active Voice Inputs:</span> <strong id="stat-active-mics">1 microphone</strong></div>
+                <div class="stat-line"><span>DAW Tap Mode:</span> <strong id="stat-daw-mode">Native Process Tap (Stereo)</strong></div>
               </div>
             </div>
           </div>
 
           <div class="dialog-actions">
-            <button value="done" class="primary large w-full">
-              <span class="btn-icon-inner">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polyline points="20 6 9 17 4 12"/></svg>
-              </span>
+            <button value="cancel" class="primary w-full">
               <span>Close Diagnostics</span>
             </button>
           </div>
         </form>
       </dialog>
 
-      <!-- 7. USER AUTHENTICATION & IDENTITY MODAL -->
-      <dialog id="auth-dialog" class="studio-dialog auth-dialog-modal">
-        <form method="dialog" class="dialog-content auth-dialog-content" onsubmit="event.preventDefault()">
-          <div class="dialog-head">
-            <div class="dialog-title-wrap">
-              <div class="brand-badge-mini">
-                <span class="pulse-indicator"></span>
-                <span>JAMEET</span>
-              </div>
-              <h2 id="auth-dialog-title">Account & Identity</h2>
-            </div>
-            <button value="cancel" class="dialog-close" aria-label="Close">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </button>
-          </div>
-
-          <!-- Account Profile Panel -->
-          <div id="panel-auth-profile" class="auth-panel">
-            <!-- 1. Live Musician Profile Card Preview -->
-            <div class="profile-hero-preview">
-              <div class="profile-avatar-wrap">
-                <div id="profile-avatar-circle" class="profile-avatar-circle">DB</div>
-                <button id="btn-trigger-avatar-upload" type="button" class="btn-avatar-edit-badge" title="Change profile picture">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>
-                </button>
-              </div>
-              <div class="profile-meta">
-                <div class="profile-title-row">
-                  <h3 id="profile-display-name">Dan Smith</h3>
-                  <span id="profile-role-badge" class="profile-role-pill">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-                    <span id="profile-role-text">Musician</span>
-                  </span>
-                </div>
-                <div class="profile-sub-row">
-                  <span id="profile-username" class="profile-handle">@dansmith</span>
-                  <span class="meta-dot">·</span>
-                  <span id="profile-email" class="profile-email">dan@music.com</span>
-                </div>
-                <div class="profile-tags">
-                  <span id="profile-location-chip" class="profile-chip hidden">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
-                    <span id="profile-location-text">Tel Aviv</span>
-                  </span>
-                  <span id="profile-daw-chip" class="profile-chip hidden">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
-                    <span id="profile-daw-text">Ableton Live</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Profile Sub-Tab Bar -->
-            <div class="profile-sub-tabs">
-              <button id="profile-subtab-info" type="button" class="profile-subtab-btn active" data-subtab="info">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
-                <span>Musician Info</span>
-              </button>
-              <button id="profile-subtab-avatar" type="button" class="profile-subtab-btn" data-subtab="avatar">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
-                <span>Avatar &amp; Photo</span>
-              </button>
-              <button id="profile-subtab-security" type="button" class="profile-subtab-btn" data-subtab="security">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                <span>Security &amp; Password</span>
-              </button>
-            </div>
-
-            <!-- TAB 1: Musician Info Panel -->
-            <div id="profile-panel-info" class="profile-subpanel">
-              <div class="auth-form-row-2">
-                <div class="auth-form-group">
-                  <label for="profile-edit-display-name">
-                    <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg></span>
-                    <span>Display Name</span>
-                  </label>
-                  <input id="profile-edit-display-name" class="custom-input auth-input" placeholder="e.g. Dan Smith" maxlength="40" />
-                </div>
-                <div class="auth-form-group">
-                  <label for="profile-edit-role">
-                    <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg></span>
-                    <span>Profession / Musical Role</span>
-                  </label>
-                  <input id="profile-edit-role" class="custom-input auth-input" placeholder="e.g. Music Producer, Vocalist, Mixing Engineer" maxlength="60" />
-                </div>
-              </div>
-
-              <!-- Quick Role Presets -->
-              <div class="profile-role-presets">
-                <span class="presets-label">Quick select:</span>
-                <button type="button" class="btn-role-preset" data-role="Music Producer">Producer</button>
-                <button type="button" class="btn-role-preset" data-role="Singer & Songwriter">Vocalist</button>
-                <button type="button" class="btn-role-preset" data-role="Mixing & Mastering Engineer">Mix Engineer</button>
-                <button type="button" class="btn-role-preset" data-role="Guitarist & Composer">Guitarist</button>
-                <button type="button" class="btn-role-preset" data-role="Beatmaker / Sound Designer">Beatmaker</button>
-                <button type="button" class="btn-role-preset" data-role="Multi-Instrumentalist">Musician</button>
-              </div>
-
-              <div class="auth-form-row-2 mt-2">
-                <div class="auth-form-group">
-                  <label for="profile-edit-location">
-                    <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg></span>
-                    <span>Location (City / Country)</span>
-                  </label>
-                  <input id="profile-edit-location" class="custom-input auth-input" placeholder="e.g. Tel Aviv, Israel or London, UK" maxlength="80" />
-                </div>
-                <div class="auth-form-group">
-                  <label for="profile-edit-daw">
-                    <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg></span>
-                    <span>Primary DAW / Software</span>
-                  </label>
-                  <select id="profile-edit-daw" class="custom-select auth-select">
-                    <option value="">Select Primary DAW…</option>
-                    <option value="Ableton Live">Ableton Live</option>
-                    <option value="Logic Pro">Logic Pro</option>
-                    <option value="Pro Tools">Pro Tools</option>
-                    <option value="FL Studio">FL Studio</option>
-                    <option value="Studio One">Studio One</option>
-                    <option value="Cubase / Nuendo">Cubase / Nuendo</option>
-                    <option value="Reaper">Reaper</option>
-                    <option value="Bitwig Studio">Bitwig Studio</option>
-                    <option value="GarageBand">GarageBand</option>
-                    <option value="Hardware / Analog Studio">Hardware / Analog</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="auth-form-row-2 mt-2">
-                <div class="auth-form-group">
-                  <label for="profile-edit-genres">
-                    <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
-                    <span>Musical Genres &amp; Styles</span>
-                  </label>
-                  <input id="profile-edit-genres" class="custom-input auth-input" placeholder="e.g. Electronic, Indie Pop, R&B, Rock, Hip-Hop" />
-                </div>
-                <div class="auth-form-group">
-                  <label for="profile-edit-social">
-                    <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
-                    <span>SoundCloud, Spotify, or Link</span>
-                  </label>
-                  <input id="profile-edit-social" class="custom-input auth-input" placeholder="e.g. soundcloud.com/artist or instagram.com/producer" maxlength="120" />
-                </div>
-              </div>
-
-              <div class="auth-form-group mt-2">
-                <label for="profile-edit-bio">
-                  <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg></span>
-                  <span>Bio, Studio Setup &amp; Gear</span>
-                </label>
-                <textarea id="profile-edit-bio" class="custom-input auth-textarea" placeholder="Tell other musicians about your musical background, studio equipment, microphones, and preferred collaboration style…" rows="2" maxlength="500"></textarea>
-              </div>
-            </div>
-
-            <!-- TAB 2: Avatar & Photo Panel -->
-            <div id="profile-panel-avatar" class="profile-subpanel hidden">
-              <div class="avatar-manager-card">
-                <div class="avatar-upload-dropzone" id="avatar-dropzone">
-                  <div id="avatar-upload-preview" class="avatar-large-preview">DB</div>
-                  <div class="avatar-upload-controls">
-                    <label for="profile-avatar-file-input" class="btn-avatar-upload">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                      <span>Upload Profile Photo</span>
-                    </label>
-                    <input id="profile-avatar-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden" />
-                    <button id="btn-remove-avatar-photo" type="button" class="btn-avatar-remove hidden">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/></svg>
-                      <span>Remove Photo</span>
-                    </button>
-                    <p class="avatar-upload-hint">Supports PNG, JPG, WebP up to 2MB. Saved with your profile.</p>
-                  </div>
-                </div>
-
-                <div class="avatar-color-picker-section mt-3">
-                  <label class="section-sublabel">Studio Avatar Gradient Color Palette:</label>
-                  <div class="avatar-color-swatches" id="avatar-color-swatches">
-                    <button type="button" class="color-swatch-btn active" data-color="#06b6d4" style="background: linear-gradient(135deg, #06b6d4, #0284c7);" title="Cyan Blue"></button>
-                    <button type="button" class="color-swatch-btn" data-color="#8b5cf6" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9);" title="Deep Purple"></button>
-                    <button type="button" class="color-swatch-btn" data-color="#ec4899" style="background: linear-gradient(135deg, #ec4899, #be185d);" title="Magenta Rose"></button>
-                    <button type="button" class="color-swatch-btn" data-color="#10b981" style="background: linear-gradient(135deg, #10b981, #047857);" title="Emerald Green"></button>
-                    <button type="button" class="color-swatch-btn" data-color="#f59e0b" style="background: linear-gradient(135deg, #f59e0b, #b45309);" title="Amber Gold"></button>
-                    <button type="button" class="color-swatch-btn" data-color="#3b82f6" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);" title="Electric Blue"></button>
-                    <button type="button" class="color-swatch-btn" data-color="#d946ef" style="background: linear-gradient(135deg, #d946ef, #a21caf);" title="Neon Fuchsia"></button>
-                    <button type="button" class="color-swatch-btn" data-color="#64748b" style="background: linear-gradient(135deg, #64748b, #334155);" title="Slate Grey"></button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- TAB 3: Security & Password Panel -->
-            <div id="profile-panel-security" class="profile-subpanel hidden">
-              <div class="security-card">
-                <div class="security-card-header">
-                  <span class="security-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
-                  <div>
-                    <h4>Change Account Password</h4>
-                    <p>Enter your current password and choose a new secure password (at least 8 characters).</p>
-                  </div>
-                </div>
-
-                <div class="auth-form-group mt-3">
-                  <label for="profile-input-cur-password">
-                    <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
-                    <span>Current Password</span>
-                  </label>
-                  <input id="profile-input-cur-password" type="password" class="custom-input auth-input" placeholder="Enter current password" autocomplete="current-password" />
-                </div>
-
-                <div class="auth-form-row-2 mt-2">
-                  <div class="auth-form-group">
-                    <label for="profile-input-new-password">
-                      <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg></span>
-                      <span>New Password (8+ chars)</span>
-                    </label>
-                    <input id="profile-input-new-password" type="password" class="custom-input auth-input" placeholder="New password" autocomplete="new-password" />
-                  </div>
-                  <div class="auth-form-group">
-                    <label for="profile-input-confirm-password">
-                      <span class="label-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polyline points="20 6 9 17 4 12"/></svg></span>
-                      <span>Confirm New Password</span>
-                    </label>
-                    <input id="profile-input-confirm-password" type="password" class="custom-input auth-input" placeholder="Confirm new password" autocomplete="new-password" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Feedback Message Banner -->
-            <p id="profile-feedback-msg" class="message hidden" role="alert"></p>
-
-            <!-- Bottom Actions -->
-            <div class="profile-actions-bar mt-4">
-              <button id="btn-auth-logout" type="button" class="secondary danger btn-auth-logout">
-                <span class="btn-icon-inner">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
-                </span>
-                <span>Sign Out</span>
-              </button>
-
-              <button id="btn-profile-save" type="button" class="primary glow btn-profile-save">
-                <span class="btn-icon-inner">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <span>Save Profile Changes</span>
-              </button>
-            </div>
-          </div>
-        </form>
       </dialog>
 
       <!-- 8. GUEST JOIN PROMPT MODAL -->

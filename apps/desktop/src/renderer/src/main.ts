@@ -28,7 +28,7 @@ import './style.css';
 export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const views = ['home-view', 'project-view', 'all-sessions-view', 'auth-view', 'setup-view', 'waiting-view', 'call-view'] as const;
+const views = ['home-view', 'project-view', 'all-sessions-view', 'auth-view', 'setup-view', 'waiting-view', 'call-view', 'settings-view'] as const;
 const DEFAULT_PROD_SIGNALING_URL = 'https://jameet-jwi8.onrender.com';
 const DEFAULT_DEV_SIGNALING_URL = 'http://localhost:3000';
 const signalingUrl = (
@@ -2304,7 +2304,7 @@ $('create-button').addEventListener('click', () => {
 $('home-settings-button')?.addEventListener('click', async () => {
   try {
     await enumerateAndPopulate();
-    $<HTMLDialogElement>('devices-dialog').showModal();
+    openSettings('audio');
   } catch (error) {
     setMessage('home-error', deviceError(error), true);
   }
@@ -2335,7 +2335,7 @@ for (const id of ['setup-advanced-button', 'setup-advanced-action-button']) {
   $(id)?.addEventListener('click', async () => {
     try {
       await enumerateAndPopulate();
-      $<HTMLDialogElement>('devices-dialog').showModal();
+      openSettings('audio');
     } catch (error) {
       setMessage('setup-status', deviceError(error), true);
     }
@@ -2504,7 +2504,7 @@ $<HTMLInputElement>('audio-only-setup')?.addEventListener('change', (event) => v
 for (const id of ['open-settings', 'devices-button']) {
   $(id)?.addEventListener('click', () => {
     void enumerateAndPopulate();
-    $<HTMLDialogElement>('devices-dialog').showModal();
+    openSettings('audio');
   });
 }
 
@@ -2598,7 +2598,7 @@ presenter.setActionHandler(async (action) => {
       await presenter.showMainWindow();
       $('session-presenter-banner')?.classList.remove('hidden');
       void enumerateAndPopulate();
-      $<HTMLDialogElement>('devices-dialog')?.showModal();
+      openSettings('audio');
       break;
     case 'toggle-floating-video':
       await presenter.toggleRemoteVideoPiP();
@@ -3608,26 +3608,159 @@ function switchAuthViewTab(tab: 'login' | 'register'): void {
   }
 }
 
-function openAuthDialog(tab: 'login' | 'register' = 'login'): void {
+let lastActiveViewBeforeSettings = 'home-view';
+
+function toggleAccountMenu(triggerEl?: HTMLElement | null): void {
+  const menu = $('account-menu');
+  if (!menu) return;
+  const isHidden = menu.classList.contains('hidden');
+  if (!isHidden) {
+    closeAccountMenu();
+    return;
+  }
+  const user = auth.getUser();
+  if (!user) {
+    openAuthView('login');
+    return;
+  }
+
+  setText('account-menu-name', user.displayName || user.username);
+  setText('account-menu-handle', `@${user.username}`);
+  const roleEl = $('account-menu-role');
+  if (roleEl) {
+    roleEl.textContent = user.role || 'Musician';
+    roleEl.classList.toggle('hidden', !user.role);
+  }
+  const avatarBg = safeAvatarColor(user.avatarColor, '#38bdf8');
+  applyAvatarToElement($('account-menu-avatar'), user.displayName || user.username, avatarBg, user.avatarUrl);
+
+  if (triggerEl) {
+    const rect = triggerEl.getBoundingClientRect();
+    menu.style.top = `${rect.bottom + 6}px`;
+    menu.style.right = `${Math.max(12, window.innerWidth - rect.right)}px`;
+    menu.style.left = 'auto';
+  }
+  menu.classList.remove('hidden');
+}
+
+function closeAccountMenu(): void {
+  $('account-menu')?.classList.add('hidden');
+}
+
+function openSettings(section: 'general' | 'audio' | 'video' | 'screenshare' | 'account' = 'general'): void {
+  closeAccountMenu();
+  const currentActive = views.find((v) => !$(v)?.classList.contains('hidden') && v !== 'settings-view');
+  if (currentActive) {
+    lastActiveViewBeforeSettings = currentActive;
+  }
+
   const user = auth.getUser();
   if (user) {
     updateAuthUi(user, auth.getGuestName());
-    const dialog = $<HTMLDialogElement>('auth-dialog');
-    dialog?.showModal();
+  }
+  void enumerateAndPopulate();
+
+  switchSettingsSection(section);
+  showView('settings-view');
+}
+
+function switchSettingsSection(section: 'general' | 'audio' | 'video' | 'screenshare' | 'account'): void {
+  const sections = ['general', 'audio', 'video', 'screenshare', 'account'] as const;
+  for (const s of sections) {
+    const isCur = s === section;
+    const navItem = document.querySelector(`.settings-nav-item[data-settings-tab="${s}"]`);
+    navItem?.classList.toggle('active', isCur);
+    $(`settings-panel-${s}`)?.classList.toggle('hidden', !isCur);
+  }
+  const crumbText =
+    section === 'account'
+      ? 'Settings / Account Profile'
+      : section === 'audio'
+        ? 'Settings / Audio & Hardware'
+        : section === 'video'
+          ? 'Settings / Video & Camera'
+          : section === 'screenshare'
+            ? 'Settings / Screen Sharing'
+            : 'Settings / General Preferences';
+  setText('settings-view-crumb', crumbText);
+}
+
+function openAuthDialog(tab: 'login' | 'register' = 'login'): void {
+  const user = auth.getUser();
+  if (user) {
+    openSettings('account');
   } else {
     openAuthView(tab);
   }
 }
 
-// Navigation & Hero button listeners
+// Navigation & Avatar menu listeners
 $('nav-btn-signin')?.addEventListener('click', () => openAuthView('login'));
 $('nav-btn-register')?.addEventListener('click', () => openAuthView('register'));
 $('hero-btn-signin')?.addEventListener('click', () => openAuthView('login'));
 $('hero-btn-register')?.addEventListener('click', () => openAuthView('register'));
-$('nav-profile-pill')?.addEventListener('click', () => openAuthDialog());
-$('home-view-profile-btn')?.addEventListener('click', () => openAuthDialog());
-$('setup-user-btn')?.addEventListener('click', () => openAuthDialog());
-$('call-user-btn')?.addEventListener('click', () => openAuthDialog());
+
+$('nav-profile-pill')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleAccountMenu($('nav-profile-pill'));
+});
+$('setup-user-btn')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleAccountMenu($('setup-user-btn'));
+});
+$('call-user-btn')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleAccountMenu($('call-user-btn'));
+});
+$('home-view-profile-btn')?.addEventListener('click', () => openSettings('account'));
+
+// Account Menu action buttons
+$('account-menu-profile-btn')?.addEventListener('click', () => openSettings('account'));
+$('account-menu-settings-btn')?.addEventListener('click', () => openSettings('general'));
+$('account-menu-logout-btn')?.addEventListener('click', async () => {
+  closeAccountMenu();
+  await auth.logout();
+  showView('home-view');
+});
+
+// Close account menu on click-outside or Escape
+document.addEventListener('click', (e) => {
+  const menu = $('account-menu');
+  if (!menu || menu.classList.contains('hidden')) return;
+  const target = e.target as HTMLElement;
+  if (
+    !menu.contains(target) &&
+    !target.closest('#nav-profile-pill') &&
+    !target.closest('#setup-user-btn') &&
+    !target.closest('#call-user-btn')
+  ) {
+    closeAccountMenu();
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeAccountMenu();
+  }
+});
+
+// Settings navigation listeners
+document.querySelectorAll<HTMLButtonElement>('.settings-nav-item').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.settingsTab as any;
+    if (tab) switchSettingsSection(tab);
+  });
+});
+$('btn-settings-back')?.addEventListener('click', () => showView(lastActiveViewBeforeSettings || 'home-view'));
+$('btn-settings-done')?.addEventListener('click', () => showView(lastActiveViewBeforeSettings || 'home-view'));
+$('btn-settings-open-stats')?.addEventListener('click', () => $<HTMLDialogElement>('stats-dialog')?.showModal());
+
+for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="settings-default-mode"]')) {
+  radio.addEventListener('change', () => {
+    prefs.mode = radio.value as AudioMode;
+    savePreferences();
+    void syncAllVoiceMics(prefs.mode);
+  });
+}
 
 // Dedicated Auth View actions
 $('btn-auth-view-back')?.addEventListener('click', () => showView('home-view'));
@@ -3754,6 +3887,7 @@ $('btn-guest-modal-signin')?.addEventListener('click', () => {
 $('btn-auth-logout')?.addEventListener('click', async () => {
   await auth.logout();
   $<HTMLDialogElement>('auth-dialog')?.close();
+  showView('home-view');
 });
 
 // Profile Sub-tab Navigation
