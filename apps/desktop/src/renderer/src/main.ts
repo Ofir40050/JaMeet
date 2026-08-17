@@ -5224,10 +5224,10 @@ function applyAuthoritativeWorkspaceUpdate(
   if (!activeProject || !serverWorkspace) return;
   if (!activeProject.workspace) {
     activeProject.workspace = {
-      lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: Date.now() }], content: '', updatedAt: Date.now() },
-      notes: { content: '', updatedAt: Date.now() },
-      structure: { sections: [], updatedAt: Date.now() },
-      tasks: { tasks: [], updatedAt: Date.now() }
+      lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: Date.now() }], content: '', updatedAt: Date.now() },
+      notes: { revision: 1, content: '', updatedAt: Date.now() },
+      structure: { revision: 1, sections: [], updatedAt: Date.now() },
+      tasks: { revision: 1, tasks: [], updatedAt: Date.now() }
     };
   }
 
@@ -5411,6 +5411,7 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
   const targetContextGen = currentWorkspaceContextGen;
   const targetEditGen = lyricsEditGen;
   const targetSaveGen = ++lyricsSaveGen;
+  const baseRevision = activeProject.workspace?.lyrics?.revision ?? 1;
 
   try {
     const activeDoc = getActiveLyricsDoc();
@@ -5419,6 +5420,7 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
 
     const payload = {
       lyrics: {
+        baseRevision,
         activeDocumentId: activeProject.workspace.lyrics.activeDocumentId,
         documents: activeProject.workspace.lyrics.documents,
         content,
@@ -5897,9 +5899,10 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
   const targetContextGen = currentWorkspaceContextGen;
   const targetEditGen = notesEditGen;
   const targetSaveGen = ++notesSaveGen;
+  const baseRevision = activeProject.workspace?.notes?.revision ?? 1;
 
   try {
-    const res = await signaling.updateProjectWorkspace(targetProjectId, { notes: { content, bpm, key } }, token);
+    const res = await signaling.updateProjectWorkspace(targetProjectId, { notes: { baseRevision, content, bpm, key } }, token);
     const isLatest = (activeProject?.id === targetProjectId) &&
       (targetContextGen === currentWorkspaceContextGen) &&
       (targetSaveGen === notesSaveGen) &&
@@ -5910,6 +5913,29 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
       applyAuthoritativeWorkspaceUpdate('notes', res.workspace);
       lastSyncedNotes = res.workspace.notes?.content ?? content;
       setNotesStatus('saved');
+    } else if (res?.conflict && res.workspace?.notes && activeProject) {
+      // Confirmed revision conflict on Notes: perform 3-way line merge
+      const incomingNotesContent = res.workspace.notes.content ?? '';
+      const localContent = activeProject.workspace?.notes?.content ?? content;
+      const mergedNotes = threeWayLineMerge(lastSyncedNotes, localContent, incomingNotesContent);
+      lastSyncedNotes = incomingNotesContent;
+
+      const projectNotesInput = $<HTMLTextAreaElement>('project-notes-input');
+      const sessionNotesInput = $<HTMLTextAreaElement>('session-notes-input');
+      if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, mergedNotes);
+      if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, mergedNotes);
+
+      if (activeProject.workspace?.notes) {
+        activeProject.workspace.notes.content = mergedNotes;
+        activeProject.workspace.notes.revision = res.workspace.notes.revision ?? activeProject.workspace.notes.revision;
+      }
+
+      setNotesStatus('saving');
+      if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
+      notesSaveTimeout = setTimeout(() => {
+        notesSaveTimeout = null;
+        void saveNotesWorkspace(mergedNotes, activeProject?.workspace?.notes?.bpm || bpm, activeProject?.workspace?.notes?.key || key);
+      }, 350);
     } else {
       setNotesStatus('unsaved');
     }
@@ -6344,10 +6370,11 @@ async function saveStructureWorkspace(): Promise<void> {
   const targetContextGen = currentWorkspaceContextGen;
   const targetEditGen = structureEditGen;
   const targetSaveGen = ++structureSaveGen;
+  const baseRevision = activeProject.workspace?.structure?.revision ?? 1;
 
   try {
     const sections = getStructureSections();
-    const res = await signaling.updateProjectWorkspace(targetProjectId, { structure: { sections } }, token);
+    const res = await signaling.updateProjectWorkspace(targetProjectId, { structure: { baseRevision, sections } }, token);
     const isLatest = (activeProject?.id === targetProjectId) &&
       (targetContextGen === currentWorkspaceContextGen) &&
       (targetSaveGen === structureSaveGen) &&
@@ -6518,7 +6545,12 @@ signaling.on('project:workspace:synced', (data: { projectId: string; workspace: 
       const mergedNotes = threeWayLineMerge(lastSyncedNotes, currentLocalNotes, incomingNotes);
       if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, mergedNotes);
       if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, mergedNotes);
-      if (activeProject.workspace.notes) activeProject.workspace.notes.content = mergedNotes;
+      if (activeProject.workspace.notes) {
+        activeProject.workspace.notes.content = mergedNotes;
+        if (data.workspace.notes?.revision !== undefined) {
+          activeProject.workspace.notes.revision = data.workspace.notes.revision;
+        }
+      }
       lastSyncedNotes = incomingNotes;
       if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
       setNotesStatus('saving');
@@ -6529,7 +6561,9 @@ signaling.on('project:workspace:synced', (data: { projectId: string; workspace: 
     }
   } else {
     if (data.workspace.notes) {
-      if (activeProject.workspace.notes) activeProject.workspace.notes.content = incomingNotes;
+      if (activeProject.workspace.notes) {
+        activeProject.workspace.notes = data.workspace.notes;
+      }
       lastSyncedNotes = incomingNotes;
       if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, incomingNotes);
       if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, incomingNotes);
@@ -6764,11 +6798,12 @@ async function saveTasksWorkspace(): Promise<void> {
   const targetContextGen = currentWorkspaceContextGen;
   const targetEditGen = tasksEditGen;
   const targetSaveGen = ++tasksSaveGen;
+  const baseRevision = activeProject.workspace?.tasks?.revision ?? 1;
   const tasks = getProjectTasks();
 
   try {
     const res = await signaling.updateProjectWorkspace(targetProjectId, {
-      tasks: { tasks }
+      tasks: { baseRevision, tasks }
     }, token);
     const isLatest = (activeProject?.id === targetProjectId) &&
       (targetContextGen === currentWorkspaceContextGen) &&

@@ -205,6 +205,7 @@ export const lyricsDocumentSchema = z.object({
 export type LyricsDocument = z.infer<typeof lyricsDocumentSchema>;
 
 export const projectWorkspaceLyricsSchema = z.object({
+  revision: z.number().int().nonnegative().default(1),
   activeDocumentId: z.string().optional(),
   documents: z.array(lyricsDocumentSchema).default([]),
   content: z.string().default(''),
@@ -215,6 +216,7 @@ export const projectWorkspaceLyricsSchema = z.object({
 export type ProjectWorkspaceLyrics = z.infer<typeof projectWorkspaceLyricsSchema>;
 
 export const projectWorkspaceNotesSchema = z.object({
+  revision: z.number().int().nonnegative().default(1),
   content: z.string().default(''),
   bpm: z.string().optional(),
   key: z.string().optional(),
@@ -251,6 +253,7 @@ export const songSectionItemSchema = z.object({
 export type SongSectionItem = z.infer<typeof songSectionItemSchema>;
 
 export const projectWorkspaceStructureSchema = z.object({
+  revision: z.number().int().nonnegative().default(1),
   sections: z.array(songSectionItemSchema).default([]),
   updatedAt: z.number().default(0),
   updatedBy: z.string().optional(),
@@ -293,6 +296,7 @@ export const projectTaskItemSchema = z.object({
 export type ProjectTaskItem = z.infer<typeof projectTaskItemSchema>;
 
 export const projectWorkspaceTasksSchema = z.object({
+  revision: z.number().int().nonnegative().default(1),
   tasks: z.array(projectTaskItemSchema).default([]),
   updatedAt: z.number().default(0),
   updatedBy: z.string().optional(),
@@ -302,14 +306,15 @@ export type ProjectWorkspaceTasks = z.infer<typeof projectWorkspaceTasksSchema>;
 
 export const projectWorkspaceSchema = z.object({
   lyrics: projectWorkspaceLyricsSchema.default({
+    revision: 1,
     activeDocumentId: 'doc-main',
     documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: 0 }],
     content: '',
     updatedAt: 0
   }),
-  notes: projectWorkspaceNotesSchema.default({ content: '', updatedAt: 0 }),
-  structure: projectWorkspaceStructureSchema.default({ sections: [], updatedAt: 0 }),
-  tasks: projectWorkspaceTasksSchema.default({ tasks: [], updatedAt: 0 })
+  notes: projectWorkspaceNotesSchema.default({ revision: 1, content: '', updatedAt: 0 }),
+  structure: projectWorkspaceStructureSchema.default({ revision: 1, sections: [], updatedAt: 0 }),
+  tasks: projectWorkspaceTasksSchema.default({ revision: 1, tasks: [], updatedAt: 0 })
 });
 export type ProjectWorkspace = z.infer<typeof projectWorkspaceSchema>;
 
@@ -371,14 +376,15 @@ export const projectSchema = z.object({
   activities: z.array(projectActivityItemSchema).default([]),
   workspace: projectWorkspaceSchema.default({
     lyrics: {
+      revision: 1,
       activeDocumentId: 'doc-main',
       documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: 0 }],
       content: '',
       updatedAt: 0
     },
-    notes: { content: '', updatedAt: 0 },
-    structure: { sections: [], updatedAt: 0 },
-    tasks: { tasks: [], updatedAt: 0 }
+    notes: { revision: 1, content: '', updatedAt: 0 },
+    structure: { revision: 1, sections: [], updatedAt: 0 },
+    tasks: { revision: 1, tasks: [], updatedAt: 0 }
   }),
   metadata: z.record(z.string(), z.unknown()).optional()
 });
@@ -400,6 +406,7 @@ export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;
 
 export const updateProjectWorkspaceRequestSchema = z.object({
   lyrics: z.object({
+    baseRevision: z.number().int().nonnegative().optional(),
     activeDocumentId: z.string().optional(),
     documents: z.array(lyricsDocumentSchema).optional(),
     content: z.string().optional(),
@@ -407,14 +414,17 @@ export const updateProjectWorkspaceRequestSchema = z.object({
     title: z.string().optional()
   }).optional(),
   notes: z.object({
+    baseRevision: z.number().int().nonnegative().optional(),
     content: z.string().optional(),
     bpm: z.string().optional(),
     key: z.string().optional()
   }).optional(),
   structure: z.object({
+    baseRevision: z.number().int().nonnegative().optional(),
     sections: z.array(songSectionItemSchema).optional()
   }).optional(),
   tasks: z.object({
+    baseRevision: z.number().int().nonnegative().optional(),
     tasks: z.array(projectTaskItemSchema).optional()
   }).optional()
 });

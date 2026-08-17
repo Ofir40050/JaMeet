@@ -20,7 +20,7 @@ import {
 import type { ServerConfig } from './config.js';
 import { RoomStore, type Room, type Participant } from './rooms.js';
 import { UserStore, authorizeSessionAccess, validateStoredUserSessionAccess } from './auth.js';
-import { ProjectStore } from './projects.js';
+import { ProjectStore, WorkspaceConflictError } from './projects.js';
 import { CrashReportStore } from './crash-store.js';
 import { createIceServers } from './turn.js';
 import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from './rate-limiter.js';
@@ -776,6 +776,20 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       });
       return reply.send({ ok: true, project: updated, workspace: updated.workspace });
     } catch (err: unknown) {
+      if (err instanceof WorkspaceConflictError) {
+        const currentProject = projectStore.getProject(request.params.id, user.id);
+        return reply.code(409).send({
+          ok: false,
+          conflict: true,
+          code: 'WORKSPACE_CONFLICT',
+          area: err.area,
+          currentRevision: err.currentRevision,
+          baseRevision: err.baseRevision,
+          message: err.message,
+          workspace: currentProject?.workspace,
+          project: currentProject
+        });
+      }
       const msg = err instanceof Error ? err.message : 'Failed to update workspace.';
       return reply.code(500).send({ ok: false, message: msg });
     }
@@ -1077,6 +1091,20 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       try {
         updated = projectStore.updateWorkspace(raw.projectId, user, parsed.data);
       } catch (err: unknown) {
+        if (err instanceof WorkspaceConflictError) {
+          const currentProject = projectStore.getProject(raw.projectId, user.id);
+          ack?.({
+            ok: false,
+            conflict: true,
+            code: 'WORKSPACE_CONFLICT',
+            area: err.area,
+            currentRevision: err.currentRevision,
+            baseRevision: err.baseRevision,
+            message: err.message,
+            workspace: currentProject?.workspace
+          });
+          return;
+        }
         ack?.({ ok: false, message: 'Failed to persist workspace update' });
         return;
       }

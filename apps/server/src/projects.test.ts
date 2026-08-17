@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { ProjectStore } from './projects.js';
+import { ProjectStore, WorkspaceConflictError } from './projects.js';
 import type { UserProfile } from '@jameet/shared';
 
 describe('ProjectStore & Workspace', () => {
@@ -2013,6 +2013,219 @@ describe('ProjectStore & Workspace', () => {
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+
+  describe('Revision-based Optimistic Concurrency Control (OCC)', () => {
+    it('initializes default revisions to 1 for all workspace areas on project creation', () => {
+      const project = projectStore.createProject(mockOwner, { name: 'Revision Init Project' }, [mockCollaborator]);
+      expect(project.workspace.lyrics.revision).toBe(1);
+      expect(project.workspace.notes.revision).toBe(1);
+      expect(project.workspace.structure.revision).toBe(1);
+      expect(project.workspace.tasks.revision).toBe(1);
+    });
+
+    it('migrates legacy persisted projects without revisions on disk load to revision = 1', () => {
+      const legacyStorageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-legacy-test-'));
+      const legacyFile = path.join(legacyStorageDir, 'jameet-projects.json');
+      const legacyProject = {
+        id: 'proj_legacy_1',
+        name: 'Legacy Project',
+        ownerId: mockOwner.id,
+        ownerDisplayName: mockOwner.displayName,
+        ownerUsername: mockOwner.username,
+        createdAt: 1000,
+        updatedAt: 1000,
+        lastActivityAt: 1000,
+        archived: false,
+        collaborators: [],
+        sessions: [],
+        sessionCount: 0,
+        activities: [],
+        workspace: {
+          lyrics: {
+            activeDocumentId: 'doc-main',
+            documents: [{ id: 'doc-main', title: 'Main Lyrics', content: 'Legacy text', updatedAt: 1000 }],
+            content: 'Legacy text',
+            updatedAt: 1000
+          },
+          notes: { content: 'Legacy note', updatedAt: 1000 },
+          structure: { sections: [], updatedAt: 1000 },
+          tasks: { tasks: [], updatedAt: 1000 }
+        }
+      };
+
+      fs.writeFileSync(legacyFile, JSON.stringify({ version: 1, projects: [legacyProject] }), 'utf-8');
+
+      const loadedStore = new ProjectStore(legacyStorageDir);
+      const loaded = loadedStore.getProject('proj_legacy_1', mockOwner.id);
+
+      expect(loaded).not.toBeNull();
+      expect(loaded?.workspace.lyrics.revision).toBe(1);
+      expect(loaded?.workspace.notes.revision).toBe(1);
+      expect(loaded?.workspace.structure.revision).toBe(1);
+      expect(loaded?.workspace.tasks.revision).toBe(1);
+    });
+
+    it('increments area revision on meaningful mutations and preserves revision on no-op updates', () => {
+      const project = projectStore.createProject(mockOwner, { name: 'Mutation Revision Test' }, [mockCollaborator]);
+      expect(project.workspace.lyrics.revision).toBe(1);
+      expect(project.workspace.notes.revision).toBe(1);
+      expect(project.workspace.structure.revision).toBe(1);
+      expect(project.workspace.tasks.revision).toBe(1);
+
+      // 1. Meaningful Lyrics edit increments lyrics.revision from 1 to 2
+      const updatedLyrics = projectStore.updateWorkspace(project.id, mockOwner, {
+        lyrics: { baseRevision: 1, content: 'First line of the verse' }
+      });
+      expect(updatedLyrics?.workspace.lyrics.revision).toBe(2);
+      expect(updatedLyrics?.workspace.notes.revision).toBe(1);
+
+      // 2. No-op Lyrics update (same content, same active doc) does NOT increment revision
+      const noopLyrics = projectStore.updateWorkspace(project.id, mockOwner, {
+        lyrics: { baseRevision: 2, content: 'First line of the verse' }
+      });
+      expect(noopLyrics?.workspace.lyrics.revision).toBe(2);
+
+      // 3. Meaningful Notes BPM change increments notes.revision from 1 to 2
+      const updatedNotes = projectStore.updateWorkspace(project.id, mockCollaborator, {
+        notes: { baseRevision: 1, bpm: '124' }
+      });
+      expect(updatedNotes?.workspace.notes.revision).toBe(2);
+
+      // 4. No-op Notes update does NOT increment revision
+      const noopNotes = projectStore.updateWorkspace(project.id, mockCollaborator, {
+        notes: { baseRevision: 2, bpm: '124' }
+      });
+      expect(noopNotes?.workspace.notes.revision).toBe(2);
+
+      // 5. Meaningful Structure change increments structure.revision from 1 to 2
+      const updatedStructure = projectStore.updateWorkspace(project.id, mockOwner, {
+        structure: {
+          baseRevision: 1,
+          sections: [{ id: 'sec_intro', type: 'intro', name: 'Intro', bars: 8, updatedAt: Date.now() }]
+        }
+      });
+      expect(updatedStructure?.workspace.structure.revision).toBe(2);
+
+      // 6. No-op Structure update does NOT increment revision
+      const noopStructure = projectStore.updateWorkspace(project.id, mockOwner, {
+        structure: {
+          baseRevision: 2,
+          sections: [{ id: 'sec_intro', type: 'intro', name: 'Intro', bars: 8, updatedAt: Date.now() }]
+        }
+      });
+      expect(noopStructure?.workspace.structure.revision).toBe(2);
+
+      // 7. Meaningful Tasks change increments tasks.revision from 1 to 2
+      const updatedTasks = projectStore.updateWorkspace(project.id, mockOwner, {
+        tasks: {
+          baseRevision: 1,
+          tasks: [{ id: 't1', title: 'Record guitar solo', status: 'todo', createdAt: Date.now(), updatedAt: Date.now() }]
+        }
+      });
+      expect(updatedTasks?.workspace.tasks.revision).toBe(2);
+
+      // 8. No-op Tasks update does NOT increment revision
+      const noopTasks = projectStore.updateWorkspace(project.id, mockOwner, {
+        tasks: {
+          baseRevision: 2,
+          tasks: [{ id: 't1', title: 'Record guitar solo', status: 'todo', createdAt: Date.now(), updatedAt: Date.now() }]
+        }
+      });
+      expect(noopTasks?.workspace.tasks.revision).toBe(2);
+    });
+
+    it('rejects stale baseRevision before mutation and records zero activity logs', () => {
+      const project = projectStore.createProject(mockOwner, { name: 'Conflict Pre-check Test' }, [mockCollaborator]);
+      const initialActivitiesCount = project.activities.length;
+
+      // Update lyrics to advance revision to 2
+      projectStore.updateWorkspace(project.id, mockOwner, {
+        lyrics: { baseRevision: 1, content: 'Version 2 lyrics' }
+      });
+      const current = projectStore.getProject(project.id, mockOwner.id);
+      expect(current?.workspace.lyrics.revision).toBe(2);
+      const afterSaveActivitiesCount = current!.activities.length;
+
+      // Collaborator attempts to save with stale baseRevision: 1
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockCollaborator, {
+          lyrics: { baseRevision: 1, content: 'Stale attempt to overwrite' }
+        });
+      }).toThrow(WorkspaceConflictError);
+
+      // Verify no mutations applied and no activities recorded
+      const afterConflict = projectStore.getProject(project.id, mockOwner.id);
+      expect(afterConflict?.workspace.lyrics.content).toBe('Version 2 lyrics');
+      expect(afterConflict?.workspace.lyrics.revision).toBe(2);
+      expect(afterConflict?.activities.length).toBe(afterSaveActivitiesCount);
+    });
+
+    it('handles critical concurrency scenario: Collaborator A saves revision 1 -> 2, Collaborator B with baseRevision 1 is rejected and Collaborator A data is preserved', () => {
+      const project = projectStore.createProject(mockOwner, { name: 'Collab Race Project' }, [mockCollaborator]);
+
+      // Both collaborators load project at revision 1
+      const initialProject = projectStore.getProject(project.id, mockOwner.id);
+      const collabALyricsRev = initialProject!.workspace.lyrics.revision; // 1
+      const collabBLyricsRev = initialProject!.workspace.lyrics.revision; // 1
+
+      // Collaborator A edits and saves a new document 'Draft Acoustic'
+      const savedByA = projectStore.updateWorkspace(project.id, mockOwner, {
+        lyrics: {
+          baseRevision: collabALyricsRev,
+          documentId: 'doc-acoustic',
+          title: 'Draft Acoustic',
+          content: 'Acoustic intro chords'
+        }
+      });
+      expect(savedByA?.workspace.lyrics.revision).toBe(2);
+      expect(savedByA?.workspace.lyrics.documents.some((d) => d.id === 'doc-acoustic')).toBe(true);
+
+      // Collaborator B (holding stale revision 1 snapshot without 'doc-acoustic') attempts to save their snapshot
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockCollaborator, {
+          lyrics: {
+            baseRevision: collabBLyricsRev, // Stale 1
+            documents: [{ id: 'doc-main', title: 'Main Lyrics', content: 'Collaborator B main edit' }]
+          }
+        });
+      }).toThrow(WorkspaceConflictError);
+
+      // Verify Collaborator A's newly persisted document and content are completely safe
+      const authoritative = projectStore.getProject(project.id, mockOwner.id);
+      expect(authoritative?.workspace.lyrics.revision).toBe(2);
+      expect(authoritative?.workspace.lyrics.documents.some((d) => d.id === 'doc-acoustic')).toBe(true);
+      expect(authoritative?.workspace.lyrics.documents.find((d) => d.id === 'doc-acoustic')?.content).toBe('Acoustic intro chords');
+    });
+
+    it('allows simultaneous updates to different workspace areas to succeed independently without conflict', () => {
+      const project = projectStore.createProject(mockOwner, { name: 'Independent Areas Project' }, [mockCollaborator]);
+
+      // Collaborator A updates Lyrics from baseRevision 1
+      const resA = projectStore.updateWorkspace(project.id, mockOwner, {
+        lyrics: { baseRevision: 1, content: 'Vocals verse 1 line 1' }
+      });
+      expect(resA?.workspace.lyrics.revision).toBe(2);
+      expect(resA?.workspace.notes.revision).toBe(1);
+
+      // Collaborator B updates Notes from baseRevision 1
+      const resB = projectStore.updateWorkspace(project.id, mockCollaborator, {
+        notes: { baseRevision: 1, content: 'Bassline reference link', bpm: '130', key: 'G Major' }
+      });
+      expect(resB?.workspace.notes.revision).toBe(2);
+      expect(resB?.workspace.lyrics.revision).toBe(2);
+
+      // Verify both persisted successfully
+      const finalProject = projectStore.getProject(project.id, mockOwner.id);
+      expect(finalProject?.workspace.lyrics.content).toBe('Vocals verse 1 line 1');
+      expect(finalProject?.workspace.lyrics.revision).toBe(2);
+      expect(finalProject?.workspace.notes.content).toBe('Bassline reference link');
+      expect(finalProject?.workspace.notes.bpm).toBe('130');
+      expect(finalProject?.workspace.notes.key).toBe('G Major');
+      expect(finalProject?.workspace.notes.revision).toBe(2);
+      expect(finalProject?.workspace.structure.revision).toBe(1);
+      expect(finalProject?.workspace.tasks.revision).toBe(1);
+    });
   });
 });
 

@@ -17,6 +17,27 @@ import type {
   ParticipantIdentity
 } from '@jameet/shared';
 
+export class WorkspaceConflictError extends Error {
+  readonly code = 'WORKSPACE_CONFLICT';
+  readonly area: 'lyrics' | 'notes' | 'structure' | 'tasks';
+  readonly currentRevision: number;
+  readonly baseRevision?: number;
+
+  constructor(
+    area: 'lyrics' | 'notes' | 'structure' | 'tasks',
+    currentRevision: number,
+    baseRevision?: number
+  ) {
+    super(
+      `Workspace conflict in ${area}: server revision is ${currentRevision}, but client provided base revision ${baseRevision}.`
+    );
+    this.name = 'WorkspaceConflictError';
+    this.area = area;
+    this.currentRevision = currentRevision;
+    this.baseRevision = baseRevision;
+  }
+}
+
 export interface ProjectDatabaseSchema {
   version: number;
   projects: Project[];
@@ -62,17 +83,31 @@ export class ProjectStore {
         }
         if (!p.workspace) {
           p.workspace = {
-            lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() }], content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() },
-            notes: { content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() },
-            structure: { sections: [], updatedAt: p.updatedAt || p.createdAt || Date.now() },
-            tasks: { tasks: [], updatedAt: p.updatedAt || p.createdAt || Date.now() }
+            lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() }], content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() },
+            notes: { revision: 1, content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() },
+            structure: { revision: 1, sections: [], updatedAt: p.updatedAt || p.createdAt || Date.now() },
+            tasks: { revision: 1, tasks: [], updatedAt: p.updatedAt || p.createdAt || Date.now() }
           };
         } else {
+          if (!p.workspace.lyrics) {
+            p.workspace.lyrics = { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() }], content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() };
+          } else if (p.workspace.lyrics.revision === undefined) {
+            p.workspace.lyrics.revision = 1;
+          }
+          if (!p.workspace.notes) {
+            p.workspace.notes = { revision: 1, content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() };
+          } else if (p.workspace.notes.revision === undefined) {
+            p.workspace.notes.revision = 1;
+          }
           if (!p.workspace.structure) {
-            p.workspace.structure = { sections: [], updatedAt: p.updatedAt || p.createdAt || Date.now() };
+            p.workspace.structure = { revision: 1, sections: [], updatedAt: p.updatedAt || p.createdAt || Date.now() };
+          } else if (p.workspace.structure.revision === undefined) {
+            p.workspace.structure.revision = 1;
           }
           if (!p.workspace.tasks) {
-            p.workspace.tasks = { tasks: [], updatedAt: p.updatedAt || p.createdAt || Date.now() };
+            p.workspace.tasks = { revision: 1, tasks: [], updatedAt: p.updatedAt || p.createdAt || Date.now() };
+          } else if (p.workspace.tasks.revision === undefined) {
+            p.workspace.tasks.revision = 1;
           }
         }
         this.projects.set(p.id, p);
@@ -220,6 +255,7 @@ export class ProjectStore {
       activities: [],
       workspace: {
         lyrics: {
+          revision: 1,
           activeDocumentId: 'doc-main',
           documents: [
             {
@@ -234,9 +270,9 @@ export class ProjectStore {
           content: '',
           updatedAt: now
         },
-        notes: { content: '', updatedAt: now },
-        structure: { sections: [], updatedAt: now },
-        tasks: { tasks: [], updatedAt: now }
+        notes: { revision: 1, content: '', updatedAt: now },
+        structure: { revision: 1, sections: [], updatedAt: now },
+        tasks: { revision: 1, tasks: [], updatedAt: now }
       },
       metadata: {}
     };
@@ -451,27 +487,74 @@ export class ProjectStore {
       }
     }
 
-    const snapshot = JSON.parse(JSON.stringify(project)) as Project;
+    // Ensure workspace containers exist and have revisions initialized
     const now = Date.now();
     if (!project.workspace) {
       project.workspace = {
         lyrics: {
+          revision: 1,
           activeDocumentId: 'doc-main',
           documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }],
           content: '',
           updatedAt: now
         },
-        notes: { content: '', updatedAt: now },
-        structure: { sections: [], updatedAt: now },
-        tasks: { tasks: [], updatedAt: now }
+        notes: { revision: 1, content: '', updatedAt: now },
+        structure: { revision: 1, sections: [], updatedAt: now },
+        tasks: { revision: 1, tasks: [], updatedAt: now }
       };
     }
+    if (!project.workspace.lyrics) {
+      project.workspace.lyrics = { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now };
+    } else if (project.workspace.lyrics.revision === undefined) {
+      project.workspace.lyrics.revision = 1;
+    }
+    if (!project.workspace.notes) {
+      project.workspace.notes = { revision: 1, content: '', updatedAt: now };
+    } else if (project.workspace.notes.revision === undefined) {
+      project.workspace.notes.revision = 1;
+    }
     if (!project.workspace.structure) {
-      project.workspace.structure = { sections: [], updatedAt: now };
+      project.workspace.structure = { revision: 1, sections: [], updatedAt: now };
+    } else if (project.workspace.structure.revision === undefined) {
+      project.workspace.structure.revision = 1;
     }
     if (!project.workspace.tasks) {
-      project.workspace.tasks = { tasks: [], updatedAt: now };
+      project.workspace.tasks = { revision: 1, tasks: [], updatedAt: now };
+    } else if (project.workspace.tasks.revision === undefined) {
+      project.workspace.tasks.revision = 1;
     }
+
+    // Pre-mutation Optimistic Concurrency Control (OCC) validation
+    if (updates.lyrics?.baseRevision !== undefined) {
+      const currentRev = project.workspace.lyrics.revision ?? 1;
+      if (updates.lyrics.baseRevision !== currentRev) {
+        throw new WorkspaceConflictError('lyrics', currentRev, updates.lyrics.baseRevision);
+      }
+    }
+    if (updates.notes?.baseRevision !== undefined) {
+      const currentRev = project.workspace.notes.revision ?? 1;
+      if (updates.notes.baseRevision !== currentRev) {
+        throw new WorkspaceConflictError('notes', currentRev, updates.notes.baseRevision);
+      }
+    }
+    if (updates.structure?.baseRevision !== undefined) {
+      const currentRev = project.workspace.structure.revision ?? 1;
+      if (updates.structure.baseRevision !== currentRev) {
+        throw new WorkspaceConflictError('structure', currentRev, updates.structure.baseRevision);
+      }
+    }
+    if (updates.tasks?.baseRevision !== undefined) {
+      const currentRev = project.workspace.tasks.revision ?? 1;
+      if (updates.tasks.baseRevision !== currentRev) {
+        throw new WorkspaceConflictError('tasks', currentRev, updates.tasks.baseRevision);
+      }
+    }
+
+    const snapshot = JSON.parse(JSON.stringify(project)) as Project;
+    let lyricsChanged = false;
+    let notesChanged = false;
+    let structureChanged = false;
+    let tasksChanged = false;
 
     if (updates.lyrics) {
       const curLyrics = project.workspace.lyrics;
@@ -485,7 +568,8 @@ export class ProjectStore {
 
       if (updates.lyrics.documents) {
         const oldDocs = new Map(initialDocsList.map((d) => [d.id, { ...d }]));
-        curLyrics.documents = updates.lyrics.documents.map((incDoc) => {
+        let docsModified = initialDocsList.length !== updates.lyrics.documents.length;
+        const newDocs = updates.lyrics.documents.map((incDoc) => {
           const existing = oldDocs.get(incDoc.id);
           if (existing) {
             const hasTitleUpdate = incDoc.title !== undefined && incDoc.title.trim().length > 0;
@@ -495,6 +579,7 @@ export class ProjectStore {
             const contentChanged = newContent !== existing.content;
 
             if (titleChanged || contentChanged) {
+              docsModified = true;
               return {
                 id: incDoc.id,
                 title: newTitle,
@@ -513,6 +598,7 @@ export class ProjectStore {
               updatedByName: existing.updatedByName
             };
           }
+          docsModified = true;
           return {
             id: incDoc.id,
             title: incDoc.title ? incDoc.title.trim() : 'Untitled Lyrics',
@@ -522,16 +608,24 @@ export class ProjectStore {
             updatedByName: user.displayName
           };
         });
+
+        if (docsModified) {
+          lyricsChanged = true;
+          curLyrics.documents = newDocs;
+        }
+
         if (curLyrics.documents.length === 0) {
           curLyrics.documents = [
             { id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now, updatedBy: user.id, updatedByName: user.displayName }
           ];
           curLyrics.activeDocumentId = 'doc-main';
+          lyricsChanged = true;
         }
       }
 
-      if (updates.lyrics.activeDocumentId) {
+      if (updates.lyrics.activeDocumentId && updates.lyrics.activeDocumentId !== curLyrics.activeDocumentId) {
         curLyrics.activeDocumentId = updates.lyrics.activeDocumentId;
+        lyricsChanged = true;
       }
 
       if (updates.lyrics.documentId !== undefined || updates.lyrics.title !== undefined || updates.lyrics.content !== undefined) {
@@ -549,6 +643,7 @@ export class ProjectStore {
             updatedByName: user.displayName
           };
           curLyrics.documents.push(doc);
+          lyricsChanged = true;
           this.recordActivity(
             projectId,
             user,
@@ -563,8 +658,9 @@ export class ProjectStore {
           const oldContent = doc.content;
           let changed = false;
           if (updates.lyrics.title !== undefined && updates.lyrics.title.trim().length > 0) {
-            doc.title = updates.lyrics.title.trim();
-            if (doc.title !== oldTitle) {
+            const nextTitle = updates.lyrics.title.trim();
+            if (nextTitle !== oldTitle) {
+              doc.title = nextTitle;
               changed = true;
               this.recordActivity(
                 projectId,
@@ -577,25 +673,24 @@ export class ProjectStore {
               );
             }
           }
-          if (updates.lyrics.content !== undefined) {
+          if (updates.lyrics.content !== undefined && updates.lyrics.content !== oldContent) {
             doc.content = updates.lyrics.content;
-            if (doc.content !== oldContent) {
-              changed = true;
-              this.recordActivity(
-                projectId,
-                user,
-                'lyrics_edited',
-                `${user.displayName} edited ${doc.title}`,
-                doc.title,
-                undefined,
-                false
-              );
-            }
+            changed = true;
+            this.recordActivity(
+              projectId,
+              user,
+              'lyrics_edited',
+              `${user.displayName} edited ${doc.title}`,
+              doc.title,
+              undefined,
+              false
+            );
           }
           if (changed) {
             doc.updatedAt = now;
             doc.updatedBy = user.id;
             doc.updatedByName = user.displayName;
+            lyricsChanged = true;
           }
         }
       }
@@ -607,15 +702,16 @@ export class ProjectStore {
 
       // Sync active document content to top-level content for backwards compatibility
       const activeDoc = curLyrics.documents.find((d) => d.id === curLyrics.activeDocumentId) || curLyrics.documents[0];
-      curLyrics.content = activeDoc ? activeDoc.content : '';
-      curLyrics.updatedAt = now;
-      curLyrics.updatedBy = user.id;
-      curLyrics.updatedByName = user.displayName;
+      const activeDocContent = activeDoc ? activeDoc.content : '';
+      if (curLyrics.content !== activeDocContent) {
+        curLyrics.content = activeDocContent;
+      }
 
       if (updates.lyrics.documents) {
         const finalDocIds = new Set(curLyrics.documents.map((d) => d.id));
         for (const initialDoc of initialDocsList) {
           if (!finalDocIds.has(initialDoc.id)) {
+            lyricsChanged = true;
             this.recordActivity(
               projectId,
               user,
@@ -627,6 +723,13 @@ export class ProjectStore {
             );
           }
         }
+      }
+
+      if (lyricsChanged) {
+        curLyrics.revision = (curLyrics.revision || 1) + 1;
+        curLyrics.updatedAt = now;
+        curLyrics.updatedBy = user.id;
+        curLyrics.updatedByName = user.displayName;
       }
     }
 
@@ -641,85 +744,91 @@ export class ProjectStore {
       const normalizedOldKey = oldKey ? oldKey.trim() : '';
       const normalizedNewKey = updates.notes.key !== undefined ? (updates.notes.key ? updates.notes.key.trim() : '') : undefined;
 
-      project.workspace.notes = {
-        content: updates.notes.content !== undefined ? updates.notes.content : project.workspace.notes.content,
-        bpm: updates.notes.bpm !== undefined ? updates.notes.bpm : project.workspace.notes.bpm,
-        key: updates.notes.key !== undefined ? updates.notes.key : project.workspace.notes.key,
-        updatedAt: now,
-        updatedBy: user.id,
-        updatedByName: user.displayName
-      };
+      const bpmDiff = normalizedNewBpm !== undefined && normalizedNewBpm !== normalizedOldBpm;
+      const keyDiff = normalizedNewKey !== undefined && normalizedNewKey !== normalizedOldKey;
+      const contentDiff = updates.notes.content !== undefined && updates.notes.content !== oldContent;
 
-      if (normalizedNewBpm !== undefined && normalizedNewBpm !== normalizedOldBpm) {
-        if (normalizedNewBpm) {
-          this.recordActivity(
-            projectId,
-            user,
-            'notes_bpm_changed',
-            `${user.displayName} set tempo to ${updates.notes.bpm} BPM`,
-            `${updates.notes.bpm} BPM`,
-            undefined,
-            false
-          );
-        } else if (normalizedOldBpm) {
-          this.recordActivity(
-            projectId,
-            user,
-            'notes_bpm_changed',
-            `${user.displayName} cleared Project tempo`,
-            undefined,
-            undefined,
-            false
-          );
-        }
-      }
-      if (normalizedNewKey !== undefined && normalizedNewKey !== normalizedOldKey) {
-        if (normalizedNewKey) {
-          this.recordActivity(
-            projectId,
-            user,
-            'notes_key_changed',
-            `${user.displayName} changed key to ${updates.notes.key}`,
-            updates.notes.key,
-            undefined,
-            false
-          );
-        } else if (normalizedOldKey) {
-          this.recordActivity(
-            projectId,
-            user,
-            'notes_key_changed',
-            `${user.displayName} cleared Project key`,
-            undefined,
-            undefined,
-            false
-          );
-        }
-      }
-      if (updates.notes.content !== undefined) {
-        const isOldEmpty = (oldContent ?? '').trim().length === 0;
-        const isNewEmpty = updates.notes.content.trim().length === 0;
+      if (bpmDiff || keyDiff || contentDiff) {
+        notesChanged = true;
+        project.workspace.notes.content = updates.notes.content !== undefined ? updates.notes.content : project.workspace.notes.content;
+        project.workspace.notes.bpm = updates.notes.bpm !== undefined ? updates.notes.bpm : project.workspace.notes.bpm;
+        project.workspace.notes.key = updates.notes.key !== undefined ? updates.notes.key : project.workspace.notes.key;
+        project.workspace.notes.revision = (project.workspace.notes.revision || 1) + 1;
+        project.workspace.notes.updatedAt = now;
+        project.workspace.notes.updatedBy = user.id;
+        project.workspace.notes.updatedByName = user.displayName;
 
-        if (!isOldEmpty && isNewEmpty) {
-          this.recordActivity(
-            projectId,
-            user,
-            'notes_edited',
-            `${user.displayName} cleared Project Notes`,
-            'Project Notes',
-            undefined,
-            false
-          );
-        } else if (!isNewEmpty && updates.notes.content !== oldContent) {
-          this.recordActivity(
-            projectId,
-            user,
-            'notes_edited',
-            `${user.displayName} updated Project Notes`,
-            'Project Notes',
-            undefined,
-            false
-          );
+        if (bpmDiff) {
+          if (normalizedNewBpm) {
+            this.recordActivity(
+              projectId,
+              user,
+              'notes_bpm_changed',
+              `${user.displayName} set tempo to ${updates.notes.bpm} BPM`,
+              `${updates.notes.bpm} BPM`,
+              undefined,
+              false
+            );
+          } else if (normalizedOldBpm) {
+            this.recordActivity(
+              projectId,
+              user,
+              'notes_bpm_changed',
+              `${user.displayName} cleared Project tempo`,
+              undefined,
+              undefined,
+              false
+            );
+          }
+        }
+        if (keyDiff) {
+          if (normalizedNewKey) {
+            this.recordActivity(
+              projectId,
+              user,
+              'notes_key_changed',
+              `${user.displayName} changed key to ${updates.notes.key}`,
+              updates.notes.key,
+              undefined,
+              false
+            );
+          } else if (normalizedOldKey) {
+            this.recordActivity(
+              projectId,
+              user,
+              'notes_key_changed',
+              `${user.displayName} cleared Project key`,
+              undefined,
+              undefined,
+              false
+            );
+          }
+        }
+        if (contentDiff) {
+          const isOldEmpty = (oldContent ?? '').trim().length === 0;
+          const isNewEmpty = (updates.notes.content ?? '').trim().length === 0;
+
+          if (!isOldEmpty && isNewEmpty) {
+            this.recordActivity(
+              projectId,
+              user,
+              'notes_edited',
+              `${user.displayName} cleared Project Notes`,
+              'Project Notes',
+              undefined,
+              false
+            );
+          } else if (!isNewEmpty && updates.notes.content !== oldContent) {
+            this.recordActivity(
+              projectId,
+              user,
+              'notes_edited',
+              `${user.displayName} updated Project Notes`,
+              'Project Notes',
+              undefined,
+              false
+            );
+          }
         }
       }
     }
@@ -728,7 +837,7 @@ export class ProjectStore {
       if (updates.structure.sections !== undefined) {
         const oldSections = project.workspace.structure.sections || [];
         const newSections = updates.structure.sections;
-        const changed =
+        structureChanged =
           oldSections.length !== newSections.length ||
           oldSections.some((oldS, i) => {
             const newS = newSections[i];
@@ -743,9 +852,13 @@ export class ProjectStore {
             );
           });
 
-        project.workspace.structure.sections = newSections;
+        if (structureChanged) {
+          project.workspace.structure.sections = newSections;
+          project.workspace.structure.revision = (project.workspace.structure.revision || 1) + 1;
+          project.workspace.structure.updatedAt = now;
+          project.workspace.structure.updatedBy = user.id;
+          project.workspace.structure.updatedByName = user.displayName;
 
-        if (changed) {
           this.recordActivity(
             projectId,
             user,
@@ -757,134 +870,154 @@ export class ProjectStore {
           );
         }
       }
-      project.workspace.structure.updatedAt = now;
-      project.workspace.structure.updatedBy = user.id;
-      project.workspace.structure.updatedByName = user.displayName;
     }
 
     if (updates.tasks && updates.tasks.tasks !== undefined) {
       const oldTasks = project.workspace.tasks.tasks || [];
       const newTasks = updates.tasks.tasks;
 
-      // Detect new task
-      const oldIds = new Set(oldTasks.map((t) => t.id));
-      for (const t of newTasks) {
-        if (!oldIds.has(t.id)) {
-          this.recordActivity(
-            projectId,
-            user,
-            'task_created',
-            `${user.displayName} created task "${t.title}"`,
-            t.title,
-            undefined,
-            false
+      tasksChanged =
+        oldTasks.length !== newTasks.length ||
+        oldTasks.some((oldT, i) => {
+          const newT = newTasks[i];
+          if (!newT) return true;
+          return (
+            oldT.id !== newT.id ||
+            oldT.title !== newT.title ||
+            oldT.status !== newT.status ||
+            (oldT.assigneeId || undefined) !== (newT.assigneeId || undefined) ||
+            (oldT.assigneeName || undefined) !== (newT.assigneeName || undefined) ||
+            (oldT.note || undefined) !== (newT.note || undefined) ||
+            (oldT.dueDate || undefined) !== (newT.dueDate || undefined) ||
+            (oldT.completedAt || undefined) !== (newT.completedAt || undefined)
           );
-        } else {
-          const oldT = oldTasks.find((ot) => ot.id === t.id);
-          if (oldT) {
-            if (oldT.status !== 'done' && t.status === 'done') {
-              this.recordActivity(
-                projectId,
-                user,
-                'task_completed',
-                `${user.displayName} completed "${t.title}"`,
-                t.title,
-                undefined,
-                false
-              );
-            } else if (oldT.status === 'done' && t.status !== 'done') {
-              this.recordActivity(
-                projectId,
-                user,
-                'task_reopened',
-                `${user.displayName} reopened "${t.title}"`,
-                t.title,
-                undefined,
-                false
-              );
-            } else if (oldT.assigneeId !== t.assigneeId && t.assigneeName) {
-              this.recordActivity(
-                projectId,
-                user,
-                'task_assigned',
-                `${user.displayName} assigned "${t.title}" to ${t.assigneeName}`,
-                t.title,
-                undefined,
-                false
-              );
-            } else if (oldT.assigneeId && !t.assigneeId) {
-              this.recordActivity(
-                projectId,
-                user,
-                'task_unassigned',
-                `${user.displayName} unassigned "${t.title}"`,
-                t.title,
-                undefined,
-                false
-              );
-            } else if (
-              (oldT.status === 'todo' && t.status === 'in_progress') ||
-              (oldT.status === 'in_progress' && t.status === 'todo')
-            ) {
-              const statusText = t.status === 'in_progress' ? 'in progress' : 'to-do';
-              this.recordActivity(
-                projectId,
-                user,
-                'task_status_changed',
-                `${user.displayName} marked "${t.title}" as ${statusText}`,
-                t.title,
-                undefined,
-                false
-              );
-            } else if (
-              oldT.title !== t.title ||
-              (oldT.note || undefined) !== (t.note || undefined) ||
-              (oldT.dueDate || undefined) !== (t.dueDate || undefined)
-            ) {
-              this.recordActivity(
-                projectId,
-                user,
-                'task_updated',
-                `${user.displayName} updated task "${t.title}"`,
-                t.title,
-                undefined,
-                false
-              );
+        });
+
+      if (tasksChanged) {
+        // Detect new task
+        const oldIds = new Set(oldTasks.map((t) => t.id));
+        for (const t of newTasks) {
+          if (!oldIds.has(t.id)) {
+            this.recordActivity(
+              projectId,
+              user,
+              'task_created',
+              `${user.displayName} created task "${t.title}"`,
+              t.title,
+              undefined,
+              false
+            );
+          } else {
+            const oldT = oldTasks.find((ot) => ot.id === t.id);
+            if (oldT) {
+              if (oldT.status !== 'done' && t.status === 'done') {
+                this.recordActivity(
+                  projectId,
+                  user,
+                  'task_completed',
+                  `${user.displayName} completed "${t.title}"`,
+                  t.title,
+                  undefined,
+                  false
+                );
+              } else if (oldT.status === 'done' && t.status !== 'done') {
+                this.recordActivity(
+                  projectId,
+                  user,
+                  'task_reopened',
+                  `${user.displayName} reopened "${t.title}"`,
+                  t.title,
+                  undefined,
+                  false
+                );
+              } else if (oldT.assigneeId !== t.assigneeId && t.assigneeName) {
+                this.recordActivity(
+                  projectId,
+                  user,
+                  'task_assigned',
+                  `${user.displayName} assigned "${t.title}" to ${t.assigneeName}`,
+                  t.title,
+                  undefined,
+                  false
+                );
+              } else if (oldT.assigneeId && !t.assigneeId) {
+                this.recordActivity(
+                  projectId,
+                  user,
+                  'task_unassigned',
+                  `${user.displayName} unassigned "${t.title}"`,
+                  t.title,
+                  undefined,
+                  false
+                );
+              } else if (
+                (oldT.status === 'todo' && t.status === 'in_progress') ||
+                (oldT.status === 'in_progress' && t.status === 'todo')
+              ) {
+                const statusText = t.status === 'in_progress' ? 'in progress' : 'to-do';
+                this.recordActivity(
+                  projectId,
+                  user,
+                  'task_status_changed',
+                  `${user.displayName} marked "${t.title}" as ${statusText}`,
+                  t.title,
+                  undefined,
+                  false
+                );
+              } else if (
+                oldT.title !== t.title ||
+                (oldT.note || undefined) !== (t.note || undefined) ||
+                (oldT.dueDate || undefined) !== (t.dueDate || undefined)
+              ) {
+                this.recordActivity(
+                  projectId,
+                  user,
+                  'task_updated',
+                  `${user.displayName} updated task "${t.title}"`,
+                  t.title,
+                  undefined,
+                  false
+                );
+              }
             }
           }
         }
-      }
 
-      // Detect deleted tasks
-      const newIds = new Set(newTasks.map((t) => t.id));
-      for (const ot of oldTasks) {
-        if (!newIds.has(ot.id)) {
-          this.recordActivity(
-            projectId,
-            user,
-            'task_deleted',
-            `${user.displayName} deleted task "${ot.title}"`,
-            ot.title,
-            undefined,
-            false
-          );
+        // Detect deleted tasks
+        const newIds = new Set(newTasks.map((t) => t.id));
+        for (const ot of oldTasks) {
+          if (!newIds.has(ot.id)) {
+            this.recordActivity(
+              projectId,
+              user,
+              'task_deleted',
+              `${user.displayName} deleted task "${ot.title}"`,
+              ot.title,
+              undefined,
+              false
+            );
+          }
         }
+
+        project.workspace.tasks.tasks = newTasks;
+        project.workspace.tasks.revision = (project.workspace.tasks.revision || 1) + 1;
+        project.workspace.tasks.updatedAt = now;
+        project.workspace.tasks.updatedBy = user.id;
+        project.workspace.tasks.updatedByName = user.displayName;
       }
-
-      project.workspace.tasks.tasks = newTasks;
-      project.workspace.tasks.updatedAt = now;
-      project.workspace.tasks.updatedBy = user.id;
-      project.workspace.tasks.updatedByName = user.displayName;
     }
 
-    project.updatedAt = now;
-    project.lastActivityAt = now;
-    try {
-      this.saveToDisk();
-    } catch (err) {
-      this.projects.set(projectId, snapshot);
-      throw err;
+    if (lyricsChanged || notesChanged || structureChanged || tasksChanged) {
+      project.updatedAt = now;
+      project.lastActivityAt = now;
+      try {
+        this.saveToDisk();
+      } catch (err) {
+        this.projects.set(projectId, snapshot);
+        throw err;
+      }
     }
+
     return project;
   }
 

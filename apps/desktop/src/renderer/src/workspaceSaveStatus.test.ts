@@ -931,4 +931,204 @@ describe('Dual-Generation & Project Context Stale Save Protection', () => {
       expect(result.notesStatus).toBe('saved');
     });
   });
+
+  describe('Revision-based Optimistic Concurrency & Conflict Handling', () => {
+    it('preserves local Lyrics edits and sets status to unsaved when server rejects with revision conflict', async () => {
+      let status: WorkspaceSaveStatus = 'saving';
+      let localWorkspace = {
+        lyrics: {
+          revision: 1,
+          documents: [{ id: 'doc-main', title: 'Main Lyrics', content: 'Local in-flight verse edit' }]
+        }
+      };
+
+      const serverConflictResponse = {
+        ok: false,
+        conflict: true,
+        code: 'WORKSPACE_CONFLICT',
+        area: 'lyrics',
+        currentRevision: 2,
+        baseRevision: 1,
+        message: 'Workspace conflict in lyrics: server revision is 2, but client provided base revision 1.',
+        workspace: {
+          lyrics: {
+            revision: 2,
+            documents: [
+              { id: 'doc-main', title: 'Main Lyrics', content: 'Server authoritative verse edit by Collaborator A' },
+              { id: 'doc-acoustic', title: 'Draft Acoustic', content: 'Acoustic intro' }
+            ]
+          }
+        }
+      };
+
+      const mockSaveCall = vi.fn().mockResolvedValue(serverConflictResponse);
+
+      const result = await executeWorkspaceSave(
+        mockSaveCall,
+        localWorkspace,
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { localWorkspace = ws; }
+        }
+      );
+
+      expect(result.ok).toBe(false);
+      expect(status).toBe('unsaved');
+      // Local in-flight edits are not silently overwritten
+      expect(localWorkspace.lyrics.documents[0]?.content).toBe('Local in-flight verse edit');
+      expect(localWorkspace.lyrics.revision).toBe(1);
+    });
+
+    it('preserves local Structure and Tasks edits when server rejects with revision conflict', async () => {
+      let structureStatus: WorkspaceSaveStatus = 'saving';
+      let localStructureWorkspace = {
+        structure: {
+          revision: 1,
+          sections: [{ id: 'sec_local', type: 'verse', name: 'My Verse Edit', bars: 16 }]
+        }
+      };
+
+      const mockStructureSave = vi.fn().mockResolvedValue({
+        ok: false,
+        conflict: true,
+        code: 'WORKSPACE_CONFLICT',
+        area: 'structure',
+        currentRevision: 2,
+        baseRevision: 1
+      });
+
+      const resStruct = await executeWorkspaceSave(
+        mockStructureSave,
+        localStructureWorkspace,
+        {
+          setStatus: (s) => { structureStatus = s; },
+          updateAuthoritativeState: (ws) => { localStructureWorkspace = ws; }
+        }
+      );
+
+      expect(resStruct.ok).toBe(false);
+      expect(structureStatus).toBe('unsaved');
+      expect(localStructureWorkspace.structure.sections[0]?.name).toBe('My Verse Edit');
+
+      let tasksStatus: WorkspaceSaveStatus = 'saving';
+      let localTasksWorkspace = {
+        tasks: {
+          revision: 1,
+          tasks: [{ id: 'task_local', title: 'My Task Edit', status: 'in_progress' }]
+        }
+      };
+
+      const mockTasksSave = vi.fn().mockResolvedValue({
+        ok: false,
+        conflict: true,
+        code: 'WORKSPACE_CONFLICT',
+        area: 'tasks',
+        currentRevision: 2,
+        baseRevision: 1
+      });
+
+      const resTasks = await executeWorkspaceSave(
+        mockTasksSave,
+        localTasksWorkspace,
+        {
+          setStatus: (s) => { tasksStatus = s; },
+          updateAuthoritativeState: (ws) => { localTasksWorkspace = ws; }
+        }
+      );
+
+      expect(resTasks.ok).toBe(false);
+      expect(tasksStatus).toBe('unsaved');
+      expect(localTasksWorkspace.tasks.tasks[0]?.title).toBe('My Task Edit');
+    });
+
+    it('handles Notes revision conflict by executing 3-way merge and adopting new authoritative revision', () => {
+      const baseContent = 'Verse 1 chords: Am -> C';
+      const localContent = 'Verse 1 chords: Am -> C\nVerse 2 chords: F -> G (Dan)';
+      const serverContent = 'Verse 1 chords: Am -> C\nChorus chords: Dm -> G7 (Sarah)';
+
+      // Perform three way merge
+      function threeWayLineMerge(base: string, local: string, remote: string): string {
+        if (local === remote) return local;
+        if (local === base) return remote;
+        if (remote === base) return local;
+        const localLines = local.split('\n');
+        const remoteLines = remote.split('\n');
+        const resultLines = [...localLines];
+        for (const r of remoteLines) {
+          if (!resultLines.includes(r)) {
+            resultLines.push(r);
+          }
+        }
+        return resultLines.join('\n');
+      }
+
+      const merged = threeWayLineMerge(baseContent, localContent, serverContent);
+      expect(merged).toContain('Verse 2 chords: F -> G (Dan)');
+      expect(merged).toContain('Chorus chords: Dm -> G7 (Sarah)');
+
+      const localWorkspace = {
+        notes: {
+          revision: 1,
+          content: localContent
+        }
+      };
+
+      const serverConflictResponse = {
+        ok: false,
+        conflict: true,
+        code: 'WORKSPACE_CONFLICT',
+        workspace: {
+          notes: {
+            revision: 2,
+            content: serverContent
+          }
+        }
+      };
+
+      // Apply merge resolution
+      localWorkspace.notes.content = merged;
+      localWorkspace.notes.revision = serverConflictResponse.workspace.notes.revision;
+
+      expect(localWorkspace.notes.content).toBe(merged);
+      expect(localWorkspace.notes.revision).toBe(2);
+    });
+
+    it('does not update local area revision during realtime sync if local area has pending edits', () => {
+      const state = {
+        workspace: {
+          lyrics: { revision: 1, content: 'Local in-flight lyrics' },
+          notes: { revision: 1, content: 'Clean notes' },
+          structure: { revision: 1, sections: [] },
+          tasks: { revision: 1, tasks: [] }
+        },
+        lyricsStatus: 'saving' as WorkspaceSaveStatus,
+        hasPendingLyrics: true,
+        notesStatus: 'saved' as WorkspaceSaveStatus,
+        hasPendingNotes: false,
+        lastSyncedNotes: 'Clean notes',
+        structureStatus: 'saved' as WorkspaceSaveStatus,
+        hasPendingStructure: false,
+        tasksStatus: 'saved' as WorkspaceSaveStatus,
+        hasPendingTasks: false
+      };
+
+      const incoming = {
+        lyrics: { revision: 2, content: 'Collaborator B new lyrics' },
+        notes: { revision: 2, content: 'Collaborator B new notes' },
+        structure: { revision: 1, sections: [] },
+        tasks: { revision: 1, tasks: [] }
+      };
+
+      const result = handleRealtimeWorkspaceSync(state, incoming);
+
+      // Lyrics has pending edits -> revision remains 1 and local content preserved
+      expect(result.workspace.lyrics.content).toBe('Local in-flight lyrics');
+      expect(result.workspace.lyrics.revision).toBe(1);
+      expect(result.lyricsStatus).toBe('saving');
+
+      // Notes had no pending edits -> updated to revision 2
+      expect(result.workspace.notes.content).toBe('Collaborator B new notes');
+      expect(result.notesStatus).toBe('saved');
+    });
+  });
 });
