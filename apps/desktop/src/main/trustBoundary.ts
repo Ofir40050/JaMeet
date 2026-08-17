@@ -12,7 +12,7 @@ export function isTrustedOrigin(urlStr?: string | null): boolean {
   try {
     const parsed = new URL(urlStr);
     if (parsed.protocol === 'jameet-app:' || parsed.protocol === 'musiczoom-app:') {
-      return parsed.hostname === 'bundle';
+      return parsed.hostname === 'bundle' || parsed.host === 'bundle' || parsed.pathname === '/bundle' || parsed.pathname.startsWith('/bundle/');
     }
     // Allow local development server only when configured or during dev
     if (process.env.ELECTRON_RENDERER_URL || (app && !app.isPackaged)) {
@@ -54,12 +54,21 @@ export function isAllowedExternalUrl(urlStr?: string | null): boolean {
 
 /**
  * Validates that an incoming IPC event was dispatched from an authoritative
- * trusted JaMeet renderer frame via event.senderFrame.
+ * trusted JaMeet renderer frame via event.senderFrame or trusted sender WebContents.
  */
-export function isTrustedSender(event?: { senderFrame?: { url?: string | null } | null } | null): boolean {
-  if (!event || !event.senderFrame) return false;
-  const frameUrl = event.senderFrame.url;
-  return isTrustedOrigin(frameUrl);
+export function isTrustedSender(event?: { senderFrame?: { url?: string | null } | null; sender?: { getURL?: () => string } | null } | null): boolean {
+  if (!event) return false;
+  const frameUrl = event.senderFrame?.url;
+  if (frameUrl && isTrustedOrigin(frameUrl)) {
+    return true;
+  }
+  if (event.sender && typeof event.sender.getURL === 'function') {
+    const senderUrl = event.sender.getURL();
+    if (senderUrl && isTrustedOrigin(senderUrl)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**

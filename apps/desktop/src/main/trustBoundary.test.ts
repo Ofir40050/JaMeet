@@ -89,6 +89,14 @@ describe('Electron Renderer Trust Boundary & Sender Validation', () => {
       expect(isTrustedSender(validEvent)).toBe(true);
     });
 
+    it('validates sender via sender WebContents when senderFrame is unpopulated during early lifecycle', () => {
+      const validWebContentsEvent = {
+        senderFrame: null,
+        sender: { getURL: () => 'jameet-app://bundle/index.html' }
+      };
+      expect(isTrustedSender(validWebContentsEvent as any)).toBe(true);
+    });
+
     it('rejects IPC events from untrusted frame URLs', () => {
       const invalidEvent = {
         senderFrame: { url: 'https://evil.com/exploit.html' }
@@ -96,12 +104,13 @@ describe('Electron Renderer Trust Boundary & Sender Validation', () => {
       expect(isTrustedSender(invalidEvent)).toBe(false);
     });
 
-    it('rejects IPC events when senderFrame is missing or null', () => {
+    it('rejects IPC events when senderFrame and sender are missing, null, or untrusted', () => {
       expect(isTrustedSender(null)).toBe(false);
       expect(isTrustedSender(undefined)).toBe(false);
       expect(isTrustedSender({})).toBe(false);
       expect(isTrustedSender({ senderFrame: null })).toBe(false);
       expect(isTrustedSender({ senderFrame: { url: '' } })).toBe(false);
+      expect(isTrustedSender({ senderFrame: null, sender: { getURL: () => 'https://evil.com' } } as any)).toBe(false);
     });
   });
 
