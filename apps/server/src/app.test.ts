@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { io as client, type Socket } from 'socket.io-client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { MeetingAck } from '@jameet/shared';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
@@ -49,10 +49,19 @@ async function createTestAccount(url: string, username: string, access: 'beta' |
 }
 
 describe('signaling integration', () => {
-  afterEach(() => { for (const socket of sockets.splice(0)) socket.disconnect(); });
+  let tmpDataDir: string;
+  beforeEach(() => {
+    tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-signaling-test-'));
+  });
+  afterEach(() => {
+    for (const socket of sockets.splice(0)) socket.disconnect();
+    if (fs.existsSync(tmpDataDir)) {
+      fs.rmSync(tmpDataDir, { recursive: true, force: true });
+    }
+  });
 
   it('creates, joins, relays signaling, rejects a third person, and handles leave', async () => {
-    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -93,7 +102,7 @@ describe('signaling integration', () => {
   });
 
   it('isolates waiting room participant until host admits them', async () => {
-    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -165,7 +174,7 @@ describe('signaling integration', () => {
   });
 
   it('handles locking and unlocking session with server-side authorization and reconnects', async () => {
-    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -240,7 +249,7 @@ describe('signaling integration', () => {
   });
 
   it('handles host removing participant, revoking reconnect bypass, and notifying remaining peers', async () => {
-    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -310,6 +319,7 @@ describe('signaling integration', () => {
   it('supports JaMeet and legacy MusicZoom application origins for REST CORS and Socket.IO signaling', async () => {
     const { app, io } = await createApp(loadConfig({
       NODE_ENV: 'test',
+      DATA_DIR: tmpDataDir,
       ALLOWED_ORIGINS: 'jameet-app://bundle,musiczoom-app://bundle',
       TURN_SHARED_SECRET: 'a-secure-test-secret'
     }));
@@ -373,6 +383,7 @@ describe('signaling integration', () => {
   it('strictly enforces ALLOWED_ORIGINS as authoritative in production mode', async () => {
     const { app, io } = await createApp(loadConfig({
       NODE_ENV: 'production',
+      DATA_DIR: tmpDataDir,
       ALLOWED_ORIGINS: 'jameet-app://bundle,musiczoom-app://bundle,http://localhost:5173',
       TURN_SHARED_SECRET: 'a-secure-test-secret-at-least-32-chars!'
     }));
@@ -438,6 +449,7 @@ describe('signaling integration', () => {
   it('validates Socket.IO workspace updates against shared schema, rejects invalid payloads cleanly, and syncs valid updates', async () => {
     const { app, io, userStore, projectStore } = await createApp(loadConfig({
       NODE_ENV: 'test',
+      DATA_DIR: tmpDataDir,
       TURN_SHARED_SECRET: 'a-secure-test-secret'
     }));
     await app.listen({ host: '127.0.0.1', port: 0 });
@@ -656,7 +668,11 @@ describe('signaling integration', () => {
   });
 
   it('prevents role hijacking via participantId and enforces server-authoritative reconnect identity', async () => {
-    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({
+      NODE_ENV: 'test',
+      DATA_DIR: tmpDataDir,
+      TURN_SHARED_SECRET: 'a-secure-test-secret'
+    }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -773,7 +789,7 @@ describe('signaling integration', () => {
   });
 
   it('enforces server-side project authorization across REST APIs and real-time WebSockets', async () => {
-    const { app, io, userStore, projectStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore, projectStore } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -951,7 +967,11 @@ describe('signaling integration', () => {
   });
 
   it('relays signal:renegotiate from guest to host and rejects unauthorized renegotiation', async () => {
-    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({
+      NODE_ENV: 'test',
+      DATA_DIR: tmpDataDir,
+      TURN_SHARED_SECRET: 'a-secure-test-secret'
+    }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -989,7 +1009,7 @@ describe('signaling integration', () => {
   });
 
   it('preserves registered and guest identity across Socket.IO reconnections without downgrading to generic guest', async () => {
-    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -1133,7 +1153,7 @@ describe('signaling integration', () => {
   });
 
   it('rejects unauthenticated meeting creation and joins with AUTH_REQUIRED', async () => {
-    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -1877,7 +1897,7 @@ describe('signaling integration', () => {
   });
 
   it('handles waiting room participant reconnect securely, allows reconnect when locked, and admits into call', async () => {
-    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -1979,7 +1999,7 @@ describe('signaling integration', () => {
   });
 
   it('rejects privileged actions and signaling from stale replaced socket and prevents stale disconnect from affecting participant', async () => {
-    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -2366,7 +2386,7 @@ describe('signaling integration', () => {
 
   it('enforces chat rate limiting without corrupting room state or affecting other participants', async () => {
     const { app, io, rooms, userStore } = await createApp(
-      loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }),
+      loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }),
       { chat: { capacity: 3, refillRate: 1 } }
     );
     await app.listen({ host: '127.0.0.1', port: 0 });
@@ -2520,7 +2540,7 @@ describe('signaling integration', () => {
 
   it('allows realistic bursts of WebRTC ICE candidates and legitimate media updates while dropping excessive spam', async () => {
     const { app, io, userStore } = await createApp(
-      loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }),
+      loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }),
       { ice: { capacity: 20, refillRate: 5 }, media: { capacity: 5, refillRate: 2 } }
     );
     await app.listen({ host: '127.0.0.1', port: 0 });
@@ -2592,7 +2612,7 @@ describe('signaling integration', () => {
 
   it('enforces rate limiting on session actions and lifecycle controls', async () => {
     const { app, io, userStore } = await createApp(
-      loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }),
+      loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }),
       { session: { capacity: 2, refillRate: 1 } }
     );
     await app.listen({ host: '127.0.0.1', port: 0 });
@@ -3244,10 +3264,19 @@ describe('signaling integration', () => {
 });
 
 describe('Server Enforced Session Access & Entitlement Foundation', () => {
-  afterEach(() => { for (const socket of sockets.splice(0)) socket.disconnect(); });
+  let tmpDataDir: string;
+  beforeEach(() => {
+    tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-entitlement-test-'));
+  });
+  afterEach(() => {
+    for (const socket of sockets.splice(0)) socket.disconnect();
+    if (fs.existsSync(tmpDataDir)) {
+      fs.rmSync(tmpDataDir, { recursive: true, force: true });
+    }
+  });
 
   it('strictly denies unauthenticated meeting:create and meeting:join with AUTH_REQUIRED and zero side effects', async () => {
-    const { app, io, rooms, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, rooms, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -3300,7 +3329,7 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
   });
 
   it('strictly denies blocked accounts from creating or joining sessions with ACCESS_DENIED and zero side effects', async () => {
-    const { app, io, rooms, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, rooms, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -3359,7 +3388,7 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
   });
 
   it('allows blocked users to log in, view/update profile, and manage projects, but denies live sessions', async () => {
-    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -3407,6 +3436,7 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
     const betaEndIso = '2026-06-01T00:00:00Z';
     const { app, io, userStore } = await createApp(loadConfig({
       NODE_ENV: 'test',
+      DATA_DIR: tmpDataDir,
       TURN_SHARED_SECRET: 'a-secure-test-secret',
       BETA_END_AT: betaEndIso
     }));
@@ -3462,7 +3492,7 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
   });
 
   it('fails closed if sessionAccess in storage contains unknown or malformed value', async () => {
-    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'a-secure-test-secret' }));
+    const { app, io, userStore } = await createApp(loadConfig({ NODE_ENV: 'test', DATA_DIR: tmpDataDir, TURN_SHARED_SECRET: 'a-secure-test-secret' }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
@@ -3493,6 +3523,7 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
 
     const { app, io, userStore } = await createApp(loadConfig({
       NODE_ENV: 'test',
+      DATA_DIR: tmpDataDir,
       TURN_SHARED_SECRET: 'a-secure-test-secret',
       BETA_END_AT: betaEndIso
     }));
@@ -3599,6 +3630,7 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
 
     const { app, io, userStore } = await createApp(loadConfig({
       NODE_ENV: 'test',
+      DATA_DIR: tmpDataDir,
       TURN_SHARED_SECRET: 'a-secure-test-secret',
       BETA_END_AT: betaEndIso
     }));
@@ -3654,6 +3686,7 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
   it('removes non-host participant when their access is revoked during active call while keeping session alive for host', async () => {
     const { app, io, userStore } = await createApp(loadConfig({
       NODE_ENV: 'test',
+      DATA_DIR: tmpDataDir,
       TURN_SHARED_SECRET: 'a-secure-test-secret'
     }));
     await app.listen({ host: '127.0.0.1', port: 0 });
@@ -3710,6 +3743,7 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
   it('ends live session when host token is revoked or invalidated during active call', async () => {
     const { app, io, userStore } = await createApp(loadConfig({
       NODE_ENV: 'test',
+      DATA_DIR: tmpDataDir,
       TURN_SHARED_SECRET: 'a-secure-test-secret'
     }));
     await app.listen({ host: '127.0.0.1', port: 0 });
@@ -3766,6 +3800,7 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
   it('removes non-host participant when their token is revoked during active call', async () => {
     const { app, io, userStore } = await createApp(loadConfig({
       NODE_ENV: 'test',
+      DATA_DIR: tmpDataDir,
       TURN_SHARED_SECRET: 'a-secure-test-secret'
     }));
     await app.listen({ host: '127.0.0.1', port: 0 });
@@ -3822,6 +3857,7 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
   it('removes non-host participant when their password is changed during active call', async () => {
     const { app, io, userStore } = await createApp(loadConfig({
       NODE_ENV: 'test',
+      DATA_DIR: tmpDataDir,
       TURN_SHARED_SECRET: 'a-secure-test-secret'
     }));
     await app.listen({ host: '127.0.0.1', port: 0 });
@@ -3881,6 +3917,7 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
   it('ejects waiting room participant when their token is revoked', async () => {
     const { app, io, userStore } = await createApp(loadConfig({
       NODE_ENV: 'test',
+      DATA_DIR: tmpDataDir,
       TURN_SHARED_SECRET: 'a-secure-test-secret'
     }));
     await app.listen({ host: '127.0.0.1', port: 0 });

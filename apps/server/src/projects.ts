@@ -1,20 +1,21 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type {
-  Project,
-  ProjectCollaborator,
-  ProjectCollaboratorRole,
-  ProjectRole,
-  ProjectSessionItem,
-  ProjectActivityItem,
-  ProjectActivityType,
-  CreateProjectRequest,
-  UpdateProjectRequest,
-  UpdateProjectWorkspaceRequest,
-  ProjectWorkspace,
-  UserProfile,
-  ParticipantIdentity
+import {
+  projectSchema,
+  type Project,
+  type ProjectCollaborator,
+  type ProjectCollaboratorRole,
+  type ProjectRole,
+  type ProjectSessionItem,
+  type ProjectActivityItem,
+  type ProjectActivityType,
+  type CreateProjectRequest,
+  type UpdateProjectRequest,
+  type UpdateProjectWorkspaceRequest,
+  type ProjectWorkspace,
+  type UserProfile,
+  type ParticipantIdentity
 } from '@jameet/shared';
 
 export class WorkspaceConflictError extends Error {
@@ -172,8 +173,16 @@ export class ProjectStore {
           throw new Error(`Invalid project database structure in ${this.dataFilePath}: 'projects' field must be an array`);
         }
         for (const p of data.projects) {
+          if (!p || typeof p !== 'object' || Array.isArray(p) || typeof p.id !== 'string' || !p.id.trim()) {
+            throw new Error(`Invalid project structure in ${this.dataFilePath}: missing or invalid 'id' field`);
+          }
           this.normalizeLoadedProject(p);
-          loadedLegacyProjects.push(p);
+          const parsed = projectSchema.safeParse(p);
+          if (!parsed.success) {
+            const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(', ');
+            throw new Error(`Invalid project structure in ${this.dataFilePath} for project '${p.id}': ${issues}`);
+          }
+          loadedLegacyProjects.push(parsed.data);
         }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -225,8 +234,14 @@ export class ProjectStore {
         }
 
         this.normalizeLoadedProject(p);
-        this.projects.set(p.id, p);
-        existingPerProjectIds.add(p.id);
+        const parsed = projectSchema.safeParse(p);
+        if (!parsed.success) {
+          const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(', ');
+          throw new Error(`Invalid project structure in ${filePath}: ${issues}`);
+        }
+        const validProject = parsed.data;
+        this.projects.set(validProject.id, validProject);
+        existingPerProjectIds.add(validProject.id);
       }
     }
 

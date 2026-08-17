@@ -2999,6 +2999,49 @@ describe('ProjectStore & Workspace', () => {
       expect(fs.existsSync(legacyProjectsFile)).toBe(true);
       expect(fs.existsSync(`${legacyProjectsFile}.migrated.bak`)).toBe(false);
     });
+
+    it('fails initialization when a per-project file has a valid id but invalid schema structure (e.g. invalid name or owner fields)', async () => {
+      const invalidDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-schema-invalid-'));
+      const projectsSubdir = path.join(invalidDir, 'projects');
+      fs.mkdirSync(projectsSubdir, { recursive: true });
+
+      // Valid id, but empty name (schema requires min 1 non-whitespace char) and missing ownerId
+      const invalidFile = path.join(projectsSubdir, 'proj-invalid-schema.json');
+      fs.writeFileSync(
+        invalidFile,
+        JSON.stringify({
+          id: 'proj-invalid-schema',
+          name: '   ',
+          ownerId: 12345, // invalid type: number instead of string
+          createdAt: 'not-a-number'
+        }),
+        'utf-8'
+      );
+
+      // Must fail closed on startup with clear schema validation message
+      expect(() => new ProjectStore(invalidDir)).toThrow(/Invalid project structure in/i);
+    });
+
+    it('fails initialization when a legacy project in consolidated datastore has a valid id but invalid schema structure', async () => {
+      const legacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-legacy-schema-invalid-'));
+      const legacyFile = path.join(legacyDir, 'jameet-projects.json');
+      fs.writeFileSync(
+        legacyFile,
+        JSON.stringify({
+          version: 1,
+          projects: [
+            {
+              id: 'proj-bad-legacy',
+              name: '',
+              ownerId: mockOwner.id
+            }
+          ]
+        }),
+        'utf-8'
+      );
+
+      expect(() => new ProjectStore(legacyDir)).toThrow(/Invalid project structure in .* for project 'proj-bad-legacy'/i);
+    });
   });
 });
 
