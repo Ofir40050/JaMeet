@@ -935,7 +935,8 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
       // 1. Validate host access
       if (!room.hostIdentity.isGuest && room.hostIdentity.id) {
-        const hostAuth = validateStoredUserSessionAccess(userStore, room.hostIdentity.id, config, true, now);
+        const hostParticipant = Array.from(room.participants.values()).find((p) => p.role === 'host');
+        const hostAuth = validateStoredUserSessionAccess(userStore, room.hostIdentity.id, config, true, now, hostParticipant?.authToken);
         if (!hostAuth.ok) {
           endRoomDueToAccessLoss(room, hostAuth.message);
           continue;
@@ -946,9 +947,44 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       for (const participant of Array.from(room.participants.values())) {
         if (participant.role === 'host') continue;
         if (!participant.identity.isGuest && participant.identity.id) {
-          const partAuth = validateStoredUserSessionAccess(userStore, participant.identity.id, config, false, now);
+          const partAuth = validateStoredUserSessionAccess(userStore, participant.identity.id, config, false, now, participant.authToken);
           if (!partAuth.ok) {
             removeParticipantDueToAccessLoss(room, participant, partAuth.message);
+          }
+        }
+      }
+
+      // 3. Validate waiting participants
+      for (const waiting of Array.from(room.waitingParticipants.values())) {
+        if (!waiting.identity.isGuest && waiting.identity.id) {
+          const waitAuth = validateStoredUserSessionAccess(userStore, waiting.identity.id, config, false, now, waiting.authToken);
+          if (!waitAuth.ok) {
+            if (waiting.timer) clearTimeout(waiting.timer);
+            room.waitingParticipants.delete(waiting.id);
+            if (waiting.socketId) {
+              const wpSocket = io.sockets.sockets.get(waiting.socketId) || io.of('/').sockets.get(waiting.socketId);
+              if (wpSocket) {
+                delete (wpSocket.data as SocketData).code;
+                delete (wpSocket.data as SocketData).participantId;
+                delete (wpSocket.data as SocketData).identity;
+                delete (wpSocket.data as SocketData).isWaiting;
+                void wpSocket.leave(room.code);
+              }
+              io.to(waiting.socketId).emit('meeting:ended', {
+                code: room.code,
+                message: waitAuth.message,
+                reason: waitAuth.message
+              });
+            }
+            const hostParticipant = Array.from(room.participants.values()).find((p) => p.role === 'host');
+            if (hostParticipant?.socketId) {
+              const waitingList = Array.from(room.waitingParticipants.values()).map((p) => ({
+                participantId: p.id,
+                identity: p.identity,
+                joinedAt: Date.now()
+              }));
+              io.to(hostParticipant.socketId).emit('waiting:update', waitingList);
+            }
           }
         }
       }
@@ -1028,14 +1064,38 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         const room = rooms.rooms.get(socketData.code);
         if (room) {
           const isHost = socketData.identity.id === room.hostIdentity.id;
-          const authCheck = validateStoredUserSessionAccess(userStore, socketData.identity.id, config, isHost, Date.now());
+          const participant = room.participants.get(socketData.participantId) || room.waitingParticipants.get(socketData.participantId);
+          const authCheck = validateStoredUserSessionAccess(userStore, socketData.identity.id, config, isHost, Date.now(), participant?.authToken);
           if (!authCheck.ok) {
             if (isHost) {
               endRoomDueToAccessLoss(room, authCheck.message);
             } else {
-              const participant = room.participants.get(socketData.participantId);
-              if (participant) {
+              if (participant && room.participants.has(participant.id)) {
                 removeParticipantDueToAccessLoss(room, participant, authCheck.message);
+              } else if (participant && room.waitingParticipants.has(participant.id)) {
+                if (participant.timer) clearTimeout(participant.timer);
+                room.waitingParticipants.delete(participant.id);
+                if (participant.socketId) {
+                  delete socketData.code;
+                  delete socketData.participantId;
+                  delete socketData.identity;
+                  delete socketData.isWaiting;
+                  void socket.leave(room.code);
+                  io.to(participant.socketId).emit('meeting:ended', {
+                    code: room.code,
+                    message: authCheck.message,
+                    reason: authCheck.message
+                  });
+                }
+                const hostParticipant = Array.from(room.participants.values()).find((p) => p.role === 'host');
+                if (hostParticipant?.socketId) {
+                  const waitingList = Array.from(room.waitingParticipants.values()).map((p) => ({
+                    participantId: p.id,
+                    identity: p.identity,
+                    joinedAt: Date.now()
+                  }));
+                  io.to(hostParticipant.socketId).emit('waiting:update', waitingList);
+                }
               }
             }
             return false;
@@ -1173,7 +1233,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         }
 
         const reconnectToken = randomUUID();
-        createdRoom = rooms.create(parsed.data.participantId, socket.id, parsed.data.media, identity, verifiedProjectId, parsed.data.waitingRoomEnabled, reconnectToken);
+        createdRoom = rooms.create(parsed.data.participantId, socket.id, parsed.data.media, identity, verifiedProjectId, parsed.data.waitingRoomEnabled, reconnectToken, parsed.data.authToken);
         if (!identity.isGuest && identity.id) {
           userStore.recordSessionStart(createdRoom.sessionId, createdRoom.code, identity.id, 'host', null);
         }
@@ -1251,7 +1311,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
 
       const identity = authResult.identity;
-      const joined = rooms.join(parsed.data.code, parsed.data.participantId, socket.id, parsed.data.media, identity, parsed.data.reconnectToken);
+      const joined = rooms.join(parsed.data.code, parsed.data.participantId, socket.id, parsed.data.media, identity, parsed.data.reconnectToken, parsed.data.authToken);
       if (!joined.ok) {
         const message = joined.reason === 'UNAUTHORIZED'
           ? 'Unauthorized reconnect attempt'
@@ -1414,7 +1474,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         return;
       }
 
-      const accessAuth = validateStoredUserSessionAccess(userStore, waiting.identity.id, config, false);
+      const accessAuth = validateStoredUserSessionAccess(userStore, waiting.identity.id, config, false, Date.now(), waiting.authToken);
       if (!accessAuth.ok) {
         ack?.({ ok: false, message: accessAuth.message || 'Participant session access is no longer valid' });
         return;

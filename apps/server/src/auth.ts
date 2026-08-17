@@ -890,8 +890,20 @@ export function validateStoredUserSessionAccess(
   userId: string,
   config: ServerConfig,
   isHost: boolean,
-  now: number = Date.now()
+  now: number = Date.now(),
+  authToken?: string
 ): SessionAuthResult {
+  if (authToken !== undefined) {
+    const verifiedProfile = userStore.verifyToken(authToken);
+    if (!verifiedProfile || verifiedProfile.id !== userId) {
+      return {
+        ok: false,
+        code: 'AUTH_REQUIRED',
+        message: 'Authentication required to create or join a session.'
+      };
+    }
+  }
+
   const storedUser = userStore.getStoredUser(userId);
   if (!storedUser) {
     return {
@@ -977,7 +989,7 @@ export function authorizeSessionAccess(
     };
   }
 
-  return validateStoredUserSessionAccess(userStore, verifiedProfile.id, config, isHost, now);
+  return validateStoredUserSessionAccess(userStore, verifiedProfile.id, config, isHost, now, authToken);
 }
 
 

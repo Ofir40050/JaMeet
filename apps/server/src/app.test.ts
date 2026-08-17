@@ -3492,6 +3492,235 @@ describe('Server Enforced Session Access & Entitlement Foundation', () => {
       await app.close();
     }
   });
+
+  it('ends live session when host token is revoked or invalidated during active call', async () => {
+    const { app, io, userStore } = await createApp(loadConfig({
+      NODE_ENV: 'test',
+      TURN_SHARED_SECRET: 'a-secure-test-secret'
+    }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const hostUser = await createTestAccount(url, 'active_host_revoke', 'paid', userStore);
+      const guestUser = await createTestAccount(url, 'active_guest_stay', 'paid', userStore);
+
+      const hostSocket = await connected(url);
+      const guestSocket = await connected(url);
+
+      const hostCreateRes = await ack(hostSocket, 'meeting:create', {
+        participantId: '10000000-0000-4000-8000-000000000055',
+        authToken: hostUser.token,
+        media
+      });
+      expect(hostCreateRes.ok).toBe(true);
+      if (!hostCreateRes.ok) return;
+
+      const guestJoinRes = await ack(guestSocket, 'meeting:join', {
+        code: hostCreateRes.code,
+        participantId: '20000000-0000-4000-8000-000000000066',
+        authToken: guestUser.token,
+        media
+      });
+      expect(guestJoinRes.ok).toBe(true);
+      if (!guestJoinRes.ok) return;
+
+      const hostMeetingEndedPromise = new Promise<{ code: string; message: string }>((resolve) => {
+        hostSocket.once('meeting:ended', resolve);
+      });
+      const guestMeetingEndedPromise = new Promise<{ code: string; message: string }>((resolve) => {
+        guestSocket.once('meeting:ended', resolve);
+      });
+
+      // Revoke the host's token while in active call
+      userStore.revokeToken(hostUser.token);
+
+      const [hostEnded, guestEnded] = await Promise.all([
+        hostMeetingEndedPromise,
+        guestMeetingEndedPromise
+      ]);
+
+      expect(hostEnded.message).toContain('Authentication required');
+      expect(guestEnded.message).toContain('Authentication required');
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+
+  it('removes non-host participant when their token is revoked during active call', async () => {
+    const { app, io, userStore } = await createApp(loadConfig({
+      NODE_ENV: 'test',
+      TURN_SHARED_SECRET: 'a-secure-test-secret'
+    }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const hostUser = await createTestAccount(url, 'active_host_stay2', 'paid', userStore);
+      const guestUser = await createTestAccount(url, 'active_guest_revoke2', 'paid', userStore);
+
+      const hostSocket = await connected(url);
+      const guestSocket = await connected(url);
+
+      const hostCreateRes = await ack(hostSocket, 'meeting:create', {
+        participantId: '10000000-0000-4000-8000-000000000077',
+        authToken: hostUser.token,
+        media
+      });
+      expect(hostCreateRes.ok).toBe(true);
+      if (!hostCreateRes.ok) return;
+
+      const guestJoinRes = await ack(guestSocket, 'meeting:join', {
+        code: hostCreateRes.code,
+        participantId: '20000000-0000-4000-8000-000000000088',
+        authToken: guestUser.token,
+        media
+      });
+      expect(guestJoinRes.ok).toBe(true);
+      if (!guestJoinRes.ok) return;
+
+      const guestEndedPromise = new Promise<{ code: string; message: string }>((resolve) => {
+        guestSocket.once('meeting:ended', resolve);
+      });
+      const peerLeftPromise = new Promise<{ participantId: string }>((resolve) => {
+        hostSocket.once('peer:left', resolve);
+      });
+
+      // Revoke the guest's token while in active call
+      userStore.revokeToken(guestUser.token);
+
+      const [guestEnded, peerLeft] = await Promise.all([
+        guestEndedPromise,
+        peerLeftPromise
+      ]);
+
+      expect(guestEnded.message).toContain('Authentication required');
+      expect(peerLeft.participantId).toBe('20000000-0000-4000-8000-000000000088');
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+
+  it('removes non-host participant when their password is changed during active call', async () => {
+    const { app, io, userStore } = await createApp(loadConfig({
+      NODE_ENV: 'test',
+      TURN_SHARED_SECRET: 'a-secure-test-secret'
+    }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const hostUser = await createTestAccount(url, 'active_host_pw_stay', 'paid', userStore);
+      const guestUser = await createTestAccount(url, 'active_guest_pw_change', 'paid', userStore);
+
+      const hostSocket = await connected(url);
+      const guestSocket = await connected(url);
+
+      const hostCreateRes = await ack(hostSocket, 'meeting:create', {
+        participantId: '10000000-0000-4000-8000-000000000099',
+        authToken: hostUser.token,
+        media
+      });
+      expect(hostCreateRes.ok).toBe(true);
+      if (!hostCreateRes.ok) return;
+
+      const guestJoinRes = await ack(guestSocket, 'meeting:join', {
+        code: hostCreateRes.code,
+        participantId: '20000000-0000-4000-8000-0000000000aa',
+        authToken: guestUser.token,
+        media
+      });
+      expect(guestJoinRes.ok).toBe(true);
+      if (!guestJoinRes.ok) return;
+
+      const guestEndedPromise = new Promise<{ code: string; message: string }>((resolve) => {
+        guestSocket.once('meeting:ended', resolve);
+      });
+      const peerLeftPromise = new Promise<{ participantId: string }>((resolve) => {
+        hostSocket.once('peer:left', resolve);
+      });
+
+      // Update guest's password while in call (invalidates older session tokens)
+      await userStore.updateProfile(guestUser.user.id, {
+        currentPassword: 'StrongPassword123!',
+        newPassword: 'new-secure-password-456'
+      });
+
+      const [guestEnded, peerLeft] = await Promise.all([
+        guestEndedPromise,
+        peerLeftPromise
+      ]);
+
+      expect(guestEnded.message).toContain('Authentication required');
+      expect(peerLeft.participantId).toBe('20000000-0000-4000-8000-0000000000aa');
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
+
+  it('ejects waiting room participant when their token is revoked', async () => {
+    const { app, io, userStore } = await createApp(loadConfig({
+      NODE_ENV: 'test',
+      TURN_SHARED_SECRET: 'a-secure-test-secret'
+    }));
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address() as AddressInfo;
+    const url = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const hostUser = await createTestAccount(url, 'wait_host_revoke', 'paid', userStore);
+      const guestUser = await createTestAccount(url, 'wait_guest_revoke', 'paid', userStore);
+
+      const hostSocket = await connected(url);
+      const guestSocket = await connected(url);
+
+      const hostCreateRes = await ack(hostSocket, 'meeting:create', {
+        participantId: '10000000-0000-4000-8000-0000000000bb',
+        authToken: hostUser.token,
+        waitingRoomEnabled: true,
+        media
+      });
+      expect(hostCreateRes.ok).toBe(true);
+      if (!hostCreateRes.ok) return;
+
+      const guestJoinRes = await ack(guestSocket, 'meeting:join', {
+        code: hostCreateRes.code,
+        participantId: '20000000-0000-4000-8000-0000000000cc',
+        authToken: guestUser.token,
+        media
+      });
+      expect(guestJoinRes.ok).toBe(true);
+      if (!guestJoinRes.ok) return;
+      expect(guestJoinRes.waiting).toBe(true);
+
+      const guestEndedPromise = new Promise<{ code: string; message: string }>((resolve) => {
+        guestSocket.once('meeting:ended', resolve);
+      });
+      const waitingUpdatePromise = new Promise<unknown[]>((resolve) => {
+        hostSocket.once('waiting:update', resolve);
+      });
+
+      // Revoke the waiting guest's token
+      userStore.revokeToken(guestUser.token);
+
+      const [guestEnded, waitingUpdate] = await Promise.all([
+        guestEndedPromise,
+        waitingUpdatePromise
+      ]);
+
+      expect(guestEnded.message).toContain('Authentication required');
+      expect(waitingUpdate).toEqual([]);
+    } finally {
+      io.close();
+      await app.close();
+    }
+  });
 });
 
 describe('Graceful Server Shutdown Active Session Finalization', () => {

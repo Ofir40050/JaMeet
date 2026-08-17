@@ -10,6 +10,7 @@ export type Participant = {
   media: MediaMetadata;
   identity: ParticipantIdentity;
   reconnectToken: string;
+  authToken?: string;
   timer?: NodeJS.Timeout;
 };
 export type Room = {
@@ -45,11 +46,12 @@ export class RoomStore {
     identity: ParticipantIdentity,
     projectId?: string,
     waitingRoomEnabled?: boolean,
-    reconnectToken: string = randomUUID()
+    reconnectToken: string = randomUUID(),
+    authToken?: string
   ): Room {
     let code = this.code();
     while (this.rooms.has(code)) code = this.code();
-    const hostParticipant: Participant = { id: participantId, role: 'host', socketId, media, identity, reconnectToken };
+    const hostParticipant: Participant = { id: participantId, role: 'host', socketId, media, identity, reconnectToken, authToken };
     const room: Room = {
       sessionId: randomUUID(),
       code,
@@ -75,7 +77,8 @@ export class RoomStore {
     socketId: string,
     media: MediaMetadata,
     identity: ParticipantIdentity,
-    reconnectToken?: string
+    reconnectToken?: string,
+    authToken?: string
   ):
     | { ok: true; room: Room; participant: Participant; reconnected: boolean; waiting?: false }
     | { ok: true; room: Room; participant: Participant; waiting: true; reconnected?: boolean }
@@ -107,6 +110,9 @@ export class RoomStore {
       if (existing.role === 'host') {
         room.hostIdentity = existing.identity;
       }
+      if (authToken) {
+        existing.authToken = authToken;
+      }
       room.allJoinedParticipants.set(participantId, existing.identity);
       return { ok: true, room, participant: existing, reconnected: true, waiting: false };
     }
@@ -130,6 +136,9 @@ export class RoomStore {
           existingWaiting.identity.displayName = identity.displayName;
         }
       }
+      if (authToken) {
+        existingWaiting.authToken = authToken;
+      }
       return { ok: true, room, participant: existingWaiting, reconnected: true, waiting: true };
     }
 
@@ -140,13 +149,13 @@ export class RoomStore {
     const newReconnectToken = randomUUID();
 
     if (room.waitingRoomEnabled) {
-      const waitingParticipant: Participant = { id: participantId, role: 'guest', socketId, media, identity, reconnectToken: newReconnectToken };
+      const waitingParticipant: Participant = { id: participantId, role: 'guest', socketId, media, identity, reconnectToken: newReconnectToken, authToken };
       room.waitingParticipants.set(participantId, waitingParticipant);
       return { ok: true, room, participant: waitingParticipant, reconnected: false, waiting: true };
     }
 
     if (room.participants.size >= 2) return { ok: false, reason: 'ROOM_FULL' };
-    const participant: Participant = { id: participantId, role: 'guest', socketId, media, identity, reconnectToken: newReconnectToken };
+    const participant: Participant = { id: participantId, role: 'guest', socketId, media, identity, reconnectToken: newReconnectToken, authToken };
     room.participants.set(participantId, participant);
     room.allJoinedParticipants.set(participantId, identity);
     return { ok: true, room, participant, reconnected: false, waiting: false };
