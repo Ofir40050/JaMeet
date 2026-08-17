@@ -48,6 +48,14 @@ function mapActivityToSessionSummaryEvent(act: ProjectActivityItem): SessionSumm
     category = 'task';
     action = 'reopened';
     description = `Reopened task "${act.title}"`;
+  } else if (act.type === 'task_status_changed') {
+    category = 'task';
+    action = 'updated';
+    description = `Updated status for task "${act.title}"`;
+  } else if (act.type === 'task_assigned') {
+    category = 'task';
+    action = 'assigned';
+    description = act.summary || `Assigned task "${act.title}"`;
   } else if (act.type === 'task_deleted') {
     category = 'task';
     action = 'deleted';

@@ -1333,6 +1333,91 @@ describe('ProjectStore & Workspace', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('records task_status_changed activity when task status changes between todo and in_progress', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-task-status-act-'));
+    try {
+      const store = new ProjectStore(tmpDir);
+      const owner: UserProfile = {
+        id: 'owner-task-act-1',
+        displayName: 'Owner Alice',
+        username: 'alice',
+        email: 'alice@music.com',
+        avatarColor: '#6366f1',
+        isGuest: false,
+        createdAt: 1000
+      };
+
+      const project = store.createProject(owner, { name: 'Task Status Activity Song' });
+
+      // 1. Create a task in 'todo' status
+      const p1 = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Master Audio Track', status: 'todo' }
+          ]
+        }
+      })!;
+      expect(p1.activities[0].type).toBe('task_created');
+
+      // 2. Change status from 'todo' to 'in_progress' -> records task_status_changed
+      const p2 = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Master Audio Track', status: 'in_progress' }
+          ]
+        }
+      })!;
+      expect(p2.activities[0].type).toBe('task_status_changed');
+      expect(p2.activities[0].summary).toBe('Owner Alice marked "Master Audio Track" as in progress');
+      expect(p2.activities[0].userId).toBe(owner.id);
+
+      // 3. Change status from 'in_progress' back to 'todo' -> records task_status_changed
+      const p3 = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Master Audio Track', status: 'todo' }
+          ]
+        }
+      })!;
+      expect(p3.activities[0].type).toBe('task_status_changed');
+      expect(p3.activities[0].summary).toBe('Owner Alice marked "Master Audio Track" as to-do');
+
+      // 4. Change status from 'todo' to 'done' -> records task_completed
+      const p4 = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Master Audio Track', status: 'done' }
+          ]
+        }
+      })!;
+      expect(p4.activities[0].type).toBe('task_completed');
+
+      // 5. Change status from 'done' to 'in_progress' -> records task_reopened
+      const p5 = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Master Audio Track', status: 'in_progress' }
+          ]
+        }
+      })!;
+      expect(p5.activities[0].type).toBe('task_reopened');
+
+      // 6. Update without changing status -> does NOT record duplicate status activity
+      const p6 = store.updateWorkspace(project.id, owner, {
+        tasks: {
+          tasks: [
+            { id: 'task-1', title: 'Master Audio Track', status: 'in_progress', note: 'Added some notes' }
+          ]
+        }
+      })!;
+      // Latest activity remains task_reopened from previous update
+      expect(p6.activities[0].type).toBe('task_reopened');
+      expect(p6.activities.length).toBe(p5.activities.length);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 

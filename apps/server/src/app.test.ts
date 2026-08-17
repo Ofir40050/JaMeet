@@ -4919,6 +4919,75 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('generates task_status_changed activity on REST and Socket.IO workspace updates when status transitions between todo and in_progress', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-taskstatus-rest-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-taskstatus-1'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'owner_task_status', 'beta', userStore);
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Task Status REST Integration Song' });
+
+      // 1. Initial task creation
+      projectStore.updateWorkspace(project.id, ownerAuth.user, {
+        tasks: {
+          tasks: [{ id: 'task-1', title: 'Edit Drum Tracks', status: 'todo' }]
+        }
+      });
+
+      // 2. REST update from 'todo' to 'in_progress'
+      const restUpdate = await fetch(`${url}/api/projects/${project.id}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          tasks: {
+            tasks: [{ id: 'task-1', title: 'Edit Drum Tracks', status: 'in_progress' }]
+          }
+        })
+      });
+      expect(restUpdate.status).toBe(200);
+      const restData: any = await restUpdate.json();
+      expect(restData.project.activities[0].type).toBe('task_status_changed');
+      expect(restData.project.activities[0].summary).toContain('marked "Edit Drum Tracks" as in progress');
+
+      // 3. Socket update from 'in_progress' to 'todo'
+      const socket = await connected(url);
+      const joinAck = await ack(socket, 'project:workspace:join', {
+        projectId: project.id,
+        authToken: ownerAuth.token
+      });
+      expect(joinAck.ok).toBe(true);
+
+      const socketRes: any = await ack(socket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: ownerAuth.token,
+        updates: {
+          tasks: {
+            tasks: [{ id: 'task-1', title: 'Edit Drum Tracks', status: 'todo' }]
+          }
+        }
+      });
+      expect(socketRes.ok).toBe(true);
+      const projAfterSocket = projectStore.getProject(project.id, ownerAuth.user.id);
+      expect(projAfterSocket?.activities[0].type).toBe('task_status_changed');
+      expect(projAfterSocket?.activities[0].summary).toContain('marked "Edit Drum Tracks" as to-do');
+
+      socket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

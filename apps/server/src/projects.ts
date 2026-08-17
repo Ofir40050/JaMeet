@@ -690,6 +690,20 @@ export class ProjectStore {
                 undefined,
                 false
               );
+            } else if (
+              (oldT.status === 'todo' && t.status === 'in_progress') ||
+              (oldT.status === 'in_progress' && t.status === 'todo')
+            ) {
+              const statusText = t.status === 'in_progress' ? 'in progress' : 'to-do';
+              this.recordActivity(
+                projectId,
+                user,
+                'task_status_changed',
+                `${user.displayName} marked "${t.title}" as ${statusText}`,
+                t.title,
+                undefined,
+                false
+              );
             } else if (oldT.assigneeId !== t.assigneeId && t.assigneeName) {
               this.recordActivity(
                 projectId,
