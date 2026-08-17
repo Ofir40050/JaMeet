@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { Server } from 'socket.io';
@@ -466,8 +466,12 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     }
     const clientInfo = extractClientInfo(request);
     const stored = userStore.getStoredUser(user.id);
-    if (stored && clientInfo.version && clientInfo.version !== stored.clientVersion) {
-      userStore.recordActivity(user.id, 'login', `Session active (${clientInfo.platform || 'Desktop'} • v${clientInfo.version})`, clientInfo);
+    if (stored) {
+      const versionChanged = Boolean(clientInfo.version && clientInfo.version !== 'Unknown' && clientInfo.version !== stored.clientVersion);
+      const platformChanged = Boolean(clientInfo.platform && clientInfo.platform !== 'Unknown' && clientInfo.platform !== stored.clientPlatform);
+      if (versionChanged || platformChanged) {
+        userStore.recordLogin(user.id, clientInfo);
+      }
     }
     return reply.send({ ok: true, user });
   });

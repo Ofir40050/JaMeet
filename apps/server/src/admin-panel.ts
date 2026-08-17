@@ -137,8 +137,8 @@ export function validateSameOrigin(request: FastifyRequest, config: ServerConfig
       if (parsedOrigin.hostname === 'localhost' || parsedOrigin.hostname === '127.0.0.1') {
         return true;
       }
-      if (config.CORS_ORIGIN) {
-        const allowed = Array.isArray(config.CORS_ORIGIN) ? config.CORS_ORIGIN : [config.CORS_ORIGIN];
+      if (config.ALLOWED_ORIGINS) {
+        const allowed = config.ALLOWED_ORIGINS.split(',').map((v) => v.trim()).filter(Boolean);
         if (allowed.includes(origin) || allowed.includes('*')) {
           return true;
         }
@@ -157,6 +157,12 @@ export function validateSameOrigin(request: FastifyRequest, config: ServerConfig
       }
       if (parsedReferer.hostname === 'localhost' || parsedReferer.hostname === '127.0.0.1') {
         return true;
+      }
+      if (config.ALLOWED_ORIGINS) {
+        const allowed = config.ALLOWED_ORIGINS.split(',').map((v) => v.trim()).filter(Boolean);
+        if (allowed.includes(parsedReferer.origin) || allowed.includes('*')) {
+          return true;
+        }
       }
     } catch {
       return false;
