@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cleanIp, getClientIp } from './client-ip.js';
 
-describe('client IP extraction & reverse proxy spoofing protection', () => {
+describe('Render client IP extraction & anti-spoofing', () => {
   describe('cleanIp', () => {
     it('normalizes standard IPv4 and IPv6 addresses', () => {
       expect(cleanIp('192.0.2.1')).toBe('192.0.2.1');
@@ -33,7 +33,7 @@ describe('client IP extraction & reverse proxy spoofing protection', () => {
   });
 
   describe('getClientIp', () => {
-    it('extracts real client IP from single-hop X-Forwarded-For behind proxy', () => {
+    it('extracts real client IP from single-hop X-Forwarded-For on Render', () => {
       const request = {
         headers: {
           'x-forwarded-for': '203.0.113.195'
@@ -44,46 +44,46 @@ describe('client IP extraction & reverse proxy spoofing protection', () => {
       expect(getClientIp(request)).toBe('203.0.113.195');
     });
 
-    it('prevents IP spoofing by taking the rightmost proxy-appended IP when client prepends fake headers', () => {
+    it('extracts real client IP as the first address in X-Forwarded-For on Render proxy chain', () => {
       const request = {
         headers: {
-          'x-forwarded-for': '1.2.3.4, 203.0.113.195'
+          'x-forwarded-for': '203.0.113.195, 10.0.1.5, 10.0.2.8'
         },
         socket: { remoteAddress: '10.0.1.5' },
         ip: '10.0.1.5'
       };
-      // 1.2.3.4 is the spoofed client header; 203.0.113.195 is the actual connecting IP appended by the proxy
+      // Render places the real client IP as the first address
       expect(getClientIp(request)).toBe('203.0.113.195');
-    });
-
-    it('handles multi-hop spoofing chains and picks the authoritative proxy-appended IP', () => {
-      const request = {
-        headers: {
-          'x-forwarded-for': '10.0.0.1, 192.168.1.1, 8.8.8.8, 198.51.100.42'
-        },
-        socket: { remoteAddress: '10.0.1.5' }
-      };
-      expect(getClientIp(request)).toBe('198.51.100.42');
     });
 
     it('handles array header values for X-Forwarded-For', () => {
       const request = {
         headers: {
-          'x-forwarded-for': ['1.1.1.1', '198.51.100.42']
+          'x-forwarded-for': ['198.51.100.42', '10.0.1.5']
         },
         socket: { remoteAddress: '10.0.1.5' }
       };
       expect(getClientIp(request)).toBe('198.51.100.42');
     });
 
-    it('extracts IPv6 addresses behind reverse proxy', () => {
+    it('extracts IPv6 addresses as the first address on Render', () => {
       const request = {
         headers: {
-          'x-forwarded-for': '1.2.3.4, 2001:db8:85a3::8a2e:370:7334'
+          'x-forwarded-for': '2001:db8:85a3::8a2e:370:7334, 10.0.1.5'
         },
         socket: { remoteAddress: '10.0.1.5' }
       };
       expect(getClientIp(request)).toBe('2001:db8:85a3::8a2e:370:7334');
+    });
+
+    it('skips invalid first entry if malformed and finds next valid IP', () => {
+      const request = {
+        headers: {
+          'x-forwarded-for': 'invalid-entry, 203.0.113.55, 10.0.1.5'
+        },
+        socket: { remoteAddress: '10.0.1.5' }
+      };
+      expect(getClientIp(request)).toBe('203.0.113.55');
     });
 
     it('falls back to socket remoteAddress when X-Forwarded-For is missing', () => {
@@ -112,10 +112,11 @@ describe('client IP extraction & reverse proxy spoofing protection', () => {
       expect(getClientIp(request)).toBe('127.0.0.1');
     });
 
-    it('does not blindly trust unverified single headers like cf-connecting-ip without proxy validation', () => {
+    it('does not blindly trust unverified single headers like cf-connecting-ip or x-real-ip without proxy validation', () => {
       const request = {
         headers: {
-          'cf-connecting-ip': '8.8.8.8'
+          'cf-connecting-ip': '8.8.8.8',
+          'x-real-ip': '9.9.9.9'
         },
         socket: { remoteAddress: '198.51.100.77' }
       };

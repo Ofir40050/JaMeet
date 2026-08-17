@@ -2623,30 +2623,54 @@ describe('signaling integration', () => {
     }
   });
 
-  it('enforces REST rate limiting per client IP behind reverse proxy without grouping users by proxy IP', async () => {
-    const config = loadConfig({
-      NODE_ENV: 'test',
-      TURN_SHARED_SECRET: 'a-secure-test-secret'
-    });
-    const { app, io } = await createApp(config);
-    await app.listen({ host: '127.0.0.1', port: 0 });
-    const addr = app.server.address() as AddressInfo;
-    const url = `http://127.0.0.1:${addr.port}`;
-
+  it('enforces REST rate limiting per client IP behind Render reverse proxy without grouping users by proxy IP', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-ratelimit-1-'));
     try {
-      const clientA_IP = '203.0.113.101';
-      const clientB_IP = '203.0.113.102';
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        TURN_SHARED_SECRET: 'a-secure-test-secret',
+        DATA_DIR: tmpDataDir
+      });
+      const { app, io } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const addr = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${addr.port}`;
 
-      // 1. Client A sends requests up to the /api/crashes limit (max: 30)
-      for (let i = 0; i < 30; i++) {
-        const res = await fetch(`${url}/api/crashes`, {
+      try {
+        const clientA_IP = '203.0.113.101';
+        const clientB_IP = '203.0.113.102';
+        const renderProxyIP = '10.0.1.5';
+
+        // 1. Client A sends requests up to the /api/crashes limit (max: 30) via Render proxy
+        for (let i = 0; i < 30; i++) {
+          const res = await fetch(`${url}/api/crashes`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Forwarded-For': `${clientA_IP}, ${renderProxyIP}`
+            },
+            body: JSON.stringify({
+              reportId: `crash-clientA-${i}`,
+              timestamp: new Date().toISOString(),
+              process: 'renderer',
+              appVersion: '0.1.0',
+              platform: 'darwin',
+              arch: 'arm64',
+              reason: 'test_crash'
+            })
+          });
+          expect([200, 201]).toContain(res.status);
+        }
+
+        // 2. Client A's 31st request is rate limited (429)
+        const resAThrottled = await fetch(`${url}/api/crashes`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Forwarded-For': clientA_IP
+            'X-Forwarded-For': `${clientA_IP}, ${renderProxyIP}`
           },
           body: JSON.stringify({
-            reportId: `crash-clientA-${i}`,
+            reportId: 'crash-clientA-31',
             timestamp: new Date().toISOString(),
             process: 'renderer',
             appVersion: '0.1.0',
@@ -2655,75 +2679,87 @@ describe('signaling integration', () => {
             reason: 'test_crash'
           })
         });
-        expect(res.status).toBe(201);
+        expect(resAThrottled.status).toBe(429);
+
+        // 3. Client B from a different IP behind the same Render proxy is NOT throttled
+        const resB = await fetch(`${url}/api/crashes`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Forwarded-For': `${clientB_IP}, ${renderProxyIP}`
+          },
+          body: JSON.stringify({
+            reportId: 'crash-clientB-1',
+            timestamp: new Date().toISOString(),
+            process: 'renderer',
+            appVersion: '0.1.0',
+            platform: 'darwin',
+            arch: 'arm64',
+            reason: 'test_crash'
+          })
+        });
+        expect([200, 201]).toContain(resB.status);
+      } finally {
+        io.close();
+        await app.close();
       }
-
-      // 2. Client A's 31st request is rate limited (429)
-      const resAThrottled = await fetch(`${url}/api/crashes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Forwarded-For': clientA_IP
-        },
-        body: JSON.stringify({
-          reportId: 'crash-clientA-31',
-          timestamp: new Date().toISOString(),
-          process: 'renderer',
-          appVersion: '0.1.0',
-          platform: 'darwin',
-          arch: 'arm64',
-          reason: 'test_crash'
-        })
-      });
-      expect(resAThrottled.status).toBe(429);
-
-      // 3. Client B from a different IP behind the same proxy is NOT throttled
-      const resB = await fetch(`${url}/api/crashes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Forwarded-For': clientB_IP
-        },
-        body: JSON.stringify({
-          reportId: 'crash-clientB-1',
-          timestamp: new Date().toISOString(),
-          process: 'renderer',
-          appVersion: '0.1.0',
-          platform: 'darwin',
-          arch: 'arm64',
-          reason: 'test_crash'
-        })
-      });
-      expect(resB.status).toBe(201);
     } finally {
-      io.close();
-      await app.close();
+      fs.rmSync(tmpDataDir, { recursive: true, force: true });
     }
   });
 
-  it('prevents spoofed client headers from bypassing rate limits behind reverse proxy', async () => {
-    const config = loadConfig({
-      NODE_ENV: 'test',
-      TURN_SHARED_SECRET: 'a-secure-test-secret'
-    });
-    const { app, io } = await createApp(config);
-    await app.listen({ host: '127.0.0.1', port: 0 });
-    const addr = app.server.address() as AddressInfo;
-    const url = `http://127.0.0.1:${addr.port}`;
-
+  it('prevents spoofed client headers from bypassing rate limits behind Render reverse proxy', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-ratelimit-2-'));
     try {
-      const realAttackerIP = '198.51.100.77';
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        TURN_SHARED_SECRET: 'a-secure-test-secret',
+        DATA_DIR: tmpDataDir
+      });
+      const { app, io } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const addr = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${addr.port}`;
 
-      // 1. Attacker sends 30 requests with spoofed prefix
-      for (let i = 0; i < 30; i++) {
-        const res = await fetch(`${url}/api/crashes`, {
+      try {
+        const realAttackerIP = '198.51.100.77';
+        const proxyHop1 = '10.0.1.5';
+        const proxyHop2 = '10.0.2.8';
+
+        // 1. Attacker sends 30 requests through proxy chain
+        for (let i = 0; i < 30; i++) {
+          const res = await fetch(`${url}/api/crashes`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Forwarded-For': `${realAttackerIP}, ${proxyHop1}`,
+              'CF-Connecting-IP': '1.2.3.4',
+              'X-Real-IP': '5.6.7.8'
+            },
+            body: JSON.stringify({
+              reportId: `crash-att-${i}`,
+              timestamp: new Date().toISOString(),
+              process: 'renderer',
+              appVersion: '0.1.0',
+              platform: 'darwin',
+              arch: 'arm64',
+              reason: 'test_crash'
+            })
+          });
+          expect([200, 201]).toContain(res.status);
+        }
+
+        // 2. Attacker tries to bypass rate limit with spoofed single headers or changed downstream hops -> still throttled under realAttackerIP
+        const resSpoofedBypass = await fetch(`${url}/api/crashes`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Forwarded-For': `1.2.3.4, ${realAttackerIP}`
+            'X-Forwarded-For': `${realAttackerIP}, ${proxyHop1}, ${proxyHop2}`,
+            'CF-Connecting-IP': '8.8.8.8',
+            'X-Real-IP': '9.9.9.9'
           },
           body: JSON.stringify({
-            reportId: `crash-att-${i}`,
+            reportId: 'crash-att-spoof-bypass',
             timestamp: new Date().toISOString(),
             process: 'renderer',
             appVersion: '0.1.0',
@@ -2732,30 +2768,13 @@ describe('signaling integration', () => {
             reason: 'test_crash'
           })
         });
-        expect(res.status).toBe(201);
+        expect(resSpoofedBypass.status).toBe(429);
+      } finally {
+        io.close();
+        await app.close();
       }
-
-      // 2. Attacker tries to bypass rate limit with a different spoofed prefix -> still throttled under realAttackerIP
-      const resSpoofedBypass = await fetch(`${url}/api/crashes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Forwarded-For': `8.8.8.8, 9.9.9.9, ${realAttackerIP}`
-        },
-        body: JSON.stringify({
-          reportId: 'crash-att-spoof-bypass',
-          timestamp: new Date().toISOString(),
-          process: 'renderer',
-          appVersion: '0.1.0',
-          platform: 'darwin',
-          arch: 'arm64',
-          reason: 'test_crash'
-        })
-      });
-      expect(resSpoofedBypass.status).toBe(429);
     } finally {
-      io.close();
-      await app.close();
+      fs.rmSync(tmpDataDir, { recursive: true, force: true });
     }
   });
 

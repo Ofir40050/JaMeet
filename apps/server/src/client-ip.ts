@@ -47,17 +47,15 @@ export function cleanIp(ipStr: string | undefined | null): string | null {
 }
 
 /**
- * Extracts the authoritative client IP address for requests behind reverse proxies
- * (such as the Render production proxy) without blindly trusting spoofable client headers.
+ * Extracts the authoritative client IP address for requests behind the Render reverse proxy.
  *
- * In reverse proxy architectures (Render / Envoy / Cloudflare):
- * - The proxy connects directly to the server and appends the connecting client's
- *   IP address to the end of the `X-Forwarded-For` chain.
- * - Any user-injected `X-Forwarded-For` values appear earlier (to the left) in the chain.
- * - By selecting the rightmost valid IP address appended by the trusted proxy,
- *   client-side header spoofing is prevented while accurately distinguishing client IPs.
- * - Other headers like `CF-Connecting-IP` or `X-Real-IP` are not trusted blindly if they
- *   could be injected by the client.
+ * Render's reverse proxy places the real client IP as the first (leftmost) address
+ * in the `X-Forwarded-For` header chain.
+ *
+ * - We extract the first valid IP from `X-Forwarded-For`.
+ * - Other unverified headers (e.g., `CF-Connecting-IP`, `X-Real-IP`) are not trusted blindly.
+ * - If `X-Forwarded-For` is missing or contains no valid IP, falls back to direct
+ *   TCP connection remote address (`request.socket.remoteAddress` or `request.ip`).
  */
 export function getClientIp(request: RequestLike): string {
   const xff = request.headers['x-forwarded-for'];
@@ -65,9 +63,9 @@ export function getClientIp(request: RequestLike): string {
     const rawHeader = Array.isArray(xff) ? xff.join(',') : xff;
     if (typeof rawHeader === 'string') {
       const parts = rawHeader.split(',').map((p) => p.trim()).filter(Boolean);
-      // Traverse from right to left to find the authoritative IP appended by the trusted proxy
-      for (let i = parts.length - 1; i >= 0; i--) {
-        const cleaned = cleanIp(parts[i]);
+      // On Render, the real client IP is the first (leftmost) address in X-Forwarded-For
+      for (const part of parts) {
+        const cleaned = cleanIp(part);
         if (cleaned) {
           return cleaned;
         }
