@@ -30,10 +30,12 @@ export class SignalingClient {
         });
       }
       if (this.activeProjectWorkspace) {
-        this.socket.emit('project:workspace:join', this.activeProjectWorkspace, (res: { ok: boolean; workspace?: any; message?: string }) => {
-          if (res?.ok && res.workspace && this.activeProjectWorkspace) {
+        const targetWorkspace = { ...this.activeProjectWorkspace };
+        const requestedProjectId = targetWorkspace.projectId;
+        this.socket.emit('project:workspace:join', targetWorkspace, (res: { ok: boolean; workspace?: any; message?: string }) => {
+          if (res?.ok && res.workspace && this.activeProjectWorkspace?.projectId === requestedProjectId) {
             const syncPayload = {
-              projectId: this.activeProjectWorkspace.projectId,
+              projectId: requestedProjectId,
               workspace: res.workspace
             };
             const listeners = (this.socket as any).listeners?.('project:workspace:synced') || [];

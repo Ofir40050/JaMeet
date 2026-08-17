@@ -263,4 +263,111 @@ describe('SignalingClient Reconnect Identity Preservation', () => {
 
     expect(emitSpy).not.toHaveBeenCalledWith('project:workspace:join', expect.anything(), expect.anything());
   });
+
+  it('discards stale reconnect workspace join acknowledgement if active project changed before ack arrives', async () => {
+    const client = new SignalingClient('http://localhost:3000');
+    const connectHandler = mockSocket.on.mock.calls.find(([event]) => event === 'connect')?.[1];
+
+    mockSocket.timeout.mockReturnValue({
+      emit: vi.fn((event: string, payload: any, callback: any) => {
+        if (event === 'project:workspace:join') {
+          callback(null, { ok: true, workspace: { notes: { content: 'Old Project Workspace' } } });
+        }
+      })
+    });
+
+    // 1. Initial project is proj-A
+    await client.joinProjectWorkspace('proj-A', 'auth-token-A');
+
+    const syncedHandler = vi.fn();
+    client.on('project:workspace:synced', syncedHandler);
+
+    (mockSocket as any).listeners = vi.fn().mockImplementation((event: string) => {
+      if (event === 'project:workspace:synced') return [syncedHandler];
+      return [];
+    });
+
+    let pendingReconnectCallback: any = null;
+    mockSocket.emit.mockImplementation((event: string, payload: any, callback: any) => {
+      if (event === 'project:workspace:join') {
+        // Hold the callback so we can simulate delayed response from server
+        pendingReconnectCallback = callback;
+      }
+    });
+
+    // 2. Reconnect initiates join for proj-A
+    connectHandler();
+    expect(pendingReconnectCallback).toBeDefined();
+
+    // 3. User switches to proj-B before proj-A ack arrives
+    mockSocket.timeout.mockReturnValue({
+      emit: vi.fn((event: string, payload: any, callback: any) => {
+        if (event === 'project:workspace:join') {
+          callback(null, { ok: true, workspace: { notes: { content: 'Project B Workspace' } } });
+        }
+      })
+    });
+    await client.joinProjectWorkspace('proj-B', 'auth-token-B');
+
+    // 4. Server now delivers delayed ack for proj-A
+    pendingReconnectCallback({
+      ok: true,
+      workspace: { notes: { content: 'Stale Proj A Workspace' }, revision: 2 }
+    });
+
+    // 5. Verify the stale proj-A ack was completely discarded and NOT dispatched
+    expect(syncedHandler).not.toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'proj-B',
+      workspace: expect.objectContaining({ notes: { content: 'Stale Proj A Workspace' } })
+    }));
+    expect(syncedHandler).not.toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'proj-A'
+    }));
+  });
+
+  it('discards stale reconnect workspace join acknowledgement if active project was left before ack arrives', async () => {
+    const client = new SignalingClient('http://localhost:3000');
+    const connectHandler = mockSocket.on.mock.calls.find(([event]) => event === 'connect')?.[1];
+
+    mockSocket.timeout.mockReturnValue({
+      emit: vi.fn((event: string, payload: any, callback: any) => {
+        if (event === 'project:workspace:join') {
+          callback(null, { ok: true, workspace: { notes: { content: 'Initial Workspace' } } });
+        }
+      })
+    });
+
+    await client.joinProjectWorkspace('proj-C', 'auth-token-C');
+
+    const syncedHandler = vi.fn();
+    client.on('project:workspace:synced', syncedHandler);
+
+    (mockSocket as any).listeners = vi.fn().mockImplementation((event: string) => {
+      if (event === 'project:workspace:synced') return [syncedHandler];
+      return [];
+    });
+
+    let pendingReconnectCallback: any = null;
+    mockSocket.emit.mockImplementation((event: string, payload: any, callback: any) => {
+      if (event === 'project:workspace:join') {
+        pendingReconnectCallback = callback;
+      }
+    });
+
+    // Trigger reconnect
+    connectHandler();
+    expect(pendingReconnectCallback).toBeDefined();
+
+    // User leaves project C before server ack arrives
+    client.leaveProjectWorkspace('proj-C');
+
+    // Server ack arrives for proj-C
+    pendingReconnectCallback({
+      ok: true,
+      workspace: { notes: { content: 'Delayed Proj C Workspace' } }
+    });
+
+    // Verify stale ack was discarded
+    expect(syncedHandler).not.toHaveBeenCalled();
+  });
 });
