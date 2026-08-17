@@ -14,6 +14,8 @@ export function getStatusBadgeData(status: WorkspaceSaveStatus): { className: st
 export interface WorkspaceSaveContext {
   activeProjectId?: string;
   targetProjectId?: string;
+  activeContextGen?: number;
+  targetContextGen?: number;
   localEditGen?: number;
   targetEditGen?: number;
   saveAttemptGen?: number;
@@ -36,14 +38,15 @@ export async function executeWorkspaceSave<T>(
   try {
     const res = await saveCall();
 
-    // Check project binding and generation matching
+    // Check project binding, workspace context generation, and area edit/save generations
     const projectMatches = context?.targetProjectId === undefined || context?.activeProjectId === undefined || context.targetProjectId === context.activeProjectId;
+    const contextGenMatches = context?.targetContextGen === undefined || context?.activeContextGen === undefined || context.targetContextGen === context.activeContextGen;
     const editGenMatches = context?.targetEditGen === undefined || context?.localEditGen === undefined || context.targetEditGen === context.localEditGen;
     const saveGenMatches = context?.targetSaveGen === undefined || context?.saveAttemptGen === undefined || context.targetSaveGen === context.saveAttemptGen;
-    const isLatest = projectMatches && editGenMatches && saveGenMatches;
+    const isLatest = projectMatches && contextGenMatches && editGenMatches && saveGenMatches;
 
     if (!isLatest) {
-      // Stale response from older save attempt or previous project: do not overwrite local state or change status
+      // Stale response from older save attempt or previous project/visit: do not overwrite local state or change status
       return { ok: res?.ok ?? false, state: currentLocalState };
     }
 
@@ -57,9 +60,10 @@ export async function executeWorkspaceSave<T>(
     }
   } catch (err) {
     const projectMatches = context?.targetProjectId === undefined || context?.activeProjectId === undefined || context.targetProjectId === context.activeProjectId;
+    const contextGenMatches = context?.targetContextGen === undefined || context?.activeContextGen === undefined || context.targetContextGen === context.activeContextGen;
     const editGenMatches = context?.targetEditGen === undefined || context?.localEditGen === undefined || context.targetEditGen === context.localEditGen;
     const saveGenMatches = context?.targetSaveGen === undefined || context?.saveAttemptGen === undefined || context.targetSaveGen === context.saveAttemptGen;
-    const isLatest = projectMatches && editGenMatches && saveGenMatches;
+    const isLatest = projectMatches && contextGenMatches && editGenMatches && saveGenMatches;
 
     if (isLatest) {
       callbacks.setStatus('unsaved');
@@ -340,6 +344,41 @@ describe('Dual-Generation & Project Context Stale Save Protection', () => {
       // Status remains 'saving' for Project B, not changed to 'unsaved'
       expect(status).toBe('saving');
       expect(currentWorkspace.notes.content).toBe('Project B Fresh Notes');
+    });
+
+    it('invalidates save responses from a previous visit to the same project when revisiting with reset generation numbers', async () => {
+      let status: WorkspaceSaveStatus = 'saving';
+      let currentWorkspace = { lyrics: { content: 'Project A Visit 2 Fresh Edit' } };
+
+      // Visit 1 dispatched a save with contextGen=1, editGen=1, saveGen=1
+      const visit1ServerResponse = {
+        lyrics: { content: 'Project A Visit 1 Stale In-Flight Lyrics' }
+      };
+      const mockSaveCall = vi.fn().mockResolvedValue({ ok: true, workspace: visit1ServerResponse });
+
+      // User switched away and returned to Project A (contextGen=3), reset editGen=1, saveGen=1
+      await executeWorkspaceSave(
+        mockSaveCall,
+        currentWorkspace,
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { currentWorkspace = ws; }
+        },
+        {
+          targetProjectId: 'proj_A',
+          activeProjectId: 'proj_A', // Same project ID
+          targetContextGen: 1,       // Save dispatched during Visit 1
+          activeContextGen: 3,       // Currently in Visit 2 (contextGen incremented on revisit)
+          targetEditGen: 1,          // Edit gen coincidentally matches reset editGen
+          localEditGen: 1,
+          targetSaveGen: 1,          // Save gen coincidentally matches reset saveGen
+          saveAttemptGen: 1
+        }
+      );
+
+      // The old save response from Visit 1 MUST be discarded even though projectId, editGen, and saveGen match!
+      expect(currentWorkspace.lyrics.content).toBe('Project A Visit 2 Fresh Edit');
+      expect(status).toBe('saving');
     });
   });
 

@@ -4240,6 +4240,7 @@ function renderProjectsGrid(): void {
 }
 
 function resetWorkspaceGenerations(): void {
+  currentWorkspaceContextGen++;
   lyricsEditGen = 0;
   lyricsSaveGen = 0;
   notesEditGen = 0;
@@ -4746,6 +4747,7 @@ let currentTasksStatus: 'saving' | 'saved' | 'unsaved' = 'saved';
 let sessionWorkspaceOpen = false;
 
 // Generation counters for stale save response protection
+let currentWorkspaceContextGen = 0;
 let lyricsEditGen = 0;
 let lyricsSaveGen = 0;
 let notesEditGen = 0;
@@ -5399,6 +5401,7 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
     return;
   }
   const targetProjectId = activeProject.id;
+  const targetContextGen = currentWorkspaceContextGen;
   const targetEditGen = lyricsEditGen;
   const targetSaveGen = ++lyricsSaveGen;
 
@@ -5418,7 +5421,10 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
     };
 
     const res = await signaling.updateProjectWorkspace(targetProjectId, payload, token);
-    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === lyricsSaveGen) && (targetEditGen === lyricsEditGen);
+    const isLatest = (activeProject?.id === targetProjectId) &&
+      (targetContextGen === currentWorkspaceContextGen) &&
+      (targetSaveGen === lyricsSaveGen) &&
+      (targetEditGen === lyricsEditGen);
     if (!isLatest) return;
 
     if (res?.ok && res.workspace && activeProject) {
@@ -5431,7 +5437,10 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
     }
   } catch (err) {
     console.error('Failed to save lyrics document:', err);
-    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === lyricsSaveGen) && (targetEditGen === lyricsEditGen);
+    const isLatest = (activeProject?.id === targetProjectId) &&
+      (targetContextGen === currentWorkspaceContextGen) &&
+      (targetSaveGen === lyricsSaveGen) &&
+      (targetEditGen === lyricsEditGen);
     if (isLatest) {
       setLyricsStatus('unsaved');
     }
@@ -5878,12 +5887,16 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
     return;
   }
   const targetProjectId = activeProject.id;
+  const targetContextGen = currentWorkspaceContextGen;
   const targetEditGen = notesEditGen;
   const targetSaveGen = ++notesSaveGen;
 
   try {
     const res = await signaling.updateProjectWorkspace(targetProjectId, { notes: { content, bpm, key } }, token);
-    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === notesSaveGen) && (targetEditGen === notesEditGen);
+    const isLatest = (activeProject?.id === targetProjectId) &&
+      (targetContextGen === currentWorkspaceContextGen) &&
+      (targetSaveGen === notesSaveGen) &&
+      (targetEditGen === notesEditGen);
     if (!isLatest) return;
 
     if (res?.ok && res.workspace && activeProject) {
@@ -5895,7 +5908,10 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
     }
   } catch (err) {
     console.error('Failed to save notes:', err);
-    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === notesSaveGen) && (targetEditGen === notesEditGen);
+    const isLatest = (activeProject?.id === targetProjectId) &&
+      (targetContextGen === currentWorkspaceContextGen) &&
+      (targetSaveGen === notesSaveGen) &&
+      (targetEditGen === notesEditGen);
     if (isLatest) {
       setNotesStatus('unsaved');
     }
@@ -6318,13 +6334,17 @@ async function saveStructureWorkspace(): Promise<void> {
     return;
   }
   const targetProjectId = activeProject.id;
+  const targetContextGen = currentWorkspaceContextGen;
   const targetEditGen = structureEditGen;
   const targetSaveGen = ++structureSaveGen;
 
   try {
     const sections = getStructureSections();
     const res = await signaling.updateProjectWorkspace(targetProjectId, { structure: { sections } }, token);
-    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === structureSaveGen) && (targetEditGen === structureEditGen);
+    const isLatest = (activeProject?.id === targetProjectId) &&
+      (targetContextGen === currentWorkspaceContextGen) &&
+      (targetSaveGen === structureSaveGen) &&
+      (targetEditGen === structureEditGen);
     if (!isLatest) return;
 
     if (res?.ok && res.workspace && activeProject) {
@@ -6335,7 +6355,10 @@ async function saveStructureWorkspace(): Promise<void> {
     }
   } catch (err) {
     console.error('Failed to save structure workspace:', err);
-    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === structureSaveGen) && (targetEditGen === structureEditGen);
+    const isLatest = (activeProject?.id === targetProjectId) &&
+      (targetContextGen === currentWorkspaceContextGen) &&
+      (targetSaveGen === structureSaveGen) &&
+      (targetEditGen === structureEditGen);
     if (isLatest) {
       setStructureStatus('unsaved');
     }
@@ -6731,6 +6754,7 @@ async function saveTasksWorkspace(): Promise<void> {
     return;
   }
   const targetProjectId = activeProject.id;
+  const targetContextGen = currentWorkspaceContextGen;
   const targetEditGen = tasksEditGen;
   const targetSaveGen = ++tasksSaveGen;
   const tasks = getProjectTasks();
@@ -6739,7 +6763,10 @@ async function saveTasksWorkspace(): Promise<void> {
     const res = await signaling.updateProjectWorkspace(targetProjectId, {
       tasks: { tasks }
     }, token);
-    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === tasksSaveGen) && (targetEditGen === tasksEditGen);
+    const isLatest = (activeProject?.id === targetProjectId) &&
+      (targetContextGen === currentWorkspaceContextGen) &&
+      (targetSaveGen === tasksSaveGen) &&
+      (targetEditGen === tasksEditGen);
     if (!isLatest) return;
 
     if (res?.ok && res.workspace && activeProject) {
@@ -6750,7 +6777,10 @@ async function saveTasksWorkspace(): Promise<void> {
     }
   } catch (err) {
     console.error('Failed to save tasks workspace:', err);
-    const isLatest = (activeProject?.id === targetProjectId) && (targetSaveGen === tasksSaveGen) && (targetEditGen === tasksEditGen);
+    const isLatest = (activeProject?.id === targetProjectId) &&
+      (targetContextGen === currentWorkspaceContextGen) &&
+      (targetSaveGen === tasksSaveGen) &&
+      (targetEditGen === tasksEditGen);
     if (isLatest) {
       setTasksStatus('unsaved');
     }
