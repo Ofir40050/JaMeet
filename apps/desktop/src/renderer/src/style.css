@@ -4200,23 +4200,35 @@ select option {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  width: 100%;
 }
 
 .settings-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 12px;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 8px 12px !important;
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
-  text-align: left;
+  text-align: left !important;
   cursor: pointer;
   transition: all 0.1s ease;
+}
+
+.settings-nav-item span:not(.settings-nav-icon) {
+  text-align: left !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+  flex: 1;
 }
 
 .settings-nav-item:hover {
@@ -4236,10 +4248,20 @@ select option {
 }
 
 .settings-nav-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   color: var(--text-muted);
+  width: 16px !important;
+  height: 16px !important;
+  flex-shrink: 0 !important;
+  margin: 0 !important;
+}
+
+.settings-nav-icon svg {
+  width: 15px !important;
+  height: 15px !important;
+  display: block;
 }
 
 .settings-content-area {
