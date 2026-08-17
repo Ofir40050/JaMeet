@@ -6408,6 +6408,86 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('enforces server-side storage limits across REST and Socket.IO endpoints', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-storage-limits-test-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-storage-limits'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'storage_limit_owner', 'beta', userStore);
+
+      // 1. Create project through REST
+      const createRes = await fetch(`${url}/api/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({ name: 'Storage Test Project' })
+      });
+      expect(createRes.status).toBe(201);
+      const projectData: any = await createRes.json();
+      const projectId = projectData.project.id;
+
+      // 2. REST workspace update with oversized notes content -> 400 WORKSPACE_LIMIT_EXCEEDED
+      const oversizedNotes = 'x'.repeat(100_001);
+      const restNotesRes = await fetch(`${url}/api/projects/${projectId}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerAuth.token}` },
+        body: JSON.stringify({
+          notes: { baseRevision: 1, content: oversizedNotes }
+        })
+      });
+      expect(restNotesRes.status).toBe(400);
+      const restNotesData: any = await restNotesRes.json();
+      expect(restNotesData.ok).toBe(false);
+      expect(restNotesData.code).toBe('WORKSPACE_LIMIT_EXCEEDED');
+      expect(restNotesData.area).toBe('notes');
+
+      // 3. Socket.IO workspace update with oversized task title -> ack with WORKSPACE_LIMIT_EXCEEDED
+      const socket = await connected(url);
+      let broadcastReceived = false;
+      socket.on('project:workspace:synced', () => { broadcastReceived = true; });
+
+      const joinAck: any = await ack(socket, 'project:workspace:join', {
+        projectId,
+        authToken: ownerAuth.token
+      });
+      expect(joinAck.ok).toBe(true);
+
+      const oversizedBpm = '1'.repeat(25);
+      const socketUpdateAck: any = await ack(socket, 'project:workspace:update', {
+        projectId,
+        authToken: ownerAuth.token,
+        updates: {
+          notes: { baseRevision: 1, bpm: oversizedBpm }
+        }
+      });
+      expect(socketUpdateAck.ok).toBe(false);
+      expect(socketUpdateAck.code).toBe('WORKSPACE_LIMIT_EXCEEDED');
+      expect(socketUpdateAck.area).toBe('notes');
+      expect(broadcastReceived).toBe(false);
+
+      // 4. Verify project workspace is completely unmodified
+      const p = projectStore.getProject(projectId, ownerAuth.user.id)!;
+      expect(p.workspace.notes.content).toBe('');
+      expect(p.workspace.notes.revision).toBe(1);
+      expect(p.workspace.lyrics.content).toBe('');
+      expect(p.workspace.lyrics.revision).toBe(1);
+
+      socket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 

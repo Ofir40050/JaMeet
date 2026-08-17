@@ -38,6 +38,44 @@ export class WorkspaceConflictError extends Error {
   }
 }
 
+export class ProjectLimitError extends Error {
+  readonly code: string;
+  constructor(message: string, code = 'PROJECT_LIMIT_EXCEEDED') {
+    super(message);
+    this.name = 'ProjectLimitError';
+    this.code = code;
+  }
+}
+
+export class WorkspaceLimitError extends Error {
+  readonly code: string;
+  readonly area: 'lyrics' | 'notes' | 'structure' | 'tasks';
+  constructor(area: 'lyrics' | 'notes' | 'structure' | 'tasks', message: string, code = 'WORKSPACE_LIMIT_EXCEEDED') {
+    super(message);
+    this.name = 'WorkspaceLimitError';
+    this.area = area;
+    this.code = code;
+  }
+}
+
+export const PROJECT_LIMITS = {
+  MAX_PROJECTS_PER_OWNER: 100,
+  MAX_COLLABORATORS_PER_PROJECT: 50,
+  MAX_LYRICS_DOCUMENTS: 50,
+  MAX_LYRICS_DOCUMENT_CONTENT_LENGTH: 100_000,
+  MAX_LYRICS_DOCUMENT_TITLE_LENGTH: 150,
+  MAX_LYRICS_TOTAL_CONTENT_LENGTH: 500_000,
+  MAX_NOTES_CONTENT_LENGTH: 100_000,
+  MAX_NOTES_BPM_LENGTH: 20,
+  MAX_NOTES_KEY_LENGTH: 30,
+  MAX_STRUCTURE_SECTIONS: 150,
+  MAX_STRUCTURE_SECTION_NAME_LENGTH: 100,
+  MAX_STRUCTURE_SECTION_NOTE_LENGTH: 500,
+  MAX_TASKS: 300,
+  MAX_TASK_TITLE_LENGTH: 200,
+  MAX_TASK_NOTE_LENGTH: 2_000
+};
+
 export interface ProjectDatabaseSchema {
   version: number;
   projects: Project[];
@@ -223,6 +261,20 @@ export class ProjectStore {
     data: CreateProjectRequest,
     collaboratorUsers: UserProfile[] = []
   ): Project {
+    const ownedProjectsCount = Array.from(this.projects.values()).filter(
+      (p) => p.ownerId === owner.id
+    ).length;
+    if (ownedProjectsCount >= PROJECT_LIMITS.MAX_PROJECTS_PER_OWNER) {
+      throw new ProjectLimitError(
+        `Maximum project limit reached (${PROJECT_LIMITS.MAX_PROJECTS_PER_OWNER} projects per account).`
+      );
+    }
+    if (collaboratorUsers.length > PROJECT_LIMITS.MAX_COLLABORATORS_PER_PROJECT) {
+      throw new ProjectLimitError(
+        `Cannot add more than ${PROJECT_LIMITS.MAX_COLLABORATORS_PER_PROJECT} initial collaborators.`
+      );
+    }
+
     const now = Date.now();
     const id = `proj_${crypto.randomUUID()}`;
 
@@ -483,6 +535,149 @@ export class ProjectStore {
         } else {
           t.assigneeId = undefined;
           t.assigneeName = undefined;
+        }
+      }
+    }
+
+    // Enforce workspace storage limits before any OCC checks, mutations, or persistence
+    if (updates.lyrics) {
+      if (updates.lyrics.documents) {
+        if (updates.lyrics.documents.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS) {
+          throw new WorkspaceLimitError(
+            'lyrics',
+            `Maximum lyrics documents limit exceeded (${PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS} documents).`
+          );
+        }
+        let totalLyricsLength = 0;
+        for (const d of updates.lyrics.documents) {
+          if (d.title && d.title.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH) {
+            throw new WorkspaceLimitError(
+              'lyrics',
+              `Lyrics document title exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH} characters.`
+            );
+          }
+          if (d.content && d.content.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH) {
+            throw new WorkspaceLimitError(
+              'lyrics',
+              `Lyrics document content exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH} characters.`
+            );
+          }
+          totalLyricsLength += (d.content || '').length;
+        }
+        if (totalLyricsLength > PROJECT_LIMITS.MAX_LYRICS_TOTAL_CONTENT_LENGTH) {
+          throw new WorkspaceLimitError(
+            'lyrics',
+            `Total lyrics content exceeds maximum project limit of ${PROJECT_LIMITS.MAX_LYRICS_TOTAL_CONTENT_LENGTH} characters.`
+          );
+        }
+      }
+
+      if (updates.lyrics.title && updates.lyrics.title.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH) {
+        throw new WorkspaceLimitError(
+          'lyrics',
+          `Lyrics document title exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH} characters.`
+        );
+      }
+
+      if (updates.lyrics.content && updates.lyrics.content.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH) {
+        throw new WorkspaceLimitError(
+          'lyrics',
+          `Lyrics document content exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH} characters.`
+        );
+      }
+
+      if (updates.lyrics.documentId !== undefined || updates.lyrics.content !== undefined) {
+        const existingDocs = project.workspace?.lyrics?.documents || [];
+        const targetDocId = updates.lyrics.documentId || project.workspace?.lyrics?.activeDocumentId || existingDocs[0]?.id || 'doc-main';
+        const docExists = existingDocs.some((d) => d.id === targetDocId);
+        if (!docExists && !updates.lyrics.documents) {
+          if (existingDocs.length + 1 > PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS) {
+            throw new WorkspaceLimitError(
+              'lyrics',
+              `Maximum lyrics documents limit exceeded (${PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS} documents).`
+            );
+          }
+        }
+        if (updates.lyrics.content !== undefined && !updates.lyrics.documents) {
+          let projectedTotal = updates.lyrics.content.length;
+          for (const d of existingDocs) {
+            if (d.id !== targetDocId) {
+              projectedTotal += (d.content || '').length;
+            }
+          }
+          if (projectedTotal > PROJECT_LIMITS.MAX_LYRICS_TOTAL_CONTENT_LENGTH) {
+            throw new WorkspaceLimitError(
+              'lyrics',
+              `Total lyrics content exceeds maximum project limit of ${PROJECT_LIMITS.MAX_LYRICS_TOTAL_CONTENT_LENGTH} characters.`
+            );
+          }
+        }
+      }
+    }
+
+    if (updates.notes) {
+      if (updates.notes.content !== undefined && updates.notes.content.length > PROJECT_LIMITS.MAX_NOTES_CONTENT_LENGTH) {
+        throw new WorkspaceLimitError(
+          'notes',
+          `Notes content exceeds maximum length of ${PROJECT_LIMITS.MAX_NOTES_CONTENT_LENGTH} characters.`
+        );
+      }
+      if (updates.notes.bpm !== undefined && updates.notes.bpm.length > PROJECT_LIMITS.MAX_NOTES_BPM_LENGTH) {
+        throw new WorkspaceLimitError(
+          'notes',
+          `Notes BPM value exceeds maximum length of ${PROJECT_LIMITS.MAX_NOTES_BPM_LENGTH} characters.`
+        );
+      }
+      if (updates.notes.key !== undefined && updates.notes.key.length > PROJECT_LIMITS.MAX_NOTES_KEY_LENGTH) {
+        throw new WorkspaceLimitError(
+          'notes',
+          `Notes Key value exceeds maximum length of ${PROJECT_LIMITS.MAX_NOTES_KEY_LENGTH} characters.`
+        );
+      }
+    }
+
+    if (updates.structure && updates.structure.sections !== undefined) {
+      if (updates.structure.sections.length > PROJECT_LIMITS.MAX_STRUCTURE_SECTIONS) {
+        throw new WorkspaceLimitError(
+          'structure',
+          `Song structure sections limit exceeded (${PROJECT_LIMITS.MAX_STRUCTURE_SECTIONS} sections).`
+        );
+      }
+      for (const s of updates.structure.sections) {
+        if (s.name && s.name.length > PROJECT_LIMITS.MAX_STRUCTURE_SECTION_NAME_LENGTH) {
+          throw new WorkspaceLimitError(
+            'structure',
+            `Section name exceeds maximum length of ${PROJECT_LIMITS.MAX_STRUCTURE_SECTION_NAME_LENGTH} characters.`
+          );
+        }
+        if (s.note && s.note.length > PROJECT_LIMITS.MAX_STRUCTURE_SECTION_NOTE_LENGTH) {
+          throw new WorkspaceLimitError(
+            'structure',
+            `Section note exceeds maximum length of ${PROJECT_LIMITS.MAX_STRUCTURE_SECTION_NOTE_LENGTH} characters.`
+          );
+        }
+      }
+    }
+
+    if (updates.tasks && updates.tasks.tasks !== undefined) {
+      if (updates.tasks.tasks.length > PROJECT_LIMITS.MAX_TASKS) {
+        throw new WorkspaceLimitError(
+          'tasks',
+          `Tasks limit exceeded (${PROJECT_LIMITS.MAX_TASKS} tasks).`
+        );
+      }
+      for (const t of updates.tasks.tasks) {
+        if (t.title && t.title.length > PROJECT_LIMITS.MAX_TASK_TITLE_LENGTH) {
+          throw new WorkspaceLimitError(
+            'tasks',
+            `Task title exceeds maximum length of ${PROJECT_LIMITS.MAX_TASK_TITLE_LENGTH} characters.`
+          );
+        }
+        if (t.note && t.note.length > PROJECT_LIMITS.MAX_TASK_NOTE_LENGTH) {
+          throw new WorkspaceLimitError(
+            'tasks',
+            `Task note exceeds maximum length of ${PROJECT_LIMITS.MAX_TASK_NOTE_LENGTH} characters.`
+          );
         }
       }
     }
@@ -1099,6 +1294,11 @@ export class ProjectStore {
     if (existingIdx >= 0) {
       project.collaborators[existingIdx]!.role = role;
     } else {
+      if (project.collaborators.length >= PROJECT_LIMITS.MAX_COLLABORATORS_PER_PROJECT) {
+        throw new ProjectLimitError(
+          `Maximum collaborator limit reached (${PROJECT_LIMITS.MAX_COLLABORATORS_PER_PROJECT} collaborators per project).`
+        );
+      }
       project.collaborators.push({
         userId: collaborator.id,
         displayName: collaborator.displayName,

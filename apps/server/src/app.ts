@@ -21,7 +21,7 @@ import {
 import type { ServerConfig } from './config.js';
 import { RoomStore, type Room, type Participant } from './rooms.js';
 import { UserStore, authorizeSessionAccess, validateStoredUserSessionAccess } from './auth.js';
-import { ProjectStore, WorkspaceConflictError } from './projects.js';
+import { ProjectStore, WorkspaceConflictError, ProjectLimitError, WorkspaceLimitError } from './projects.js';
 import { CrashReportStore } from './crash-store.js';
 import { createIceServers } from './turn.js';
 import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from './rate-limiter.js';
@@ -551,6 +551,9 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       const project = projectStore.createProject(user, parsed.data, initialCollaborators);
       return reply.code(201).send({ ok: true, project });
     } catch (err: unknown) {
+      if (err instanceof ProjectLimitError) {
+        return reply.code(400).send({ ok: false, code: err.code, message: err.message });
+      }
       const msg = err instanceof Error ? err.message : 'Failed to create project.';
       return reply.code(500).send({ ok: false, message: msg });
     }
@@ -699,6 +702,9 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       });
       return reply.send({ ok: true, project: updated });
     } catch (err: unknown) {
+      if (err instanceof ProjectLimitError) {
+        return reply.code(400).send({ ok: false, code: err.code, message: err.message });
+      }
       const msg = err instanceof Error ? err.message : 'Failed to add collaborator.';
       return reply.code(500).send({ ok: false, message: msg });
     }
@@ -798,6 +804,14 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
           message: err.message,
           workspace: currentProject?.workspace,
           project: currentProject
+        });
+      }
+      if (err instanceof WorkspaceLimitError) {
+        return reply.code(400).send({
+          ok: false,
+          code: err.code,
+          area: err.area,
+          message: err.message
         });
       }
       const msg = err instanceof Error ? err.message : 'Failed to update workspace.';
@@ -1172,6 +1186,15 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
             baseRevision: err.baseRevision,
             message: err.message,
             workspace: currentProject?.workspace
+          });
+          return;
+        }
+        if (err instanceof WorkspaceLimitError) {
+          ack?.({
+            ok: false,
+            code: err.code,
+            area: err.area,
+            message: err.message
           });
           return;
         }

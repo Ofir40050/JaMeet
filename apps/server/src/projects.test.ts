@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { ProjectStore, WorkspaceConflictError } from './projects.js';
+import { ProjectStore, WorkspaceConflictError, ProjectLimitError, WorkspaceLimitError, PROJECT_LIMITS } from './projects.js';
 import type { UserProfile } from '@jameet/shared';
 function autoUpdateWorkspace(
   store: ProjectStore,
@@ -2339,6 +2339,206 @@ describe('ProjectStore & Workspace', () => {
       expect(unchangedProject.workspace.tasks.tasks.length).toBe(0);
       expect(unchangedProject.workspace.tasks.revision).toBe(1);
       expect(unchangedProject.activities.length).toBe(initialActivitiesCount);
+    });
+  });
+
+  describe('Server-Enforced Storage Limits for Projects & Workspaces', () => {
+    it('prevents a single account from creating more than MAX_PROJECTS_PER_OWNER projects', () => {
+      // Create MAX_PROJECTS_PER_OWNER projects
+      for (let i = 0; i < PROJECT_LIMITS.MAX_PROJECTS_PER_OWNER; i++) {
+        projectStore.createProject(mockOwner, { name: `Project #${i + 1}` });
+      }
+
+      expect(() => {
+        projectStore.createProject(mockOwner, { name: 'One Too Many Project' });
+      }).toThrow(ProjectLimitError);
+
+      try {
+        projectStore.createProject(mockOwner, { name: 'One Too Many Project' });
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(ProjectLimitError);
+        expect(err.code).toBe('PROJECT_LIMIT_EXCEEDED');
+      }
+
+      // Another user can still create projects
+      const otherProject = projectStore.createProject(mockCollaborator, { name: 'Other User Project' });
+      expect(otherProject).toBeDefined();
+    });
+
+    it('prevents adding more than MAX_COLLABORATORS_PER_PROJECT collaborators', () => {
+      const project = projectStore.createProject(mockOwner, { name: 'Collaborator Limit Test' });
+
+      for (let i = 0; i < PROJECT_LIMITS.MAX_COLLABORATORS_PER_PROJECT; i++) {
+        const collabUser: UserProfile = {
+          id: `collab-user-${i}`,
+          displayName: `Collab ${i}`,
+          username: `collab${i}`,
+          email: `collab${i}@music.com`,
+          avatarColor: '#06b6d4',
+          isGuest: false,
+          createdAt: Date.now()
+        };
+        projectStore.addCollaborator(project.id, mockOwner.id, collabUser, 'collaborator');
+      }
+
+      const overflowUser: UserProfile = {
+        id: 'overflow-collab-user',
+        displayName: 'Overflow Collab',
+        username: 'overflowcollab',
+        email: 'overflow@music.com',
+        avatarColor: '#06b6d4',
+        isGuest: false,
+        createdAt: Date.now()
+      };
+
+      expect(() => {
+        projectStore.addCollaborator(project.id, mockOwner.id, overflowUser, 'collaborator');
+      }).toThrow(ProjectLimitError);
+    });
+
+    it('rejects oversized Lyrics data before any mutation occurs', () => {
+      const project = projectStore.createProject(mockOwner, { name: 'Lyrics Limit Test' });
+      const initialRev = project.workspace.lyrics.revision;
+
+      // 1. Oversized single doc content
+      const oversizedContent = 'a'.repeat(PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH + 1);
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          lyrics: { baseRevision: initialRev, content: oversizedContent }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // 2. Oversized doc title
+      const oversizedTitle = 't'.repeat(PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH + 1);
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          lyrics: { baseRevision: initialRev, title: oversizedTitle }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // 3. Exceeding MAX_LYRICS_DOCUMENTS
+      const tooManyDocs = [];
+      for (let i = 0; i < PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS + 1; i++) {
+        tooManyDocs.push({ id: `doc-${i}`, title: `Doc ${i}`, content: 'hello' });
+      }
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          lyrics: { baseRevision: initialRev, documents: tooManyDocs }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // Verify ZERO mutations applied
+      const p = projectStore.getProject(project.id, mockOwner.id)!;
+      expect(p.workspace.lyrics.revision).toBe(initialRev);
+      expect(p.workspace.lyrics.content).toBe('');
+    });
+
+    it('rejects oversized Notes data before any mutation occurs', () => {
+      const project = projectStore.createProject(mockOwner, { name: 'Notes Limit Test' });
+      const initialRev = project.workspace.notes.revision;
+
+      // 1. Oversized content
+      const oversizedNotes = 'n'.repeat(PROJECT_LIMITS.MAX_NOTES_CONTENT_LENGTH + 1);
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          notes: { baseRevision: initialRev, content: oversizedNotes }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // 2. Oversized BPM
+      const oversizedBpm = '1'.repeat(PROJECT_LIMITS.MAX_NOTES_BPM_LENGTH + 1);
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          notes: { baseRevision: initialRev, bpm: oversizedBpm }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // 3. Oversized Key
+      const oversizedKey = 'k'.repeat(PROJECT_LIMITS.MAX_NOTES_KEY_LENGTH + 1);
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          notes: { baseRevision: initialRev, key: oversizedKey }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // Verify ZERO mutations applied
+      const p = projectStore.getProject(project.id, mockOwner.id)!;
+      expect(p.workspace.notes.revision).toBe(initialRev);
+      expect(p.workspace.notes.content).toBe('');
+    });
+
+    it('rejects oversized Song Structure data before any mutation occurs', () => {
+      const project = projectStore.createProject(mockOwner, { name: 'Structure Limit Test' });
+      const initialRev = project.workspace.structure.revision;
+
+      // 1. Exceeding MAX_STRUCTURE_SECTIONS
+      const tooManySections = [];
+      for (let i = 0; i < PROJECT_LIMITS.MAX_STRUCTURE_SECTIONS + 1; i++) {
+        tooManySections.push({ id: `sec-${i}`, name: `Section ${i}`, bars: 8 });
+      }
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          structure: { baseRevision: initialRev, sections: tooManySections }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // 2. Oversized section name
+      const oversizedName = 's'.repeat(PROJECT_LIMITS.MAX_STRUCTURE_SECTION_NAME_LENGTH + 1);
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          structure: { baseRevision: initialRev, sections: [{ id: 'sec-1', name: oversizedName, bars: 8 }] }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // 3. Oversized section note
+      const oversizedNote = 'note-'.repeat(150);
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          structure: { baseRevision: initialRev, sections: [{ id: 'sec-1', name: 'Verse', note: oversizedNote }] }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // Verify ZERO mutations applied
+      const p = projectStore.getProject(project.id, mockOwner.id)!;
+      expect(p.workspace.structure.revision).toBe(initialRev);
+      expect(p.workspace.structure.sections.length).toBe(0);
+    });
+
+    it('rejects oversized Tasks data before any mutation occurs', () => {
+      const project = projectStore.createProject(mockOwner, { name: 'Tasks Limit Test' });
+      const initialRev = project.workspace.tasks.revision;
+
+      // 1. Exceeding MAX_TASKS
+      const tooManyTasks = [];
+      for (let i = 0; i < PROJECT_LIMITS.MAX_TASKS + 1; i++) {
+        tooManyTasks.push({ id: `task-${i}`, title: `Task ${i}`, status: 'todo' as const });
+      }
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          tasks: { baseRevision: initialRev, tasks: tooManyTasks }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // 2. Oversized task title
+      const oversizedTitle = 't'.repeat(PROJECT_LIMITS.MAX_TASK_TITLE_LENGTH + 1);
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          tasks: { baseRevision: initialRev, tasks: [{ id: 'task-1', title: oversizedTitle, status: 'todo' }] }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // 3. Oversized task note
+      const oversizedNote = 'n'.repeat(PROJECT_LIMITS.MAX_TASK_NOTE_LENGTH + 1);
+      expect(() => {
+        projectStore.updateWorkspace(project.id, mockOwner, {
+          tasks: { baseRevision: initialRev, tasks: [{ id: 'task-1', title: 'Normal', note: oversizedNote, status: 'todo' }] }
+        });
+      }).toThrow(WorkspaceLimitError);
+
+      // Verify ZERO mutations applied
+      const p = projectStore.getProject(project.id, mockOwner.id)!;
+      expect(p.workspace.tasks.revision).toBe(initialRev);
+      expect(p.workspace.tasks.tasks.length).toBe(0);
     });
   });
 });
