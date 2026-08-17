@@ -1055,5 +1055,86 @@ describe('JaMeet Secure Admin Panel', () => {
 
       await app.close();
     });
+
+    it('sets, updates, and clears internal admin notes while keeping them isolated from client APIs', async () => {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: testDir,
+        ALLOWED_ORIGINS: 'http://localhost:3000',
+        JAMEET_ADMIN_SECRET: TEST_ADMIN_SECRET
+      });
+      const { app, userStore } = await createApp(config);
+      const sessionToken = createAdminSessionToken(TEST_ADMIN_SECRET);
+
+      const reg = await userStore.register({
+        username: 'note_user',
+        email: 'note@test.com',
+        password: 'Password1!',
+        displayName: 'Note Test User'
+      });
+
+      // 1. Set admin note via POST /admin/api/users/:userId/note
+      const setNoteRes = await app.inject({
+        method: 'POST',
+        url: `/admin/api/users/${reg.user.id}/note`,
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`,
+          origin: 'http://localhost:3000'
+        },
+        payload: {
+          note: 'VIP beta tester from Berlin studio'
+        }
+      });
+      expect(setNoteRes.statusCode).toBe(200);
+      const setNoteBody = JSON.parse(setNoteRes.body);
+      expect(setNoteBody.ok).toBe(true);
+      expect(setNoteBody.user.adminNote).toBe('VIP beta tester from Berlin studio');
+
+      // Verify stored in UserStore
+      expect(userStore.getStoredUser(reg.user.id)?.adminNote).toBe('VIP beta tester from Berlin studio');
+
+      // Verify visible in admin list
+      const adminListRes = await app.inject({
+        method: 'GET',
+        url: '/admin/api/users',
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`
+        }
+      });
+      expect(adminListRes.statusCode).toBe(200);
+      const adminList = JSON.parse(adminListRes.body).users;
+      const foundUser = adminList.find((u: any) => u.id === reg.user.id);
+      expect(foundUser.adminNote).toBe('VIP beta tester from Berlin studio');
+
+      // Verify NEVER exposed in client /api/auth/me
+      const meRes = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: {
+          authorization: `Bearer ${reg.token}`
+        }
+      });
+      expect(meRes.statusCode).toBe(200);
+      const meBody = JSON.parse(meRes.body);
+      expect(meBody.user.adminNote).toBeUndefined();
+
+      // Clear note
+      const clearNoteRes = await app.inject({
+        method: 'POST',
+        url: `/admin/api/users/${reg.user.id}/note`,
+        headers: {
+          cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}`,
+          origin: 'http://localhost:3000'
+        },
+        payload: {
+          note: ''
+        }
+      });
+      expect(clearNoteRes.statusCode).toBe(200);
+      expect(JSON.parse(clearNoteRes.body).user.adminNote).toBeUndefined();
+      expect(userStore.getStoredUser(reg.user.id)?.adminNote).toBeUndefined();
+
+      await app.close();
+    });
   });
 });

@@ -49,6 +49,7 @@ export interface AdminUserSummary {
   lastActiveAt?: number;
   clientVersion?: string;
   clientPlatform?: string;
+  adminNote?: string;
 }
 
 export interface AdminUserDetail {
@@ -68,6 +69,7 @@ export interface AdminUserDetail {
   clientVersion?: string;
   clientPlatform?: string;
   activityHistory: UserActivityEvent[];
+  adminNote?: string;
 }
 
 export interface StoredUser {
@@ -97,6 +99,7 @@ export interface StoredUser {
   clientPlatform?: string;
   activityHistory?: UserActivityEvent[];
   passwordChangedAt?: number;
+  adminNote?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -776,6 +779,26 @@ export class UserStore {
     }
   }
 
+  setAdminNote(userId: string, note: string | null | undefined): boolean {
+    const user = this.users.get(userId);
+    if (!user) return false;
+    const prevNote = user.adminNote;
+    const prevUpdatedAt = user.updatedAt;
+    const now = Date.now();
+
+    user.adminNote = (note && typeof note === 'string' && note.trim()) ? note.trim() : undefined;
+    user.updatedAt = now;
+
+    try {
+      this.saveToDisk();
+      return true;
+    } catch (err) {
+      user.adminNote = prevNote;
+      user.updatedAt = prevUpdatedAt;
+      throw err;
+    }
+  }
+
   listAdminUsers(onlineUserIds?: Set<string>): AdminUserSummary[] {
     return Array.from(this.users.values())
       .map((u) => ({
@@ -793,7 +816,8 @@ export class UserStore {
         lastLoginAt: u.lastLoginAt,
         lastActiveAt: u.lastActiveAt,
         clientVersion: u.clientVersion,
-        clientPlatform: u.clientPlatform
+        clientPlatform: u.clientPlatform,
+        adminNote: u.adminNote
       }))
       .sort((a, b) => b.createdAt - a.createdAt);
   }
@@ -817,7 +841,8 @@ export class UserStore {
       lastActiveAt: u.lastActiveAt,
       clientVersion: u.clientVersion,
       clientPlatform: u.clientPlatform,
-      activityHistory: (u.activityHistory || []).map((e) => ({ ...e }))
+      activityHistory: (u.activityHistory || []).map((e) => ({ ...e })),
+      adminNote: u.adminNote
     };
   }
 

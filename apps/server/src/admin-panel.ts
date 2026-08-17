@@ -590,6 +590,18 @@ function renderAdminDashboard(): string {
       z-index: 10;
       user-select: none;
     }
+    th.sortable {
+      cursor: pointer;
+    }
+    th.sortable:hover {
+      background: #f1f5f9;
+      color: var(--text);
+    }
+    .sort-ind {
+      font-size: 10px;
+      margin-left: 0.25rem;
+      color: var(--primary);
+    }
     th:last-child {
       border-right: none;
     }
@@ -638,7 +650,7 @@ function renderAdminDashboard(): string {
     }
     .status-online {
       color: #16a34a;
-      font-weight: 500;
+      font-weight: 600;
     }
     .status-offline {
       color: var(--text-subtle);
@@ -661,7 +673,7 @@ function renderAdminDashboard(): string {
       color: var(--text-muted);
     }
 
-    /* Modal / Inspector Dialog */
+    /* Modal / User Details */
     .modal-backdrop {
       display: none;
       position: fixed;
@@ -680,7 +692,7 @@ function renderAdminDashboard(): string {
       border: 1px solid var(--border-dark);
       border-radius: 4px;
       width: 100%;
-      max-width: 640px;
+      max-width: 580px;
       max-height: 90vh;
       display: flex;
       flex-direction: column;
@@ -694,52 +706,90 @@ function renderAdminDashboard(): string {
       justify-content: space-between;
       background: #fafafa;
     }
+    .modal-title-row {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
     .modal-title {
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 600;
+    }
+    .modal-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
     }
     .modal-body {
       padding: 1rem;
       overflow-y: auto;
       font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
     }
-    .prop-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 1.25rem;
+    .detail-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      font-size: 12px;
+      padding: 0.25rem 0;
+      border-bottom: 1px solid #f3f4f6;
     }
-    .prop-table td {
-      padding: 0.4rem 0.5rem;
-      border: 1px solid var(--border);
-      white-space: normal;
-    }
-    .prop-label {
-      width: 140px;
-      background: #f8fafc;
-      font-weight: 500;
+    .detail-label {
+      width: 120px;
+      flex-shrink: 0;
       color: var(--text-muted);
+      font-weight: 500;
+    }
+    .detail-value {
+      flex: 1;
+      color: var(--text);
+      word-break: break-word;
+    }
+    .notes-input {
+      width: 100%;
+      font-size: 12px;
+      padding: 0.35rem 0.5rem;
+      border: 1px solid var(--btn-border);
+      border-radius: 3px;
+      background: #ffffff;
+      outline: none;
+      resize: vertical;
+      min-height: 48px;
+    }
+    .notes-input:focus {
+      border-color: var(--primary);
     }
     .activity-section-title {
       font-weight: 600;
-      font-size: 12px;
-      margin-bottom: 0.5rem;
+      font-size: 11px;
+      margin-top: 0.5rem;
+      margin-bottom: 0.35rem;
       text-transform: uppercase;
       letter-spacing: 0.03em;
       color: var(--text-muted);
     }
-    .activity-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 11.5px;
-    }
-    .activity-table th,
-    .activity-table td {
+    .activity-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      max-height: 140px;
+      overflow-y: auto;
       border: 1px solid var(--border);
-      padding: 0.3rem 0.4rem;
+      border-radius: 3px;
+      padding: 0.5rem;
+      background: #fafafa;
     }
-    .activity-table th {
-      background: #f8fafc;
-      color: var(--text-muted);
+    .activity-item {
+      font-size: 11.5px;
+      display: flex;
+      gap: 0.5rem;
+    }
+    .activity-time {
+      color: var(--text-subtle);
+      white-space: nowrap;
+      font-size: 11px;
     }
 
     /* Toast */
@@ -795,13 +845,13 @@ function renderAdminDashboard(): string {
     <div class="toolbar-left">
       <input type="text" id="search-input" class="search-input" placeholder="Search name, username, email..." autocomplete="off" />
       <select id="access-filter" class="select-filter">
-        <option value="all">All Access</option>
+        <option value="all">All</option>
+        <option value="blocked">Blocked</option>
         <option value="beta">Beta</option>
         <option value="paid">Paid</option>
-        <option value="blocked">Blocked</option>
       </select>
       <select id="status-filter" class="select-filter">
-        <option value="all">All Status</option>
+        <option value="all">All</option>
         <option value="online">Online</option>
         <option value="offline">Offline</option>
       </select>
@@ -814,12 +864,13 @@ function renderAdminDashboard(): string {
 
   <!-- Bulk Action Bar -->
   <div class="bulk-bar" id="bulk-bar">
-    <div class="bulk-count" id="bulk-count">0 users selected</div>
+    <div class="bulk-count" id="bulk-count">0 selected</div>
     <div class="bulk-actions">
-      <button type="button" class="btn btn-sm" id="bulk-set-beta">Set Beta</button>
-      <button type="button" class="btn btn-sm" id="bulk-set-paid">Set Paid</button>
-      <button type="button" class="btn btn-sm" id="bulk-set-blocked">Set Blocked</button>
-      <button type="button" class="btn btn-sm" id="bulk-set-expiry">Set Beta Expiration</button>
+      <button type="button" class="btn btn-sm" id="bulk-set-beta">Beta</button>
+      <button type="button" class="btn btn-sm" id="bulk-set-paid">Paid</button>
+      <button type="button" class="btn btn-sm" id="bulk-set-blocked">Block</button>
+      <button type="button" class="btn btn-sm" id="bulk-set-expiry">Beta Expiration</button>
+      <button type="button" class="btn btn-sm" id="bulk-copy-emails">Copy Emails</button>
       <button type="button" class="btn btn-sm btn-subtle" id="bulk-clear">Clear</button>
     </div>
   </div>
@@ -830,19 +881,20 @@ function renderAdminDashboard(): string {
       <thead>
         <tr>
           <th class="col-checkbox"><input type="checkbox" id="select-all-checkbox" aria-label="Select all visible users" /></th>
-          <th>Name</th>
-          <th>Email</th>
-          <th>Username</th>
-          <th>Access</th>
-          <th>Joined</th>
-          <th>Last Active</th>
-          <th>Platform</th>
-          <th>Version</th>
-          <th style="text-align:right;">Sessions</th>
+          <th class="sortable" data-col="displayName">Name <span class="sort-ind" id="sort-displayName"></span></th>
+          <th class="sortable" data-col="email">Email <span class="sort-ind" id="sort-email"></span></th>
+          <th class="sortable" data-col="username">Username <span class="sort-ind" id="sort-username"></span></th>
+          <th class="sortable" data-col="sessionAccess">Access <span class="sort-ind" id="sort-sessionAccess"></span></th>
+          <th class="sortable" data-col="createdAt">Joined <span class="sort-ind" id="sort-createdAt"></span></th>
+          <th class="sortable" data-col="lastActiveAt">Last Active <span class="sort-ind" id="sort-lastActiveAt"></span></th>
+          <th class="sortable" data-col="clientPlatform">Platform <span class="sort-ind" id="sort-clientPlatform"></span></th>
+          <th class="sortable" data-col="clientVersion">Version <span class="sort-ind" id="sort-clientVersion"></span></th>
+          <th class="sortable" data-col="sessionsHostedCount" style="text-align:right;">Sessions <span class="sort-ind" id="sort-sessionsHostedCount"></span></th>
+          <th class="sortable" data-col="adminNote" id="th-notes" style="display:none;">Notes <span class="sort-ind" id="sort-adminNote"></span></th>
         </tr>
       </thead>
       <tbody id="users-tbody">
-        <tr><td colspan="10" class="empty-state">Loading users...</td></tr>
+        <tr><td colspan="11" class="empty-state">Loading users...</td></tr>
       </tbody>
     </table>
   </div>
@@ -851,90 +903,94 @@ function renderAdminDashboard(): string {
   <div class="modal-backdrop" id="user-detail-modal">
     <div class="modal-card">
       <div class="modal-header">
-        <div class="modal-title" id="modal-title">User Details</div>
+        <div class="modal-title-row">
+          <div class="modal-title" id="modal-display-name">User Details</div>
+          <div class="modal-subtitle" id="modal-username">@username</div>
+        </div>
         <button type="button" class="btn btn-subtle" id="modal-close-btn">✕</button>
       </div>
       <div class="modal-body">
-        <table class="prop-table">
-          <tr>
-            <td class="prop-label">User ID</td>
-            <td class="text-mono" id="modal-id">-</td>
-          </tr>
-          <tr>
-            <td class="prop-label">Display Name</td>
-            <td id="modal-display-name">-</td>
-          </tr>
-          <tr>
-            <td class="prop-label">Username</td>
-            <td class="text-mono" id="modal-username">-</td>
-          </tr>
-          <tr>
-            <td class="prop-label">Email</td>
-            <td id="modal-email">-</td>
-          </tr>
-          <tr>
-            <td class="prop-label">Access State</td>
-            <td>
-              <div style="display:flex; align-items:center; gap:0.5rem;">
-                <select id="modal-access-select" class="select-filter">
-                  <option value="blocked">Blocked</option>
-                  <option value="beta">Beta</option>
-                  <option value="paid">Paid</option>
-                </select>
-                <button type="button" class="btn" id="modal-update-access-btn">Save Access</button>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td class="prop-label">Beta Expiration</td>
-            <td>
-              <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-                <input type="date" id="modal-expiry-input" class="search-input" style="max-width:140px;" />
-                <button type="button" class="btn" id="modal-set-expiry-btn">Set Date</button>
-                <button type="button" class="btn btn-subtle" id="modal-clear-expiry-btn">Clear Expiration</button>
-                <span id="modal-expiry-status" style="font-size:11.5px; color:var(--text-subtle);"></span>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td class="prop-label">Presence</td>
-            <td id="modal-presence">-</td>
-          </tr>
-          <tr>
-            <td class="prop-label">Client Info</td>
-            <td id="modal-client">-</td>
-          </tr>
-          <tr>
-            <td class="prop-label">Last Active</td>
-            <td id="modal-last-active">-</td>
-          </tr>
-          <tr>
-            <td class="prop-label">Last Login</td>
-            <td id="modal-last-login">-</td>
-          </tr>
-          <tr>
-            <td class="prop-label">Sessions Hosted</td>
-            <td id="modal-hosted-count">-</td>
-          </tr>
-          <tr>
-            <td class="prop-label">Joined</td>
-            <td id="modal-created-at">-</td>
-          </tr>
-        </table>
+        <div class="detail-row">
+          <div class="detail-label">Email</div>
+          <div class="detail-value" id="modal-email">-</div>
+        </div>
 
-        <div class="activity-section-title">Operational Activity History</div>
-        <table class="activity-table">
-          <thead>
-            <tr>
-              <th style="width:130px;">Time</th>
-              <th style="width:90px;">Type</th>
-              <th>Description</th>
-            </tr>
-          </thead>
-          <tbody id="modal-activity-tbody">
-            <tr><td colspan="3" style="text-align:center; color:var(--text-muted);">No activity recorded</td></tr>
-          </tbody>
-        </table>
+        <div class="detail-row">
+          <div class="detail-label">Access</div>
+          <div class="detail-value" style="display:flex; align-items:center; gap:0.5rem;">
+            <select id="modal-access-select" class="select-filter">
+              <option value="blocked">Blocked</option>
+              <option value="beta">Beta</option>
+              <option value="paid">Paid</option>
+            </select>
+            <button type="button" class="btn" id="modal-update-access-btn">Save</button>
+          </div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Beta Expiration</div>
+          <div class="detail-value" style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+            <input type="date" id="modal-expiry-input" class="search-input" style="max-width:130px;" />
+            <button type="button" class="btn" id="modal-set-expiry-btn">Set</button>
+            <button type="button" class="btn btn-subtle" id="modal-clear-expiry-btn">Clear</button>
+            <span id="modal-expiry-status" style="color:var(--text-subtle); font-size:11px;"></span>
+          </div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Joined</div>
+          <div class="detail-value" id="modal-created-at">-</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Last Active</div>
+          <div class="detail-value" id="modal-last-active">-</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Last Login</div>
+          <div class="detail-value" id="modal-last-login">-</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Platform</div>
+          <div class="detail-value" id="modal-platform">-</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">JaMeet Version</div>
+          <div class="detail-value" id="modal-version">-</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Sessions Hosted</div>
+          <div class="detail-value" id="modal-hosted-count">-</div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-label">Admin Note</div>
+          <div class="detail-value" style="display:flex; flex-direction:column; gap:0.35rem; width:100%;">
+            <textarea id="modal-note-input" class="notes-input" placeholder="Add internal admin note..."></textarea>
+            <div style="display:flex; justify-content:flex-end;">
+              <button type="button" class="btn" id="modal-save-note-btn">Save Note</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-row" style="border-bottom:none;">
+          <div class="detail-label">User ID</div>
+          <div class="detail-value" style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="text-mono" id="modal-id" style="color:var(--text-subtle);">-</span>
+            <button type="button" class="btn btn-subtle" id="modal-copy-id-btn" style="padding:0.15rem 0.4rem; font-size:11px;">Copy ID</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="activity-section-title">Activity</div>
+          <div class="activity-list" id="modal-activity-list">
+            <div style="color:var(--text-subtle);">No activity recorded</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -946,6 +1002,7 @@ function renderAdminDashboard(): string {
     let selectedUserIds = new Set();
     let lastClickedIndex = -1;
     let selectedUserId = null;
+    let currentSort = { column: 'createdAt', direction: 'desc' };
 
     function showToast(msg, type = 'info') {
       const el = document.getElementById('toast');
@@ -954,12 +1011,32 @@ function renderAdminDashboard(): string {
       setTimeout(() => { el.className = 'toast'; }, 2500);
     }
 
+    function formatRelativeTime(timestamp, isOnline) {
+      if (isOnline) return 'Online';
+      if (!timestamp) return 'Never';
+      const now = Date.now();
+      const diffMs = now - timestamp;
+      const diffSec = Math.floor(diffMs / 1000);
+      const diffMin = Math.floor(diffSec / 60);
+      const diffHour = Math.floor(diffMin / 60);
+      const diffDay = Math.floor(diffHour / 24);
+
+      if (diffSec < 60) return 'Just now';
+      if (diffMin < 60) return diffMin + 'm ago';
+      if (diffHour < 24) return diffHour + 'h ago';
+      if (diffDay === 1) return 'Yesterday';
+      if (diffDay < 7) return diffDay + 'd ago';
+
+      const d = new Date(timestamp);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
+
     function getFilteredUsers() {
       const q = (document.getElementById('search-input').value || '').trim().toLowerCase();
       const access = document.getElementById('access-filter').value;
       const status = document.getElementById('status-filter').value;
 
-      return allUsers.filter(u => {
+      const filtered = allUsers.filter(u => {
         if (access !== 'all' && u.sessionAccess !== access) return false;
         if (status === 'online' && !u.isOnline) return false;
         if (status === 'offline' && u.isOnline) return false;
@@ -967,8 +1044,63 @@ function renderAdminDashboard(): string {
         const name = (u.displayName || '').toLowerCase();
         const username = (u.username || '').toLowerCase();
         const email = (u.email || '').toLowerCase();
-        return name.includes(q) || username.includes(q) || email.includes(q);
+        const note = (u.adminNote || '').toLowerCase();
+        return name.includes(q) || username.includes(q) || email.includes(q) || note.includes(q);
       });
+
+      // Sort
+      const col = currentSort.column;
+      const dir = currentSort.direction === 'asc' ? 1 : -1;
+
+      filtered.sort((a, b) => {
+        let valA, valB;
+        if (col === 'displayName') {
+          valA = (a.displayName || a.username || '').toLowerCase();
+          valB = (b.displayName || b.username || '').toLowerCase();
+          return valA.localeCompare(valB) * dir;
+        } else if (col === 'email') {
+          valA = (a.email || '').toLowerCase();
+          valB = (b.email || '').toLowerCase();
+          return valA.localeCompare(valB) * dir;
+        } else if (col === 'username') {
+          valA = (a.username || '').toLowerCase();
+          valB = (b.username || '').toLowerCase();
+          return valA.localeCompare(valB) * dir;
+        } else if (col === 'sessionAccess') {
+          valA = a.sessionAccess || 'blocked';
+          valB = b.sessionAccess || 'blocked';
+          return valA.localeCompare(valB) * dir;
+        } else if (col === 'createdAt') {
+          valA = a.createdAt || 0;
+          valB = b.createdAt || 0;
+          return (valA - valB) * dir;
+        } else if (col === 'lastActiveAt') {
+          if (a.isOnline && !b.isOnline) return -1 * dir;
+          if (!a.isOnline && b.isOnline) return 1 * dir;
+          valA = a.lastActiveAt || 0;
+          valB = b.lastActiveAt || 0;
+          return (valA - valB) * dir;
+        } else if (col === 'clientPlatform') {
+          valA = (a.clientPlatform || 'Unknown').toLowerCase();
+          valB = (b.clientPlatform || 'Unknown').toLowerCase();
+          return valA.localeCompare(valB) * dir;
+        } else if (col === 'clientVersion') {
+          valA = (a.clientVersion || 'Unknown').toLowerCase();
+          valB = (b.clientVersion || 'Unknown').toLowerCase();
+          return valA.localeCompare(valB) * dir;
+        } else if (col === 'sessionsHostedCount') {
+          valA = a.sessionsHostedCount || 0;
+          valB = b.sessionsHostedCount || 0;
+          return (valA - valB) * dir;
+        } else if (col === 'adminNote') {
+          valA = (a.adminNote || '').toLowerCase();
+          valB = (b.adminNote || '').toLowerCase();
+          return valA.localeCompare(valB) * dir;
+        }
+        return 0;
+      });
+
+      return filtered;
     }
 
     function updateSummaryCounts() {
@@ -989,11 +1121,15 @@ function renderAdminDashboard(): string {
       const bar = document.getElementById('bulk-bar');
       const countEl = document.getElementById('bulk-count');
       const count = selectedUserIds.size;
+      const exportBtn = document.getElementById('btn-export-csv');
+
       if (count > 0) {
         bar.classList.add('active');
-        countEl.textContent = count + (count === 1 ? ' user selected' : ' users selected');
+        countEl.textContent = count + ' selected';
+        exportBtn.textContent = 'Export Selected';
       } else {
         bar.classList.remove('active');
+        exportBtn.textContent = 'Export CSV';
       }
     }
 
@@ -1018,12 +1154,29 @@ function renderAdminDashboard(): string {
       }
     }
 
+    function updateSortIndicators() {
+      document.querySelectorAll('.sort-ind').forEach(el => el.textContent = '');
+      const indEl = document.getElementById('sort-' + currentSort.column);
+      if (indEl) {
+        indEl.textContent = currentSort.direction === 'asc' ? '↑' : '↓';
+      }
+    }
+
     function renderTable() {
       const tbody = document.getElementById('users-tbody');
       const visible = getFilteredUsers();
+      const hasAnyNotes = allUsers.some(u => Boolean(u.adminNote && u.adminNote.trim()));
+
+      const thNotes = document.getElementById('th-notes');
+      if (thNotes) {
+        thNotes.style.display = hasAnyNotes ? '' : 'none';
+      }
+
+      updateSortIndicators();
 
       if (visible.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No matching users found</td></tr>';
+        const cols = hasAnyNotes ? 11 : 10;
+        tbody.innerHTML = '<tr><td colspan="' + cols + '" class="empty-state">No matching users found</td></tr>';
         updateSelectAllCheckbox();
         return;
       }
@@ -1047,7 +1200,7 @@ function renderAdminDashboard(): string {
         });
         tdCheck.appendChild(checkbox);
 
-        // 2. Name & Details
+        // 2. Name & Details Link
         const tdName = document.createElement('td');
         const nameLink = document.createElement('span');
         nameLink.className = 'cell-clickable';
@@ -1087,20 +1240,19 @@ function renderAdminDashboard(): string {
         const tdJoined = document.createElement('td');
         tdJoined.textContent = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-';
 
-        // 7. Last Active
+        // 7. Last Active (relative)
         const tdActive = document.createElement('td');
+        const relTime = formatRelativeTime(u.lastActiveAt, u.isOnline);
         if (u.isOnline) {
           const onlineSpan = document.createElement('span');
           onlineSpan.className = 'status-online';
           onlineSpan.textContent = 'Online';
           tdActive.appendChild(onlineSpan);
-        } else if (u.lastActiveAt) {
-          const offlineSpan = document.createElement('span');
-          offlineSpan.className = 'status-offline';
-          offlineSpan.textContent = new Date(u.lastActiveAt).toLocaleDateString();
-          tdActive.appendChild(offlineSpan);
         } else {
-          tdActive.textContent = 'Never';
+          const timeSpan = document.createElement('span');
+          timeSpan.className = u.lastActiveAt ? 'status-offline' : '';
+          timeSpan.textContent = relTime;
+          tdActive.appendChild(timeSpan);
         }
 
         // 8. Platform
@@ -1126,6 +1278,16 @@ function renderAdminDashboard(): string {
         tr.appendChild(tdPlatform);
         tr.appendChild(tdVersion);
         tr.appendChild(tdSessions);
+
+        // 11. Notes (if present)
+        if (hasAnyNotes) {
+          const tdNotes = document.createElement('td');
+          const noteText = (u.adminNote || '').trim();
+          tdNotes.textContent = noteText ? (noteText.length > 25 ? noteText.slice(0, 25) + '...' : noteText) : '-';
+          tdNotes.style.color = noteText ? 'var(--text)' : 'var(--text-subtle)';
+          if (noteText) tdNotes.title = noteText;
+          tr.appendChild(tdNotes);
+        }
 
         tr.addEventListener('click', (e) => {
           if (e.target.tagName === 'INPUT' || e.target.closest('.cell-clickable') || e.target.closest('.col-checkbox')) {
@@ -1182,6 +1344,21 @@ function renderAdminDashboard(): string {
       selectRowOrRange(index, userId, e.shiftKey, e.target.checked);
     }
 
+    // Header Sorting
+    document.querySelectorAll('th.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        if (!col) return;
+        if (currentSort.column === col) {
+          currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+          currentSort.column = col;
+          currentSort.direction = col === 'createdAt' || col === 'lastActiveAt' || col === 'sessionsHostedCount' ? 'desc' : 'asc';
+        }
+        renderTable();
+      });
+    });
+
     // Select All Checkbox
     document.getElementById('select-all-checkbox').addEventListener('click', (e) => {
       const visible = getFilteredUsers();
@@ -1205,6 +1382,28 @@ function renderAdminDashboard(): string {
       updateBulkActionBar();
     });
 
+    // Copy Emails
+    document.getElementById('bulk-copy-emails').addEventListener('click', async () => {
+      if (selectedUserIds.size === 0) return;
+      const visible = getFilteredUsers();
+      const selectedUsers = visible.filter(u => selectedUserIds.has(u.id));
+      const emails = selectedUsers.map(u => (u.email || '').trim()).filter(Boolean);
+
+      if (emails.length === 0) {
+        showToast('No email addresses found for selection', 'error');
+        return;
+      }
+
+      const text = emails.join(', ');
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('Copied ' + emails.length + ' email' + (emails.length === 1 ? '' : 's') + ' to clipboard', 'success');
+      } catch {
+        // Fallback prompt
+        prompt('Copy emails below:', text);
+      }
+    });
+
     // Bulk Access Operations
     async function bulkSetAccess(access) {
       if (selectedUserIds.size === 0) return;
@@ -1219,7 +1418,7 @@ function renderAdminDashboard(): string {
         if (!res.ok || !data.ok) throw new Error(data.message || 'Bulk update failed');
         
         showToast('Updated ' + (data.updatedCount || userIds.length) + ' users to ' + access, 'success');
-        await fetchUsers();
+        await fetchUsers(true);
       } catch (err) {
         showToast(err.message || 'Bulk update failed', 'error');
       }
@@ -1256,23 +1455,32 @@ function renderAdminDashboard(): string {
         if (!res.ok || !data.ok) throw new Error(data.message || 'Bulk expiration update failed');
 
         showToast('Updated beta expiration for ' + (data.updatedCount || userIds.length) + ' users', 'success');
-        await fetchUsers();
+        await fetchUsers(true);
       } catch (err) {
         showToast(err.message || 'Bulk expiration update failed', 'error');
       }
     });
 
-    // CSV Export
+    // CSV Export with formula injection protection
     document.getElementById('btn-export-csv').addEventListener('click', () => {
       const visible = getFilteredUsers();
-      if (visible.length === 0) {
+      const usersToExport = selectedUserIds.size > 0
+        ? visible.filter(u => selectedUserIds.has(u.id))
+        : visible;
+
+      if (usersToExport.length === 0) {
         showToast('No users to export', 'error');
         return;
       }
 
+      // Formula injection defense + quote escaping
       const escapeCSV = (val) => {
         if (val === null || val === undefined) return '""';
-        const str = String(val);
+        let str = String(val);
+        // Formula injection protection: prepend apostrophe if starting with formula triggers
+        if (/^[=+\\-@\\t\\r]/.test(str)) {
+          str = "'" + str;
+        }
         return '"' + str.replace(/"/g, '""') + '"';
       };
 
@@ -1284,12 +1492,14 @@ function renderAdminDashboard(): string {
         'Beta Expiration',
         'Joined',
         'Last Active',
+        'Last Login',
         'Platform',
         'Version',
-        'Sessions'
+        'Sessions',
+        'Admin Note'
       ];
 
-      const rows = visible.map(u => [
+      const rows = usersToExport.map(u => [
         escapeCSV(u.displayName || u.username || ''),
         escapeCSV(u.email || ''),
         escapeCSV(u.username || ''),
@@ -1297,9 +1507,11 @@ function renderAdminDashboard(): string {
         escapeCSV(u.betaExpiresAt ? new Date(u.betaExpiresAt).toISOString() : ''),
         escapeCSV(u.createdAt ? new Date(u.createdAt).toISOString() : ''),
         escapeCSV(u.isOnline ? 'Online' : (u.lastActiveAt ? new Date(u.lastActiveAt).toISOString() : 'Never')),
+        escapeCSV(u.lastLoginAt ? new Date(u.lastLoginAt).toISOString() : 'Never'),
         escapeCSV(u.clientPlatform || 'Unknown'),
         escapeCSV(u.clientVersion || 'Unknown'),
-        escapeCSV(u.sessionsHostedCount || 0)
+        escapeCSV(u.sessionsHostedCount || 0),
+        escapeCSV(u.adminNote || '')
       ]);
 
       const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\\r\\n');
@@ -1314,11 +1526,11 @@ function renderAdminDashboard(): string {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      showToast('Exported ' + visible.length + ' users to CSV', 'success');
+      showToast('Exported ' + usersToExport.length + ' user' + (usersToExport.length === 1 ? '' : 's') + ' to CSV', 'success');
     });
 
-    // Fetch User List
-    async function fetchUsers() {
+    // Fetch User List (preserves state)
+    async function fetchUsers(preserveSelection = false) {
       try {
         const res = await fetch('/admin/api/users');
         if (res.status === 401) {
@@ -1328,8 +1540,16 @@ function renderAdminDashboard(): string {
         const data = await res.json();
         if (data.ok && Array.isArray(data.users)) {
           allUsers = data.users;
+          if (!preserveSelection) {
+            // prune any deleted users from selection
+            const validIds = new Set(allUsers.map(u => u.id));
+            selectedUserIds.forEach(id => {
+              if (!validIds.has(id)) selectedUserIds.delete(id);
+            });
+          }
           updateSummaryCounts();
           renderTable();
+          updateBulkActionBar();
         }
       } catch (err) {
         showToast('Failed to load user list', 'error');
@@ -1355,20 +1575,18 @@ function renderAdminDashboard(): string {
     }
 
     function populateModal(u) {
-      document.getElementById('modal-title').textContent = (u.displayName || u.username) + ' (@' + u.username + ')';
-      document.getElementById('modal-id').textContent = u.id;
       document.getElementById('modal-display-name').textContent = u.displayName || u.username;
       document.getElementById('modal-username').textContent = '@' + u.username;
+      document.getElementById('modal-id').textContent = u.id;
       document.getElementById('modal-email').textContent = u.email || '-';
       document.getElementById('modal-access-select').value = u.sessionAccess || 'blocked';
-      document.getElementById('modal-presence').textContent = u.isOnline ? 'Online' : (u.lastActiveAt ? 'Offline (Last active ' + new Date(u.lastActiveAt).toLocaleString() + ')' : 'Offline');
-      
-      const clientStr = (u.clientPlatform || 'Unknown') + ' • JaMeet ' + (u.clientVersion || 'Unknown');
-      document.getElementById('modal-client').textContent = clientStr;
-      document.getElementById('modal-last-active').textContent = u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleString() : 'Never';
-      document.getElementById('modal-last-login').textContent = u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never';
-      document.getElementById('modal-hosted-count').textContent = (u.sessionsHostedCount || 0) + ' sessions';
       document.getElementById('modal-created-at').textContent = u.createdAt ? new Date(u.createdAt).toLocaleString() : '-';
+      document.getElementById('modal-last-active').textContent = u.isOnline ? 'Online now' : (u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleString() : 'Never');
+      document.getElementById('modal-last-login').textContent = u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never';
+      document.getElementById('modal-platform').textContent = u.clientPlatform || 'Unknown';
+      document.getElementById('modal-version').textContent = (u.clientVersion && u.clientVersion !== 'Unknown') ? u.clientVersion : 'Unknown';
+      document.getElementById('modal-hosted-count').textContent = (u.sessionsHostedCount || 0) + ' sessions';
+      document.getElementById('modal-note-input').value = u.adminNote || '';
 
       const expiryInput = document.getElementById('modal-expiry-input');
       const expiryStatus = document.getElementById('modal-expiry-status');
@@ -1379,29 +1597,27 @@ function renderAdminDashboard(): string {
         expiryStatus.textContent = isPassed ? '(Expired)' : '(Expires ' + d.toLocaleDateString() + ')';
       } else {
         expiryInput.value = '';
-        expiryStatus.textContent = '(No expiration set)';
+        expiryStatus.textContent = '';
       }
 
-      // Activity Table
-      const actTbody = document.getElementById('modal-activity-tbody');
+      // Activity List
+      const actContainer = document.getElementById('modal-activity-list');
       if (Array.isArray(u.activityHistory) && u.activityHistory.length > 0) {
-        actTbody.innerHTML = '';
+        actContainer.innerHTML = '';
         u.activityHistory.forEach(act => {
-          const tr = document.createElement('tr');
-          const tdTime = document.createElement('td');
-          tdTime.textContent = act.timestamp ? new Date(act.timestamp).toLocaleString() : '-';
-          const tdType = document.createElement('td');
-          tdType.className = 'text-mono';
-          tdType.textContent = act.type || 'activity';
-          const tdDesc = document.createElement('td');
-          tdDesc.textContent = act.description || '-';
-          tr.appendChild(tdTime);
-          tr.appendChild(tdType);
-          tr.appendChild(tdDesc);
-          actTbody.appendChild(tr);
+          const item = document.createElement('div');
+          item.className = 'activity-item';
+          const time = document.createElement('div');
+          time.className = 'activity-time';
+          time.textContent = act.timestamp ? new Date(act.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+          const desc = document.createElement('div');
+          desc.textContent = act.description || act.type || '-';
+          item.appendChild(time);
+          item.appendChild(desc);
+          actContainer.appendChild(item);
         });
       } else {
-        actTbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:var(--text-muted);">No activity recorded</td></tr>';
+        actContainer.innerHTML = '<div style="color:var(--text-subtle);">No activity recorded</div>';
       }
     }
 
@@ -1418,6 +1634,16 @@ function renderAdminDashboard(): string {
       }
     });
 
+    document.getElementById('modal-copy-id-btn').addEventListener('click', async () => {
+      if (!selectedUserId) return;
+      try {
+        await navigator.clipboard.writeText(selectedUserId);
+        showToast('Copied User ID', 'success');
+      } catch {
+        prompt('Copy User ID:', selectedUserId);
+      }
+    });
+
     document.getElementById('modal-update-access-btn').addEventListener('click', async () => {
       if (!selectedUserId) return;
       const newAccess = document.getElementById('modal-access-select').value;
@@ -1430,7 +1656,7 @@ function renderAdminDashboard(): string {
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.message || 'Access update failed');
         showToast('Updated access to ' + newAccess, 'success');
-        await fetchUsers();
+        await fetchUsers(true);
         if (selectedUserId) openUserDetail(selectedUserId);
       } catch (err) {
         showToast(err.message || 'Update failed', 'error');
@@ -1455,7 +1681,7 @@ function renderAdminDashboard(): string {
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.message || 'Expiry update failed');
         showToast('Beta expiration updated', 'success');
-        await fetchUsers();
+        await fetchUsers(true);
         if (selectedUserId) openUserDetail(selectedUserId);
       } catch (err) {
         showToast(err.message || 'Update failed', 'error');
@@ -1473,10 +1699,29 @@ function renderAdminDashboard(): string {
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.message || 'Expiry clear failed');
         showToast('Beta expiration cleared', 'success');
-        await fetchUsers();
+        await fetchUsers(true);
         if (selectedUserId) openUserDetail(selectedUserId);
       } catch (err) {
         showToast(err.message || 'Update failed', 'error');
+      }
+    });
+
+    document.getElementById('modal-save-note-btn').addEventListener('click', async () => {
+      if (!selectedUserId) return;
+      const noteVal = document.getElementById('modal-note-input').value;
+      try {
+        const res = await fetch('/admin/api/users/' + encodeURIComponent(selectedUserId) + '/note', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note: noteVal })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || 'Note update failed');
+        showToast('Admin note saved', 'success');
+        await fetchUsers(true);
+        if (selectedUserId) openUserDetail(selectedUserId);
+      } catch (err) {
+        showToast(err.message || 'Save note failed', 'error');
       }
     });
 
@@ -1485,17 +1730,17 @@ function renderAdminDashboard(): string {
     document.getElementById('access-filter').addEventListener('change', () => renderTable());
     document.getElementById('status-filter').addEventListener('change', () => renderTable());
     document.getElementById('btn-refresh').addEventListener('click', () => {
-      fetchUsers();
+      fetchUsers(true);
       showToast('Refreshed user list', 'info');
     });
 
-    // Auto-refresh every 20 seconds
+    // Auto-refresh every 20 seconds (preserves filters and selection)
     setInterval(() => {
-      fetchUsers();
+      fetchUsers(true);
     }, 20000);
 
     // Initial load
-    fetchUsers();
+    fetchUsers(false);
   </script>
 </body>
 </html>`;
@@ -1735,7 +1980,40 @@ export function registerAdminPanel(
     });
   });
 
-  // 8. POST /admin/api/users/bulk-access - Modify Session Access for Multiple Users
+  // 8. POST /admin/api/users/:userId/note - Configure Internal Admin Note
+  app.post('/admin/api/users/:userId/note', async (request, reply) => {
+    const adminSecret = config.JAMEET_ADMIN_SECRET?.trim();
+    if (!adminSecret) {
+      return reply.code(404).send({ ok: false, message: 'Not Found' });
+    }
+
+    if (!validateSameOrigin(request, config)) {
+      return reply.code(403).send({ ok: false, message: 'Forbidden: invalid origin or cross-site request.' });
+    }
+
+    if (!isRequestAdminAuthenticated(request, config)) {
+      return reply.code(401).send({ ok: false, message: 'Unauthorized' });
+    }
+
+    const { userId } = request.params as { userId: string };
+    const body = (request.body || {}) as any;
+    const note = typeof body === 'object' && body ? body.note : undefined;
+
+    const profile = userStore.getStoredUser(userId) || (userStore.findByUsernameOrEmail(userId) ? userStore.getStoredUser(userStore.findByUsernameOrEmail(userId)!.id) : null);
+    if (!profile) {
+      return reply.code(404).send({ ok: false, message: `Account not found for identifier: "${userId}".` });
+    }
+
+    userStore.setAdminNote(profile.id, note);
+    const isOnline = Boolean(runtimeContext?.isUserOnline ? runtimeContext.isUserOnline(profile.id) : false);
+
+    return reply.send({
+      ok: true,
+      user: userStore.getAdminUserDetail(profile.id, isOnline)
+    });
+  });
+
+  // 9. POST /admin/api/users/bulk-access - Modify Session Access for Multiple Users
   app.post('/admin/api/users/bulk-access', async (request, reply) => {
     const adminSecret = config.JAMEET_ADMIN_SECRET?.trim();
     if (!adminSecret) {
@@ -1781,7 +2059,7 @@ export function registerAdminPanel(
     return reply.send({ ok: true, updatedCount });
   });
 
-  // 9. POST /admin/api/users/bulk-beta-expiry - Configure Beta Expiration for Multiple Users
+  // 10. POST /admin/api/users/bulk-beta-expiry - Configure Beta Expiration for Multiple Users
   app.post('/admin/api/users/bulk-beta-expiry', async (request, reply) => {
     const adminSecret = config.JAMEET_ADMIN_SECRET?.trim();
     if (!adminSecret) {
@@ -1818,7 +2096,7 @@ export function registerAdminPanel(
     return reply.send({ ok: true, updatedCount });
   });
 
-  // 10. GET /admin/api/stats - Server Health & Telemetry Metrics
+  // 11. GET /admin/api/stats - Server Health & Telemetry Metrics
   app.get('/admin/api/stats', async (request, reply) => {
     const adminSecret = config.JAMEET_ADMIN_SECRET?.trim();
     if (!adminSecret) {
