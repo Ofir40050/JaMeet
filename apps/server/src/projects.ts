@@ -65,6 +65,9 @@ export const PROJECT_LIMITS = {
   MAX_LYRICS_DOCUMENT_CONTENT_LENGTH: 100_000,
   MAX_LYRICS_DOCUMENT_TITLE_LENGTH: 150,
   MAX_LYRICS_DOCUMENT_ID_LENGTH: 100,
+  MAX_LYRICS_ACTIVE_DOCUMENT_ID_LENGTH: 100,
+  MAX_LYRICS_UPDATED_BY_LENGTH: 100,
+  MAX_LYRICS_UPDATED_BY_NAME_LENGTH: 150,
   MAX_LYRICS_TOTAL_CONTENT_LENGTH: 500_000,
   MAX_NOTES_CONTENT_LENGTH: 100_000,
   MAX_NOTES_BPM_LENGTH: 20,
@@ -73,10 +76,14 @@ export const PROJECT_LIMITS = {
   MAX_STRUCTURE_SECTION_ID_LENGTH: 100,
   MAX_STRUCTURE_SECTION_NAME_LENGTH: 100,
   MAX_STRUCTURE_SECTION_NOTE_LENGTH: 500,
+  MAX_STRUCTURE_SECTION_COLOR_LENGTH: 50,
   MAX_TASKS: 300,
   MAX_TASK_ID_LENGTH: 100,
   MAX_TASK_TITLE_LENGTH: 200,
   MAX_TASK_NOTE_LENGTH: 2_000,
+  MAX_TASK_ASSIGNEE_ID_LENGTH: 100,
+  MAX_TASK_ASSIGNEE_NAME_LENGTH: 150,
+  MAX_TASK_DUE_DATE_LENGTH: 20,
   MAX_WORKSPACE_PAYLOAD_BYTES: 8_388_608
 };
 
@@ -545,6 +552,48 @@ export class ProjectStore {
 
     // Enforce workspace storage limits before any OCC checks, mutations, or persistence
     if (updates.lyrics) {
+      if (updates.lyrics.activeDocumentId && updates.lyrics.activeDocumentId.length > PROJECT_LIMITS.MAX_LYRICS_ACTIVE_DOCUMENT_ID_LENGTH) {
+        throw new WorkspaceLimitError(
+          'lyrics',
+          `Active document ID exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_ACTIVE_DOCUMENT_ID_LENGTH} characters.`
+        );
+      }
+      if (updates.lyrics.documentId && updates.lyrics.documentId.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_ID_LENGTH) {
+        throw new WorkspaceLimitError(
+          'lyrics',
+          `Document ID exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_ID_LENGTH} characters.`
+        );
+      }
+      if (updates.lyrics.title && updates.lyrics.title.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH) {
+        throw new WorkspaceLimitError(
+          'lyrics',
+          `Lyrics document title exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH} characters.`
+        );
+      }
+      if (updates.lyrics.content && updates.lyrics.content.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH) {
+        throw new WorkspaceLimitError(
+          'lyrics',
+          `Lyrics document content exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH} characters.`
+        );
+      }
+
+      if (updates.lyrics.documents) {
+        for (const doc of updates.lyrics.documents) {
+          if (doc.updatedBy && doc.updatedBy.length > PROJECT_LIMITS.MAX_LYRICS_UPDATED_BY_LENGTH) {
+            throw new WorkspaceLimitError(
+              'lyrics',
+              `Lyrics document updatedBy exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_UPDATED_BY_LENGTH} characters.`
+            );
+          }
+          if (doc.updatedByName && doc.updatedByName.length > PROJECT_LIMITS.MAX_LYRICS_UPDATED_BY_NAME_LENGTH) {
+            throw new WorkspaceLimitError(
+              'lyrics',
+              `Lyrics document updatedByName exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_UPDATED_BY_NAME_LENGTH} characters.`
+            );
+          }
+        }
+      }
+
       const curLyrics = project.workspace?.lyrics;
       const initialDocs: { id: string; title: string; content: string }[] =
         curLyrics?.documents && curLyrics.documents.length > 0
@@ -701,6 +750,12 @@ export class ProjectStore {
             `Section note exceeds maximum length of ${PROJECT_LIMITS.MAX_STRUCTURE_SECTION_NOTE_LENGTH} characters.`
           );
         }
+        if (s.color && s.color.length > PROJECT_LIMITS.MAX_STRUCTURE_SECTION_COLOR_LENGTH) {
+          throw new WorkspaceLimitError(
+            'structure',
+            `Section color exceeds maximum length of ${PROJECT_LIMITS.MAX_STRUCTURE_SECTION_COLOR_LENGTH} characters.`
+          );
+        }
       }
     }
 
@@ -728,6 +783,24 @@ export class ProjectStore {
           throw new WorkspaceLimitError(
             'tasks',
             `Task note exceeds maximum length of ${PROJECT_LIMITS.MAX_TASK_NOTE_LENGTH} characters.`
+          );
+        }
+        if (t.assigneeId && t.assigneeId.length > PROJECT_LIMITS.MAX_TASK_ASSIGNEE_ID_LENGTH) {
+          throw new WorkspaceLimitError(
+            'tasks',
+            `Task assignee ID exceeds maximum length of ${PROJECT_LIMITS.MAX_TASK_ASSIGNEE_ID_LENGTH} characters.`
+          );
+        }
+        if (t.assigneeName && t.assigneeName.length > PROJECT_LIMITS.MAX_TASK_ASSIGNEE_NAME_LENGTH) {
+          throw new WorkspaceLimitError(
+            'tasks',
+            `Task assignee name exceeds maximum length of ${PROJECT_LIMITS.MAX_TASK_ASSIGNEE_NAME_LENGTH} characters.`
+          );
+        }
+        if (t.dueDate && t.dueDate.length > PROJECT_LIMITS.MAX_TASK_DUE_DATE_LENGTH) {
+          throw new WorkspaceLimitError(
+            'tasks',
+            `Task due date exceeds maximum length of ${PROJECT_LIMITS.MAX_TASK_DUE_DATE_LENGTH} characters.`
           );
         }
       }

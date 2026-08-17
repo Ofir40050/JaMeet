@@ -6473,7 +6473,61 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       expect(socketUpdateAck.area).toBe('notes');
       expect(broadcastReceived).toBe(false);
 
-      // 4. Verify project workspace is completely unmodified
+      // 4. Test remaining bounded fields: activeDocumentId, document metadata, section color, task note
+      const oversizedActiveDocAck: any = await ack(socket, 'project:workspace:update', {
+        projectId,
+        authToken: ownerAuth.token,
+        updates: {
+          lyrics: { baseRevision: 1, activeDocumentId: 'x'.repeat(101) }
+        }
+      });
+      expect(oversizedActiveDocAck.ok).toBe(false);
+      expect(oversizedActiveDocAck.code).toBe('WORKSPACE_LIMIT_EXCEEDED');
+      expect(oversizedActiveDocAck.area).toBe('lyrics');
+
+      const oversizedDocMetaAck: any = await ack(socket, 'project:workspace:update', {
+        projectId,
+        authToken: ownerAuth.token,
+        updates: {
+          lyrics: {
+            baseRevision: 1,
+            documents: [{ id: 'doc-meta', title: 'Doc', content: 'hello', updatedByName: 'n'.repeat(151) }]
+          }
+        }
+      });
+      expect(oversizedDocMetaAck.ok).toBe(false);
+      expect(oversizedDocMetaAck.code).toBe('WORKSPACE_LIMIT_EXCEEDED');
+      expect(oversizedDocMetaAck.area).toBe('lyrics');
+
+      const oversizedColorAck: any = await ack(socket, 'project:workspace:update', {
+        projectId,
+        authToken: ownerAuth.token,
+        updates: {
+          structure: {
+            baseRevision: 1,
+            sections: [{ id: 'sec-color', name: 'Verse', color: 'c'.repeat(51) }]
+          }
+        }
+      });
+      expect(oversizedColorAck.ok).toBe(false);
+      expect(oversizedColorAck.code).toBe('WORKSPACE_LIMIT_EXCEEDED');
+      expect(oversizedColorAck.area).toBe('structure');
+
+      const oversizedTaskNoteAck: any = await ack(socket, 'project:workspace:update', {
+        projectId,
+        authToken: ownerAuth.token,
+        updates: {
+          tasks: {
+            baseRevision: 1,
+            tasks: [{ id: 'task-note', title: 'Task', note: 't'.repeat(2_001) }]
+          }
+        }
+      });
+      expect(oversizedTaskNoteAck.ok).toBe(false);
+      expect(oversizedTaskNoteAck.code).toBe('WORKSPACE_LIMIT_EXCEEDED');
+      expect(oversizedTaskNoteAck.area).toBe('tasks');
+
+      // 5. Verify project workspace is completely unmodified
       const p = projectStore.getProject(projectId, ownerAuth.user.id)!;
       expect(p.workspace.notes.content).toBe('');
       expect(p.workspace.notes.revision).toBe(1);
