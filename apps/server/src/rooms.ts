@@ -3,6 +3,8 @@ import type { MediaMetadata, MeetingRole, ParticipantIdentity, SessionSummaryEve
 
 const ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 
+export const MAX_WAITING_PARTICIPANTS = 30;
+
 export type Participant = {
   id: string;
   role: MeetingRole;
@@ -117,6 +119,33 @@ export class RoomStore {
       return { ok: true, room, participant: existing, reconnected: true, waiting: false };
     }
 
+    if (!identity.isGuest && identity.id) {
+      const existingAuthParticipant = Array.from(room.participants.values()).find(
+        (p) => !p.identity.isGuest && p.identity.id === identity.id
+      );
+      if (existingAuthParticipant) {
+        if (existingAuthParticipant.timer) clearTimeout(existingAuthParticipant.timer);
+        existingAuthParticipant.timer = undefined;
+        existingAuthParticipant.socketId = socketId;
+        existingAuthParticipant.media = media;
+        existingAuthParticipant.identity = { ...identity, isHost: existingAuthParticipant.role === 'host' };
+        if (existingAuthParticipant.role === 'host') {
+          room.hostIdentity = existingAuthParticipant.identity;
+        }
+        if (authToken) {
+          existingAuthParticipant.authToken = authToken;
+        }
+        if (existingAuthParticipant.id !== participantId) {
+          room.participants.delete(existingAuthParticipant.id);
+          room.allJoinedParticipants.delete(existingAuthParticipant.id);
+          existingAuthParticipant.id = participantId;
+          room.participants.set(participantId, existingAuthParticipant);
+        }
+        room.allJoinedParticipants.set(participantId, existingAuthParticipant.identity);
+        return { ok: true, room, participant: existingAuthParticipant, reconnected: true, waiting: false };
+      }
+    }
+
     const existingWaiting = room.waitingParticipants.get(participantId);
     if (existingWaiting) {
       const isTokenValid = Boolean(reconnectToken && existingWaiting.reconnectToken === reconnectToken);
@@ -142,6 +171,28 @@ export class RoomStore {
       return { ok: true, room, participant: existingWaiting, reconnected: true, waiting: true };
     }
 
+    if (!identity.isGuest && identity.id) {
+      const existingAuthWaiting = Array.from(room.waitingParticipants.values()).find(
+        (p) => !p.identity.isGuest && p.identity.id === identity.id
+      );
+      if (existingAuthWaiting) {
+        if (existingAuthWaiting.timer) clearTimeout(existingAuthWaiting.timer);
+        existingAuthWaiting.timer = undefined;
+        existingAuthWaiting.socketId = socketId;
+        existingAuthWaiting.media = media;
+        existingAuthWaiting.identity = { ...identity, isHost: false };
+        if (authToken) {
+          existingAuthWaiting.authToken = authToken;
+        }
+        if (existingAuthWaiting.id !== participantId) {
+          room.waitingParticipants.delete(existingAuthWaiting.id);
+          existingAuthWaiting.id = participantId;
+          room.waitingParticipants.set(participantId, existingAuthWaiting);
+        }
+        return { ok: true, room, participant: existingAuthWaiting, reconnected: true, waiting: true };
+      }
+    }
+
     if (room.isLocked) {
       return { ok: false, reason: 'ROOM_LOCKED' };
     }
@@ -149,6 +200,9 @@ export class RoomStore {
     const newReconnectToken = randomUUID();
 
     if (room.waitingRoomEnabled) {
+      if (room.waitingParticipants.size >= MAX_WAITING_PARTICIPANTS) {
+        return { ok: false, reason: 'ROOM_FULL' };
+      }
       const waitingParticipant: Participant = { id: participantId, role: 'guest', socketId, media, identity, reconnectToken: newReconnectToken, authToken };
       room.waitingParticipants.set(participantId, waitingParticipant);
       return { ok: true, room, participant: waitingParticipant, reconnected: false, waiting: true };

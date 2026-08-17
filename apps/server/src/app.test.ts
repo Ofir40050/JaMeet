@@ -6488,6 +6488,97 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       }
     }
   });
+
+  it('hardens waiting room against duplicate authenticated entries and capacity limits', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-waiting-harden-test-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-waiting-harden'
+      });
+      const { app, io, userStore, rooms } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const hostAuth = await createTestAccount(url, 'wait_harden_host', 'paid', userStore);
+      const guestAuth = await createTestAccount(url, 'wait_harden_guest', 'paid', userStore);
+
+      const hostSocket = await connected(url);
+      const media = { audioSources: [{ id: 'primary', purpose: 'primary' as const, mode: 'talk' as const, enabled: true }], cameraEnabled: true };
+
+      // 1. Host creates session with waiting room enabled
+      let latestWaitingList: any[] = [];
+      hostSocket.on('waiting:update', (list) => { latestWaitingList = list; });
+
+      const hostCreateRes: any = await ack(hostSocket, 'meeting:create', {
+        participantId: '11111111-1111-4111-8111-111111111111',
+        authToken: hostAuth.token,
+        waitingRoomEnabled: true,
+        media
+      });
+      expect(hostCreateRes.ok).toBe(true);
+      const sessionCode = hostCreateRes.code;
+
+      // 2. Guest connects on socket1 and joins waiting room
+      const guestSocket1 = await connected(url);
+      const join1: any = await ack(guestSocket1, 'meeting:join', {
+        code: sessionCode,
+        participantId: '22222222-2222-4222-8222-222222222222',
+        authToken: guestAuth.token,
+        media
+      });
+      expect(join1.ok).toBe(true);
+      expect(join1.waiting).toBe(true);
+
+      const room = rooms.rooms.get(sessionCode)!;
+      expect(room.waitingParticipants.size).toBe(1);
+      expect(room.waitingParticipants.has('22222222-2222-4222-8222-222222222222')).toBe(true);
+
+      // 3. Guest connects on socket2 with DIFFERENT participantId using the same account
+      const guestSocket2 = await connected(url);
+      let guest2Admitted = false;
+      guestSocket2.on('waiting:admitted', () => { guest2Admitted = true; });
+
+      const join2: any = await ack(guestSocket2, 'meeting:join', {
+        code: sessionCode,
+        participantId: '33333333-3333-4333-8333-333333333333',
+        authToken: guestAuth.token,
+        media
+      });
+      expect(join2.ok).toBe(true);
+      expect(join2.waiting).toBe(true);
+
+      // Room still has exactly 1 waiting participant (rebound to socket2 / participantId 3333...)
+      expect(room.waitingParticipants.size).toBe(1);
+      expect(room.waitingParticipants.has('22222222-2222-4222-8222-222222222222')).toBe(false);
+      expect(room.waitingParticipants.has('33333333-3333-4333-8333-333333333333')).toBe(true);
+      expect(room.waitingParticipants.get('33333333-3333-4333-8333-333333333333')?.socketId).toBe(guestSocket2.id);
+
+      // 4. Host admits the waiting guest
+      const admitAck: any = await ack(hostSocket, 'waiting:admit', {
+        code: sessionCode,
+        participantId: '33333333-3333-4333-8333-333333333333'
+      });
+      expect(admitAck.ok).toBe(true);
+
+      // Wait a tick for event delivery
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(guest2Admitted).toBe(true);
+      expect(room.participants.size).toBe(2);
+      expect(room.waitingParticipants.size).toBe(0);
+
+      guestSocket1.disconnect();
+      guestSocket2.disconnect();
+      hostSocket.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
 });
 
 
