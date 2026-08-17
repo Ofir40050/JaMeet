@@ -300,5 +300,134 @@ describe('ScreenCaptureKit Main Process Pipeline Framing & Backlog Mitigation', 
       expect(listenersRemoved).toBe(true);
       expect(activeProcess).toBeNull();
     });
+
+    it('prevents superseded startup request from spawning or setting active process', async () => {
+      let activeProcess: any = null;
+      let activeSessionId = 0;
+
+      let spawnCount = 0;
+      let killedCount = 0;
+
+      function createMockChild(id: string) {
+        return {
+          id,
+          stdout: { removeAllListeners: () => {} },
+          stderr: { removeAllListeners: () => {} },
+          removeAllListeners: () => {},
+          kill: (sig?: string) => {
+            if (sig === 'SIGTERM') killedCount++;
+          }
+        };
+      }
+
+      async function simulateStartCaptureAsync(delayMs: number, id: string): Promise<boolean> {
+        activeSessionId++;
+        const currentSessionId = ++activeSessionId;
+
+        // Async preparation step (dynamic import / compile / fs checks)
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+        if (currentSessionId !== activeSessionId) {
+          return false;
+        }
+
+        let child: any = null;
+        try {
+          if (currentSessionId !== activeSessionId) {
+            return false;
+          }
+          child = createMockChild(id);
+          spawnCount++;
+
+          if (currentSessionId !== activeSessionId) {
+            try {
+              child.stdout?.removeAllListeners();
+              child.stderr?.removeAllListeners();
+              child.removeAllListeners();
+              child.kill('SIGTERM');
+            } catch {}
+            return false;
+          }
+
+          activeProcess = child;
+          return true;
+        } catch (err) {
+          if (child) {
+            try {
+              child.stdout?.removeAllListeners();
+              child.stderr?.removeAllListeners();
+              child.removeAllListeners();
+              child.kill('SIGTERM');
+            } catch {}
+          }
+          if (currentSessionId === activeSessionId && activeProcess === child) {
+            activeProcess = null;
+          }
+          return false;
+        }
+      }
+
+      // Start slow request A (50ms delay) and faster request B (10ms delay)
+      const promiseA = simulateStartCaptureAsync(50, 'child-A');
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const promiseB = simulateStartCaptureAsync(10, 'child-B');
+
+      const [resA, resB] = await Promise.all([promiseA, promiseB]);
+
+      // Request A was superseded before spawning -> returns false, spawnCount is 1 (only B spawned)
+      expect(resA).toBe(false);
+      expect(resB).toBe(true);
+      expect(spawnCount).toBe(1);
+      expect(activeProcess).not.toBeNull();
+      expect(activeProcess.id).toBe('child-B');
+    });
+
+    it('kills and cleans up child process if superseded immediately after spawn without overwriting newer process', () => {
+      let activeProcess: any = null;
+      let activeSessionId = 0;
+      let killedA = false;
+
+      // 1. Session A starts
+      activeSessionId++;
+      const sessionIdA = ++activeSessionId;
+
+      // 2. Session B starts and supersedes session A
+      activeSessionId++;
+      const sessionIdB = ++activeSessionId;
+      const childB = { id: 'child-B', kill: () => {} };
+      activeProcess = childB;
+
+      // 3. Stale session A completes spawn
+      let childA: any = null;
+      function finishStaleSessionA(): boolean {
+        childA = {
+          id: 'child-A',
+          stdout: { removeAllListeners: () => {} },
+          stderr: { removeAllListeners: () => {} },
+          removeAllListeners: () => {},
+          kill: (sig?: string) => { if (sig === 'SIGTERM') killedA = true; }
+        };
+
+        if (sessionIdA !== activeSessionId) {
+          try {
+            childA.stdout?.removeAllListeners();
+            childA.stderr?.removeAllListeners();
+            childA.removeAllListeners();
+            childA.kill('SIGTERM');
+          } catch {}
+          return false;
+        }
+
+        activeProcess = childA;
+        return true;
+      }
+
+      const resA = finishStaleSessionA();
+      expect(resA).toBe(false);
+      expect(killedA).toBe(true);
+      // Active process must still be childB from the newer session!
+      expect(activeProcess).toBe(childB);
+      expect(activeProcess.id).toBe('child-B');
+    });
   });
 });

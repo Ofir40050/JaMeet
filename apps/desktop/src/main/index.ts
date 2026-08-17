@@ -584,6 +584,9 @@ else {
       const { spawn, execSync } = await import('child_process');
       const { join } = await import('path');
       const { existsSync, chmodSync } = await import('fs');
+      if (currentSessionId !== activeNativeScreenCaptureSessionId) {
+        return false;
+      }
       const binPath = getNativeBinaryPath('jameet-screen-capture');
       const srcPath = join(__dirname, '../../src/main/jameet-screen-capture.swift');
 
@@ -595,12 +598,18 @@ else {
           return false;
         }
       }
+      if (currentSessionId !== activeNativeScreenCaptureSessionId) {
+        return false;
+      }
 
       if (!existsSync(binPath)) {
         console.error(`Native ScreenCaptureKit helper binary not found: ${binPath}`);
         return false;
       }
       try { chmodSync(binPath, 0o755); } catch { }
+      if (currentSessionId !== activeNativeScreenCaptureSessionId) {
+        return false;
+      }
 
       const args = ['capture-display', '--app-pid', String(process.pid), '--bundle-id', 'com.jameet.app'];
       if (displayId !== undefined && displayId !== null) {
@@ -613,7 +622,19 @@ else {
 
       let child: any = null;
       try {
+        if (currentSessionId !== activeNativeScreenCaptureSessionId) {
+          return false;
+        }
         child = spawn(binPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        if (currentSessionId !== activeNativeScreenCaptureSessionId) {
+          try {
+            child.stdout?.removeAllListeners();
+            child.stderr?.removeAllListeners();
+            child.removeAllListeners();
+            child.kill('SIGTERM');
+          } catch { }
+          return false;
+        }
         activeNativeScreenCaptureProcess = child;
 
         let chunks: Buffer[] = [];
