@@ -6513,13 +6513,41 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
       expect(oversizedColorAck.code).toBe('WORKSPACE_LIMIT_EXCEEDED');
       expect(oversizedColorAck.area).toBe('structure');
 
+      const oversizedTaskAssigneeNameAck: any = await ack(socket, 'project:workspace:update', {
+        projectId,
+        authToken: ownerAuth.token,
+        updates: {
+          tasks: {
+            baseRevision: 1,
+            tasks: [{ id: 'task-raw-name', title: 'Task', assigneeName: 'n'.repeat(151) }]
+          }
+        }
+      });
+      expect(oversizedTaskAssigneeNameAck.ok).toBe(false);
+      expect(oversizedTaskAssigneeNameAck.code).toBe('WORKSPACE_LIMIT_EXCEEDED');
+      expect(oversizedTaskAssigneeNameAck.area).toBe('tasks');
+
+      const oversizedTaskAssigneeIdAck: any = await ack(socket, 'project:workspace:update', {
+        projectId,
+        authToken: ownerAuth.token,
+        updates: {
+          tasks: {
+            baseRevision: 1,
+            tasks: [{ id: 'task-raw-id', title: 'Task', assigneeId: 'a'.repeat(101) }]
+          }
+        }
+      });
+      expect(oversizedTaskAssigneeIdAck.ok).toBe(false);
+      expect(oversizedTaskAssigneeIdAck.code).toBe('WORKSPACE_LIMIT_EXCEEDED');
+      expect(oversizedTaskAssigneeIdAck.area).toBe('tasks');
+
       const oversizedTaskNoteAck: any = await ack(socket, 'project:workspace:update', {
         projectId,
         authToken: ownerAuth.token,
         updates: {
           tasks: {
             baseRevision: 1,
-            tasks: [{ id: 'task-note', title: 'Task', note: 't'.repeat(2_001) }]
+            tasks: [{ id: 'task-raw-note', title: 'Task', note: 't'.repeat(2_001) }]
           }
         }
       });
@@ -6808,6 +6836,52 @@ describe('Real-Time Project Authorization on Collaborator Removal', () => {
 
       socket1.disconnect();
       socket2.disconnect();
+      await app.close();
+    } finally {
+      if (fs.existsSync(tmpDataDir)) {
+        fs.rmSync(tmpDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('safely accommodates JSON serialization expansion with escaped characters across large workspace payloads', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-socket-escape-test-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        DATA_DIR: tmpDataDir,
+        TURN_SHARED_SECRET: 'test-secret-escape'
+      });
+      const { app, io, userStore, projectStore } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const address = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const ownerAuth = await createTestAccount(url, 'escape_owner', 'paid', userStore);
+      const project = projectStore.createProject(ownerAuth.user, { name: 'Escape Expansion Project' });
+
+      const socket = await connected(url);
+      await ack(socket, 'project:workspace:join', {
+        projectId: project.id,
+        authToken: ownerAuth.token
+      });
+
+      // Construct a payload with characters that expand upon JSON serialization (quotes, backslashes, control characters)
+      const specialEscapedLyrics = 'Line "one" \t\r\n \\test\\ '.repeat(1_000); // contains escapes
+      const updateAck: any = await ack(socket, 'project:workspace:update', {
+        projectId: project.id,
+        authToken: ownerAuth.token,
+        updates: {
+          lyrics: { baseRevision: 1, content: specialEscapedLyrics },
+          notes: { baseRevision: 1, content: specialEscapedLyrics }
+        }
+      });
+
+      expect(updateAck.ok).toBe(true);
+      expect(updateAck.workspace.lyrics.content).toBe(specialEscapedLyrics);
+      expect(updateAck.workspace.notes.content).toBe(specialEscapedLyrics);
+
+      socket.disconnect();
       await app.close();
     } finally {
       if (fs.existsSync(tmpDataDir)) {

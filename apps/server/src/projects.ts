@@ -83,8 +83,8 @@ export const PROJECT_LIMITS = {
   MAX_TASK_NOTE_LENGTH: 2_000,
   MAX_TASK_ASSIGNEE_ID_LENGTH: 100,
   MAX_TASK_ASSIGNEE_NAME_LENGTH: 150,
-  MAX_TASK_DUE_DATE_LENGTH: 20,
-  MAX_WORKSPACE_PAYLOAD_BYTES: 8_388_608
+  MAX_TASK_DUE_DATE_LENGTH: 50,
+  MAX_WORKSPACE_PAYLOAD_BYTES: 16_777_216
 };
 
 export interface ProjectDatabaseSchema {
@@ -446,111 +446,7 @@ export class ProjectStore {
       return null;
     }
 
-    // Validate lyrics documents and documentId before performing any workspace mutation or activity recording
-    if (updates.lyrics) {
-      if (updates.lyrics.documentId !== undefined) {
-        if (
-          !updates.lyrics.documentId ||
-          typeof updates.lyrics.documentId !== 'string' ||
-          updates.lyrics.documentId.trim().length === 0
-        ) {
-          return null;
-        }
-        updates.lyrics.documentId = updates.lyrics.documentId.trim();
-      }
-
-      if (updates.lyrics.documents !== undefined) {
-        const seenDocIds = new Set<string>();
-        for (const d of updates.lyrics.documents) {
-          if (!d.id || typeof d.id !== 'string' || d.id.trim().length === 0) {
-            return null;
-          }
-          if (seenDocIds.has(d.id)) {
-            return null;
-          }
-          seenDocIds.add(d.id);
-        }
-      }
-    }
-
-    // Validate song structure sections (identities and uniqueness) before performing any workspace mutation or activity recording
-    if (updates.structure && updates.structure.sections !== undefined) {
-      const seenSectionIds = new Set<string>();
-      for (const s of updates.structure.sections) {
-        if (!s.id || typeof s.id !== 'string' || s.id.trim().length === 0) {
-          return null;
-        }
-        if (seenSectionIds.has(s.id)) {
-          return null;
-        }
-        seenSectionIds.add(s.id);
-      }
-    }
-
-    // Validate tasks (identities, dueDates, and assignees) before performing any workspace mutation or activity recording
-    if (updates.tasks && updates.tasks.tasks !== undefined) {
-      const seenTaskIds = new Set<string>();
-      for (const t of updates.tasks.tasks) {
-        if (!t.id || typeof t.id !== 'string' || t.id.trim().length === 0) {
-          return null;
-        }
-        if (seenTaskIds.has(t.id)) {
-          return null;
-        }
-        seenTaskIds.add(t.id);
-
-        if (t.dueDate !== undefined) {
-          if (typeof t.dueDate !== 'string') {
-            return null;
-          }
-          const trimmedDue = t.dueDate.trim();
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDue)) {
-            return null;
-          }
-          const parts = trimmedDue.split('-');
-          if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
-            return null;
-          }
-          const y = parseInt(parts[0], 10);
-          const m = parseInt(parts[1], 10);
-          const d = parseInt(parts[2], 10);
-          if (m < 1 || m > 12 || d < 1 || d > 31) {
-            return null;
-          }
-          const date = new Date(Date.UTC(y, m - 1, d));
-          if (
-            date.getUTCFullYear() !== y ||
-            date.getUTCMonth() !== m - 1 ||
-            date.getUTCDate() !== d
-          ) {
-            return null;
-          }
-          t.dueDate = trimmedDue;
-        }
-
-        if (t.assigneeId) {
-          let memberName: string | null = null;
-          if (project.ownerId === t.assigneeId) {
-            memberName = project.ownerDisplayName;
-          } else {
-            const collab = project.collaborators.find((c) => c.userId === t.assigneeId);
-            if (collab) {
-              memberName = collab.displayName;
-            }
-          }
-
-          if (!memberName) {
-            return null;
-          }
-          t.assigneeName = memberName;
-        } else {
-          t.assigneeId = undefined;
-          t.assigneeName = undefined;
-        }
-      }
-    }
-
-    // Enforce workspace storage limits before any OCC checks, mutations, or persistence
+    // 1. Enforce workspace storage and field limits on raw client inputs before any normalization, mutation, or persistence
     if (updates.lyrics) {
       if (updates.lyrics.activeDocumentId && updates.lyrics.activeDocumentId.length > PROJECT_LIMITS.MAX_LYRICS_ACTIVE_DOCUMENT_ID_LENGTH) {
         throw new WorkspaceLimitError(
@@ -579,6 +475,24 @@ export class ProjectStore {
 
       if (updates.lyrics.documents) {
         for (const doc of updates.lyrics.documents) {
+          if (doc.id && doc.id.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_ID_LENGTH) {
+            throw new WorkspaceLimitError(
+              'lyrics',
+              `Lyrics document ID exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_ID_LENGTH} characters.`
+            );
+          }
+          if (doc.title && doc.title.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH) {
+            throw new WorkspaceLimitError(
+              'lyrics',
+              `Lyrics document title exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_TITLE_LENGTH} characters.`
+            );
+          }
+          if (doc.content && doc.content.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH) {
+            throw new WorkspaceLimitError(
+              'lyrics',
+              `Lyrics document content exceeds maximum length of ${PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_CONTENT_LENGTH} characters.`
+            );
+          }
           if (doc.updatedBy && doc.updatedBy.length > PROJECT_LIMITS.MAX_LYRICS_UPDATED_BY_LENGTH) {
             throw new WorkspaceLimitError(
               'lyrics',
@@ -662,7 +576,7 @@ export class ProjectStore {
         }
       }
 
-      // 1. Validate projected document count
+      // Validate projected document count
       if (projectedDocs.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENTS) {
         throw new WorkspaceLimitError(
           'lyrics',
@@ -670,7 +584,7 @@ export class ProjectStore {
         );
       }
 
-      // 2. Validate each document id, title, individual content size, and total cumulative content length
+      // Validate each document id, title, individual content size, and total cumulative content length
       let totalLyricsLength = 0;
       for (const d of projectedDocs) {
         if (d.id && d.id.length > PROJECT_LIMITS.MAX_LYRICS_DOCUMENT_ID_LENGTH) {
@@ -694,7 +608,7 @@ export class ProjectStore {
         totalLyricsLength += (d.content || '').length;
       }
 
-      // 3. Validate total cumulative lyrics content limit
+      // Validate total cumulative lyrics content limit
       if (totalLyricsLength > PROJECT_LIMITS.MAX_LYRICS_TOTAL_CONTENT_LENGTH) {
         throw new WorkspaceLimitError(
           'lyrics',
@@ -802,6 +716,108 @@ export class ProjectStore {
             'tasks',
             `Task due date exceeds maximum length of ${PROJECT_LIMITS.MAX_TASK_DUE_DATE_LENGTH} characters.`
           );
+        }
+      }
+    }
+
+    // 2. Validate IDs, dates, and member assignees
+    if (updates.lyrics) {
+      if (updates.lyrics.documentId !== undefined) {
+        if (
+          !updates.lyrics.documentId ||
+          typeof updates.lyrics.documentId !== 'string' ||
+          updates.lyrics.documentId.trim().length === 0
+        ) {
+          return null;
+        }
+        updates.lyrics.documentId = updates.lyrics.documentId.trim();
+      }
+
+      if (updates.lyrics.documents !== undefined) {
+        const seenDocIds = new Set<string>();
+        for (const d of updates.lyrics.documents) {
+          if (!d.id || typeof d.id !== 'string' || d.id.trim().length === 0) {
+            return null;
+          }
+          if (seenDocIds.has(d.id)) {
+            return null;
+          }
+          seenDocIds.add(d.id);
+        }
+      }
+    }
+
+    if (updates.structure && updates.structure.sections !== undefined) {
+      const seenSectionIds = new Set<string>();
+      for (const s of updates.structure.sections) {
+        if (!s.id || typeof s.id !== 'string' || s.id.trim().length === 0) {
+          return null;
+        }
+        if (seenSectionIds.has(s.id)) {
+          return null;
+        }
+        seenSectionIds.add(s.id);
+      }
+    }
+
+    if (updates.tasks && updates.tasks.tasks !== undefined) {
+      const seenTaskIds = new Set<string>();
+      for (const t of updates.tasks.tasks) {
+        if (!t.id || typeof t.id !== 'string' || t.id.trim().length === 0) {
+          return null;
+        }
+        if (seenTaskIds.has(t.id)) {
+          return null;
+        }
+        seenTaskIds.add(t.id);
+
+        if (t.dueDate !== undefined) {
+          if (typeof t.dueDate !== 'string') {
+            return null;
+          }
+          const trimmedDue = t.dueDate.trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDue)) {
+            return null;
+          }
+          const parts = trimmedDue.split('-');
+          if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
+            return null;
+          }
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10);
+          const d = parseInt(parts[2], 10);
+          if (m < 1 || m > 12 || d < 1 || d > 31) {
+            return null;
+          }
+          const date = new Date(Date.UTC(y, m - 1, d));
+          if (
+            date.getUTCFullYear() !== y ||
+            date.getUTCMonth() !== m - 1 ||
+            date.getUTCDate() !== d
+          ) {
+            return null;
+          }
+          t.dueDate = trimmedDue;
+        }
+
+        if (t.assigneeId) {
+          let memberName: string | null = null;
+          if (project.ownerId === t.assigneeId) {
+            memberName = project.ownerDisplayName;
+          } else {
+            const collab = project.collaborators.find((c) => c.userId === t.assigneeId);
+            if (collab) {
+              memberName = collab.displayName;
+            }
+          }
+
+          if (!memberName) {
+            return null;
+          }
+          t.assigneeName = memberName;
+        } else {
+          t.assigneeId = undefined;
+          t.assigneeName = undefined;
         }
       }
     }
