@@ -4273,7 +4273,7 @@ select option {
 .settings-content-area {
   flex: 1;
   min-width: 0;
-  padding: 0 36px 36px 36px;
+  padding: 20px 36px 36px 36px;
   overflow-y: auto;
   max-height: calc(100vh - 75px);
   background: transparent;
@@ -4286,7 +4286,6 @@ select option {
   gap: 16px;
   width: 100%;
   box-sizing: border-box;
-  padding-top: 20px;
 }
 
 .settings-field-group,
@@ -4308,28 +4307,28 @@ select option {
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.settings-panel-header-sticky {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: var(--bg-app);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 20px 0 12px 0;
-  margin-top: -20px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid var(--border-subtle);
-  box-sizing: border-box;
-  width: 100%;
+#settings-panel-account .settings-panel-header {
+  padding-right: 190px;
 }
 
-.settings-panel-header-text {
+.account-save-persistent-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 25;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  justify-content: flex-end;
+  pointer-events: none;
+  width: 100%;
+  max-width: 880px;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.account-save-persistent-wrap .btn-profile-save-top {
+  pointer-events: auto;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(37, 99, 235, 0.35);
 }
 
 .btn-profile-save-top {
