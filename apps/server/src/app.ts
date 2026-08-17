@@ -1252,7 +1252,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
 
       const identity = authResult.identity;
       const userSnapshot = userStore.createSnapshot();
-      const projectSnapshot = projectStore.createSnapshot();
+      const projectSnapshot = projectStore.createSnapshot(parsed.data.projectId);
       let createdRoom: Room | undefined;
 
       try {
@@ -1387,7 +1387,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
 
       const userSnapshot = userStore.createSnapshot();
-      const projectSnapshot = projectStore.createSnapshot();
+      const projectSnapshot = projectStore.createSnapshot(joined.room.projectId || undefined);
 
       try {
         const peer = rooms.peer(joined.room, parsed.data.participantId);
@@ -1522,7 +1522,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       }
 
       const userSnapshot = userStore.createSnapshot();
-      const projectSnapshot = projectStore.createSnapshot();
+      const projectSnapshot = projectStore.createSnapshot(admitted.room.projectId || undefined);
 
       try {
         userStore.recordCollaboratorJoined(admitted.room.sessionId, admitted.room.code, admitted.room.hostIdentity, admitted.participant.identity);

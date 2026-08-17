@@ -2703,6 +2703,120 @@ describe('ProjectStore & Workspace', () => {
       expect(aDisk.workspace.notes.content).toBe('Alpha Notes Content');
       expect(bDisk.workspace.notes.content).toBe('Beta Notes Content');
     });
+
+    it('fails closed and preserves consolidated datastore if per-project migration write fails', async () => {
+      const migrationDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-fail-migration-'));
+      const legacyProjectsFile = path.join(migrationDir, 'jameet-projects.json');
+      const legacyData = {
+        version: 1,
+        projects: [
+          {
+            id: 'legacy-safe-1',
+            name: 'Safe Project 1',
+            ownerId: mockOwner.id,
+            ownerDisplayName: mockOwner.displayName,
+            ownerUsername: mockOwner.username,
+            ownerAvatarColor: mockOwner.avatarColor,
+            collaborators: [],
+            sessions: [],
+            sessionCount: 0,
+            workspace: {
+              lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main', content: '', updatedAt: 1000 }], content: '', updatedAt: 1000 },
+              notes: { revision: 1, content: '', updatedAt: 1000 },
+              structure: { revision: 1, sections: [], updatedAt: 1000 },
+              tasks: { revision: 1, tasks: [], updatedAt: 1000 }
+            },
+            activities: [],
+            createdAt: 1000,
+            updatedAt: 1000,
+            lastActivityAt: 1000
+          }
+        ]
+      };
+
+      fs.writeFileSync(legacyProjectsFile, JSON.stringify(legacyData, null, 2), 'utf-8');
+
+      // Create a file blocking projects directory creation
+      const blockerPath = path.join(migrationDir, 'projects');
+      fs.writeFileSync(blockerPath, 'file blocking projects directory creation');
+
+      // Instantiating ProjectStore must fail closed and throw
+      expect(() => new ProjectStore(migrationDir)).toThrow();
+
+      // Consolidated legacy datastore must NOT have been archived or deleted
+      expect(fs.existsSync(legacyProjectsFile)).toBe(true);
+      expect(fs.existsSync(`${legacyProjectsFile}.migrated.bak`)).toBe(false);
+    });
+
+    it('restores only the target project snapshot without rolling back or overwriting unrelated concurrent project changes', async () => {
+      const projA = await projectStore.createProject(mockOwner, { name: 'Project Alpha Rollback Test' });
+      const projB = await projectStore.createProject(mockOwner, { name: 'Project Beta Unrelated' });
+
+      // Create scoped snapshot for Project A
+      const snapshotA = projectStore.createSnapshot(projA.id);
+
+      // Mutate Project A
+      await projectStore.updateWorkspace(projA.id, mockOwner, {
+        notes: { baseRevision: 1, content: 'Alpha Notes Modified' }
+      });
+
+      // Mutate Project B concurrently
+      await projectStore.updateWorkspace(projB.id, mockOwner, {
+        notes: { baseRevision: 1, content: 'Beta Concurrent Update Preserved' }
+      });
+
+      // Rollback ONLY Project A snapshot
+      await projectStore.restoreSnapshot(snapshotA);
+
+      // Verify Project A is restored to original state
+      const reloadedA = projectStore.getProject(projA.id, mockOwner.id)!;
+      expect(reloadedA.workspace.notes.content).toBe('');
+
+      // Verify Project B preserved its concurrent changes completely
+      const reloadedB = projectStore.getProject(projB.id, mockOwner.id)!;
+      expect(reloadedB.workspace.notes.content).toBe('Beta Concurrent Update Preserved');
+    });
+
+    it('enforces per-owner project limit atomically and prevents concurrent project creation races from bypassing limits', async () => {
+      const raceOwner: UserProfile = {
+        id: 'user-race-owner',
+        displayName: 'Race Owner',
+        username: 'raceowner',
+        email: 'race@music.com',
+        avatarColor: '#ec4899',
+        isGuest: false,
+        createdAt: Date.now()
+      };
+
+      // Fill up projects to MAX_PROJECTS_PER_OWNER - 1
+      for (let i = 0; i < PROJECT_LIMITS.MAX_PROJECTS_PER_OWNER - 1; i++) {
+        await projectStore.createProject(raceOwner, { name: `Race Project ${i}` });
+      }
+
+      expect(projectStore.listProjects(raceOwner.id).length).toBe(PROJECT_LIMITS.MAX_PROJECTS_PER_OWNER - 1);
+
+      // Fire 5 concurrent createProject calls for the remaining 1 slot
+      const attempts = await Promise.allSettled([
+        projectStore.createProject(raceOwner, { name: 'Slot Contender 1' }),
+        projectStore.createProject(raceOwner, { name: 'Slot Contender 2' }),
+        projectStore.createProject(raceOwner, { name: 'Slot Contender 3' }),
+        projectStore.createProject(raceOwner, { name: 'Slot Contender 4' }),
+        projectStore.createProject(raceOwner, { name: 'Slot Contender 5' })
+      ]);
+
+      const fulfilled = attempts.filter((a) => a.status === 'fulfilled');
+      const rejected = attempts.filter((a) => a.status === 'rejected');
+
+      // Exactly 1 must have succeeded, 4 must have failed with ProjectLimitError
+      expect(fulfilled.length).toBe(1);
+      expect(rejected.length).toBe(4);
+      for (const rej of rejected) {
+        expect((rej as PromiseRejectedResult).reason).toBeInstanceOf(ProjectLimitError);
+      }
+
+      // Total projects owned must strictly equal MAX_PROJECTS_PER_OWNER, never exceeding it
+      expect(projectStore.listProjects(raceOwner.id).length).toBe(PROJECT_LIMITS.MAX_PROJECTS_PER_OWNER);
+    });
   });
 });
 

@@ -98,6 +98,7 @@ export class ProjectStore {
   private projectsDir: string;
   private dataFilePath: string;
   private projectQueues = new Map<string, Promise<void>>();
+  private ownerQueues = new Map<string, Promise<void>>();
 
   constructor(storageDir?: string) {
     const baseDir = storageDir ?? path.join(process.cwd(), 'data');
@@ -156,8 +157,11 @@ export class ProjectStore {
   }
 
   private loadFromDisk(): void {
+    const legacyFileExists = fs.existsSync(this.dataFilePath);
+    const loadedLegacyProjects: Project[] = [];
+
     // 1. If consolidated datastore file exists, load and validate
-    if (fs.existsSync(this.dataFilePath)) {
+    if (legacyFileExists) {
       try {
         const raw = fs.readFileSync(this.dataFilePath, 'utf-8');
         const data = JSON.parse(raw) as ProjectDatabaseSchema;
@@ -170,6 +174,7 @@ export class ProjectStore {
         for (const p of data.projects) {
           this.normalizeLoadedProject(p);
           this.projects.set(p.id, p);
+          loadedLegacyProjects.push(p);
         }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -182,7 +187,7 @@ export class ProjectStore {
       try {
         fs.mkdirSync(this.projectsDir, { recursive: true });
       } catch {
-        // ignore
+        // ignore on initial store construction; write operations will fail durably
       }
     }
 
@@ -209,28 +214,38 @@ export class ProjectStore {
       }
     }
 
-    // 4. Migrate consolidated projects into per-project files if they do not exist
-    if (fs.existsSync(this.projectsDir)) {
-      for (const p of this.projects.values()) {
+    // 4. Fail-closed migration of consolidated datastore to per-project files
+    if (legacyFileExists) {
+      try {
+        if (!fs.existsSync(this.projectsDir)) {
+          fs.mkdirSync(this.projectsDir, { recursive: true });
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`Failed to create projects directory during migration ${this.projectsDir}: ${message}`);
+      }
+
+      for (const p of loadedLegacyProjects) {
         const projPath = path.join(this.projectsDir, `${p.id}.json`);
-        if (!fs.existsSync(projPath)) {
-          const tmpPath = `${projPath}.${crypto.randomUUID()}.tmp`;
+        const tmpPath = `${projPath}.${crypto.randomUUID()}.tmp`;
+        try {
+          fs.writeFileSync(tmpPath, JSON.stringify(p, null, 2), 'utf-8');
+          fs.renameSync(tmpPath, projPath);
+        } catch (err: unknown) {
           try {
-            fs.writeFileSync(tmpPath, JSON.stringify(p, null, 2), 'utf-8');
-            fs.renameSync(tmpPath, projPath);
-          } catch {
-            // ignore initial migration write errors if filesystem is read-only
-          }
+            if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+          } catch {}
+          const message = err instanceof Error ? err.message : String(err);
+          throw new Error(`Failed to migrate project ${p.id} to per-project file: ${message}`);
         }
       }
-    }
 
-    // 5. If consolidated file exists, rename to .migrated.bak to maintain single authoritative format
-    if (fs.existsSync(this.dataFilePath)) {
+      // Only archive the consolidated file after EVERY project has successfully and durably persisted
       try {
         fs.renameSync(this.dataFilePath, `${this.dataFilePath}.migrated.bak`);
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`Failed to archive migrated consolidated datastore ${this.dataFilePath}: ${message}`);
       }
     }
   }
@@ -286,7 +301,7 @@ export class ProjectStore {
   private runProjectTransaction<T>(projectId: string, task: () => Promise<T>): Promise<T> {
     const queue = this.projectQueues.get(projectId) || Promise.resolve();
     const nextTask = queue.catch(() => {}).then(() => task());
-    const tailPromise = nextTask.catch(() => {});
+    const tailPromise: Promise<void> = nextTask.then(() => {}, () => {});
     this.projectQueues.set(projectId, tailPromise);
     tailPromise.then(() => {
       if (this.projectQueues.get(projectId) === tailPromise) {
@@ -296,30 +311,57 @@ export class ProjectStore {
     return nextTask;
   }
 
-  createSnapshot(): string {
+  private runOwnerTransaction<T>(ownerId: string, task: () => Promise<T>): Promise<T> {
+    const queue = this.ownerQueues.get(ownerId) || Promise.resolve();
+    const nextTask = queue.catch(() => {}).then(() => task());
+    const tailPromise: Promise<void> = nextTask.then(() => {}, () => {});
+    this.ownerQueues.set(ownerId, tailPromise);
+    tailPromise.then(() => {
+      if (this.ownerQueues.get(ownerId) === tailPromise) {
+        this.ownerQueues.delete(ownerId);
+      }
+    });
+    return nextTask;
+  }
+
+  createSnapshot(projectId?: string): string {
+    if (projectId) {
+      const project = this.projects.get(projectId);
+      return JSON.stringify({
+        version: 1,
+        type: 'single',
+        projectId,
+        project: project ? JSON.parse(JSON.stringify(project)) : null
+      });
+    }
     return JSON.stringify({
       version: 1,
-      projects: Array.from(this.projects.values())
+      type: 'global',
+      projects: Array.from(this.projects.values()).map((p) => JSON.parse(JSON.stringify(p)))
     });
   }
 
   async restoreSnapshot(snapshotJson: string): Promise<void> {
-    const data = JSON.parse(snapshotJson) as ProjectDatabaseSchema;
-    const oldProjectIds = Array.from(this.projects.keys());
-    this.projects.clear();
-    if (Array.isArray(data.projects)) {
+    const data = JSON.parse(snapshotJson);
+    if (data && data.type === 'single' && typeof data.projectId === 'string') {
+      return this.runProjectTransaction(data.projectId, async () => {
+        if (data.project) {
+          this.projects.set(data.projectId, data.project);
+          await this.persistProject(data.project);
+        } else {
+          this.projects.delete(data.projectId);
+          await this.deleteProjectFromDisk(data.projectId);
+        }
+      });
+    }
+
+    // Global snapshot restoration: restore scoped snapshot projects without clobbering unrelated projects
+    if (Array.isArray(data?.projects)) {
       for (const p of data.projects) {
-        this.projects.set(p.id, p);
-      }
-    }
-    const dir = this.dataFilePath ? path.join(path.dirname(this.dataFilePath), 'projects') : this.projectsDir;
-    await fs.promises.mkdir(dir, { recursive: true });
-    for (const p of this.projects.values()) {
-      await this.persistProject(p);
-    }
-    for (const oldId of oldProjectIds) {
-      if (!this.projects.has(oldId)) {
-        await this.deleteProjectFromDisk(oldId).catch(() => {});
+        await this.runProjectTransaction(p.id, async () => {
+          this.projects.set(p.id, p);
+          await this.persistProject(p);
+        });
       }
     }
   }
@@ -386,92 +428,93 @@ export class ProjectStore {
     data: CreateProjectRequest,
     collaboratorUsers: UserProfile[] = []
   ): Promise<Project> {
-    const ownedProjectsCount = Array.from(this.projects.values()).filter(
-      (p) => p.ownerId === owner.id
-    ).length;
-    if (ownedProjectsCount >= PROJECT_LIMITS.MAX_PROJECTS_PER_OWNER) {
-      throw new ProjectLimitError(
-        `Maximum project limit reached (${PROJECT_LIMITS.MAX_PROJECTS_PER_OWNER} projects per account).`
-      );
-    }
-    if (collaboratorUsers.length > PROJECT_LIMITS.MAX_COLLABORATORS_PER_PROJECT) {
-      throw new ProjectLimitError(
-        `Cannot add more than ${PROJECT_LIMITS.MAX_COLLABORATORS_PER_PROJECT} initial collaborators.`
-      );
-    }
-
-    const now = Date.now();
-    const id = `proj_${crypto.randomUUID()}`;
-
-    const collaborators: ProjectCollaborator[] = collaboratorUsers
-      .filter((c) => c.id !== owner.id)
-      .map((c) => ({
-        userId: c.id,
-        displayName: c.displayName,
-        username: c.username,
-        avatarColor: c.avatarColor || '#06b6d4',
-        role: 'collaborator' as const,
-        addedAt: now
-      }));
-
-    const project: Project = {
-      id,
-      name: data.name.trim(),
-      description: data.description?.trim(),
-      ownerId: owner.id,
-      ownerDisplayName: owner.displayName,
-      ownerUsername: owner.username,
-      ownerAvatarColor: owner.avatarColor || '#06b6d4',
-      createdAt: now,
-      updatedAt: now,
-      lastActivityAt: now,
-      archived: false,
-      collaborators,
-      sessions: [],
-      sessionCount: 0,
-      activities: [],
-      workspace: {
-        lyrics: {
-          revision: 1,
-          activeDocumentId: 'doc-main',
-          documents: [
-            {
-              id: 'doc-main',
-              title: 'Main Lyrics',
-              content: '',
-              updatedAt: now,
-              updatedBy: owner.id,
-              updatedByName: owner.displayName
-            }
-          ],
-          content: '',
-          updatedAt: now
-        },
-        notes: { revision: 1, content: '', updatedAt: now },
-        structure: { revision: 1, sections: [], updatedAt: now },
-        tasks: { revision: 1, tasks: [], updatedAt: now }
-      },
-      metadata: {}
-    };
-
-    return this.runProjectTransaction(id, async () => {
-      this.projects.set(id, project);
-      await this.recordActivity(
-        id,
-        owner,
-        'project_created',
-        `${owner.displayName} created project "${project.name}"`,
-        project.name,
-        undefined,
-        false
-      );
-      try {
-        await this.persistProject(project);
-      } catch (err) {
-        this.projects.delete(id);
-        throw err;
+    return this.runOwnerTransaction(owner.id, async () => {
+      const ownedProjectsCount = Array.from(this.projects.values()).filter(
+        (p) => p.ownerId === owner.id
+      ).length;
+      if (ownedProjectsCount >= PROJECT_LIMITS.MAX_PROJECTS_PER_OWNER) {
+        throw new ProjectLimitError(
+          `Maximum project limit reached (${PROJECT_LIMITS.MAX_PROJECTS_PER_OWNER} projects per account).`
+        );
       }
-      return JSON.parse(JSON.stringify(project)) as Project;
+      if (collaboratorUsers.length > PROJECT_LIMITS.MAX_COLLABORATORS_PER_PROJECT) {
+        throw new ProjectLimitError(
+          `Cannot add more than ${PROJECT_LIMITS.MAX_COLLABORATORS_PER_PROJECT} initial collaborators.`
+        );
+      }
+
+      const now = Date.now();
+      const id = `proj_${crypto.randomUUID()}`;
+
+      const collaborators: ProjectCollaborator[] = collaboratorUsers
+        .filter((c) => c.id !== owner.id)
+        .map((c) => ({
+          userId: c.id,
+          displayName: c.displayName,
+          username: c.username,
+          avatarColor: c.avatarColor || '#06b6d4',
+          role: 'collaborator' as const,
+          addedAt: now
+        }));
+
+      const project: Project = {
+        id,
+        name: data.name.trim(),
+        description: data.description?.trim(),
+        ownerId: owner.id,
+        ownerDisplayName: owner.displayName,
+        ownerUsername: owner.username,
+        ownerAvatarColor: owner.avatarColor || '#06b6d4',
+        createdAt: now,
+        updatedAt: now,
+        lastActivityAt: now,
+        archived: false,
+        collaborators,
+        sessions: [],
+        sessionCount: 0,
+        activities: [],
+        workspace: {
+          lyrics: {
+            revision: 1,
+            activeDocumentId: 'doc-main',
+            documents: [
+              {
+                id: 'doc-main',
+                title: 'Main Lyrics',
+                content: '',
+                updatedAt: now,
+                updatedBy: owner.id,
+                updatedByName: owner.displayName
+              }
+            ],
+            content: '',
+            updatedAt: now
+          },
+          notes: { revision: 1, content: '', updatedAt: now },
+          structure: { revision: 1, sections: [], updatedAt: now },
+          tasks: { revision: 1, tasks: [], updatedAt: now }
+        }
+      };
+
+      return this.runProjectTransaction(id, async () => {
+        this.projects.set(id, project);
+        await this.recordActivity(
+          id,
+          owner,
+          'project_created',
+          `${owner.displayName} created project "${project.name}"`,
+          project.name,
+          undefined,
+          false
+        );
+        try {
+          await this.persistProject(project);
+        } catch (err) {
+          this.projects.delete(id);
+          throw err;
+        }
+        return JSON.parse(JSON.stringify(project)) as Project;
+      });
     });
   }
 
