@@ -3905,12 +3905,12 @@ select option {
 .account-menu {
   position: fixed;
   z-index: 10000;
-  width: 230px;
+  width: 220px;
   background: var(--bg-card);
   border: 1px solid var(--border-medium);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  padding: 6px;
+  padding: 4px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -3924,12 +3924,12 @@ select option {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px 10px;
+  padding: 8px;
 }
 
 .account-menu-avatar {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
@@ -3962,19 +3962,19 @@ select option {
 }
 
 .account-menu-name-row strong {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--text-main);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 110px;
+  max-width: 100px;
 }
 
 .account-menu-role-pill {
   font-size: 9.5px;
-  font-weight: 600;
-  padding: 1px 5px;
+  font-weight: 500;
+  padding: 1px 4px;
   border-radius: var(--radius-xs);
   background: var(--bg-input);
   border: 1px solid var(--border-subtle);
@@ -3992,13 +3992,13 @@ select option {
 
 .account-menu-divider {
   border-bottom: 1px solid var(--border-subtle);
-  margin: 4px 0;
+  margin: 3px 0;
 }
 
 .account-menu-items {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .account-menu-item {
@@ -4006,7 +4006,7 @@ select option {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 10px;
+  padding: 5px 8px;
   background: transparent;
   border: none;
   border-radius: var(--radius-xs);
@@ -4015,20 +4015,21 @@ select option {
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: all 0.1s ease;
 }
 
 .account-menu-item:hover {
-  background: var(--bg-card-hover);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .account-menu-item.danger {
   color: #f87171;
+  background: transparent;
 }
 
 .account-menu-item.danger:hover {
-  background: rgba(239, 68, 68, 0.12);
-  color: #ffffff;
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
 }
 
 .account-menu-item-icon {
@@ -4044,13 +4045,13 @@ select option {
 
 /* --- DEDICATED SETTINGS & ACCOUNT WORKSPACE VIEW --- */
 .settings-view-container {
-  max-width: 1100px;
+  max-width: 1160px;
   width: 100%;
   margin: 0 auto;
-  padding: 14px 20px 40px;
+  padding: 8px 24px 40px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 0;
   min-height: calc(100vh - 28px);
 }
 
@@ -4059,82 +4060,107 @@ select option {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 2px 0;
+  padding: 6px 0 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .settings-topbar-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+}
+
+.btn-ghost-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--radius-xs);
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.btn-ghost-back:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .settings-breadcrumbs {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
+}
+
+.settings-topbar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  letter-spacing: -0.01em;
 }
 
 .btn-settings-done {
-  background: var(--bg-elevated);
+  background: transparent;
   border: 1px solid var(--border-subtle);
-  color: var(--text-main);
+  color: var(--text-secondary);
   font-size: 11.5px;
-  font-weight: 600;
-  padding: 5px 14px;
+  font-weight: 500;
+  padding: 4px 14px;
   border-radius: var(--radius-xs);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
 }
 
 .btn-settings-done:hover {
-  background: var(--bg-card-hover);
+  background: var(--bg-elevated);
   border-color: var(--border-medium);
+  color: var(--text-main);
 }
 
 .settings-workspace-layout {
   display: flex;
   gap: 0;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
-  min-height: 520px;
-  overflow: hidden;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 540px;
 }
 
 .settings-sidebar {
-  width: 200px;
-  background: var(--bg-elevated);
+  width: 185px;
+  background: rgba(255, 255, 255, 0.012);
   border-right: 1px solid var(--border-subtle);
-  padding: 14px 8px;
+  border-top: none;
+  border-bottom: none;
+  border-left: none;
+  padding: 14px 8px 14px 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   flex-shrink: 0;
+  border-radius: 0;
 }
 
 .settings-sidebar-header {
-  padding: 2px 10px 6px;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
+  display: none;
 }
 
 .settings-nav-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .settings-nav-item {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 6px 10px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
@@ -4143,18 +4169,18 @@ select option {
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: all 0.1s ease;
 }
 
 .settings-nav-item:hover {
-  background: var(--bg-card-hover);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-main);
 }
 
 .settings-nav-item.active {
   background: var(--accent-primary-dim);
   color: #ffffff;
-  border-color: rgba(59, 130, 246, 0.3);
+  border-color: transparent;
   font-weight: 600;
 }
 
@@ -4171,15 +4197,17 @@ select option {
 
 .settings-content-area {
   flex: 1;
-  padding: 20px 24px 28px 24px;
+  padding: 18px 28px 36px 28px;
   overflow-y: auto;
-  max-height: 78vh;
+  max-height: calc(100vh - 75px);
+  background: transparent;
 }
 
 .settings-panel {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  max-width: 820px;
 }
 
 .settings-panel.hidden {
@@ -4187,14 +4215,14 @@ select option {
 }
 
 .settings-panel-header {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .settings-panel-header h3 {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--text-main);
   margin: 0 0 2px 0;
   letter-spacing: -0.01em;
@@ -4207,43 +4235,52 @@ select option {
 }
 
 .settings-section-title {
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--text-secondary);
-  margin: 0 0 8px 0;
+  margin: 0 0 6px 0;
 }
 
 .settings-divider {
   border-bottom: 1px solid var(--border-subtle);
-  margin: 12px 0;
+  margin: 10px 0;
 }
 
+/* Preference rows (Flatter, no card boxes) */
 .settings-radio-row {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xs);
-  padding: 10px 12px;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 6px 0;
   cursor: pointer;
-  transition: border-color 0.15s ease;
 }
 
-.settings-radio-row:hover {
-  border-color: var(--border-medium);
+.settings-radio-row + .settings-radio-row {
+  border-top: 1px solid var(--border-subtle) !important;
+  margin-top: 2px;
+  padding-top: 8px;
+}
+
+.settings-radio-row input[type="radio"] {
+  margin-top: 2px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
 }
 
 .settings-radio-content {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .settings-radio-content strong {
-  font-size: 12.5px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-main);
 }
 
@@ -4254,10 +4291,136 @@ select option {
 }
 
 .settings-hint {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--text-muted);
   line-height: 1.45;
   margin: 0;
+}
+
+/* Remove Card Containers from Settings Panels */
+#settings-view .dialog-card {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 0 14px 0 !important;
+  box-shadow: none !important;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  gap: 10px;
+}
+
+#settings-view .dialog-card:last-child {
+  border-bottom: none !important;
+}
+
+#settings-view .dialog-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: none;
+  background: transparent !important;
+}
+
+#settings-view .dialog-card-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+#settings-view .dialog-card-pill {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+#settings-view .dialog-card-pill.accent {
+  color: var(--accent-primary);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+#settings-view .headphone-tip-box {
+  background: transparent !important;
+  border: none !important;
+  border-left: 2px solid var(--border-medium) !important;
+  border-radius: 0 !important;
+  padding: 2px 0 2px 8px !important;
+  color: var(--text-muted) !important;
+  font-size: 11px !important;
+  line-height: 1.4 !important;
+  margin-top: 4px !important;
+}
+
+#settings-view .headphone-tip-box .tip-icon {
+  color: var(--text-muted) !important;
+}
+
+#settings-view .headphone-tip-box strong {
+  color: var(--text-secondary) !important;
+}
+
+#settings-view .app-audio-container,
+#settings-view .interface-audio-container {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 4px 0 0 0 !important;
+}
+
+/* Account Profile Flat Layout */
+#settings-view .profile-hero-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  border-radius: 0 !important;
+  padding: 0 0 14px 0 !important;
+  margin-bottom: 14px !important;
+  box-shadow: none !important;
+}
+
+#settings-view .avatar-manager-card {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+#settings-view .avatar-upload-dropzone {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+#settings-view .avatar-color-picker-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+#settings-view .profile-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+  background: transparent;
 }
 
 @media (max-width: 768px) {
@@ -4268,14 +4431,14 @@ select option {
     width: 100%;
     border-right: none;
     border-bottom: 1px solid var(--border-subtle);
-    padding: 8px;
+    padding: 6px 0;
   }
   .settings-nav-list {
     flex-direction: row;
     overflow-x: auto;
   }
   .settings-content-area {
-    padding: 16px;
+    padding: 14px 0;
     max-height: none;
   }
 }
@@ -4791,7 +4954,7 @@ select option {
   font-weight: 600 !important;
   font-size: 12px !important;
   padding: 6px 16px !important;
-  border-radius: var(--radius-sm) !important;
+  border-radius: var(--radius-xs) !important;
   box-shadow: none !important;
   display: inline-flex;
   align-items: center;
@@ -4812,7 +4975,7 @@ select option {
   font-weight: 500;
   font-size: 11.5px;
   padding: 6px 12px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   display: inline-flex;
   align-items: center;
   gap: 6px;

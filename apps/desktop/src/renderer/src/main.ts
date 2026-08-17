@@ -3674,14 +3674,14 @@ function switchSettingsSection(section: 'general' | 'audio' | 'video' | 'screens
   }
   const crumbText =
     section === 'account'
-      ? 'Settings / Account Profile'
+      ? 'Settings · Account'
       : section === 'audio'
-        ? 'Settings / Audio & Hardware'
+        ? 'Settings · Audio'
         : section === 'video'
-          ? 'Settings / Video & Camera'
+          ? 'Settings · Video'
           : section === 'screenshare'
-            ? 'Settings / Screen Sharing'
-            : 'Settings / General Preferences';
+            ? 'Settings · Screen Sharing'
+            : 'Settings · General';
   setText('settings-view-crumb', crumbText);
 }
 
