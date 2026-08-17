@@ -605,6 +605,10 @@ function renderAdminDashboard(): string {
     td:last-child {
       border-right: none;
     }
+    tr {
+      cursor: pointer;
+      user-select: none;
+    }
     tr:hover td {
       background: var(--hover-bg);
     }
@@ -1043,11 +1047,17 @@ function renderAdminDashboard(): string {
         });
         tdCheck.appendChild(checkbox);
 
-        // 2. Name
+        // 2. Name & Details
         const tdName = document.createElement('td');
-        tdName.className = 'cell-clickable';
-        tdName.textContent = u.displayName || u.username || '-';
-        tdName.addEventListener('click', () => openUserDetail(u.id));
+        const nameLink = document.createElement('span');
+        nameLink.className = 'cell-clickable';
+        nameLink.textContent = u.displayName || u.username || '-';
+        nameLink.title = 'Click to open details';
+        nameLink.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openUserDetail(u.id);
+        });
+        tdName.appendChild(nameLink);
 
         // 3. Email
         const tdEmail = document.createElement('td');
@@ -1118,9 +1128,10 @@ function renderAdminDashboard(): string {
         tr.appendChild(tdSessions);
 
         tr.addEventListener('click', (e) => {
-          if (e.target.tagName !== 'INPUT') {
-            openUserDetail(u.id);
+          if (e.target.tagName === 'INPUT' || e.target.closest('.cell-clickable') || e.target.closest('.col-checkbox')) {
+            return;
           }
+          selectRowOrRange(index, u.id, e.shiftKey, null);
         });
 
         tbody.appendChild(tr);
@@ -1129,34 +1140,46 @@ function renderAdminDashboard(): string {
       updateSelectAllCheckbox();
     }
 
-    function handleCheckboxClick(e, index, userId) {
+    function selectRowOrRange(index, userId, isShift, forceCheckedState = null) {
       const visible = getFilteredUsers();
-      if (e.shiftKey && lastClickedIndex !== -1 && lastClickedIndex !== index) {
+      if (isShift && lastClickedIndex !== -1 && lastClickedIndex !== index) {
         const start = Math.min(lastClickedIndex, index);
         const end = Math.max(lastClickedIndex, index);
-        const targetChecked = e.target.checked;
+        const targetState = forceCheckedState !== null ? forceCheckedState : true;
 
         for (let i = start; i <= end; i++) {
           const user = visible[i];
           if (user) {
-            if (targetChecked) {
+            if (targetState) {
               selectedUserIds.add(user.id);
             } else {
               selectedUserIds.delete(user.id);
             }
           }
         }
-        renderTable();
       } else {
-        if (e.target.checked) {
-          selectedUserIds.add(userId);
+        if (forceCheckedState !== null) {
+          if (forceCheckedState) {
+            selectedUserIds.add(userId);
+          } else {
+            selectedUserIds.delete(userId);
+          }
         } else {
-          selectedUserIds.delete(userId);
+          // Toggle row selection on normal click
+          if (selectedUserIds.has(userId)) {
+            selectedUserIds.delete(userId);
+          } else {
+            selectedUserIds.add(userId);
+          }
         }
         lastClickedIndex = index;
-        renderTable();
       }
+      renderTable();
       updateBulkActionBar();
+    }
+
+    function handleCheckboxClick(e, index, userId) {
+      selectRowOrRange(index, userId, e.shiftKey, e.target.checked);
     }
 
     // Select All Checkbox
