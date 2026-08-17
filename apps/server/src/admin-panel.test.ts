@@ -332,18 +332,30 @@ describe('JaMeet Secure Admin Panel', () => {
       expect(data.users.length).toBe(2);
 
       for (const u of data.users) {
+        // REQUIRED FIELDS ONLY
         expect(u.id).toBeDefined();
+        expect(u.displayName).toBeDefined();
         expect(u.username).toBeDefined();
         expect(u.email).toBeDefined();
-        expect(u.displayName).toBeDefined();
-        expect(u.sessionAccess).toBe('blocked');
         expect(u.createdAt).toBeDefined();
+        expect(u.sessionsHostedCount).toBeDefined();
+        expect(u.sessionAccess).toBe('blocked');
+        expect(u.avatarColor).toBeDefined();
 
-        // STRICT SECURITY CHECKS: Never leak passwords or sensitive tokens
+        // STRICT REDACTION CHECKS: Exactly only required fields, no extra account fields
+        expect(u.avatarUrl).toBeUndefined();
+        expect(u.location).toBeUndefined();
+        expect(u.role).toBeUndefined();
+        expect(u.primaryDaw).toBeUndefined();
+        expect(u.genres).toBeUndefined();
+        expect(u.bio).toBeUndefined();
+        expect(u.website).toBeUndefined();
+        expect(u.socialHandle).toBeUndefined();
+        expect(u.updatedAt).toBeUndefined();
+        expect(u.metadata).toBeUndefined();
         expect(u.passwordHash).toBeUndefined();
         expect(u.passwordChangedAt).toBeUndefined();
         expect(u.tokens).toBeUndefined();
-        expect(u.metadata).toBeUndefined();
       }
 
       await app.close();

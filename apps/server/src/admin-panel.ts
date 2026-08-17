@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ServerConfig } from './config.js';
 import { UserStore, type SessionAccessState, type AdminUserSummary } from './auth.js';
-import { updateAccountSessionAccess, ALLOWED_SESSION_ACCESS_STATES } from './admin-access.js';
+import { ALLOWED_SESSION_ACCESS_STATES } from './admin-access.js';
 import { getClientIp } from './client-ip.js';
 
 export const ADMIN_SESSION_COOKIE_NAME = 'jameet_admin_session';
