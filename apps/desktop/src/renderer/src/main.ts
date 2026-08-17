@@ -5152,24 +5152,28 @@ function updateLyricsStatsFromHtml(html: string): void {
   setText('lyrics-footer-read-time', singTimeStr);
 }
 
-function setLyricsStatus(status: 'saving' | 'saved'): void {
+function setLyricsStatus(status: 'saving' | 'saved' | 'unsaved'): void {
   const badges = [$('project-lyrics-status'), $('session-workspace-status')];
+  const label = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save failed';
   badges.forEach((b) => {
     if (!b) return;
     b.className = `workspace-status-badge ${status}`;
-    b.textContent = status === 'saving' ? '● Saving…' : '● Saved';
+    b.innerHTML = `<span class="status-dot"></span> ${label}`;
   });
   if (status === 'saved') {
     setText('lyrics-footer-last-saved', `Saved to cloud at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+  } else if (status === 'unsaved') {
+    setText('lyrics-footer-last-saved', 'Save failed · Unsaved changes');
   }
 }
 
-function setNotesStatus(status: 'saving' | 'saved'): void {
+function setNotesStatus(status: 'saving' | 'saved' | 'unsaved'): void {
   const badges = [$('project-notes-status'), $('session-workspace-status')];
+  const label = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save failed';
   badges.forEach((b) => {
     if (!b) return;
     b.className = `workspace-status-badge ${status}`;
-    b.textContent = status === 'saving' ? '● Saving…' : '● Saved';
+    b.innerHTML = `<span class="status-dot"></span> ${label}`;
   });
 }
 
@@ -5324,7 +5328,10 @@ function handleLyricsEditorInput(source: 'project' | 'session'): void {
 async function saveLyricsWorkspace(content: string, documentId?: string, title?: string): Promise<void> {
   if (!activeProject) return;
   const token = auth.getToken();
-  if (!token) return;
+  if (!token) {
+    setLyricsStatus('unsaved');
+    return;
+  }
   try {
     const activeDoc = getActiveLyricsDoc();
     const docId = documentId || activeDoc.id;
@@ -5345,11 +5352,13 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
       activeProject.workspace = res.workspace;
       const syncedDoc = getActiveLyricsDoc();
       lastSyncedLyrics = syncedDoc.content ?? content;
+      setLyricsStatus('saved');
+    } else {
+      setLyricsStatus('unsaved');
     }
-    setLyricsStatus('saved');
   } catch (err) {
     console.error('Failed to save lyrics document:', err);
-    setLyricsStatus('saved');
+    setLyricsStatus('unsaved');
   }
 }
 
@@ -5785,17 +5794,22 @@ function handleNotesInput(): void {
 async function saveNotesWorkspace(content: string, bpm: string, key: string): Promise<void> {
   if (!activeProject) return;
   const token = auth.getToken();
-  if (!token) return;
+  if (!token) {
+    setNotesStatus('unsaved');
+    return;
+  }
   try {
     const res = await signaling.updateProjectWorkspace(activeProject.id, { notes: { content, bpm, key } }, token);
     if (res?.ok && res.workspace && activeProject) {
       activeProject.workspace = res.workspace;
       lastSyncedNotes = res.workspace.notes?.content ?? content;
+      setNotesStatus('saved');
+    } else {
+      setNotesStatus('unsaved');
     }
-    setNotesStatus('saved');
   } catch (err) {
     console.error('Failed to save notes:', err);
-    setNotesStatus('saved');
+    setNotesStatus('unsaved');
   }
 }
 
@@ -5860,11 +5874,12 @@ function getStructureSections(): any[] {
   return activeProject.workspace.structure.sections;
 }
 
-function setStructureStatus(status: 'saving' | 'saved'): void {
+function setStructureStatus(status: 'saving' | 'saved' | 'unsaved'): void {
   const badge = $('project-structure-status');
+  const label = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save failed';
   if (badge) {
     badge.className = `workspace-status-badge ${status}`;
-    badge.textContent = status === 'saving' ? '● Saving…' : '● Saved';
+    badge.innerHTML = `<span class="status-dot"></span> ${label}`;
   }
 }
 
@@ -6207,17 +6222,22 @@ function debounceSaveStructure(): void {
 async function saveStructureWorkspace(): Promise<void> {
   if (!activeProject) return;
   const token = auth.getToken();
-  if (!token) return;
+  if (!token) {
+    setStructureStatus('unsaved');
+    return;
+  }
   try {
     const sections = getStructureSections();
     const res = await signaling.updateProjectWorkspace(activeProject.id, { structure: { sections } }, token);
     if (res?.ok && res.workspace && activeProject) {
       activeProject.workspace = res.workspace;
+      setStructureStatus('saved');
+    } else {
+      setStructureStatus('unsaved');
     }
-    setStructureStatus('saved');
   } catch (err) {
     console.error('Failed to save structure workspace:', err);
-    setStructureStatus('saved');
+    setStructureStatus('unsaved');
   }
 }
 
@@ -6562,16 +6582,17 @@ function getProjectTasks(): ProjectTaskItem[] {
   return activeProject.workspace.tasks.tasks;
 }
 
-function setTasksStatus(status: 'saving' | 'saved'): void {
+function setTasksStatus(status: 'saving' | 'saved' | 'unsaved'): void {
+  const label = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save failed';
   const badge = $('project-tasks-status');
   if (badge) {
     badge.className = `workspace-status-badge ${status}`;
-    badge.innerHTML = `<span class="status-dot"></span> ${status === 'saving' ? 'Saving…' : 'Saved'}`;
+    badge.innerHTML = `<span class="status-dot"></span> ${label}`;
   }
   const sessionStatus = $('session-workspace-status');
   if (sessionStatus) {
     sessionStatus.className = `workspace-status-badge ${status}`;
-    sessionStatus.innerHTML = `<span class="status-dot"></span> ${status === 'saving' ? 'Saving…' : 'Saved'}`;
+    sessionStatus.innerHTML = `<span class="status-dot"></span> ${label}`;
   }
 }
 
@@ -6587,7 +6608,10 @@ function debounceSaveTasks(): void {
 async function saveTasksWorkspace(): Promise<void> {
   if (!activeProject) return;
   const token = auth.getToken();
-  if (!token) return;
+  if (!token) {
+    setTasksStatus('unsaved');
+    return;
+  }
   const tasks = getProjectTasks();
   try {
     const res = await signaling.updateProjectWorkspace(activeProject.id, {
@@ -6596,10 +6620,12 @@ async function saveTasksWorkspace(): Promise<void> {
     if (res?.ok && res.workspace && activeProject) {
       activeProject.workspace = res.workspace;
       setTasksStatus('saved');
+    } else {
+      setTasksStatus('unsaved');
     }
   } catch (err) {
     console.error('Failed to save tasks workspace:', err);
-    setTasksStatus('saved');
+    setTasksStatus('unsaved');
   }
 }
 

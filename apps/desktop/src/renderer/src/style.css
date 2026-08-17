@@ -6074,6 +6074,12 @@ select option {
   border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
+.workspace-status-badge.unsaved {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
 .workspace-stats-pill {
   font-size: 10.5px;
   color: var(--text-dim);
@@ -7909,6 +7915,14 @@ select option {
   height: 5px;
   border-radius: 50%;
   background: #22c55e;
+}
+
+.workspace-status-badge.saving .status-dot {
+  background: #f59e0b;
+}
+
+.workspace-status-badge.unsaved .status-dot {
+  background: #ef4444;
 }
 
 .drawer-close-btn {
