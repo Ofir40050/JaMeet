@@ -47,23 +47,35 @@ export function cleanIp(ipStr: string | undefined | null): string | null {
 }
 
 /**
- * Extracts the authoritative client IP address for requests behind the Render reverse proxy.
+ * Extracts the authoritative client IP address for requests behind Render.
  *
- * Render's reverse proxy places the real client IP as the first (leftmost) address
- * in the `X-Forwarded-For` header chain.
+ * For public Render traffic, the Cloudflare / Render edge sets the authoritative
+ * `CF-Connecting-IP` header containing the verified client IP. Using this header
+ * prevents spoofing from client-supplied `X-Forwarded-For` headers.
  *
- * - We extract the first valid IP from `X-Forwarded-For`.
- * - Other unverified headers (e.g., `CF-Connecting-IP`, `X-Real-IP`) are not trusted blindly.
- * - If `X-Forwarded-For` is missing or contains no valid IP, falls back to direct
- *   TCP connection remote address (`request.socket.remoteAddress` or `request.ip`).
+ * If `CF-Connecting-IP` is not present (e.g., local development, unit tests, or direct
+ * loopback connections), falls back safely to `X-Forwarded-For` or the direct TCP
+ * connection remote address (`request.socket.remoteAddress` or `request.ip`).
  */
 export function getClientIp(request: RequestLike): string {
+  // 1. Authoritative Cloudflare / Render edge header for public Render traffic
+  const cfConnectingIp = request.headers['cf-connecting-ip'];
+  if (cfConnectingIp) {
+    const rawHeader = Array.isArray(cfConnectingIp) ? cfConnectingIp[0] : cfConnectingIp;
+    if (typeof rawHeader === 'string') {
+      const cleaned = cleanIp(rawHeader);
+      if (cleaned) {
+        return cleaned;
+      }
+    }
+  }
+
+  // 2. Fallback to X-Forwarded-For if available
   const xff = request.headers['x-forwarded-for'];
   if (xff) {
     const rawHeader = Array.isArray(xff) ? xff.join(',') : xff;
     if (typeof rawHeader === 'string') {
       const parts = rawHeader.split(',').map((p) => p.trim()).filter(Boolean);
-      // On Render, the real client IP is the first (leftmost) address in X-Forwarded-For
       for (const part of parts) {
         const cleaned = cleanIp(part);
         if (cleaned) {
@@ -73,7 +85,7 @@ export function getClientIp(request: RequestLike): string {
     }
   }
 
-  // Fallback to direct TCP connection remote address or request.ip
+  // 3. Fallback to direct TCP connection remote address or request.ip
   const rawRemote = request.socket?.remoteAddress || request.ip;
   if (rawRemote) {
     const cleaned = cleanIp(rawRemote);

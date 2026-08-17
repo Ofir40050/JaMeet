@@ -2639,15 +2639,14 @@ describe('signaling integration', () => {
       try {
         const clientA_IP = '203.0.113.101';
         const clientB_IP = '203.0.113.102';
-        const renderProxyIP = '10.0.1.5';
 
-        // 1. Client A sends requests up to the /api/crashes limit (max: 30) via Render proxy
+        // 1. Client A sends requests up to the /api/crashes limit (max: 30) via Render proxy with CF-Connecting-IP
         for (let i = 0; i < 30; i++) {
           const res = await fetch(`${url}/api/crashes`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-Forwarded-For': `${clientA_IP}, ${renderProxyIP}`
+              'CF-Connecting-IP': clientA_IP
             },
             body: JSON.stringify({
               reportId: `crash-clientA-${i}`,
@@ -2667,7 +2666,7 @@ describe('signaling integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Forwarded-For': `${clientA_IP}, ${renderProxyIP}`
+            'CF-Connecting-IP': clientA_IP
           },
           body: JSON.stringify({
             reportId: 'crash-clientA-31',
@@ -2686,7 +2685,7 @@ describe('signaling integration', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Forwarded-For': `${clientB_IP}, ${renderProxyIP}`
+            'CF-Connecting-IP': clientB_IP
           },
           body: JSON.stringify({
             reportId: 'crash-clientB-1',
@@ -2708,7 +2707,7 @@ describe('signaling integration', () => {
     }
   });
 
-  it('prevents spoofed client headers from bypassing rate limits behind Render reverse proxy', async () => {
+  it('prevents spoofed client X-Forwarded-For headers from bypassing rate limits behind Render reverse proxy', async () => {
     const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-ratelimit-2-'));
     try {
       const config = loadConfig({
@@ -2723,18 +2722,15 @@ describe('signaling integration', () => {
 
       try {
         const realAttackerIP = '198.51.100.77';
-        const proxyHop1 = '10.0.1.5';
-        const proxyHop2 = '10.0.2.8';
 
-        // 1. Attacker sends 30 requests through proxy chain
+        // 1. Attacker sends 30 requests through Render with authoritative CF-Connecting-IP and fake X-Forwarded-For
         for (let i = 0; i < 30; i++) {
           const res = await fetch(`${url}/api/crashes`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-Forwarded-For': `${realAttackerIP}, ${proxyHop1}`,
-              'CF-Connecting-IP': '1.2.3.4',
-              'X-Real-IP': '5.6.7.8'
+              'CF-Connecting-IP': realAttackerIP,
+              'X-Forwarded-For': '1.2.3.4, 5.6.7.8'
             },
             body: JSON.stringify({
               reportId: `crash-att-${i}`,
@@ -2749,14 +2745,13 @@ describe('signaling integration', () => {
           expect([200, 201]).toContain(res.status);
         }
 
-        // 2. Attacker tries to bypass rate limit with spoofed single headers or changed downstream hops -> still throttled under realAttackerIP
+        // 2. Attacker tries to bypass rate limit with different fake X-Forwarded-For -> still throttled under authoritative realAttackerIP
         const resSpoofedBypass = await fetch(`${url}/api/crashes`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Forwarded-For': `${realAttackerIP}, ${proxyHop1}, ${proxyHop2}`,
-            'CF-Connecting-IP': '8.8.8.8',
-            'X-Real-IP': '9.9.9.9'
+            'CF-Connecting-IP': realAttackerIP,
+            'X-Forwarded-For': '8.8.8.8, 9.9.9.9'
           },
           body: JSON.stringify({
             reportId: 'crash-att-spoof-bypass',
@@ -2769,6 +2764,69 @@ describe('signaling integration', () => {
           })
         });
         expect(resSpoofedBypass.status).toBe(429);
+      } finally {
+        io.close();
+        await app.close();
+      }
+    } finally {
+      fs.rmSync(tmpDataDir, { recursive: true, force: true });
+    }
+  });
+
+  it('safely falls back to X-Forwarded-For or socket address when CF-Connecting-IP is missing', async () => {
+    const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-ratelimit-3-'));
+    try {
+      const config = loadConfig({
+        NODE_ENV: 'test',
+        TURN_SHARED_SECRET: 'a-secure-test-secret',
+        DATA_DIR: tmpDataDir
+      });
+      const { app, io } = await createApp(config);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const addr = app.server.address() as AddressInfo;
+      const url = `http://127.0.0.1:${addr.port}`;
+
+      try {
+        const fallbackIP = '198.51.100.99';
+
+        // Requests without CF-Connecting-IP fall back to X-Forwarded-For
+        for (let i = 0; i < 30; i++) {
+          const res = await fetch(`${url}/api/crashes`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Forwarded-For': fallbackIP
+            },
+            body: JSON.stringify({
+              reportId: `crash-fallback-${i}`,
+              timestamp: new Date().toISOString(),
+              process: 'renderer',
+              appVersion: '0.1.0',
+              platform: 'darwin',
+              arch: 'arm64',
+              reason: 'test_crash'
+            })
+          });
+          expect([200, 201]).toContain(res.status);
+        }
+
+        const resFallbackThrottled = await fetch(`${url}/api/crashes`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Forwarded-For': fallbackIP
+          },
+          body: JSON.stringify({
+            reportId: 'crash-fallback-31',
+            timestamp: new Date().toISOString(),
+            process: 'renderer',
+            appVersion: '0.1.0',
+            platform: 'darwin',
+            arch: 'arm64',
+            reason: 'test_crash'
+          })
+        });
+        expect(resFallbackThrottled.status).toBe(429);
       } finally {
         io.close();
         await app.close();

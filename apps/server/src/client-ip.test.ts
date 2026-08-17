@@ -33,10 +33,11 @@ describe('Render client IP extraction & anti-spoofing', () => {
   });
 
   describe('getClientIp', () => {
-    it('extracts real client IP from single-hop X-Forwarded-For on Render', () => {
+    it('uses authoritative CF-Connecting-IP for public Render traffic', () => {
       const request = {
         headers: {
-          'x-forwarded-for': '203.0.113.195'
+          'cf-connecting-ip': '203.0.113.195',
+          'x-forwarded-for': '10.0.1.5'
         },
         socket: { remoteAddress: '10.0.1.5' },
         ip: '10.0.1.5'
@@ -44,49 +45,50 @@ describe('Render client IP extraction & anti-spoofing', () => {
       expect(getClientIp(request)).toBe('203.0.113.195');
     });
 
-    it('extracts real client IP as the first address in X-Forwarded-For on Render proxy chain', () => {
+    it('prioritizes CF-Connecting-IP over spoofable client-supplied X-Forwarded-For', () => {
       const request = {
         headers: {
-          'x-forwarded-for': '203.0.113.195, 10.0.1.5, 10.0.2.8'
+          'cf-connecting-ip': '203.0.113.195',
+          'x-forwarded-for': '1.2.3.4, 5.6.7.8'
         },
         socket: { remoteAddress: '10.0.1.5' },
         ip: '10.0.1.5'
       };
-      // Render places the real client IP as the first address
+      // CF-Connecting-IP is the authoritative edge header
       expect(getClientIp(request)).toBe('203.0.113.195');
     });
 
-    it('handles array header values for X-Forwarded-For', () => {
+    it('handles IPv6 in CF-Connecting-IP', () => {
       const request = {
         headers: {
-          'x-forwarded-for': ['198.51.100.42', '10.0.1.5']
-        },
-        socket: { remoteAddress: '10.0.1.5' }
-      };
-      expect(getClientIp(request)).toBe('198.51.100.42');
-    });
-
-    it('extracts IPv6 addresses as the first address on Render', () => {
-      const request = {
-        headers: {
-          'x-forwarded-for': '2001:db8:85a3::8a2e:370:7334, 10.0.1.5'
+          'cf-connecting-ip': '2001:db8:85a3::8a2e:370:7334'
         },
         socket: { remoteAddress: '10.0.1.5' }
       };
       expect(getClientIp(request)).toBe('2001:db8:85a3::8a2e:370:7334');
     });
 
-    it('skips invalid first entry if malformed and finds next valid IP', () => {
+    it('handles array header value for CF-Connecting-IP', () => {
       const request = {
         headers: {
-          'x-forwarded-for': 'invalid-entry, 203.0.113.55, 10.0.1.5'
+          'cf-connecting-ip': ['198.51.100.42']
+        },
+        socket: { remoteAddress: '10.0.1.5' }
+      };
+      expect(getClientIp(request)).toBe('198.51.100.42');
+    });
+
+    it('falls back to X-Forwarded-For when CF-Connecting-IP is missing', () => {
+      const request = {
+        headers: {
+          'x-forwarded-for': '203.0.113.55, 10.0.1.5'
         },
         socket: { remoteAddress: '10.0.1.5' }
       };
       expect(getClientIp(request)).toBe('203.0.113.55');
     });
 
-    it('falls back to socket remoteAddress when X-Forwarded-For is missing', () => {
+    it('falls back to socket remoteAddress when both CF-Connecting-IP and X-Forwarded-For are missing', () => {
       const request = {
         headers: {},
         socket: { remoteAddress: '198.51.100.99' }
@@ -94,10 +96,11 @@ describe('Render client IP extraction & anti-spoofing', () => {
       expect(getClientIp(request)).toBe('198.51.100.99');
     });
 
-    it('falls back to socket remoteAddress when X-Forwarded-For contains only invalid IPs', () => {
+    it('falls back to socket remoteAddress when proxy headers contain only invalid values', () => {
       const request = {
         headers: {
-          'x-forwarded-for': 'malformed-junk, also-bad'
+          'cf-connecting-ip': 'invalid-ip',
+          'x-forwarded-for': 'also-bad'
         },
         socket: { remoteAddress: '198.51.100.99' }
       };
@@ -110,18 +113,6 @@ describe('Render client IP extraction & anti-spoofing', () => {
         socket: null
       };
       expect(getClientIp(request)).toBe('127.0.0.1');
-    });
-
-    it('does not blindly trust unverified single headers like cf-connecting-ip or x-real-ip without proxy validation', () => {
-      const request = {
-        headers: {
-          'cf-connecting-ip': '8.8.8.8',
-          'x-real-ip': '9.9.9.9'
-        },
-        socket: { remoteAddress: '198.51.100.77' }
-      };
-      // Direct connection with fake cf-connecting-ip -> socket address is authoritative
-      expect(getClientIp(request)).toBe('198.51.100.77');
     });
   });
 });
