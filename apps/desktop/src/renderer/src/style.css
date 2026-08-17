@@ -4308,12 +4308,12 @@ select option {
 }
 
 #settings-panel-account .settings-panel-header {
-  padding-right: 190px;
+  padding-right: 210px;
 }
 
 .account-save-persistent-wrap {
   position: sticky;
-  top: 0;
+  top: 12px;
   z-index: 25;
   display: flex;
   justify-content: flex-end;
@@ -4322,40 +4322,57 @@ select option {
   max-width: 880px;
   height: 0;
   margin: 0;
-  padding: 0;
+  padding: 0 4px 0 0;
   background: transparent;
 }
 
 .account-save-persistent-wrap .btn-profile-save-top {
   pointer-events: auto;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), 0 2px 10px rgba(37, 99, 235, 0.4);
 }
 
 .btn-profile-save-top {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 16px;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 9px 18px;
   background: var(--accent-primary);
   color: #ffffff;
-  border: none;
-  border-radius: var(--radius-xs);
-  font-size: 12.5px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
   font-weight: 600;
+  line-height: 1.2;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.12s ease, box-shadow 0.12s ease;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+.btn-profile-save-top .btn-icon-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .btn-profile-save-top:hover {
   background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45);
+}
+
+.btn-profile-save-top:active {
+  transform: translateY(1px);
 }
 
 .btn-profile-save-top:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
 }
 
 .settings-panel-header h3 {
