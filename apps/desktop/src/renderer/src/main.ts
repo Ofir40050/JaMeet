@@ -1884,12 +1884,13 @@ async function initializeActiveCall(ack: MeetingAck): Promise<void> {
     const t = auth.getToken();
     if (t) {
       void projectsApi.fetchProject(t, ack.projectId).then((p) => {
+        resetWorkspaceGenerations();
         activeProject = p;
         activeProjectId = p.id;
         setText('session-workspace-project-name', p.name);
         syncWorkspaceInputsFromProject(true);
         void signaling.joinProjectWorkspace(p.id, t).then((joinRes) => {
-          if (joinRes?.ok && joinRes.workspace && activeProject) {
+          if (joinRes?.ok && joinRes.workspace && activeProject && activeProject.id === p.id) {
             activeProject.workspace = joinRes.workspace;
             syncWorkspaceInputsFromProject(true);
           }

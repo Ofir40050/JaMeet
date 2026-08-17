@@ -380,6 +380,41 @@ describe('Dual-Generation & Project Context Stale Save Protection', () => {
       expect(currentWorkspace.lyrics.content).toBe('Project A Visit 2 Fresh Edit');
       expect(status).toBe('saving');
     });
+
+    it('invalidates save responses from earlier project workspace when entering an in-session linked project workspace', async () => {
+      let status: WorkspaceSaveStatus = 'saving';
+      let currentWorkspace = { notes: { content: 'Session Project Fresh Notes' } };
+
+      // Earlier workspace (e.g. standalone Project A) dispatched a save with contextGen=1
+      const earlierServerResponse = {
+        notes: { content: 'Standalone Project A Stale In-Flight Notes' }
+      };
+      const mockSaveCall = vi.fn().mockResolvedValue({ ok: true, workspace: earlierServerResponse });
+
+      // User enters session with linked project (contextGen bumped to 2)
+      await executeWorkspaceSave(
+        mockSaveCall,
+        currentWorkspace,
+        {
+          setStatus: (s) => { status = s; },
+          updateAuthoritativeState: (ws) => { currentWorkspace = ws; }
+        },
+        {
+          targetProjectId: 'proj_standalone',
+          activeProjectId: 'proj_session',
+          targetContextGen: 1,
+          activeContextGen: 2,
+          targetEditGen: 1,
+          localEditGen: 1,
+          targetSaveGen: 1,
+          saveAttemptGen: 1
+        }
+      );
+
+      // Session workspace notes and status are untouched
+      expect(currentWorkspace.notes.content).toBe('Session Project Fresh Notes');
+      expect(status).toBe('saving');
+    });
   });
 
   describe('Newer Local Edits During In-Flight Save', () => {
