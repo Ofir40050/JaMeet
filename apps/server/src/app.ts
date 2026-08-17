@@ -217,7 +217,14 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     let count = 0;
     const now = Date.now();
     for (const r of rooms.rooms.values()) {
-      if (!rooms.isExpired(r, now) && r.participants.size >= 2 && Array.from(r.participants.values()).some((p) => p.socketId !== null)) {
+      if (rooms.isExpired(r, now)) continue;
+      let connectedAdmittedCount = 0;
+      for (const p of r.participants.values()) {
+        if (p.socketId !== null) {
+          connectedAdmittedCount++;
+        }
+      }
+      if (connectedAdmittedCount >= 2) {
         count++;
       }
     }

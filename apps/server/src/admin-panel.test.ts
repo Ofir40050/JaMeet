@@ -796,10 +796,8 @@ describe('JaMeet Secure Admin Panel', () => {
       });
       expect(JSON.parse(res.body).stats.activeSessions).toBe(0);
 
-      // Case 2: Guest is in waiting room -> NOT an active live session yet
+      // Case 2: Guest joins directly into participants -> Now 2 connected participants -> Active session!
       rooms.join(hostRoom.code, 'guest-1', 'socket-guest-1', { audio: true, video: false }, { id: 'u2', username: 'guest', displayName: 'Guest', isGuest: false });
-      
-      // Since waiting room wasn't enabled on creation, guest joins directly into participants -> Now it is 2 participants!
       res = await app.inject({
         method: 'GET',
         url: '/admin/api/stats',
@@ -807,8 +805,29 @@ describe('JaMeet Secure Admin Panel', () => {
       });
       expect(JSON.parse(res.body).stats.activeSessions).toBe(1);
 
-      // Case 3: Guest leaves -> Back to 1 participant -> Active sessions returns to 0
-      rooms.leave(hostRoom.code, 'guest-1', 'socket-guest-1');
+      // Case 3: Guest disconnects and enters reconnect grace period (socketId becomes null) -> NOT active during grace
+      rooms.disconnect(hostRoom.code, 'guest-1', () => {}, 'socket-guest-1');
+      expect(hostRoom.participants.size).toBe(2); // Still 2 participant records in room
+      expect(hostRoom.participants.get('guest-1')?.socketId).toBeNull(); // but only 1 active connected socket
+
+      res = await app.inject({
+        method: 'GET',
+        url: '/admin/api/stats',
+        headers: { cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}` }
+      });
+      expect(JSON.parse(res.body).stats.activeSessions).toBe(0);
+
+      // Case 4: Guest reconnects -> Both connected -> Active session again!
+      rooms.join(hostRoom.code, 'guest-1', 'socket-guest-reconnected', { audio: true, video: false }, { id: 'u2', username: 'guest', displayName: 'Guest', isGuest: false }, hostRoom.participants.get('guest-1')?.reconnectToken);
+      res = await app.inject({
+        method: 'GET',
+        url: '/admin/api/stats',
+        headers: { cookie: `${ADMIN_SESSION_COOKIE_NAME}=${sessionToken}` }
+      });
+      expect(JSON.parse(res.body).stats.activeSessions).toBe(1);
+
+      // Case 5: Guest explicitly leaves -> Back to 1 participant -> Active sessions returns to 0
+      rooms.leave(hostRoom.code, 'guest-1', 'socket-guest-reconnected');
       res = await app.inject({
         method: 'GET',
         url: '/admin/api/stats',
