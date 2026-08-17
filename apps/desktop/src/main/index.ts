@@ -611,8 +611,9 @@ else {
       if (options?.width) args.push('--width', String(options.width));
       if (options?.height) args.push('--height', String(options.height));
 
+      let child: any = null;
       try {
-        const child = spawn(binPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        child = spawn(binPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         activeNativeScreenCaptureProcess = child;
 
         let chunks: Buffer[] = [];
@@ -783,8 +784,18 @@ else {
         return true;
       } catch (err) {
         console.error('Failed to spawn native screen capture:', err);
-        if (currentSessionId === activeNativeScreenCaptureSessionId && activeNativeScreenCaptureProcess === child) {
-          activeNativeScreenCaptureProcess = null;
+        if (currentSessionId === activeNativeScreenCaptureSessionId) {
+          if (child) {
+            try {
+              child.stdout?.removeAllListeners();
+              child.stderr?.removeAllListeners();
+              child.removeAllListeners();
+              child.kill('SIGTERM');
+            } catch { }
+          }
+          if (activeNativeScreenCaptureProcess === child) {
+            activeNativeScreenCaptureProcess = null;
+          }
         }
         return false;
       }

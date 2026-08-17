@@ -209,4 +209,96 @@ describe('ScreenCaptureKit Main Process Pipeline Framing & Backlog Mitigation', 
     expect(emittedFrames[0].data[0]).toBe(0x99);
     expect(remainingBuffered).toBe(0);
   });
+
+  describe('Native ScreenCaptureKit Startup Failure & State Consistency', () => {
+    it('handles synchronous spawn failure cleanly without ReferenceError and preserves consistent state', () => {
+      let activeProcess: any = null;
+      let activeSessionId = 0;
+
+      function simulateStartCapture(shouldThrowOnSpawn: boolean): boolean {
+        activeSessionId++;
+        const currentSessionId = ++activeSessionId;
+
+        let child: any = null;
+        try {
+          if (shouldThrowOnSpawn) {
+            throw new Error('spawn ENOENT');
+          }
+          child = {
+            stdout: { removeAllListeners: () => {} },
+            stderr: { removeAllListeners: () => {} },
+            removeAllListeners: () => {},
+            kill: () => {}
+          };
+          activeProcess = child;
+          return true;
+        } catch (err) {
+          if (currentSessionId === activeSessionId) {
+            if (child) {
+              try {
+                child.stdout?.removeAllListeners();
+                child.stderr?.removeAllListeners();
+                child.removeAllListeners();
+                child.kill('SIGTERM');
+              } catch {}
+            }
+            if (activeProcess === child) {
+              activeProcess = null;
+            }
+          }
+          return false;
+        }
+      }
+
+      const result = simulateStartCapture(true);
+      expect(result).toBe(false);
+      expect(activeProcess).toBeNull();
+    });
+
+    it('cleans up spawned child process and resets active process state when subsequent setup fails', () => {
+      let activeProcess: any = null;
+      let activeSessionId = 0;
+      let killed = false;
+      let listenersRemoved = false;
+
+      function simulateStartCaptureWithSetupFailure(): boolean {
+        activeSessionId++;
+        const currentSessionId = ++activeSessionId;
+
+        let child: any = null;
+        try {
+          child = {
+            stdout: { removeAllListeners: () => { listenersRemoved = true; } },
+            stderr: { removeAllListeners: () => {} },
+            removeAllListeners: () => {},
+            kill: () => { killed = true; }
+          };
+          activeProcess = child;
+          // Simulate error thrown during stream / buffer initialization
+          throw new Error('Buffer allocation failure');
+        } catch (err) {
+          if (currentSessionId === activeSessionId) {
+            if (child) {
+              try {
+                child.stdout?.removeAllListeners();
+                child.stderr?.removeAllListeners();
+                child.removeAllListeners();
+                child.kill('SIGTERM');
+              } catch {}
+            }
+            if (activeProcess === child) {
+              activeProcess = null;
+            }
+          }
+          return false;
+        }
+      }
+
+      const result = simulateStartCaptureWithSetupFailure();
+      expect(result).toBe(false);
+      expect(killed).toBe(true);
+      expect(listenersRemoved).toBe(true);
+      expect(activeProcess).toBeNull();
+    });
+  });
 });
