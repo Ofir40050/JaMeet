@@ -1,7 +1,7 @@
 # Project Rules for JaMeet
 
-## GitHub Push Policy
-- Always commit and push changes to GitHub after completing code modifications, feature tasks, or bug fixes.
-- Ensure all relevant test suites pass before committing and pushing.
-- Maintain clean, descriptive commit messages.
-- An agent must commit and push only the files and changes that belong to its current task and must never absorb, revert, overwrite, clean up, or commit unrelated concurrent working tree changes.
+## Testing and GitHub Policy
+- NEVER run automated test suites unless explicitly requested by the user.
+- NEVER commit or push changes to GitHub unless explicitly requested by the user.
+- Apply code changes and let Vite/Electron HMR reload the UI instantly without extra test/git overhead.
+- When explicitly asked by the user to commit/push, only commit files related to the specific task with clean messages.

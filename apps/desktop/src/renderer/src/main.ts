@@ -5303,7 +5303,7 @@ $('btn-refresh-projects')?.addEventListener('click', () => void loadProjects());
 
 $('btn-project-back')?.addEventListener('click', async () => {
   if (activeProject?.workspace) {
-    await saveSongsWorkspace();
+    await flushAllWorkspacePendingSaves();
   }
   activeProjectId = undefined;
   activeProject = undefined;
@@ -5312,7 +5312,7 @@ $('btn-project-back')?.addEventListener('click', async () => {
 });
 $('project-view-home-crumb')?.addEventListener('click', async () => {
   if (activeProject?.workspace) {
-    await saveSongsWorkspace();
+    await flushAllWorkspacePendingSaves();
   }
   activeProjectId = undefined;
   activeProject = undefined;
@@ -5322,6 +5322,7 @@ $('project-view-home-crumb')?.addEventListener('click', async () => {
 
 $('btn-project-start-session')?.addEventListener('click', async () => {
   if (!activeProject) return;
+  await flushAllWorkspacePendingSaves();
   activeProjectId = activeProject.id;
   await prepareStudio({ type: 'create' });
 });
@@ -8958,6 +8959,41 @@ function debounceSaveTasks(): void {
   }, 350);
 }
 
+async function flushAllWorkspacePendingSaves(): Promise<void> {
+  if (!activeProject?.workspace) return;
+  const promises: Promise<any>[] = [];
+
+  if (lyricsSaveTimeout) {
+    clearTimeout(lyricsSaveTimeout);
+    lyricsSaveTimeout = null;
+    const activeDoc = getActiveLyricsDoc();
+    promises.push(saveLyricsWorkspace(activeDoc.content, activeDoc.id, activeDoc.title));
+  }
+  if (notesSaveTimeout) {
+    clearTimeout(notesSaveTimeout);
+    notesSaveTimeout = null;
+    const vals = getNotesFieldValues();
+    promises.push(saveNotesWorkspace(vals.content, vals.bpm, vals.key));
+  }
+  if (structureSaveTimeout) {
+    clearTimeout(structureSaveTimeout);
+    structureSaveTimeout = null;
+    const sections = activeProject.workspace.structure?.sections || [];
+    promises.push(saveStructureWorkspace(sections));
+  }
+  if (tasksSaveTimeout) {
+    clearTimeout(tasksSaveTimeout);
+    tasksSaveTimeout = null;
+  }
+  promises.push(saveTasksWorkspace());
+
+  if (activeProject.workspace.songs) {
+    promises.push(saveSongsWorkspace());
+  }
+
+  await Promise.allSettled(promises);
+}
+
 async function saveTasksWorkspace(): Promise<void> {
   if (!activeProject) return;
   const token = auth.getToken();
@@ -8970,7 +9006,18 @@ async function saveTasksWorkspace(): Promise<void> {
   const targetEditGen = tasksEditGen;
   const targetSaveGen = ++tasksSaveGen;
   const baseRevision = activeProject.workspace?.tasks?.revision ?? 1;
-  const tasks = getProjectTasks();
+  const tasks = getProjectTasks().map((t) => ({
+    id: t.id,
+    title: t.title?.trim() || 'Untitled Task',
+    status: t.status || 'todo',
+    assigneeId: t.assigneeId || undefined,
+    assigneeName: t.assigneeName || undefined,
+    note: t.note && t.note.trim() ? t.note.trim() : undefined,
+    dueDate: t.dueDate || undefined,
+    createdAt: t.createdAt || Date.now(),
+    completedAt: t.completedAt || undefined,
+    updatedAt: t.updatedAt || Date.now()
+  }));
 
   try {
     let res = await signaling.updateProjectWorkspace(targetProjectId, {
@@ -9208,50 +9255,32 @@ function renderTasksWorkspace(): void {
           `;
         }
 
-        // 3. Note display
-        let noteHtml = '';
-        if (task.note && task.note.trim()) {
-          noteHtml = `
-            <div class="task-meta-wrap meta-note-wrap">
-              <button type="button" class="task-meta-badge note-badge btn-trigger-note" title="${escapeHtml(task.note)}">
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                <span>${escapeHtml(task.note)}</span>
-              </button>
-              <input type="text" class="task-card-inline-note task-note-input hidden" value="${escapeHtml(task.note)}" placeholder="Note…" maxlength="500" />
-            </div>
-          `;
-        } else {
-          noteHtml = `
-            <div class="task-meta-wrap meta-note-wrap">
-              <button type="button" class="btn-meta-ghost btn-trigger-note" title="Add Note">
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                <span>Note</span>
-              </button>
-              <input type="text" class="task-card-inline-note task-note-input hidden" placeholder="Add note…" maxlength="500" />
-            </div>
-          `;
-        }
-
         card.innerHTML = `
-          <div class="drag-handle" title="Drag to reorder">
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
-          </div>
-          <button type="button" class="task-quick-toggle" title="${task.status === 'done' ? 'Reopen task' : 'Mark as Done'}">
-            ${toggleIcon}
-          </button>
-          <select class="task-status-select status-${task.status}" title="Task Status">
-            <option value="todo" ${task.status === 'todo' ? 'selected' : ''}>To Do</option>
-            <option value="in_progress" ${task.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
-            <option value="done" ${task.status === 'done' ? 'selected' : ''}>Done</option>
-          </select>
-          <input type="text" class="task-title-input" value="${escapeHtml(task.title)}" placeholder="Task title…" maxlength="150" />
-          <div class="task-metadata-row">
-            ${assigneeHtml}
-            ${dueHtml}
-            ${noteHtml}
-            <button type="button" class="btn-card-action btn-del" title="Delete Task">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+          <div class="task-main-row">
+            <div class="drag-handle" title="Drag to reorder">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
+            </div>
+            <button type="button" class="task-quick-toggle" title="${task.status === 'done' ? 'Reopen task' : 'Mark as Done'}">
+              ${toggleIcon}
             </button>
+            <select class="task-status-select status-${task.status}" title="Task Status">
+              <option value="todo" ${task.status === 'todo' ? 'selected' : ''}>To Do</option>
+              <option value="in_progress" ${task.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+              <option value="done" ${task.status === 'done' ? 'selected' : ''}>Done</option>
+            </select>
+            <input type="text" class="task-title-input" value="${escapeHtml(task.title)}" placeholder="Task title…" maxlength="150" />
+            <div class="task-metadata-row">
+              ${assigneeHtml}
+              ${dueHtml}
+              <button type="button" class="btn-card-action btn-del" title="Delete Task">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="task-note-block">
+            <div class="task-note-inner">
+              <textarea class="task-note-textarea" placeholder="Add note or details…" rows="1">${escapeHtml(task.note || '')}</textarea>
+            </div>
           </div>
         `;
       }
@@ -9276,27 +9305,40 @@ function renderTasksWorkspace(): void {
         task.updatedAt = Date.now();
         debounceSaveTasks();
       });
+      titleInput?.addEventListener('blur', () => {
+        task.title = titleInput.value.trim() || 'Untitled Task';
+        task.updatedAt = Date.now();
+        if (tasksSaveTimeout) {
+          clearTimeout(tasksSaveTimeout);
+          tasksSaveTimeout = null;
+        }
+        void saveTasksWorkspace();
+      });
 
-      // Progressive disclosure: Note
-      const triggerNote = card.querySelector<HTMLButtonElement>('.btn-trigger-note');
-      const noteInput = card.querySelector<HTMLInputElement>('.task-note-input');
-      if (triggerNote && noteInput) {
-        triggerNote.addEventListener('click', (e) => {
-          e.stopPropagation();
-          triggerNote.classList.add('hidden');
-          noteInput.classList.remove('hidden');
-          noteInput.focus();
-        });
-        noteInput.addEventListener('blur', () => {
-          task.note = noteInput.value.trim() || undefined;
+      // Always-open auto-expanding Note textarea
+      const noteTextarea = card.querySelector<HTMLTextAreaElement>('.task-note-textarea');
+      if (noteTextarea) {
+        const resizeNote = () => {
+          noteTextarea.style.height = 'auto';
+          noteTextarea.style.height = `${Math.max(22, noteTextarea.scrollHeight)}px`;
+        };
+        setTimeout(resizeNote, 0);
+
+        noteTextarea.addEventListener('input', () => {
+          resizeNote();
+          task.note = noteTextarea.value;
           task.updatedAt = Date.now();
           debounceSaveTasks();
-          renderTasksWorkspace();
         });
-        noteInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            noteInput.blur();
+
+        noteTextarea.addEventListener('blur', () => {
+          task.note = noteTextarea.value.trim() || undefined;
+          task.updatedAt = Date.now();
+          if (tasksSaveTimeout) {
+            clearTimeout(tasksSaveTimeout);
+            tasksSaveTimeout = null;
           }
+          void saveTasksWorkspace();
         });
       }
 
