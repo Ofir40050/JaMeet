@@ -24,6 +24,7 @@ export const userProfileSchema = z.object({
   isGuest: z.boolean().default(false),
   avatarColor: z.string().default('#06b6d4'),
   avatarUrl: z.string().optional(),
+  phoneNumber: z.string().max(30).optional(),
   location: z.string().max(80).optional(),
   role: z.string().max(60).optional(),
   primaryDaw: z.string().max(50).optional(),
@@ -54,7 +55,8 @@ export const registerRequestSchema = z.object({
   username: usernameSchema,
   email: emailSchema,
   password: passwordSchema,
-  displayName: displayNameSchema
+  displayName: displayNameSchema,
+  phoneNumber: z.string().trim().max(30).optional()
 });
 export type RegisterRequest = z.infer<typeof registerRequestSchema>;
 
@@ -66,6 +68,7 @@ export type LoginRequest = z.infer<typeof loginRequestSchema>;
 
 export const updateProfileRequestSchema = z.object({
   displayName: displayNameSchema.optional(),
+  phoneNumber: z.string().max(30).optional(),
   avatarColor: z.string().optional(),
   avatarUrl: z.string().max(2000000).optional(), // data URL up to ~2MB
   location: z.string().max(80).optional(),

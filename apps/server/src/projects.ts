@@ -151,8 +151,17 @@ export class ProjectStore {
       }
       if (!p.workspace.tasks) {
         p.workspace.tasks = { revision: 1, tasks: [], updatedAt: p.updatedAt || p.createdAt || Date.now() };
-      } else if (p.workspace.tasks.revision === undefined) {
-        p.workspace.tasks.revision = 1;
+      } else {
+        if (p.workspace.tasks.revision === undefined) {
+          p.workspace.tasks.revision = 1;
+        }
+        if (Array.isArray(p.workspace.tasks.tasks)) {
+          p.workspace.tasks.tasks.forEach((t: { title?: string }, idx: number) => {
+            if (!t.title || typeof t.title !== 'string' || !t.title.trim()) {
+              t.title = `Task ${idx + 1}`;
+            }
+          });
+        }
       }
     }
   }
