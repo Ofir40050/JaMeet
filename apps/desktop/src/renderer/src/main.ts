@@ -3021,7 +3021,22 @@ function updateAuthUi(user: UserProfile | null, guestName: string): void {
     setText('nav-user-name', user.displayName);
     setText('nav-user-handle', `@${user.username}`);
     const navAvatar = $('nav-user-avatar');
-    applyAvatarToElement(navAvatar, user.displayName, avatarBg, avatarUrl);
+    if (navAvatar) {
+      if (avatarUrl) {
+        navAvatar.textContent = '';
+        navAvatar.style.backgroundImage = `url("${avatarUrl}")`;
+        navAvatar.style.backgroundSize = 'cover';
+        navAvatar.style.backgroundPosition = 'center';
+        navAvatar.style.backgroundColor = 'transparent';
+        navAvatar.classList.add('has-photo');
+      } else {
+        navAvatar.textContent = '';
+        navAvatar.style.backgroundImage = 'none';
+        navAvatar.style.backgroundColor = '';
+        navAvatar.classList.remove('has-photo');
+        navAvatar.innerHTML = icons.user({ size: 14 });
+      }
+    }
   }
 
   // 2. Home Hero Area (Personalized for logged in vs Guest)

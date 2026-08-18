@@ -220,18 +220,19 @@ body {
    1. HOME VIEW (LANDING) - UNIFIED DESKTOP CONTENT RAIL
    ======================================================== */
 #home-view {
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-start;
-  padding: 24px 28px 48px;
+  padding: 0 0 48px 0;
   box-sizing: border-box;
   overflow-y: auto;
+  min-height: 100vh;
 }
 
 .home-container {
   max-width: 1040px;
   width: 100%;
   margin: 0 auto;
-  padding: 0;
+  padding: 24px 28px 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -3377,37 +3378,51 @@ select option {
   }
 }
 
-/* User Account Topbars & Pills - Flush with Home Content Rail */
+/* User Account Topbars & Pills - Full-Width Desktop Application Top Bar */
 .home-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  max-width: 1040px;
-  margin: 0 auto 20px;
-  padding: 0;
+  height: 52px;
+  min-height: 52px;
+  margin: 0;
+  padding: 0 28px;
   box-sizing: border-box;
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 50;
 }
 
 .home-topbar-left {
   display: flex;
   align-items: center;
-  gap: 12px;
 }
 
-.home-brand {
-  display: flex;
+.home-brand-lockup {
+  display: inline-flex;
   align-items: center;
+  gap: 9px;
+  user-select: none;
 }
 
-.home-brand-logo {
-  height: 32px;
-  width: auto;
-  max-height: 32px;
+.home-brand-icon {
+  width: 26px;
+  height: 26px;
   object-fit: contain;
+  border-radius: var(--radius-xs);
   display: block;
-  user-select: none;
   -webkit-user-drag: none;
+}
+
+.home-brand-wordmark {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text-main);
+  line-height: 1;
 }
 
 .topbar-brand {
@@ -3417,49 +3432,65 @@ select option {
   color: var(--text-muted);
 }
 
-.btn-topbar-avatar {
+.btn-topbar-account {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  background: transparent;
-  border: 1.5px solid transparent;
-  border-radius: 50%;
+  gap: 6px;
+  padding: 3px 8px 3px 3px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
   outline: none;
-  flex-shrink: 0;
 }
 
-.btn-topbar-avatar:hover {
-  border-color: var(--border-highlight);
+.btn-topbar-account:hover {
   background: var(--bg-card-hover);
-  transform: translateY(-0.5px);
+  border-color: var(--border-medium);
+  color: var(--text-main);
 }
 
-.btn-topbar-avatar:focus-visible {
+.btn-topbar-account:focus-visible {
   border-color: var(--border-focus);
   box-shadow: 0 0 0 2px var(--accent-primary-dim);
 }
 
-.topbar-avatar-badge {
-  width: 32px;
-  height: 32px;
+.topbar-account-avatar {
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: var(--bg-elevated);
+  background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  color: var(--text-main);
-  font-size: 12px;
-  font-weight: 600;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
-  background-size: cover;
-  background-position: center;
+  box-sizing: border-box;
+}
+
+.topbar-account-avatar.has-photo {
+  border-color: var(--border-subtle);
+  background-color: transparent;
+}
+
+.topbar-avatar-icon {
+  color: var(--text-secondary);
+}
+
+.topbar-account-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: color 0.15s ease;
+}
+
+.btn-topbar-account:hover .topbar-account-chevron {
+  color: var(--text-main);
 }
 
 .btn-user-pill {
@@ -3614,7 +3645,7 @@ select option {
 .home-user-welcome {
   width: 100%;
   max-width: 100%;
-  padding: 4px 0 2px;
+  padding: 4px 0 8px;
   margin: 0;
   box-sizing: border-box;
   display: flex;
@@ -3623,21 +3654,28 @@ select option {
   text-align: left;
 }
 
+.welcome-header-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .welcome-heading {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--text-main);
-  letter-spacing: -0.02em;
-  line-height: 1.25;
-  margin: 0 0 4px;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  margin: 0;
 }
 
 .welcome-subtext {
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 400;
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: 1.45;
   margin: 0;
+  letter-spacing: -0.005em;
 }
 
 .home-auth-cta-row {

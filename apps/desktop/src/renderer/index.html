@@ -15,12 +15,13 @@
     
     <main id="app">
       <!-- 1. HOME VIEW (LANDING) -->
-      <section id="home-view" class="view centered">
-        <!-- Persistent Top Navigation Bar -->
+      <section id="home-view" class="view">
+        <!-- Persistent Full-Width Application Top Navigation Bar -->
         <header class="home-topbar">
           <div class="home-topbar-left">
-            <div class="home-brand">
-              <img src="/logo.png" alt="JaMeet" class="home-brand-logo" />
+            <div class="home-brand-lockup">
+              <img src="/logo.png" alt="JaMeet" class="home-brand-icon" />
+              <span class="home-brand-wordmark">JaMeet</span>
             </div>
           </div>
           <div class="home-topbar-right">
@@ -40,10 +41,15 @@
               </button>
             </div>
 
-            <!-- Signed-In Topbar Profile Control -->
+            <!-- Signed-In Topbar Account Control -->
             <div id="home-auth-nav-user" class="auth-nav-group hidden">
-              <button id="nav-profile-pill" type="button" class="btn-topbar-avatar" title="Account Menu" aria-label="Account Menu" aria-haspopup="true">
-                <span id="nav-user-avatar" class="user-avatar-badge topbar-avatar-badge">DB</span>
+              <button id="nav-profile-pill" type="button" class="btn-topbar-account" title="Account Menu" aria-label="Account Menu" aria-haspopup="true">
+                <span id="nav-user-avatar" class="topbar-account-avatar">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="topbar-avatar-icon"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </span>
+                <span class="topbar-account-chevron">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m6 9 6 6 6-6"/></svg>
+                </span>
               </button>
             </div>
           </div>
@@ -52,8 +58,10 @@
         <div class="home-container">
           <!-- Personalized Signed-In Welcome Section -->
           <div id="home-user-hero" class="home-user-welcome hidden">
-            <h1 class="welcome-heading">Welcome back, <span id="home-user-greeting">User</span></h1>
-            <p class="welcome-subtext">Ready to start or join a studio session.</p>
+            <div class="welcome-header-group">
+              <h1 class="welcome-heading">Welcome back, <span id="home-user-greeting">User</span></h1>
+              <p class="welcome-subtext">Start or join a studio session to begin collaborating.</p>
+            </div>
           </div>
 
           <!-- Unauthenticated / Welcome Hero -->
