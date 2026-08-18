@@ -3380,20 +3380,32 @@ select option {
 
 /* User Account Topbars & Pills - Full-Width Desktop Application Top Bar */
 .home-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   width: 100%;
   height: 52px;
   min-height: 52px;
   margin: 0;
-  padding: 0 28px;
+  padding: 0;
   box-sizing: border-box;
   background: var(--bg-app);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
   top: 0;
   z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-topbar-inner {
+  max-width: 1040px;
+  width: 100%;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 28px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .home-topbar-left {
@@ -3404,13 +3416,13 @@ select option {
 .home-brand-lockup {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   user-select: none;
 }
 
 .home-brand-icon {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   border-radius: var(--radius-xs);
   display: block;
@@ -3418,9 +3430,9 @@ select option {
 }
 
 .home-brand-wordmark {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.015em;
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text-main);
   line-height: 1;
 }
@@ -3463,22 +3475,24 @@ select option {
   border-radius: 50%;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  color: var(--text-muted);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
   box-sizing: border-box;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  background-size: cover;
+  background-position: center;
 }
 
 .topbar-account-avatar.has-photo {
   border-color: var(--border-subtle);
   background-color: transparent;
-}
-
-.topbar-avatar-icon {
-  color: var(--text-secondary);
 }
 
 .topbar-account-chevron {
