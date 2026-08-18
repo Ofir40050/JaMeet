@@ -92,6 +92,7 @@ type Preferences = {
   mode: AudioMode;
   cameraQuality: VideoQuality;
   receiveQuality: VideoQuality;
+  mirrorCamera: boolean;
   performanceMode: PerformanceMode;
   stereoMusic: boolean;
   sampleRate?: number;
@@ -174,6 +175,7 @@ function readPreferences(): Preferences {
       mode: raw.mode === 'talk' ? 'talk' : 'music',
       cameraQuality: raw.cameraQuality || 'standard',
       receiveQuality: raw.receiveQuality || 'standard',
+      mirrorCamera: raw.mirrorCamera !== undefined ? Boolean(raw.mirrorCamera) : true,
       performanceMode: raw.performanceMode || 'balanced',
       stereoMusic: raw.stereoMusic !== undefined ? Boolean(raw.stereoMusic) : true,
       sampleRate: raw.sampleRate ? Number(raw.sampleRate) : 44_100,
@@ -198,6 +200,7 @@ function readPreferences(): Preferences {
       mode: 'music',
       cameraQuality: 'standard',
       receiveQuality: 'standard',
+      mirrorCamera: true,
       performanceMode: 'balanced',
       stereoMusic: true,
       sampleRate: 44_100,
@@ -579,31 +582,101 @@ function updateSessionStage(): void {
   applyParticipantViewLayout();
 }
 
+function createDownscaledVideoTrack(rawTrack: MediaStreamTrack, width: number, height: number, fps: number): MediaStreamTrack {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+  const hiddenVideo = document.createElement('video');
+  hiddenVideo.muted = true;
+  hiddenVideo.playsInline = true;
+  hiddenVideo.srcObject = new MediaStream([rawTrack]);
+  hiddenVideo.play().catch(() => {});
+
+  let animFrameId: number;
+  const render = () => {
+    if (rawTrack.readyState === 'ended') return;
+    if (ctx && hiddenVideo.readyState >= 2) {
+      ctx.drawImage(hiddenVideo, 0, 0, width, height);
+    }
+    animFrameId = requestAnimationFrame(render);
+  };
+  render();
+
+  const scaledStream = canvas.captureStream(fps);
+  const scaledTrack = scaledStream.getVideoTracks()[0];
+  if (!scaledTrack) return rawTrack;
+
+  const originalStop = scaledTrack.stop.bind(scaledTrack);
+  scaledTrack.stop = () => {
+    cancelAnimationFrame(animFrameId);
+    hiddenVideo.srcObject = null;
+    rawTrack.stop();
+    originalStop();
+  };
+  return scaledTrack;
+}
+
 function updateLocalPreviews(): void {
   const setupVisible = !$('setup-view')?.classList.contains('hidden');
   const callVisible = !$('call-view')?.classList.contains('hidden');
+  const settingsVisible = !$('settings-view')?.classList.contains('hidden');
   const setupVideo = $<HTMLVideoElement>('setup-video');
   const localVideo = $<HTMLVideoElement>('local-video');
+  const settingsVideo = $<HTMLVideoElement>('settings-video');
+  const isMirrored = prefs.mirrorCamera !== false;
+  const visibleTrack = screenTrack ?? (cameraEnabled ? videoTrack : undefined);
+  const isLowRes = prefs.cameraQuality === 'low';
   
   if (setupVisible && setupVideo) {
-    const stream = currentStream();
-    if (setupVideo.srcObject !== stream) setupVideo.srcObject = stream;
-    if (stream && setupVideo.paused) {
-      setupVideo.play().catch(() => {});
+    const currentTrack = (setupVideo.srcObject as MediaStream)?.getVideoTracks()[0];
+    if (currentTrack !== visibleTrack) {
+      setupVideo.srcObject = visibleTrack ? new MediaStream([visibleTrack]) : null;
+      if (visibleTrack) setupVideo.play().catch(() => {});
     }
+    setupVideo.classList.toggle('mirror', isMirrored);
+    setupVideo.classList.toggle('res-low', isLowRes);
   }
   if (callVisible && localVideo) {
-    const camStream = (cameraEnabled && videoTrack) ? new MediaStream([videoTrack]) : null;
-    if (localVideo.srcObject !== camStream) localVideo.srcObject = camStream;
-    if (camStream && localVideo.paused) {
-      localVideo.play().catch(() => {});
+    const camTrack = (cameraEnabled && videoTrack) ? videoTrack : undefined;
+    const currentTrack = (localVideo.srcObject as MediaStream)?.getVideoTracks()[0];
+    if (currentTrack !== camTrack) {
+      localVideo.srcObject = camTrack ? new MediaStream([camTrack]) : null;
+      if (camTrack) localVideo.play().catch(() => {});
     }
-    localVideo.classList.toggle('mirror', true);
+    localVideo.classList.toggle('mirror', isMirrored);
+    localVideo.classList.toggle('res-low', isLowRes);
+  }
+  if (settingsVisible && settingsVideo) {
+    const currentTrack = (settingsVideo.srcObject as MediaStream)?.getVideoTracks()[0];
+    if (currentTrack !== visibleTrack) {
+      settingsVideo.srcObject = visibleTrack ? new MediaStream([visibleTrack]) : null;
+      if (visibleTrack) settingsVideo.play().catch(() => {});
+    }
+    settingsVideo.classList.toggle('mirror', isMirrored);
+    settingsVideo.classList.toggle('res-low', isLowRes);
+  }
+
+  const badgeEl = $('settings-video-res-badge');
+  if (badgeEl) {
+    if (!videoTrack || !cameraEnabled) {
+      badgeEl.textContent = 'Camera Off';
+    } else {
+      const q = prefs.cameraQuality;
+      if (q === 'low') badgeEl.textContent = '360p · 15 fps (Low)';
+      else if (q === 'standard') badgeEl.textContent = '540p · 24 fps (Standard)';
+      else if (q === 'high') badgeEl.textContent = '720p · 30 fps (HD)';
+      else if (q === 'fhd') badgeEl.textContent = '1080p · 30 fps (Full HD)';
+      else if (q === 'qhd') badgeEl.textContent = '1440p · 30 fps (2K Quad HD)';
+      else if (q === 'uhd') badgeEl.textContent = '2160p · 30 fps (4K Ultra HD)';
+      else badgeEl.textContent = 'Auto (1080p · 30 fps)';
+    }
   }
   
   const isVideoLive = Boolean(videoTrack && cameraEnabled);
   $('setup-video-placeholder')?.classList.toggle('hidden', isVideoLive);
   $('local-placeholder')?.classList.toggle('hidden', isVideoLive);
+  $('settings-video-placeholder')?.classList.toggle('hidden', isVideoLive);
   const modeLabel = $('mode-label');
   if (modeLabel) modeLabel.textContent = prefs.mode === 'music' ? 'Music Mode' : 'Talk Mode';
 
@@ -612,10 +685,12 @@ function updateLocalPreviews(): void {
 
 async function acquireVideo(deviceId?: string): Promise<MediaStreamTrack> {
   let stream: MediaStream | undefined;
+  const quality = effectiveVideoQuality(prefs.cameraQuality);
+  
   if (deviceId) {
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: cameraConstraints(effectiveVideoQuality(prefs.cameraQuality), deviceId),
+        video: cameraConstraints(quality, deviceId),
         audio: false
       });
     } catch {
@@ -625,17 +700,25 @@ async function acquireVideo(deviceId?: string): Promise<MediaStreamTrack> {
   if (!stream) {
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: cameraConstraints(effectiveVideoQuality(prefs.cameraQuality), undefined),
+        video: cameraConstraints(quality, undefined),
         audio: false
       });
     } catch {
       stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     }
   }
-  const next = stream.getVideoTracks()[0];
-  if (!next) throw new Error('The selected camera did not provide video.');
-  next.enabled = cameraEnabled;
-  return next;
+  const rawTrack = stream.getVideoTracks()[0];
+  if (!rawTrack) throw new Error('The selected camera did not provide video.');
+
+  let finalTrack = rawTrack;
+  if (quality === 'low') {
+    finalTrack = createDownscaledVideoTrack(rawTrack, 640, 360, 15);
+  } else if (quality === 'standard') {
+    finalTrack = createDownscaledVideoTrack(rawTrack, 960, 540, 24);
+  }
+
+  finalTrack.enabled = cameraEnabled;
+  return finalTrack;
 }
 
 async function replaceCamera(deviceId?: string): Promise<void> {
@@ -911,7 +994,7 @@ export type ChannelDropdownOption = {
 };
 
 function formatDeviceDisplayName(rawName: string | undefined): string {
-  if (!rawName) return 'Default Audio Device';
+  if (!rawName) return 'Default Device';
   let name = rawName.trim();
   if (name === 'Universal Audio Thunderbolt' || name.toLowerCase().includes('uad2audioengine') || name.toLowerCase().includes('apollo')) {
     return 'Universal Audio Apollo';
@@ -922,8 +1005,10 @@ function formatDeviceDisplayName(rawName: string | undefined): string {
   if (name === 'BuiltInMicrophoneDevice' || name === 'MacBook Pro Microphone') {
     return 'MacBook Pro Microphone';
   }
-  name = name.replace(/:\d+$/, '').replace(/_DeviceUID$/, '');
-  return name;
+  // Strip trailing device IDs, hex hashes, vendor IDs, and anything in parentheses like (5bc678), (05ac:8514), etc.
+  name = name.replace(/\s*\([^)]*\)\s*$/g, '').trim();
+  name = name.replace(/:\d+$/, '').replace(/_DeviceUID$/, '').trim();
+  return name || rawName.trim();
 }
 
 function formatOutputChannelName(rawName: string | undefined, chNumber: number): { name: string; isUnassigned: boolean } {
@@ -1199,10 +1284,9 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
         </div>
         ${!isPrimary ? `
           <button type="button" class="btn-remove-mic" data-mic-id="${mic.id}" title="Remove Microphone ${mic.id}">
-            <span class="btn-remove-icon">${icons.x({ size: 14 })}</span>
-            <span>Remove</span>
+            <span class="btn-remove-icon">${icons.x({ size: 13 })}</span>
           </button>
-        ` : '<span class="primary-mic-tag">Primary</span>'}
+        ` : ''}
       `;
       card.appendChild(header);
 
@@ -1248,29 +1332,37 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
       chRow.appendChild(chSelect);
       body.appendChild(chRow);
 
-      if (!isCall) {
-        // Gain Slider (Sound Check only)
-        const gainRow = document.createElement('div');
-        gainRow.className = 'mic-gain-row';
-        gainRow.innerHTML = `
-          <div class="label-with-val">
-            <span class="sub-field-label">Mic ${mic.id} Level (Gain):</span>
-            <output id="gain-val-${mic.id}" class="badge-value">${Math.round((mic.gain ?? 1) * 100)}%</output>
-          </div>
-          <input id="gain-${mic.id}" type="range" min="0" max="1.5" step="0.05" value="${mic.gain ?? 1}" class="custom-slider mini-slider" />
-        `;
-        const slider = gainRow.querySelector<HTMLInputElement>(`#gain-${mic.id}`);
-        const valLabel = gainRow.querySelector<HTMLElement>(`#gain-val-${mic.id}`);
-        slider?.addEventListener('input', (event) => {
-          const val = Number((event.currentTarget as HTMLInputElement).value);
-          mic.gain = val;
-          if (isPrimary) prefs.inputGain = val;
-          savePreferences();
-          if (valLabel) valLabel.textContent = `${Math.round(val * 100)}%`;
-          void audio.setVoiceMicGain(mic.id, val);
-        });
-        body.appendChild(gainRow);
-      }
+      // Gain Slider (Both Sound Check & Settings!)
+      const gainRow = document.createElement('div');
+      gainRow.className = 'mic-gain-row';
+      gainRow.innerHTML = `
+        <div class="label-with-val">
+          <span class="sub-field-label">Mic ${mic.id} Level (Gain):</span>
+          <output id="${isCall ? 'call-' : ''}gain-val-${mic.id}" class="badge-value">${Math.round((mic.gain ?? 1) * 100)}%</output>
+        </div>
+        <input id="${isCall ? 'call-' : ''}gain-${mic.id}" type="range" min="0" max="1.5" step="0.05" value="${mic.gain ?? 1}" class="custom-slider mini-slider" />
+      `;
+      const slider = gainRow.querySelector<HTMLInputElement>(`#${isCall ? 'call-' : ''}gain-${mic.id}`);
+      const valLabel = gainRow.querySelector<HTMLElement>(`#${isCall ? 'call-' : ''}gain-val-${mic.id}`);
+      slider?.addEventListener('input', (event) => {
+        const val = Number((event.currentTarget as HTMLInputElement).value);
+        mic.gain = val;
+        if (isPrimary) prefs.inputGain = val;
+        savePreferences();
+        if (valLabel) valLabel.textContent = `${Math.round(val * 100)}%`;
+        for (const otherPrefix of ['', 'call-']) {
+          const otherSlider = document.querySelector<HTMLInputElement>(`#${otherPrefix}gain-${mic.id}`);
+          const otherValLabel = document.querySelector<HTMLElement>(`#${otherPrefix}gain-val-${mic.id}`);
+          if (otherSlider && otherSlider !== event.currentTarget) otherSlider.value = String(val);
+          if (otherValLabel && otherValLabel !== valLabel) otherValLabel.textContent = `${Math.round(val * 100)}%`;
+        }
+        void audio.setVoiceMicGain(mic.id, val);
+        const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
+        if (desktopApi?.setSystemInputVolume && isPrimary) {
+          void desktopApi.setSystemInputVolume(Math.min(1.0, val));
+        }
+      });
+      body.appendChild(gainRow);
 
       card.appendChild(body);
       container.appendChild(card);
@@ -1420,6 +1512,8 @@ async function enumerateAndPopulate(): Promise<void> {
     const el = document.getElementById(id) as HTMLSelectElement | null;
     if (el) el.value = String(prefs.musicBitrate);
   }
+  const mirrorEl = document.getElementById('settings-mirror-camera') as HTMLInputElement | null;
+  if (mirrorEl) mirrorEl.checked = prefs.mirrorCamera !== false;
   const audioOnlyEl = document.getElementById('audio-only-setup') as HTMLInputElement | null;
   if (audioOnlyEl) audioOnlyEl.checked = audioOnly;
 }
@@ -1454,12 +1548,8 @@ async function prepareStudio(action: PendingAction): Promise<void> {
   }
   showView('setup-view');
   setText('setup-code', currentCode);
-  if (action.type === 'create') {
-    $('setup-waiting-room-group')?.classList.remove('hidden');
-  } else {
-    $('setup-waiting-room-group')?.classList.add('hidden');
-  }
-  setMessage('setup-status', 'Connecting studio audio & camera…');
+  $('setup-waiting-room-group')?.classList.add('hidden');
+  setMessage('setup-status', '');
   setBusy(true);
 
   // Immediately render default UI state so everything is visible
@@ -1480,7 +1570,7 @@ async function prepareStudio(action: PendingAction): Promise<void> {
     ]);
 
     updateLocalPreviews();
-    setMessage('setup-status', 'Studio audio & camera ready.');
+    setMessage('setup-status', '');
   } catch (error) {
     setMessage('setup-status', deviceError(error), true);
   } finally {
@@ -1519,8 +1609,9 @@ function renderAudioLimitations(): void {
   }
 }
 function setModeRadios(mode: AudioMode): void {
-  const radio = document.querySelector<HTMLInputElement>(`input[name="setup-mode"][value="${mode}"]`);
-  if (radio) radio.checked = true;
+  for (const radio of document.querySelectorAll<HTMLInputElement>(`input[name="setup-mode"][value="${mode}"], input[name="call-setup-mode"][value="${mode}"]`)) {
+    radio.checked = true;
+  }
 }
 function updateMusicWarning(): void {
   updateHeadphoneWarning();
@@ -1935,10 +2026,146 @@ function updateLockUi(): void {
   btn.title = isSessionLocked ? 'Unlock Session (Allow participants to join)' : 'Lock Session (Prevent new participants from joining)';
 }
 
+interface SessionErrorModalOptions {
+  title: string;
+  message: string;
+  detail?: string;
+  type?: 'error' | 'warning' | 'info';
+  actionLabel?: string;
+  dismissLabel?: string;
+  onAction?: () => void;
+}
+
+function parseSessionError(error: unknown): SessionErrorModalOptions {
+  const raw = error instanceof Error ? error.message : String(error || '');
+  const lower = raw.toLowerCase();
+
+  if (
+    lower.includes('xhr poll error') ||
+    lower.includes('websocket') ||
+    lower.includes('polling') ||
+    lower.includes('transport') ||
+    lower.includes('network') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('econnrefused') ||
+    lower.includes('timeout')
+  ) {
+    return {
+      title: 'Server Connection Unavailable',
+      message: 'Could not establish a connection to the JaMeet studio network.',
+      detail: 'Please check your internet connection or try again in a few moments. The studio server may be waking up or temporarily unavailable.',
+      type: 'warning',
+      actionLabel: 'Retry Connection',
+      dismissLabel: 'Close',
+      onAction: () => void enterSession()
+    };
+  }
+
+  if (error instanceof DOMException && error.name === 'NotAllowedError') {
+    return {
+      title: 'Device Access Blocked',
+      message: 'Microphone or camera permissions are required to enter the live session.',
+      detail: 'Please grant microphone and camera permissions in System Settings (Privacy & Security), then try again.',
+      type: 'warning',
+      actionLabel: 'Try Again',
+      dismissLabel: 'Close',
+      onAction: () => void enterSession()
+    };
+  }
+
+  if (error instanceof DOMException && error.name === 'NotFoundError') {
+    return {
+      title: 'Audio Device Not Found',
+      message: 'No connected microphone or audio input device was found.',
+      detail: 'Please plug in your microphone or audio interface and ensure it appears under Voice Microphones.',
+      type: 'error',
+      actionLabel: 'Retry',
+      dismissLabel: 'Close',
+      onAction: () => void enterSession()
+    };
+  }
+
+  return {
+    title: 'Unable to Start Session',
+    message: raw && raw !== 'The selected device could not be opened.' ? raw : 'An unexpected error occurred while preparing your live session.',
+    detail: 'Please check your studio device connections and try entering the session again.',
+    type: 'error',
+    actionLabel: 'Try Again',
+    dismissLabel: 'Close',
+    onAction: () => void enterSession()
+  };
+}
+
+function showSessionErrorModal(options: SessionErrorModalOptions): void {
+  const modal = $('session-error-modal');
+  if (!modal) return;
+
+  setText('session-error-title', options.title);
+  setText('session-error-message', options.message);
+
+  const detailBox = $('session-error-detail-box');
+  if (detailBox) {
+    if (options.detail) {
+      setText('session-error-detail-text', options.detail);
+      detailBox.classList.remove('hidden');
+    } else {
+      detailBox.classList.add('hidden');
+    }
+  }
+
+  const iconBadge = $('session-error-icon');
+  if (iconBadge) {
+    iconBadge.className = `modal-icon-badge ${options.type === 'warning' ? 'warning-icon-badge' : options.type === 'info' ? 'info-icon-badge' : 'error-icon-badge'}`;
+    if (options.type === 'warning') {
+      iconBadge.innerHTML = icons.alertTriangle({ size: 20 });
+    } else if (options.type === 'info') {
+      iconBadge.innerHTML = icons.info({ size: 20 });
+    } else {
+      iconBadge.innerHTML = icons.alertCircle({ size: 20 });
+    }
+  }
+
+  const actionBtn = $('btn-session-error-action');
+  const dismissBtn = $('btn-session-error-dismiss');
+  const closeBtn = $('btn-close-session-error');
+
+  if (dismissBtn) {
+    dismissBtn.textContent = options.dismissLabel || 'Close';
+    dismissBtn.onclick = () => modal.classList.add('hidden');
+  }
+
+  if (closeBtn) {
+    closeBtn.onclick = () => modal.classList.add('hidden');
+  }
+
+  if (actionBtn) {
+    if (options.actionLabel) {
+      actionBtn.textContent = options.actionLabel;
+      actionBtn.classList.remove('hidden');
+      actionBtn.onclick = () => {
+        modal.classList.add('hidden');
+        options.onAction?.();
+      };
+    } else {
+      actionBtn.classList.add('hidden');
+    }
+  }
+
+  modal.classList.remove('hidden');
+}
+
 async function enterSession(): Promise<void> {
-  if (!pending || !audio.primary || (!audioOnly && !videoTrack)) throw new Error('Voice input and the selected session devices must be ready before entering.');
+  if (!pending || !audio.primary || (!audioOnly && !videoTrack)) {
+    showSessionErrorModal({
+      title: 'Studio Setup Required',
+      message: 'Your microphone and session audio devices must be ready before entering.',
+      detail: 'Please check your microphone connection and system audio permissions.',
+      type: 'warning',
+      actionLabel: 'OK'
+    });
+    return;
+  }
   setBusy(true);
-  setMessage('setup-status', pending.type === 'create' ? 'Creating session…' : 'Joining session…');
   try {
     const token = auth.getToken() || undefined;
     const guestName = auth.getGuestName() || undefined;
@@ -1948,14 +2175,65 @@ async function enterSession(): Promise<void> {
       : await signaling.join(pending.code, participantId, metadata(), token, guestName);
     if (!ack.ok) {
       if (ack.code === 'AUTH_REQUIRED') {
-        setMessage('setup-status', 'Authentication required to create or join a session.', true);
-        openAuthView('login');
-      } else if (ack.code === 'ACCESS_DENIED') {
-        setMessage('setup-status', 'Your account does not currently have access to JaMeet sessions.', true);
+        showSessionErrorModal({
+          title: 'Sign In Required',
+          message: 'An active JaMeet account is required to create or join studio sessions.',
+          detail: 'Please sign in or create an account to start collaborating.',
+          type: 'info',
+          actionLabel: 'Sign In',
+          onAction: () => openAuthView('login')
+        });
       } else if (ack.code === 'BETA_ENDED') {
-        setMessage('setup-status', 'JaMeet Beta has ended.\nA JaMeet subscription will be required to continue creating or joining sessions.', true);
+        showSessionErrorModal({
+          title: 'JaMeet Beta Has Ended',
+          message: 'The JaMeet public beta period has concluded. An active subscription is now required to create or join live studio sessions.',
+          detail: 'Please sign in to manage your subscription or contact studio support.',
+          type: 'warning',
+          actionLabel: 'Sign In / Account',
+          onAction: () => openAuthView('login')
+        });
+      } else if (ack.code === 'ACCESS_DENIED') {
+        showSessionErrorModal({
+          title: 'Access Restricted',
+          message: 'Your account does not currently have permission to access JaMeet live sessions.',
+          detail: 'Please check your account plan or contact studio support.',
+          type: 'error',
+          actionLabel: 'Sign In / Account',
+          onAction: () => openAuthView('login')
+        });
+      } else if (ack.code === 'ROOM_FULL') {
+        showSessionErrorModal({
+          title: 'Session is Full',
+          message: 'This session has reached its maximum participant limit.',
+          detail: 'Ask the host to start a new session or try again later.',
+          type: 'warning',
+          actionLabel: 'OK'
+        });
+      } else if (ack.code === 'LOCKED') {
+        showSessionErrorModal({
+          title: 'Session is Locked',
+          message: 'The host has locked this session to prevent new participants from joining.',
+          detail: 'Please contact the session host to unlock the room.',
+          type: 'warning',
+          actionLabel: 'OK'
+        });
+      } else if (ack.code === 'NOT_FOUND') {
+        showSessionErrorModal({
+          title: 'Session Not Found',
+          message: 'The session code is invalid or has already ended.',
+          detail: 'Please verify the session code and try again.',
+          type: 'error',
+          actionLabel: 'OK'
+        });
       } else {
-        setMessage('setup-status', ack.message, true);
+        showSessionErrorModal({
+          title: 'Unable to Join Session',
+          message: ack.message || 'An unexpected error occurred while connecting to the studio session.',
+          detail: 'Please check your connection and try again.',
+          type: 'error',
+          actionLabel: 'Retry',
+          onAction: () => void enterSession()
+        });
       }
       return;
     }
@@ -1971,6 +2249,8 @@ async function enterSession(): Promise<void> {
     }
     logger.setSessionContext(ack.code);
     await initializeActiveCall(ack);
+  } catch (error) {
+    showSessionErrorModal(parseSessionError(error));
   } finally { setBusy(false); }
 }
 
@@ -2341,13 +2621,13 @@ for (const id of ['setup-advanced-button', 'setup-advanced-action-button']) {
     }
   });
 }
-$('enter-session').addEventListener('click', () => void enterSession().catch((error) => setMessage('setup-status', deviceError(error), true)));
+$('enter-session').addEventListener('click', () => void enterSession());
 $('speaker-test').addEventListener('click', () => void testSpeakers().then(() => setMessage('setup-status', 'Speaker test complete.')).catch((error) => setMessage('setup-status', deviceError(error), true)));
 $('microphone-test').addEventListener('click', () => void testMicrophone().catch((error) => setMessage('setup-status', deviceError(error), true)));
 
-for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="setup-mode"]')) {
+for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="setup-mode"], input[name="call-setup-mode"]')) {
   radio.addEventListener('change', () => void syncAllVoiceMics(radio.value as AudioMode)
-    .then(() => { updateMusicWarning(); setMessage('setup-status', `${radio.value === 'music' ? 'Music' : 'Talk'} Mode ready.`); })
+    .then(() => { updateMusicWarning(); setMessage('setup-status', ''); })
     .catch((error) => { setModeRadios(prefs.mode); setMessage('setup-status', deviceError(error), true); }));
 }
 bindSelect('camera-select', (value) => replaceCamera(value || undefined));
@@ -2442,6 +2722,12 @@ bindSelect('receive-quality-select', (value) => changeReceiveQuality(value as Vi
 bindSelect('call-receive-quality-select', (value) => changeReceiveQuality(value as VideoQuality));
 bindSelect('performance-select', (value) => changePerformanceMode(value as PerformanceMode));
 bindSelect('call-performance-select', (value) => changePerformanceMode(value as PerformanceMode));
+
+$('settings-mirror-camera')?.addEventListener('change', (event) => {
+  prefs.mirrorCamera = (event.currentTarget as HTMLInputElement).checked;
+  savePreferences();
+  updateLocalPreviews();
+});
 
 function syncMediaActiveState(): void {
   const isMicLive = !muted && audio.hasActiveSources();
@@ -2751,6 +3037,9 @@ for (const id of ['input-gain', 'call-input-gain']) {
   $<HTMLInputElement>(id)?.addEventListener('input', (event) => {
     const val = Number((event.currentTarget as HTMLInputElement).value);
     prefs.inputGain = val;
+    if (prefs.voiceInputs && prefs.voiceInputs.length > 0 && prefs.voiceInputs[0]) {
+      prefs.voiceInputs[0].gain = val;
+    }
     for (const labelId of ['gain-value', 'call-gain-value']) {
       const el = document.getElementById(labelId);
       if (el) el.textContent = `${Math.round(val * 100)}%`;
@@ -2761,6 +3050,7 @@ for (const id of ['input-gain', 'call-input-gain']) {
     }
     savePreferences();
     void audio.applyVoiceGain(val);
+    void audio.setVoiceMicGain(1, val);
     const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
     if (desktopApi?.setSystemInputVolume) {
       void desktopApi.setSystemInputVolume(Math.min(1.0, val));
@@ -3647,7 +3937,7 @@ function closeAccountMenu(): void {
   $('account-menu')?.classList.add('hidden');
 }
 
-function openSettings(section: 'general' | 'audio' | 'video' | 'screenshare' | 'account' = 'general'): void {
+function openSettings(section: 'general' | 'audio' | 'video' | 'screenshare' | 'account' = 'account'): void {
   closeAccountMenu();
   const currentActive = views.find((v) => !$(v)?.classList.contains('hidden') && v !== 'settings-view');
   if (currentActive) {
@@ -3674,14 +3964,14 @@ function switchSettingsSection(section: 'general' | 'audio' | 'video' | 'screens
   }
   const crumbText =
     section === 'account'
-      ? 'Settings · Account'
+      ? 'Account Profile'
       : section === 'audio'
-        ? 'Settings · Audio'
+        ? 'Audio & Hardware'
         : section === 'video'
-          ? 'Settings · Video'
+          ? 'Video & Camera'
           : section === 'screenshare'
-            ? 'Settings · Screen Sharing'
-            : 'Settings · General';
+            ? 'Screen Sharing'
+            : 'General Preferences';
   setText('settings-view-crumb', crumbText);
 }
 

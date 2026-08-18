@@ -4,7 +4,7 @@ import { cameraConstraints, lowerQuality, performanceVideoQuality, VIDEO_QUALITY
 describe('video quality profiles', () => {
   it('provides a low-CPU 360p profile', () => {
     expect(cameraConstraints('low', 'camera-1')).toEqual({
-      deviceId: { exact: 'camera-1' }, width: { ideal: 640 }, height: { ideal: 360 },
+      deviceId: { exact: 'camera-1' }, width: { ideal: 640, max: 640 }, height: { ideal: 360, max: 360 },
       frameRate: { ideal: 15, max: 15 }
     });
     expect(VIDEO_QUALITY.low.maxBitrate).toBe(450_000);

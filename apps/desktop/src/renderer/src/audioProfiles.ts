@@ -23,7 +23,7 @@ export function audioConstraints(mode: AudioMode, deviceId?: string, preferences
     deviceId: deviceId ? { exact: deviceId } : undefined,
     sampleRate: { ideal: sampleRate },
     channelCount: { ideal: channelCount },
-    volume: preferences.inputGain === undefined ? undefined : { ideal: preferences.inputGain }
+    volume: preferences.inputGain === undefined ? undefined : { ideal: Math.min(1.0, Math.max(0, preferences.inputGain)) }
   } as MediaTrackConstraints;
 
   if (mode === 'music' || isMultichannelRoute) {

@@ -186,13 +186,21 @@ export class WebRtcSession {
     const parameters = sender.getParameters();
     if (!parameters.encodings?.length) parameters.encodings = [{}];
     const quality = lowerQuality(this.localVideoQuality, this.remoteReceiveVideoQuality);
-    const profile = VIDEO_QUALITY[quality];
+    const profile = VIDEO_QUALITY[quality] ?? VIDEO_QUALITY.high;
     const screen = track.contentHint === 'detail' || track.contentHint === 'text';
-    parameters.encodings[0]!.maxBitrate = screen ? Math.min(1_500_000, profile.maxBitrate) : profile.maxBitrate;
+    const isAuto = this.localVideoQuality === 'auto';
+
+    parameters.encodings[0]!.maxBitrate = screen 
+      ? Math.min(1_500_000, profile.maxBitrate) 
+      : isAuto 
+        ? 4_000_000 
+        : profile.maxBitrate;
     parameters.encodings[0]!.maxFramerate = screen ? Math.min(12, profile.frameRate) : profile.frameRate;
     parameters.encodings[0]!.scaleResolutionDownBy = screen
       ? Math.max(1, 1920 / profile.width)
-      : Math.max(1, VIDEO_QUALITY[this.localVideoQuality].width / profile.width);
+      : isAuto 
+        ? 1 
+        : Math.max(1, (VIDEO_QUALITY[this.localVideoQuality]?.width ?? 1280) / profile.width);
     parameters.encodings[0]!.active = screen || !this.remoteAudioOnly;
     parameters.degradationPreference = screen ? 'maintain-resolution' : 'balanced';
     try { await sender.setParameters(parameters); } catch { /* Applied after negotiation if Chromium defers it. */ }
