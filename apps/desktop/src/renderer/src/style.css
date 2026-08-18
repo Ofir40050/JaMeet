@@ -6199,20 +6199,27 @@ select option {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 36px 20px;
+  padding: 14px 16px 6px;
   color: var(--text-muted);
 }
 
 .projects-empty .empty-icon {
-  font-size: 28px;
-  margin-bottom: 6px;
-  opacity: 0.7;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
 }
 
 .projects-empty h4 {
-  font-size: 13.5px;
+  font-size: 13px;
   color: var(--text-main);
-  margin: 0 0 4px;
+  margin: 0 0 3px;
   font-weight: 600;
 }
 
@@ -6229,13 +6236,13 @@ select option {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 12px;
-  padding: 7px 16px;
-  border-radius: var(--radius-sm);
+  margin-top: 10px;
+  padding: 5px 14px;
+  border-radius: var(--radius-xs);
   background: var(--accent-primary);
   border: 1px solid var(--accent-primary);
   color: #ffffff;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease;
@@ -10571,8 +10578,7 @@ svg.ui-icon {
   color: #ffffff;
 }
 
-/* Empty Icons (No Projects / No Sessions) */
-.projects-empty .empty-icon,
+/* Empty Icons (No Recent Sessions) */
 .recent-sessions-empty .empty-icon {
   width: 56px;
   height: 56px;
