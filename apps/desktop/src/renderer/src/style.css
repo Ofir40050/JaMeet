@@ -3392,7 +3392,22 @@ select option {
 .home-topbar-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+}
+
+.home-brand {
+  display: flex;
+  align-items: center;
+}
+
+.home-brand-logo {
+  height: 32px;
+  width: auto;
+  max-height: 32px;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .topbar-brand {
@@ -3400,6 +3415,51 @@ select option {
   font-weight: 700;
   letter-spacing: 0.06em;
   color: var(--text-muted);
+}
+
+.btn-topbar-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: transparent;
+  border: 1.5px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.btn-topbar-avatar:hover {
+  border-color: var(--border-highlight);
+  background: var(--bg-card-hover);
+  transform: translateY(-0.5px);
+}
+
+.btn-topbar-avatar:focus-visible {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px var(--accent-primary-dim);
+}
+
+.topbar-avatar-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
 }
 
 .btn-user-pill {
@@ -3550,98 +3610,34 @@ select option {
   border-color: var(--border-medium);
 }
 
-/* 2. Home Screen Hero Banners */
-.user-hero-card {
+/* 2. Home Screen Signed-In Welcome Section */
+.home-user-welcome {
   width: 100%;
   max-width: 100%;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 18px 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
+  padding: 4px 0 2px;
   margin: 0;
-  box-shadow: var(--shadow-sm);
   box-sizing: border-box;
-}
-
-.user-hero-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.user-hero-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-  font-size: 16px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.user-hero-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: flex-start;
+  text-align: left;
 }
 
-.user-hero-tag-row {
-  display: flex;
-  gap: 6px;
-}
-
-.user-hero-info h2 {
-  font-size: 18px;
+.welcome-heading {
+  font-size: 22px;
   font-weight: 700;
   color: var(--text-main);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin: 0 0 4px;
+}
+
+.welcome-subtext {
+  font-size: 13.5px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  line-height: 1.4;
   margin: 0;
-  letter-spacing: -0.01em;
-}
-
-.user-hero-sub {
-  font-size: 12.5px;
-  color: var(--text-muted);
-  margin: 0;
-}
-
-.user-hero-sub strong {
-  color: var(--text-main);
-}
-
-.profile-pill.sec-pill {
-  background: rgba(16, 185, 129, 0.1);
-  border-color: rgba(16, 185, 129, 0.25);
-  color: #34d399;
-}
-
-.btn-hero-profile {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-main);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 7px 14px;
-  border-radius: var(--radius-sm);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.btn-hero-profile:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-medium);
 }
 
 .home-auth-cta-row {

@@ -19,10 +19,8 @@
         <!-- Persistent Top Navigation Bar -->
         <header class="home-topbar">
           <div class="home-topbar-left">
-            <div class="brand-badge-mini">
-              <span class="pulse-indicator"></span>
-              <span class="brand-title">JAMEET</span>
-              <span class="brand-sub">STUDIO</span>
+            <div class="home-brand">
+              <img src="/logo.png" alt="JaMeet" class="home-brand-logo" />
             </div>
           </div>
           <div class="home-topbar-right">
@@ -42,50 +40,20 @@
               </button>
             </div>
 
-            <!-- Signed-In Topbar Profile Pill -->
+            <!-- Signed-In Topbar Profile Control -->
             <div id="home-auth-nav-user" class="auth-nav-group hidden">
-              <button id="nav-profile-pill" type="button" class="btn-user-pill" title="View Account Profile">
-                <span id="nav-user-avatar" class="user-avatar-badge">DB</span>
-                <div class="nav-user-info">
-                  <span id="nav-user-name" class="nav-user-name">User</span>
-                  <span id="nav-user-handle" class="nav-user-handle">@handle</span>
-                </div>
-                <span class="pill-chevron">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m6 9 6 6 6-6"/></svg>
-                </span>
+              <button id="nav-profile-pill" type="button" class="btn-topbar-avatar" title="Account Menu" aria-label="Account Menu" aria-haspopup="true">
+                <span id="nav-user-avatar" class="user-avatar-badge topbar-avatar-badge">DB</span>
               </button>
             </div>
           </div>
         </header>
 
         <div class="home-container">
-          <!-- Personalized Signed-In Hero Banner -->
-          <div id="home-user-hero" class="user-hero-card hidden">
-            <div class="user-hero-left">
-              <div id="home-hero-avatar" class="user-hero-avatar">DB</div>
-              <div class="user-hero-info">
-                <div class="user-hero-tag-row">
-                  <span class="profile-pill">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
-                    <span>JaMeet Account</span>
-                  </span>
-                  <span class="profile-pill sec-pill">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
-                    <span>Saved on Device</span>
-                  </span>
-                </div>
-                <h2>Welcome back, <span id="home-user-greeting">User</span></h2>
-                <p class="user-hero-sub">Signed in as <strong id="home-user-handle-display">@handle</strong> · <span id="home-user-email-display">user@email.com</span></p>
-              </div>
-            </div>
-            <div class="user-hero-right">
-              <button id="home-view-profile-btn" type="button" class="btn-hero-profile">
-                <span>Account Profile</span>
-                <span class="btn-arrow">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                </span>
-              </button>
-            </div>
+          <!-- Personalized Signed-In Welcome Section -->
+          <div id="home-user-hero" class="home-user-welcome hidden">
+            <h1 class="welcome-heading">Welcome back, <span id="home-user-greeting">User</span></h1>
+            <p class="welcome-subtext">Ready to start or join a studio session.</p>
           </div>
 
           <!-- Unauthenticated / Welcome Hero -->
