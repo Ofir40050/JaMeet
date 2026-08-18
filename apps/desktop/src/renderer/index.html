@@ -148,18 +148,15 @@
               </div>
             </div>
 
-            <div id="projects-empty" class="projects-empty">
-              <div class="empty-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+            <div id="projects-empty" class="projects-empty projects-empty-row">
+              <div class="projects-empty-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
               </div>
-              <h4>No projects yet</h4>
-              <p>Create a project to organize songs, collaborators, and session history in one persistent workspace.</p>
-              <button id="btn-create-first-project" type="button" class="btn-empty-create">
-                <span class="btn-icon-inner">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-                </span>
-                <span>Create Your First Project</span>
-              </button>
+              <div class="projects-empty-text">
+                <span class="projects-empty-title">No projects yet</span>
+                <span class="projects-empty-desc">Create a project to organize songs, collaborators, and session history in one persistent workspace.</span>
+              </div>
+              <button id="btn-create-first-project" type="button" class="hidden" style="display: none;" aria-hidden="true"></button>
             </div>
 
             <div id="projects-grid" class="projects-grid"></div>
