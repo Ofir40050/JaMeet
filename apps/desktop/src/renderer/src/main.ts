@@ -9173,9 +9173,9 @@ function renderTasksWorkspace(): void {
         } else {
           assigneeHtml = `
             <div class="task-meta-wrap">
-              <button type="button" class="btn-meta-ghost btn-trigger-assignee" title="Assign to collaborator">
+              <button type="button" class="btn-meta-ghost btn-trigger-assignee" title="Assign collaborator">
                 <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
-                <span>+ Assign</span>
+                <span>Assign</span>
               </button>
               <select class="task-card-inline-select task-assignee-select hidden" title="Select Assignee">
                 ${assigneeOptions}
@@ -9190,7 +9190,8 @@ function renderTasksWorkspace(): void {
           dueHtml = `
             <div class="task-meta-wrap">
               <button type="button" class="task-meta-badge due-badge btn-trigger-due" title="Change Due Date">
-                <span>📅 ${escapeHtml(formatShortDate(task.dueDate))}</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                <span>${escapeHtml(formatShortDate(task.dueDate))}</span>
               </button>
               <input type="date" class="task-card-inline-date task-due-input hidden" value="${escapeHtml(task.dueDate)}" />
             </div>
@@ -9200,7 +9201,7 @@ function renderTasksWorkspace(): void {
             <div class="task-meta-wrap">
               <button type="button" class="btn-meta-ghost btn-trigger-due" title="Set Due Date">
                 <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-                <span>+ Due</span>
+                <span>Due</span>
               </button>
               <input type="date" class="task-card-inline-date task-due-input hidden" />
             </div>
@@ -9213,7 +9214,8 @@ function renderTasksWorkspace(): void {
           noteHtml = `
             <div class="task-meta-wrap">
               <button type="button" class="task-meta-badge note-badge btn-trigger-note" title="${escapeHtml(task.note)}">
-                <span>💬 ${escapeHtml(task.note)}</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span>${escapeHtml(task.note)}</span>
               </button>
               <input type="text" class="task-card-inline-note task-note-input hidden" value="${escapeHtml(task.note)}" placeholder="Note…" maxlength="500" />
             </div>
@@ -9223,7 +9225,7 @@ function renderTasksWorkspace(): void {
             <div class="task-meta-wrap">
               <button type="button" class="btn-meta-ghost btn-trigger-note" title="Add Note">
                 <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                <span>+ Note</span>
+                <span>Note</span>
               </button>
               <input type="text" class="task-card-inline-note task-note-input hidden" placeholder="Add note…" maxlength="500" />
             </div>

@@ -992,16 +992,16 @@
               <div class="tasks-header-bar">
                 <div class="tasks-title-wrap">
                   <span class="tasks-brand-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
                   </span>
                   <div>
-                    <h3 class="tasks-title">Production Tasks &amp; Checklist</h3>
-                    <p class="tasks-subtitle">Track recording, editing, mixing, and arrangement to-dos with collaborators</p>
+                    <h3 class="tasks-title">Production Tasks</h3>
+                    <p class="tasks-subtitle">Track recording, mixing, and arrangement to-dos</p>
                   </div>
                 </div>
                 <div class="tasks-meta-pills">
-                  <span id="tasks-summary-remaining" class="workspace-stats-pill">0 Remaining</span>
-                  <span id="tasks-summary-completed" class="workspace-stats-pill">0 Done</span>
+                  <span id="tasks-summary-remaining" class="tasks-stat-pill">0 Remaining</span>
+                  <span id="tasks-summary-completed" class="tasks-stat-pill done">0 Done</span>
                 </div>
               </div>
 
@@ -1012,7 +1012,7 @@
                     <span class="task-create-icon">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="16"/><line x1="8" x2="16" y1="12" y2="12"/></svg>
                     </span>
-                    <input id="task-new-title" type="text" class="task-create-input" placeholder="What needs to be done next? (e.g. Record acoustic guitars, Fix vocal timing, Send new mix)…" maxlength="150" required />
+                    <input id="task-new-title" type="text" class="task-create-input" placeholder="What needs to be done next?" maxlength="150" required />
                   </div>
                   
                   <div class="task-create-controls">
@@ -1033,9 +1033,9 @@
                   </div>
                 </form>
 
-                <!-- Simplified Music Task Suggestions with More Ideas Dropdown -->
+                <!-- Music Task Suggestions with More Ideas Dropdown -->
                 <div class="task-suggestions-bar">
-                  <span class="suggestions-label">Quick Ideas:</span>
+                  <span class="suggestions-label">Suggestions:</span>
                   <div class="suggestions-chips">
                     <button type="button" class="task-suggestion-chip" data-task-title="Record final vocals">+ Record Vocals</button>
                     <button type="button" class="task-suggestion-chip" data-task-title="Add chorus guitars">+ Chorus Guitars</button>
@@ -1044,13 +1044,13 @@
                     
                     <div class="more-ideas-dropdown-wrap">
                       <button type="button" id="btn-more-ideas-toggle" class="task-suggestion-chip btn-more-ideas">
-                        <span>+ More Ideas</span>
+                        <span>+ More</span>
                         <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polyline points="6 9 12 15 18 9"/></svg>
                       </button>
                       <div id="more-ideas-menu" class="more-ideas-menu hidden">
                         <button type="button" class="more-idea-item" data-task-title="Rewrite Verse 2 lyrics">Rewrite Verse 2</button>
                         <button type="button" class="more-idea-item" data-task-title="Record vocal harmonies &amp; ad-libs">Harmonies &amp; Ad-libs</button>
-                        <button type="button" class="more-idea-item" data-task-title="Change bridge drums &amp; transition">Bridge Drums &amp; Transition</button>
+                        <button type="button" class="more-idea-item" data-task-title="Change bridge drums &amp; transition">Bridge Drums</button>
                         <button type="button" class="more-idea-item" data-task-title="Re-track bassline groove">Bassline Overdub</button>
                         <button type="button" class="more-idea-item" data-task-title="Send new mix revision to artist">Send Mix Revision</button>
                         <button type="button" class="more-idea-item" data-task-title="Mastering polish &amp; metadata export">Mastering Polish</button>
@@ -1063,12 +1063,24 @@
               <!-- 3. Status Filter Bar -->
               <div class="tasks-filter-bar">
                 <div class="tasks-filter-pills">
-                  <button type="button" class="task-filter-btn active" data-filter="all">All (<span id="task-count-all">0</span>)</button>
-                  <button type="button" class="task-filter-btn" data-filter="todo">To Do (<span id="task-count-todo">0</span>)</button>
-                  <button type="button" class="task-filter-btn" data-filter="in_progress">In Progress (<span id="task-count-in_progress">0</span>)</button>
-                  <button type="button" class="task-filter-btn" data-filter="done">Done (<span id="task-count-done">0</span>)</button>
+                  <button type="button" class="task-filter-btn active" data-filter="all">
+                    <span>All</span>
+                    <span id="task-count-all" class="task-filter-badge">0</span>
+                  </button>
+                  <button type="button" class="task-filter-btn" data-filter="todo">
+                    <span>To Do</span>
+                    <span id="task-count-todo" class="task-filter-badge">0</span>
+                  </button>
+                  <button type="button" class="task-filter-btn" data-filter="in_progress">
+                    <span>In Progress</span>
+                    <span id="task-count-in_progress" class="task-filter-badge">0</span>
+                  </button>
+                  <button type="button" class="task-filter-btn" data-filter="done">
+                    <span>Done</span>
+                    <span id="task-count-done" class="task-filter-badge">0</span>
+                  </button>
                 </div>
-                <span class="tasks-reorder-hint">Drag handle ⋮⋮ to reorder tasks</span>
+                <span class="tasks-reorder-hint">Drag ⋮⋮ to reorder</span>
               </div>
 
               <!-- 4. Tasks List & Empty State -->
@@ -1078,10 +1090,10 @@
                 </div>
                 <div id="project-tasks-empty" class="tasks-empty-state">
                   <div class="tasks-empty-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
                   </div>
-                  <h4>No Tasks in this view</h4>
-                  <p>Add a task using the bar above or click a quick suggestion to start tracking your song production checklist.</p>
+                  <h4>No tasks in this view</h4>
+                  <p>Add a task using the bar above or pick a suggestion to start tracking.</p>
                 </div>
               </div>
 
