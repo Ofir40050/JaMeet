@@ -1572,7 +1572,7 @@ async function prepareStudio(action: PendingAction): Promise<void> {
     updateLocalPreviews();
     setMessage('setup-status', '');
   } catch (error) {
-    setMessage('setup-status', deviceError(error), true);
+    showSessionErrorModal(parseSessionError(error));
   } finally {
     setBusy(false);
   }
@@ -2039,6 +2039,54 @@ interface SessionErrorModalOptions {
 function parseSessionError(error: unknown): SessionErrorModalOptions {
   const raw = error instanceof Error ? error.message : String(error || '');
   const lower = raw.toLowerCase();
+
+  if (
+    lower.includes('access to jameet') ||
+    lower.includes('access restricted') ||
+    lower.includes('access_denied') ||
+    lower.includes('entitlement') ||
+    lower.includes('does not currently have access') ||
+    lower.includes('not have access') ||
+    lower.includes('permission to access')
+  ) {
+    return {
+      title: 'Session Access Restricted',
+      message: 'Your account does not currently have access to JaMeet sessions.',
+      detail: 'Creating and joining live studio sessions requires verified account access or an active plan. Please sign in or contact studio support.',
+      type: 'warning',
+      actionLabel: 'Sign In / Account',
+      dismissLabel: 'Close',
+      onAction: () => openAuthView('login')
+    };
+  }
+
+  if (lower.includes('beta has ended') || lower.includes('beta_ended')) {
+    return {
+      title: 'JaMeet Beta Has Ended',
+      message: 'The JaMeet public beta period has concluded. An active subscription is now required to create or join live studio sessions.',
+      detail: 'Please sign in to manage your subscription or contact studio support.',
+      type: 'warning',
+      actionLabel: 'Sign In / Account',
+      dismissLabel: 'Close',
+      onAction: () => openAuthView('login')
+    };
+  }
+
+  if (
+    lower.includes('auth_required') ||
+    lower.includes('sign in required') ||
+    lower.includes('authentication required')
+  ) {
+    return {
+      title: 'Sign In Required',
+      message: 'An active JaMeet account is required to create or join studio sessions.',
+      detail: 'Please sign in or create an account to start collaborating with low-latency audio.',
+      type: 'info',
+      actionLabel: 'Sign In',
+      dismissLabel: 'Close',
+      onAction: () => openAuthView('login')
+    };
+  }
 
   if (
     lower.includes('xhr poll error') ||
@@ -2617,18 +2665,18 @@ for (const id of ['setup-advanced-button', 'setup-advanced-action-button']) {
       await enumerateAndPopulate();
       openSettings('audio');
     } catch (error) {
-      setMessage('setup-status', deviceError(error), true);
+      showSessionErrorModal(parseSessionError(error));
     }
   });
 }
 $('enter-session').addEventListener('click', () => void enterSession());
-$('speaker-test').addEventListener('click', () => void testSpeakers().then(() => setMessage('setup-status', 'Speaker test complete.')).catch((error) => setMessage('setup-status', deviceError(error), true)));
-$('microphone-test').addEventListener('click', () => void testMicrophone().catch((error) => setMessage('setup-status', deviceError(error), true)));
+$('speaker-test').addEventListener('click', () => void testSpeakers().then(() => setMessage('setup-status', 'Speaker test complete.')).catch((error) => showSessionErrorModal(parseSessionError(error))));
+$('microphone-test').addEventListener('click', () => void testMicrophone().catch((error) => showSessionErrorModal(parseSessionError(error))));
 
 for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="setup-mode"], input[name="call-setup-mode"]')) {
   radio.addEventListener('change', () => void syncAllVoiceMics(radio.value as AudioMode)
     .then(() => { updateMusicWarning(); setMessage('setup-status', ''); })
-    .catch((error) => { setModeRadios(prefs.mode); setMessage('setup-status', deviceError(error), true); }));
+    .catch((error) => { setModeRadios(prefs.mode); showSessionErrorModal(parseSessionError(error)); }));
 }
 bindSelect('camera-select', (value) => replaceCamera(value || undefined));
 bindSelect('call-camera-select', (value) => replaceCamera(value || undefined));

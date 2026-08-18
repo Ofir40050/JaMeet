@@ -1912,11 +1912,14 @@ select option {
   white-space: pre-line;
 }
 
-#setup-status {
+#setup-status,
+#setup-status.message,
+#setup-status.message.error,
+#setup-status.error {
   display: none !important;
 }
 
-.message.error {
+.message.error:not(#setup-status) {
   display: block !important;
   color: var(--danger);
   font-weight: 500;
