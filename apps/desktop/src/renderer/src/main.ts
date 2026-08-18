@@ -9160,7 +9160,7 @@ function renderTasksWorkspace(): void {
         if (task.assigneeId) {
           const initial = (task.assigneeName || 'U').charAt(0).toUpperCase();
           assigneeHtml = `
-            <div class="task-meta-wrap">
+            <div class="task-meta-wrap meta-assignee-wrap">
               <button type="button" class="task-meta-badge assignee-badge btn-trigger-assignee" title="Change Assignee">
                 <span class="task-meta-avatar">${initial}</span>
                 <span>${escapeHtml(task.assigneeName || 'Collaborator')}</span>
@@ -9172,7 +9172,7 @@ function renderTasksWorkspace(): void {
           `;
         } else {
           assigneeHtml = `
-            <div class="task-meta-wrap">
+            <div class="task-meta-wrap meta-assignee-wrap">
               <button type="button" class="btn-meta-ghost btn-trigger-assignee" title="Assign collaborator">
                 <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
                 <span>Assign</span>
@@ -9188,7 +9188,7 @@ function renderTasksWorkspace(): void {
         let dueHtml = '';
         if (task.dueDate) {
           dueHtml = `
-            <div class="task-meta-wrap">
+            <div class="task-meta-wrap meta-due-wrap">
               <button type="button" class="task-meta-badge due-badge btn-trigger-due" title="Change Due Date">
                 <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
                 <span>${escapeHtml(formatShortDate(task.dueDate))}</span>
@@ -9198,7 +9198,7 @@ function renderTasksWorkspace(): void {
           `;
         } else {
           dueHtml = `
-            <div class="task-meta-wrap">
+            <div class="task-meta-wrap meta-due-wrap">
               <button type="button" class="btn-meta-ghost btn-trigger-due" title="Set Due Date">
                 <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
                 <span>Due</span>
@@ -9212,7 +9212,7 @@ function renderTasksWorkspace(): void {
         let noteHtml = '';
         if (task.note && task.note.trim()) {
           noteHtml = `
-            <div class="task-meta-wrap">
+            <div class="task-meta-wrap meta-note-wrap">
               <button type="button" class="task-meta-badge note-badge btn-trigger-note" title="${escapeHtml(task.note)}">
                 <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 <span>${escapeHtml(task.note)}</span>
@@ -9222,7 +9222,7 @@ function renderTasksWorkspace(): void {
           `;
         } else {
           noteHtml = `
-            <div class="task-meta-wrap">
+            <div class="task-meta-wrap meta-note-wrap">
               <button type="button" class="btn-meta-ghost btn-trigger-note" title="Add Note">
                 <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 <span>Note</span>

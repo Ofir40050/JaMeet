@@ -13063,10 +13063,12 @@ svg.ui-icon {
 }
 
 .drag-handle {
+  width: 16px;
   color: #475569;
   cursor: grab;
   display: flex;
   align-items: center;
+  justify-content: center;
   transition: color 0.15s;
   flex-shrink: 0;
 }
@@ -13109,21 +13111,28 @@ svg.ui-icon {
   color: #ffffff;
 }
 
-/* Status Dropdown Pill */
+/* Status Dropdown Pill - Fixed Width */
 .task-status-select {
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
+  height: 26px;
   border-radius: 6px;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  padding: 3px 8px;
+  padding: 0 4px;
   cursor: pointer;
   outline: none;
   border: 1px solid transparent;
   flex-shrink: 0;
+  text-align: center;
+  text-align-last: center;
   appearance: none;
   -webkit-appearance: none;
   transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .task-status-select.status-todo {
@@ -13149,19 +13158,19 @@ svg.ui-icon {
   color: var(--text-main);
 }
 
-/* Task Title Input */
+/* Task Title Input - Flexible Middle Column */
 .task-title-input {
   background: transparent;
   border: 1px solid transparent;
   color: #f1f5f9;
   font-size: 13.5px;
   font-weight: 500;
-  padding: 4px 6px;
+  padding: 4px 8px;
   border-radius: 6px;
   outline: none;
   transition: all 0.15s;
-  flex: 1 1 auto;
-  min-width: 140px;
+  flex: 1 1 0;
+  min-width: 120px;
 }
 
 .task-title-input:hover {
@@ -13174,29 +13183,66 @@ svg.ui-icon {
   border-color: #3b82f6;
 }
 
-/* Task Metadata Row */
+/* Task Metadata Row - Fixed-width Columns */
 .task-metadata-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-/* Ghost Action Buttons */
+.meta-assignee-wrap {
+  width: 125px;
+  min-width: 125px;
+  max-width: 125px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.meta-due-wrap {
+  width: 90px;
+  min-width: 90px;
+  max-width: 90px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.meta-note-wrap {
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* Ghost Action Buttons & Badges inside Fixed Columns */
+.btn-meta-ghost,
+.task-meta-badge,
+.task-card-inline-select,
+.task-card-inline-date,
+.task-card-inline-note {
+  width: 100%;
+  height: 26px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .btn-meta-ghost {
   background: transparent;
   border: 1px dashed rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
   color: #64748b;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 8px;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
   transition: all 0.15s ease;
-  height: 24px;
   opacity: 0.5;
 }
 
@@ -13211,20 +13257,10 @@ svg.ui-icon {
   border-style: solid;
 }
 
-/* Populated Metadata Badges */
 .task-meta-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  padding: 2px 8px;
-  font-size: 11px;
-  font-weight: 500;
   color: #cbd5e1;
-  height: 24px;
-  box-sizing: border-box;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -13235,8 +13271,12 @@ svg.ui-icon {
   color: #f8fafc;
 }
 
-.task-meta-badge.assignee-badge {
-  color: #cbd5e1;
+.task-meta-badge span,
+.btn-meta-ghost span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .task-meta-avatar {
@@ -13259,10 +13299,6 @@ svg.ui-icon {
 
 .task-meta-badge.note-badge {
   color: #94a3b8;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .task-card-inline-select,
@@ -13270,17 +13306,9 @@ svg.ui-icon {
 .task-card-inline-note {
   background: var(--bg-card-solid);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 6px;
   color: var(--text-main);
-  font-size: 11px;
-  padding: 2px 6px;
   outline: none;
-  height: 24px;
   color-scheme: dark;
-}
-
-.task-card-inline-note {
-  width: 150px;
 }
 
 .task-metadata-row .btn-del {
@@ -13296,6 +13324,7 @@ svg.ui-icon {
   cursor: pointer;
   opacity: 0.4;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .task-card:hover .btn-del {
