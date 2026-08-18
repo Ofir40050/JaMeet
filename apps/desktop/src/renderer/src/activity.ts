@@ -30,18 +30,18 @@ export function filterActivities(activities: ProjectActivityItem[], query: strin
 export function getActivityIconSvg(type: ProjectActivityType): string {
   switch (type) {
     case 'project_created':
-      return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`;
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>`;
     case 'lyrics_doc_created':
     case 'lyrics_doc_renamed':
     case 'lyrics_doc_deleted':
     case 'lyrics_edited':
-      return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>`;
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>`;
     case 'notes_edited':
     case 'notes_bpm_changed':
     case 'notes_key_changed':
-      return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h20M2 6h20M2 12h20"/></svg>`;
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h20M2 6h20M2 12h20"/></svg>`;
     case 'structure_changed':
-      return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18M9 21V9"/></svg>`;
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18M9 21V9"/></svg>`;
     case 'task_created':
     case 'task_assigned':
     case 'task_unassigned':
@@ -49,21 +49,80 @@ export function getActivityIconSvg(type: ProjectActivityType): string {
     case 'task_updated':
     case 'task_reopened':
     case 'task_deleted':
-      return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
     case 'task_completed':
-      return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#10b981;"><polyline points="20 6 9 17 4 12"/></svg>`;
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
     case 'collaborator_added':
     case 'collaborator_removed':
-      return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>`;
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>`;
     case 'session_started':
     case 'session_completed':
-      return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
     default:
-      return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>`;
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg>`;
   }
 }
 
-export function renderProjectActivities(activeProject: Project | null): void {
+export function applyAvatarToElement(
+  el: HTMLElement | null,
+  displayName: string,
+  avatarColor = '#06b6d4',
+  avatarUrl?: string
+): void {
+  if (!el) return;
+  const initials = displayName
+    ? displayName.trim().split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+    : 'U';
+  if (avatarUrl) {
+    el.textContent = '';
+    el.style.backgroundImage = `url("${avatarUrl}")`;
+    el.style.backgroundSize = 'cover';
+    el.style.backgroundPosition = 'center';
+    el.style.backgroundRepeat = 'no-repeat';
+    el.style.backgroundColor = 'transparent';
+  } else {
+    const safeColor = safeAvatarColor(avatarColor, '#06b6d4');
+    el.textContent = initials;
+    el.style.backgroundImage = 'none';
+    el.style.backgroundColor = safeColor;
+    el.style.background = `linear-gradient(135deg, ${safeColor}, #0284c7)`;
+  }
+}
+
+export function resolveUserAvatar(
+  activeProject: Project | null,
+  userId: string,
+  explicitUrl?: string,
+  explicitColor?: string,
+  username?: string,
+  currentUser?: { id?: string; username?: string; avatarUrl?: string; avatarColor?: string } | null
+): { avatarUrl?: string; avatarColor: string } {
+  if (explicitUrl) {
+    return { avatarUrl: explicitUrl, avatarColor: safeAvatarColor(explicitColor, '#06b6d4') };
+  }
+  if (currentUser) {
+    const isCurrent = currentUser.id === userId || (username && currentUser.username?.toLowerCase() === username.toLowerCase());
+    if (isCurrent && currentUser.avatarUrl) {
+      return { avatarUrl: currentUser.avatarUrl, avatarColor: safeAvatarColor(currentUser.avatarColor || explicitColor, '#06b6d4') };
+    }
+  }
+  if (activeProject) {
+    const isOwner = activeProject.ownerId === userId || (username && activeProject.ownerUsername?.toLowerCase() === username.toLowerCase());
+    if (isOwner && (activeProject as any).ownerAvatarUrl) {
+      return { avatarUrl: (activeProject as any).ownerAvatarUrl, avatarColor: safeAvatarColor(activeProject.ownerAvatarColor, '#f59e0b') };
+    }
+    const foundCollab = activeProject.collaborators.find((c) => c.userId === userId || (username && c.username?.toLowerCase() === username.toLowerCase()));
+    if (foundCollab && (foundCollab as any).avatarUrl) {
+      return { avatarUrl: (foundCollab as any).avatarUrl, avatarColor: safeAvatarColor(foundCollab.avatarColor, '#06b6d4') };
+    }
+  }
+  return { avatarUrl: undefined, avatarColor: safeAvatarColor(explicitColor, '#06b6d4') };
+}
+
+export function renderProjectActivities(
+  activeProject: Project | null,
+  currentUser?: { id?: string; username?: string; avatarUrl?: string; avatarColor?: string } | null
+): void {
   if (!activeProject || typeof document === 'undefined') return;
   const activities = Array.isArray(activeProject.activities) ? activeProject.activities : [];
   const countEl = document.getElementById('overview-activity-count');
@@ -82,25 +141,41 @@ export function renderProjectActivities(activeProject: Project | null): void {
     return;
   }
 
-  // Show up to 6 most recent activity items in Overview
-  activities.slice(0, 6).forEach((item) => {
+  // Show up to 5 most recent activity items in Overview
+  activities.slice(0, 5).forEach((item) => {
     const row = document.createElement('div');
     row.className = 'overview-activity-item';
 
-    const avatarInitial = (item.userDisplayName || item.userUsername || 'U').charAt(0).toUpperCase();
-    const avatarColor = safeAvatarColor(item.userAvatarColor, 'var(--accent-voice)');
+    const { avatarUrl, avatarColor } = resolveUserAvatar(
+      activeProject,
+      item.userId,
+      (item as any).userAvatarUrl,
+      item.userAvatarColor,
+      item.userUsername,
+      currentUser
+    );
 
     row.innerHTML = `
-      <span class="activity-avatar-chip" style="background-color: ${avatarColor};" title="${escapeHtml(item.userDisplayName || item.userUsername)}">${avatarInitial}</span>
+      <span class="activity-avatar-chip" title="${escapeHtml(item.userDisplayName || item.userUsername)}"></span>
       <span class="activity-summary-text">${escapeHtml(item.summary)}</span>
       <span class="activity-time-text">${formatRelativeTime(item.createdAt)}</span>
     `;
+
+    const avatarChip = row.querySelector<HTMLElement>('.activity-avatar-chip');
+    applyAvatarToElement(avatarChip, item.userDisplayName || item.userUsername, avatarColor, avatarUrl);
 
     listEl.appendChild(row);
   });
 }
 
-export function openActivityDialog(activeProject: Project | null): void {
+let activityCurrentPage = 1;
+let activityCurrentQuery = '';
+const ACTIVITY_PAGE_SIZE = 10;
+
+export function openActivityDialog(
+  activeProject: Project | null,
+  currentUser?: { id?: string; username?: string; avatarUrl?: string; avatarColor?: string } | null
+): void {
   if (!activeProject || typeof document === 'undefined') return;
   const dialog = document.getElementById('project-activity-dialog');
   if (!dialog) return;
@@ -115,21 +190,51 @@ export function openActivityDialog(activeProject: Project | null): void {
     searchInput.value = '';
   }
 
-  renderActivityDialog(activeProject);
+  activityCurrentPage = 1;
+  activityCurrentQuery = '';
+  renderActivityDialog(activeProject, '', currentUser, 1);
   dialog.classList.remove('hidden');
 }
 
-export function renderActivityDialog(activeProject: Project | null, query = ''): void {
+export function renderActivityDialog(
+  activeProject: Project | null,
+  query = '',
+  currentUser?: { id?: string; username?: string; avatarUrl?: string; avatarColor?: string } | null,
+  page = activityCurrentPage
+): void {
   if (!activeProject || typeof document === 'undefined') return;
   const activities = Array.isArray(activeProject.activities) ? activeProject.activities : [];
   const listEl = document.getElementById('activity-dialog-list');
   if (!listEl) return;
   listEl.innerHTML = '';
 
+  activityCurrentQuery = query;
   const filtered = filterActivities(activities, query);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ACTIVITY_PAGE_SIZE));
+  activityCurrentPage = Math.min(Math.max(1, page), totalPages);
 
   const badge = document.getElementById('activity-dialog-count-badge');
   if (badge) badge.textContent = `${filtered.length} Event${filtered.length === 1 ? '' : 's'}`;
+
+  const paginationEl = document.getElementById('activity-dialog-pagination');
+  const pageInfoEl = document.getElementById('activity-pagination-info');
+  const pageNumEl = document.getElementById('activity-page-number');
+  const prevBtn = document.getElementById('btn-activity-prev-page') as HTMLButtonElement | null;
+  const nextBtn = document.getElementById('btn-activity-next-page') as HTMLButtonElement | null;
+
+  if (paginationEl) {
+    if (filtered.length === 0) {
+      paginationEl.classList.add('hidden');
+    } else {
+      paginationEl.classList.remove('hidden');
+      const startIdx = (activityCurrentPage - 1) * ACTIVITY_PAGE_SIZE + 1;
+      const endIdx = Math.min(activityCurrentPage * ACTIVITY_PAGE_SIZE, filtered.length);
+      if (pageInfoEl) pageInfoEl.textContent = `Showing ${startIdx}–${endIdx} of ${filtered.length}`;
+      if (pageNumEl) pageNumEl.textContent = `${activityCurrentPage} / ${totalPages}`;
+      if (prevBtn) prevBtn.disabled = activityCurrentPage <= 1;
+      if (nextBtn) nextBtn.disabled = activityCurrentPage >= totalPages;
+    }
+  }
 
   if (filtered.length === 0) {
     const q = query.trim();
@@ -141,11 +246,12 @@ export function renderActivityDialog(activeProject: Project | null, query = ''):
     return;
   }
 
-  filtered.forEach((item) => {
+  const start = (activityCurrentPage - 1) * ACTIVITY_PAGE_SIZE;
+  const pageItems = filtered.slice(start, start + ACTIVITY_PAGE_SIZE);
+
+  pageItems.forEach((item) => {
     const el = document.createElement('div');
     el.className = 'activity-history-item';
-    const avatarInitial = (item.userDisplayName || item.userUsername || 'U').charAt(0).toUpperCase();
-    const avatarColor = safeAvatarColor(item.userAvatarColor, 'var(--accent-voice)');
 
     const iconSvg = getActivityIconSvg(item.type);
     const dateFormatted = new Date(item.createdAt).toLocaleString(undefined, {
@@ -156,30 +262,26 @@ export function renderActivityDialog(activeProject: Project | null, query = ''):
     });
 
     el.innerHTML = `
-      <div class="activity-history-icon">
-        ${iconSvg}
-      </div>
-      <div class="activity-history-content">
-        <div class="activity-history-summary">${escapeHtml(item.summary)}</div>
-        <div class="activity-history-meta">
-          <span class="activity-avatar-chip" style="width: 16px; height: 16px; font-size: 8.5px; background-color: ${avatarColor};">${avatarInitial}</span>
-          <span>${escapeHtml(item.userDisplayName || item.userUsername)}</span>
-          <span>•</span>
-          <span>${formatRelativeTime(item.createdAt)}</span>
-          <span style="opacity: 0.6;">(${dateFormatted})</span>
-        </div>
-      </div>
+      <span class="activity-history-icon-badge">${iconSvg}</span>
+      <span class="activity-history-summary" title="${escapeHtml(item.summary)}">${escapeHtml(item.summary)}</span>
+      <span class="activity-history-time-meta">
+        <span class="activity-rel-time">${formatRelativeTime(item.createdAt)}</span>
+        <span class="activity-full-time">(${dateFormatted})</span>
+      </span>
     `;
 
     listEl.appendChild(el);
   });
 }
 
-export function initActivityHistory(getActiveProject: () => Project | null): void {
+export function initActivityHistory(
+  getActiveProject: () => Project | null,
+  getCurrentUser?: () => { id?: string; username?: string; avatarUrl?: string; avatarColor?: string } | null
+): void {
   if (typeof document === 'undefined') return;
 
   document.getElementById('btn-overview-view-activity')?.addEventListener('click', () => {
-    openActivityDialog(getActiveProject());
+    openActivityDialog(getActiveProject(), getCurrentUser?.());
   });
 
   document.getElementById('btn-close-activity-dialog')?.addEventListener('click', () => {
@@ -188,7 +290,18 @@ export function initActivityHistory(getActiveProject: () => Project | null): voi
 
   document.getElementById('activity-search-input')?.addEventListener('input', (e) => {
     const q = (e.target as HTMLInputElement).value;
-    renderActivityDialog(getActiveProject(), q);
+    activityCurrentPage = 1;
+    renderActivityDialog(getActiveProject(), q, getCurrentUser?.(), 1);
+  });
+
+  document.getElementById('btn-activity-prev-page')?.addEventListener('click', () => {
+    if (activityCurrentPage > 1) {
+      renderActivityDialog(getActiveProject(), activityCurrentQuery, getCurrentUser?.(), activityCurrentPage - 1);
+    }
+  });
+
+  document.getElementById('btn-activity-next-page')?.addEventListener('click', () => {
+    renderActivityDialog(getActiveProject(), activityCurrentQuery, getCurrentUser?.(), activityCurrentPage + 1);
   });
 
   // Close activity dialog on backdrop click

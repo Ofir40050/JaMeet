@@ -184,7 +184,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
   const dataDir = config.DATA_DIR ?? path.join(process.cwd(), 'data');
   const datastoreLock = acquireDatastoreLock(dataDir, 'server');
   const userStore = new UserStore(dataDir);
-  const projectStore = new ProjectStore(dataDir);
+  const projectStore = new ProjectStore(dataDir, userStore);
   const crashStore = new CrashReportStore(dataDir);
   const rooms = new RoomStore(config.DISCONNECT_GRACE_MS, config.EMPTY_ROOM_TTL_MS);
   const runtimeAdminToken = randomUUID();
@@ -716,14 +716,15 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       return reply.code(401).send({ ok: false, message: 'Unauthorized.' });
     }
     const project = projectStore.getProject(request.params.id, user.id);
-    if (!project) {
+    const isOwner = projectStore.isOwner(request.params.id, user.id, user.username);
+    if (!project && !isOwner) {
       return reply.code(404).send({ ok: false, message: 'Project not found.' });
     }
-    if (!projectStore.isOwner(request.params.id, user.id)) {
+    if (!isOwner) {
       return reply.code(403).send({ ok: false, message: 'Only the project owner can delete this project.' });
     }
     try {
-      const deleted = await projectStore.deleteProject(request.params.id, user.id);
+      const deleted = await projectStore.deleteProject(request.params.id, user.id, user.username);
       if (!deleted) {
         return reply.code(403).send({ ok: false, message: 'Only the project owner can delete this project.' });
       }
@@ -1335,10 +1336,12 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       socket.to(`project:${raw.projectId}`).emit('project:workspace:synced', {
         projectId: raw.projectId,
         workspace: updated.workspace,
+        activities: updated.activities,
+        project: updated,
         updatedBy: user.id,
         updatedByName: user.displayName
       });
-      ack?.({ ok: true, workspace: updated.workspace });
+      ack?.({ ok: true, workspace: updated.workspace, project: updated });
     });
 
     socket.on('meeting:create', async (raw, ack: (value: MeetingAck) => void) => {

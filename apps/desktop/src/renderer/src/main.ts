@@ -2477,7 +2477,7 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   }
   remoteMedia = undefined;
   currentCode = '';
-  pending = undefined;
+  const returnProjectId = sessionProjectId || activeProjectId;
   peerIdentity = null;
   peerParticipantId = null;
   sessionProjectId = undefined;
@@ -2494,7 +2494,14 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   if (endedMessage) {
     setMessage('home-error', endedMessage, endedMessage.toLowerCase().includes('ended') || endedMessage.toLowerCase().includes('left'));
   }
-  showView('home-view');
+  if (returnProjectId && auth.getUser() && auth.getToken()) {
+    void openProjectView(returnProjectId);
+  } else {
+    activeProjectId = undefined;
+    activeProject = undefined;
+    showView('home-view');
+    void loadProjects();
+  }
   if (!audioOnly) void replaceCamera(prefs.cameraId).catch(() => {});
   void syncAllVoiceMics().catch(() => {});
 }
@@ -2657,7 +2664,12 @@ $('setup-cancel').addEventListener('click', async () => {
   videoTrack?.stop();
   videoTrack = undefined;
   await musicMeter.stop();
-  showView('home-view');
+  const returnProjectId = activeProjectId || sessionProjectId;
+  if (returnProjectId && auth.getUser() && auth.getToken()) {
+    void openProjectView(returnProjectId);
+  } else {
+    showView('home-view');
+  }
 });
 for (const id of ['setup-advanced-button', 'setup-advanced-action-button']) {
   $(id)?.addEventListener('click', async () => {
@@ -3366,6 +3378,17 @@ function updateAuthUi(user: UserProfile | null, guestName: string): void {
     }
   }
 
+  const projectAvatar = $('project-user-avatar');
+  if (projectAvatar) {
+    if (isLogged && user?.displayName) {
+      applyAvatarToElement(projectAvatar, user.displayName, avatarBg, avatarUrl);
+    } else {
+      projectAvatar.style.background = 'var(--bg-elevated)';
+      projectAvatar.style.backgroundImage = 'none';
+      projectAvatar.innerHTML = icons.user({ size: 14 });
+    }
+  }
+
   // 2. Home Hero Area & Action Blocks (Personalized for logged in vs Guest)
   const homeHeroUser = $('home-user-hero');
   const homeHeroGuest = $('home-guest-hero');
@@ -3680,10 +3703,10 @@ async function loadRecentSessions(): Promise<void> {
       // Show "View All" header button whenever sessions exist
       headerViewAllBtn?.classList.remove('hidden');
 
-      // Show bottom footer View All button if there are more than 5 sessions
+      // Show bottom footer All Sessions button if there are more than 5 sessions
       if (totalCount > 5) {
         footerEl?.classList.remove('hidden');
-        if (footerText) footerText.textContent = `View All ${totalCount} Sessions`;
+        if (footerText) footerText.textContent = `All ${totalCount} Sessions`;
       } else {
         footerEl?.classList.add('hidden');
       }
@@ -4068,6 +4091,10 @@ $('nav-profile-pill')?.addEventListener('click', (e) => {
   e.stopPropagation();
   toggleAccountMenu($('nav-profile-pill'));
 });
+$('project-user-btn')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleAccountMenu($('project-user-btn'));
+});
 $('setup-user-btn')?.addEventListener('click', (e) => {
   e.stopPropagation();
   toggleAccountMenu($('setup-user-btn'));
@@ -4104,6 +4131,7 @@ document.addEventListener('click', (e) => {
   if (
     !menu.contains(target) &&
     !target.closest('#nav-profile-pill') &&
+    !target.closest('#project-user-btn') &&
     !target.closest('#setup-user-btn') &&
     !target.closest('#call-user-btn')
   ) {
@@ -4733,7 +4761,12 @@ $('btn-leave-waiting')?.addEventListener('click', async () => {
   videoTrack?.stop();
   videoTrack = undefined;
   await musicMeter.stop();
-  showView('home-view');
+  const returnProjectId = activeProjectId || sessionProjectId;
+  if (returnProjectId && auth.getUser() && auth.getToken()) {
+    void openProjectView(returnProjectId);
+  } else {
+    showView('home-view');
+  }
 });
 
 signaling.on('session:locked', (payload: { code: string; locked: boolean }) => {
@@ -4908,21 +4941,10 @@ function renderProjectsGrid(): void {
       collabAvatarsHtml += `<div class="project-card-avatar project-card-avatar-overflow">+${collabCount - 4}</div>`;
     }
 
-    const badgeIcon = project.archived ? icons.archive({ size: 12 }) : isOwner ? icons.crown({ size: 12 }) : icons.users({ size: 12 });
-    const badgeText = project.archived ? 'Archived' : isOwner ? 'Owner' : 'Shared';
-    const badgeLabel = `${badgeIcon} <span>${badgeText}</span>`;
-    const badgeClass = project.archived ? 'badge-archived' : isOwner ? 'badge-owner' : 'badge-collab';
-
     card.innerHTML = `
       <div class="project-card-header">
-        <div class="project-card-icon">${icons.disc({ size: 22 })}</div>
-        <div class="project-card-heading">
-          <div class="project-card-title-row">
-            <h4 class="project-card-title">${escapeHtml(project.name)}</h4>
-            <span class="project-card-pill ${badgeClass}">${badgeLabel}</span>
-          </div>
-          ${project.description ? `<p class="project-card-desc">${escapeHtml(project.description)}</p>` : ''}
-        </div>
+        <h4 class="project-card-title">${escapeHtml(project.name)}</h4>
+        ${project.archived ? `<span class="project-card-pill badge-archived">${icons.archive({ size: 11 })} <span>Archived</span></span>` : ''}
       </div>
       <div class="project-card-meta">
         <div class="project-card-meta-item"><span class="meta-icon">${icons.clock({ size: 13 })}</span> <span>${escapeHtml(lastActivity)}</span></div>
@@ -4970,12 +4992,9 @@ async function openProjectView(projectId: string): Promise<void> {
     renderProjectView();
     syncWorkspaceInputsFromProject(true);
 
-    void signaling.joinProjectWorkspace(projectId, token).then((joinRes) => {
-      if (joinRes?.ok && joinRes.workspace && activeProject && activeProject.id === projectId && loadContextGen === currentWorkspaceContextGen) {
-        activeProject.workspace = joinRes.workspace;
-        syncWorkspaceInputsFromProject(true);
-      }
-    }).catch((e) => console.warn('[Signaling] Failed to join project workspace socket room:', e));
+    void signaling.joinProjectWorkspace(projectId, token).catch((e) =>
+      console.warn('[Signaling] Failed to join project workspace socket room:', e)
+    );
   } catch (err) {
     if (loadContextGen !== currentWorkspaceContextGen) return;
     console.error('Failed to open project:', err);
@@ -4984,10 +5003,18 @@ async function openProjectView(projectId: string): Promise<void> {
 }
 
 function resetProjectTabs(): void {
+  isSongStudioOpen = false;
+  $('project-song-studio-view')?.classList.add('hidden');
+  $('project-main-tabs-bar')?.classList.remove('hidden');
   const tabBtns = document.querySelectorAll<HTMLButtonElement>('.project-tab-btn');
   tabBtns.forEach((b) => b.classList.toggle('active', b.dataset.tab === 'overview'));
   const panels = document.querySelectorAll<HTMLElement>('.project-tab-panel');
-  panels.forEach((p) => p.classList.toggle('hidden', p.id !== 'project-panel-overview'));
+  panels.forEach((p) => {
+    if (!p.closest('#project-song-studio-view')) {
+      p.classList.toggle('hidden', p.id !== 'project-panel-overview');
+    }
+  });
+  renderProjectOverviewSongsList();
 }
 
 function renderProjectView(): void {
@@ -5058,9 +5085,21 @@ function renderProjectCollaborators(): void {
 
   const user = auth.getUser();
   const isOwner = user?.id === activeProject.ownerId;
+  const ownerAvatarUrl = activeProject.ownerId === user?.id ? user?.avatarUrl : (activeProject as any).ownerAvatarUrl;
   const allMembers = [
-    { userId: activeProject.ownerId, displayName: activeProject.ownerDisplayName, username: activeProject.ownerUsername, avatarColor: safeAvatarColor(activeProject.ownerAvatarColor, '#f59e0b'), role: 'owner' as const, addedAt: activeProject.createdAt },
-    ...activeProject.collaborators
+    {
+      userId: activeProject.ownerId,
+      displayName: activeProject.ownerDisplayName,
+      username: activeProject.ownerUsername,
+      avatarColor: safeAvatarColor(activeProject.ownerAvatarColor, '#f59e0b'),
+      avatarUrl: ownerAvatarUrl,
+      role: 'owner' as const,
+      addedAt: activeProject.createdAt
+    },
+    ...activeProject.collaborators.map((c) => ({
+      ...c,
+      avatarUrl: c.userId === user?.id ? user?.avatarUrl : (c as any).avatarUrl
+    }))
   ];
 
   const buildItems = (container: HTMLElement | null) => {
@@ -5068,15 +5107,13 @@ function renderProjectCollaborators(): void {
     container.replaceChildren();
 
     for (const member of allMembers) {
-      const ini = member.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
       const roleIcon = member.role === 'owner' ? icons.crown({ size: 12 }) : icons.users({ size: 12 });
       const roleLabel = `${roleIcon} <span>${member.role === 'owner' ? 'Owner' : member.role.charAt(0).toUpperCase() + member.role.slice(1)}</span>`;
       const roleClass = member.role === 'owner' ? 'role-owner' : 'role-collaborator';
-      const safeBg = safeAvatarColor(member.avatarColor, '#f59e0b');
       const item = document.createElement('div');
       item.className = 'collab-item';
       item.innerHTML = `
-        <div class="collab-avatar" style="background-color: ${safeBg};">${escapeHtml(ini)}</div>
+        <div class="collab-avatar"></div>
         <div class="collab-info">
           <div class="collab-name">${escapeHtml(member.displayName)}</div>
           <div class="collab-username">@${escapeHtml(member.username)}</div>
@@ -5084,6 +5121,9 @@ function renderProjectCollaborators(): void {
         <span class="collab-role-badge ${roleClass}">${roleLabel}</span>
         ${isOwner && member.role !== 'owner' ? `<button class="collab-remove-btn" data-user-id="${escapeHtml(member.userId)}" title="Remove member">${icons.x({ size: 14 })}</button>` : ''}
       `;
+      const avatarEl = item.querySelector<HTMLElement>('.collab-avatar');
+      applyAvatarToElement(avatarEl, member.displayName, member.avatarColor, member.avatarUrl);
+
       const removeBtn = item.querySelector<HTMLButtonElement>('.collab-remove-btn');
       if (removeBtn) {
         removeBtn.addEventListener('click', (e) => {
@@ -5114,7 +5154,7 @@ function renderProjectSessions(): void {
     } else {
       if (emptyEl) emptyEl.classList.add('hidden');
       listOverview.replaceChildren();
-      for (const session of sessions) {
+      for (const session of sessions.slice(0, 5)) {
         listOverview.appendChild(createSessionItemEl(session));
       }
     }
@@ -5136,23 +5176,16 @@ function createSessionItemEl(session: ProjectSessionItem): HTMLElement {
   const item = document.createElement('div');
   item.className = 'project-session-item';
   const collabText = session.collaborator ? session.collaborator.displayName : 'Solo Studio Session';
-  const collabAvatarBg = safeAvatarColor(session.collaborator?.avatarColor, '#38bdf8');
-  const initials = session.collaborator
-    ? session.collaborator.displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
-    : 'MZ';
   const timeText = projectsApi.formatRelativeTime(session.startedAt);
-  const durationText = projectsApi.formatSessionDuration(session.durationSeconds);
-  const roleIcon = session.role === 'host' ? icons.crown({ size: 12 }) : icons.mic({ size: 12 });
-  const roleLabel = `${roleIcon} <span>${session.role === 'host' ? 'Host' : 'Guest'}</span>`;
-  const roleClass = session.role === 'host' ? 'role-host' : 'role-participant';
+  const durationText = session.durationSeconds && session.durationSeconds > 0
+    ? projectsApi.formatSessionDuration(session.durationSeconds)
+    : '< 1m';
 
   item.innerHTML = `
     <div class="project-session-left">
-      <div class="session-avatar-mini" style="background-color: ${collabAvatarBg};">${escapeHtml(initials)}</div>
       <div class="project-session-details">
         <div class="project-session-collab-row">
           <span class="project-session-collab">${escapeHtml(collabText)}</span>
-          <span class="session-role-pill ${roleClass}">${roleLabel}</span>
         </div>
         <div class="project-session-sub-row">
           <span class="project-session-code">${escapeHtml(session.code)}</span>
@@ -5162,7 +5195,7 @@ function createSessionItemEl(session: ProjectSessionItem): HTMLElement {
       </div>
     </div>
     <div class="project-session-right">
-      <span class="project-session-duration"><span class="meta-icon">${icons.clock({ size: 13 })}</span> <span>${escapeHtml(durationText)}</span></span>
+      <span class="project-session-duration"><span class="meta-icon">${icons.clock({ size: 11 })}</span> <span>${escapeHtml(durationText)}</span></span>
     </div>
   `;
   return item;
@@ -5187,10 +5220,12 @@ document.querySelectorAll<HTMLButtonElement>('.project-tab-btn').forEach((btn) =
     if (!targetTab) return;
     document.querySelectorAll<HTMLButtonElement>('.project-tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
     document.querySelectorAll<HTMLElement>('.project-tab-panel').forEach((panel) => {
-      panel.classList.toggle('hidden', panel.id !== `project-panel-${targetTab}`);
+      if (!panel.closest('#project-song-studio-view')) {
+        panel.classList.toggle('hidden', panel.id !== `project-panel-${targetTab}`);
+      }
     });
-    if (targetTab === 'lyrics') {
-      setTimeout(() => updateLyricsDocumentPagination(), 20);
+    if (targetTab === 'overview') {
+      renderProjectOverviewSongsList();
     }
   });
 });
@@ -5266,13 +5301,19 @@ $('btn-create-project')?.addEventListener('click', async () => {
 
 $('btn-refresh-projects')?.addEventListener('click', () => void loadProjects());
 
-$('btn-project-back')?.addEventListener('click', () => {
+$('btn-project-back')?.addEventListener('click', async () => {
+  if (activeProject?.workspace) {
+    await saveSongsWorkspace();
+  }
   activeProjectId = undefined;
   activeProject = undefined;
   showView('home-view');
   void loadProjects();
 });
-$('project-view-home-crumb')?.addEventListener('click', () => {
+$('project-view-home-crumb')?.addEventListener('click', async () => {
+  if (activeProject?.workspace) {
+    await saveSongsWorkspace();
+  }
   activeProjectId = undefined;
   activeProject = undefined;
   showView('home-view');
@@ -5310,7 +5351,7 @@ document.addEventListener('click', () => {
   }
 });
 
-$('btn-project-rename')?.addEventListener('click', () => {
+const openRenameProjectModal = () => {
   if (!activeProject) return;
   $('project-menu-dropdown')?.classList.add('hidden');
   projectMenuOpen = false;
@@ -5319,7 +5360,11 @@ $('btn-project-rename')?.addEventListener('click', () => {
   setText('rename-project-error', '');
   $('rename-project-modal')?.classList.remove('hidden');
   $<HTMLInputElement>('rename-project-name')?.focus();
-});
+};
+
+$('btn-project-rename')?.addEventListener('click', openRenameProjectModal);
+$('project-title')?.addEventListener('dblclick', openRenameProjectModal);
+$('project-view-name-crumb')?.addEventListener('dblclick', openRenameProjectModal);
 $('btn-close-rename-project')?.addEventListener('click', () => $('rename-project-modal')?.classList.add('hidden'));
 $('btn-cancel-rename-project')?.addEventListener('click', () => $('rename-project-modal')?.classList.add('hidden'));
 $('btn-save-rename-project')?.addEventListener('click', async () => {
@@ -5374,29 +5419,93 @@ $('btn-project-delete')?.addEventListener('click', () => {
   if (!activeProject) return;
   $('project-menu-dropdown')?.classList.add('hidden');
   projectMenuOpen = false;
+  
+  const targetPhrase = `delete ${activeProject.name}`;
   setText('delete-project-name-confirm', activeProject.name);
+  setText('delete-phrase-target', targetPhrase);
+  
+  const confirmInput = $<HTMLInputElement>('delete-project-confirm-input');
+  if (confirmInput) {
+    confirmInput.value = '';
+    confirmInput.placeholder = `Type "${targetPhrase}"`;
+  }
+  
+  const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-project');
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Delete Project';
+  }
+  
+  const errEl = $('delete-project-error');
+  if (errEl) {
+    errEl.textContent = '';
+    errEl.style.display = 'none';
+  }
+
   $('delete-project-modal')?.classList.remove('hidden');
+  setTimeout(() => confirmInput?.focus(), 50);
 });
+
+$('delete-project-confirm-input')?.addEventListener('input', (e) => {
+  if (!activeProject) return;
+  const inputEl = e.target as HTMLInputElement;
+  const val = inputEl.value.trim().toLowerCase();
+  const projName = activeProject.name.trim().toLowerCase();
+  const targetA = `delete ${projName}`;
+  const targetB = `delete - ${projName}`;
+  const targetC = `delete "${projName}"`;
+  
+  const isMatch = val === targetA || val === targetB || val === targetC;
+  inputEl.classList.toggle('is-matched', isMatch);
+  const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-project');
+  if (confirmBtn) {
+    confirmBtn.disabled = !isMatch;
+  }
+});
+
+$('delete-project-confirm-input')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-project');
+    if (confirmBtn && !confirmBtn.disabled) {
+      confirmBtn.click();
+    }
+  }
+});
+
 $('btn-close-delete-project')?.addEventListener('click', () => $('delete-project-modal')?.classList.add('hidden'));
 $('btn-cancel-delete-project')?.addEventListener('click', () => $('delete-project-modal')?.classList.add('hidden'));
+
 $('btn-confirm-delete-project')?.addEventListener('click', async () => {
   if (!activeProject) return;
   const token = auth.getToken();
-  if (!token) return;
+  const errEl = $('delete-project-error');
+  if (!token) {
+    if (errEl) {
+      errEl.textContent = 'You must be signed in to delete a project.';
+      errEl.style.display = 'block';
+    }
+    return;
+  }
   const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-project');
   if (confirmBtn) {
     confirmBtn.disabled = true;
     confirmBtn.textContent = 'Deleting…';
   }
+  if (errEl) errEl.style.display = 'none';
+
   try {
     await projectsApi.deleteProject(token, activeProject.id);
     $('delete-project-modal')?.classList.add('hidden');
     activeProject = undefined;
     activeProjectId = undefined;
     showView('home-view');
-    void loadProjects();
-  } catch (err) {
+    await loadProjects();
+  } catch (err: any) {
     console.error('Failed to delete project:', err);
+    if (errEl) {
+      errEl.textContent = err?.message || 'Failed to delete project. Make sure you are the project owner.';
+      errEl.style.display = 'block';
+    }
   } finally {
     if (confirmBtn) {
       confirmBtn.disabled = false;
@@ -5800,31 +5909,655 @@ function reconcileNotesWorkspace(
   };
 }
 
-function getActiveLyricsDoc(): { id: string; title: string; content: string; updatedAt: number } {
+// ========================================================
+// PROJECT WORKSPACE: MULTI-SONG TRACKS ARCHITECTURE
+// ========================================================
+function getActiveSong(): ProjectSongItem {
+  const now = Date.now();
   if (!activeProject) {
-    return { id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: 0 };
-  }
-  if (!activeProject.workspace) {
-    activeProject.workspace = {
-      lyrics: {
-        activeDocumentId: 'doc-main',
-        documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: Date.now() }],
-        content: '',
-        updatedAt: Date.now()
-      },
-      notes: { content: '', updatedAt: Date.now() }
-    };
-  }
-  if (!activeProject.workspace.lyrics) {
-    activeProject.workspace.lyrics = {
-      activeDocumentId: 'doc-main',
-      documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: Date.now() }],
-      content: '',
-      updatedAt: Date.now()
+    return {
+      id: 'song-1',
+      title: 'Song 1',
+      order: 0,
+      lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: 0 }], content: '', updatedAt: 0 },
+      notes: { revision: 1, content: '', updatedAt: 0 },
+      structure: { revision: 1, sections: [], updatedAt: 0 },
+      createdAt: 0,
+      updatedAt: 0
     };
   }
 
-  const ws = activeProject.workspace.lyrics;
+  if (!activeProject.workspace) {
+    activeProject.workspace = {
+      activeSongId: 'song-1',
+      songs: [],
+      lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now },
+      notes: { revision: 1, content: '', updatedAt: now },
+      structure: { revision: 1, sections: [], updatedAt: now },
+      tasks: { revision: 1, tasks: [], updatedAt: now }
+    };
+  }
+
+  const ws = activeProject.workspace;
+  if (!ws.songs || !Array.isArray(ws.songs) || ws.songs.length === 0) {
+    const initialSong: ProjectSongItem = {
+      id: 'song-1',
+      title: activeProject.name ? activeProject.name : 'Song 1',
+      order: 0,
+      lyrics: ws.lyrics || { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now },
+      notes: ws.notes || { revision: 1, content: '', updatedAt: now },
+      structure: ws.structure || { revision: 1, sections: [], updatedAt: now },
+      createdAt: now,
+      updatedAt: now
+    };
+    ws.songs = [initialSong];
+    ws.activeSongId = 'song-1';
+  }
+
+  const activeId = ws.activeSongId || ws.songs[0].id;
+  const song = ws.songs.find((s) => s && s.id === activeId) || ws.songs[0];
+  ws.activeSongId = song.id;
+
+  // Mirror active song's data to top-level workspace for seamless subsystem compatibility
+  ws.lyrics = song.lyrics;
+  ws.notes = song.notes;
+  ws.structure = song.structure;
+
+  return song;
+}
+
+let isSongStudioOpen = false;
+let currentSongStudioTab: 'lyrics' | 'structure' | 'notes' = 'lyrics';
+
+function openSongStudio(songId?: string, targetTab: 'lyrics' | 'structure' | 'notes' = 'lyrics'): void {
+  if (songId && activeProject?.workspace && activeProject.workspace.activeSongId !== songId) {
+    switchActiveSong(songId);
+  }
+  const activeSong = getActiveSong();
+  isSongStudioOpen = true;
+  currentSongStudioTab = targetTab;
+
+  // 1. Hide main project tabs bar and non-song-studio panels
+  $('project-main-tabs-bar')?.classList.add('hidden');
+  document.querySelectorAll<HTMLElement>('.project-tab-panel').forEach((p) => {
+    if (!p.closest('#project-song-studio-view')) {
+      p.classList.add('hidden');
+    }
+  });
+
+  // 2. Show Song Studio View
+  const studioView = $('project-song-studio-view');
+  studioView?.classList.remove('hidden');
+
+  // 3. Update breadcrumb project name and active song title
+  setText('song-nav-project-name', activeProject?.name || 'Project Overview');
+  setText('song-studio-active-title', activeSong.title || 'Untitled Song');
+
+  // 4. Update Quick Switch dropdown
+  const quickSelect = $<HTMLSelectElement>('select-song-studio-quick-switch');
+  if (quickSelect && activeProject?.workspace?.songs) {
+    quickSelect.innerHTML = '';
+    activeProject.workspace.songs.forEach((s, i) => {
+      if (!s) return;
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = `${i + 1}. ${s.title || `Song ${i + 1}`}`;
+      opt.selected = s.id === activeSong.id;
+      quickSelect.appendChild(opt);
+    });
+  }
+
+  // 5. Activate tab
+  document.querySelectorAll<HTMLButtonElement>('.song-studio-tab-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.songTab === targetTab);
+  });
+  $('project-panel-lyrics')?.classList.toggle('hidden', targetTab !== 'lyrics');
+  $('project-panel-structure')?.classList.toggle('hidden', targetTab !== 'structure');
+  $('project-panel-notes')?.classList.toggle('hidden', targetTab !== 'notes');
+
+  if (targetTab === 'lyrics') {
+    setTimeout(() => updateLyricsDocumentPagination(), 20);
+  }
+}
+
+function closeSongStudio(): void {
+  isSongStudioOpen = false;
+  $('project-song-studio-view')?.classList.add('hidden');
+  $('project-main-tabs-bar')?.classList.remove('hidden');
+
+  // Set project tabs to overview
+  const tabBtns = document.querySelectorAll<HTMLButtonElement>('.project-tab-btn');
+  tabBtns.forEach((b) => b.classList.toggle('active', b.dataset.tab === 'overview'));
+
+  const panels = document.querySelectorAll<HTMLElement>('.project-tab-panel');
+  panels.forEach((p) => {
+    if (!p.closest('#project-song-studio-view')) {
+      p.classList.toggle('hidden', p.id !== 'project-panel-overview');
+    }
+  });
+
+  renderProjectOverviewSongsList();
+}
+
+let currentSongsOverviewPage = 1;
+const SONGS_PER_PAGE = 5;
+
+function renderProjectOverviewSongsList(): void {
+  if (!activeProject?.workspace) return;
+  const activeSong = getActiveSong();
+  const ws = activeProject.workspace;
+  const songs = ws.songs || [];
+
+  setText('project-overview-songs-count', songs.length.toString());
+
+  const listEl = $('project-overview-songs-list');
+  const pagEl = $('project-overview-songs-pagination');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+
+  if (songs.length === 0) {
+    if (pagEl) pagEl.classList.add('hidden');
+    listEl.innerHTML = `
+      <div class="workspace-empty-row" style="padding: 12px 0;">
+        <div class="workspace-empty-text">
+          <span class="workspace-empty-title" style="font-size: 13px; font-weight: 600;">No tracks in this project yet</span>
+          <span class="workspace-empty-desc" style="font-size: 11px;">Click "+" above to create your first track.</span>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const totalPages = Math.ceil(songs.length / SONGS_PER_PAGE) || 1;
+  if (currentSongsOverviewPage > totalPages) {
+    currentSongsOverviewPage = totalPages;
+  }
+  if (currentSongsOverviewPage < 1) {
+    currentSongsOverviewPage = 1;
+  }
+
+  const startIndex = (currentSongsOverviewPage - 1) * SONGS_PER_PAGE;
+  const pageSongs = songs.slice(startIndex, startIndex + SONGS_PER_PAGE);
+
+  pageSongs.forEach((song, pIdx) => {
+    if (!song) return;
+    const globalIdx = startIndex + pIdx;
+    const isCurrent = song.id === activeSong.id;
+    const card = document.createElement('div');
+    card.className = `overview-song-card ${isCurrent ? 'active' : ''}`;
+    card.dataset.songId = song.id;
+
+    const bpmRaw = (song.notes?.bpm || activeProject.workspace?.notes?.bpm || '').trim();
+    const bpmClean = bpmRaw ? (bpmRaw.toLowerCase().includes('bpm') ? bpmRaw : `${bpmRaw} BPM`) : '120 BPM';
+    const keyRaw = (song.notes?.key || activeProject.workspace?.notes?.key || '').trim();
+    const keyClean = keyRaw || 'C Major';
+
+    card.innerHTML = `
+      <div class="overview-song-left">
+        <span class="overview-song-num">${String(globalIdx + 1).padStart(2, '0')}</span>
+        <div class="overview-song-details">
+          <span class="overview-song-title" title="Double click to rename">${escapeHtml(song.title || `Song ${globalIdx + 1}`)}</span>
+          <div class="overview-song-meta">
+            <span class="song-meta-badge highlight">${escapeHtml(bpmClean)}</span>
+            <span class="song-meta-badge highlight">${escapeHtml(keyClean)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="overview-song-right">
+        <button type="button" class="btn-open-song-studio" title="Open Song Studio" aria-label="Open Song Studio">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </button>
+      </div>
+    `;
+
+    // Double-click inline rename
+    const titleEl = card.querySelector('.overview-song-title') as HTMLElement;
+    const startRename = () => {
+      if (titleEl.querySelector('input')) return;
+      const currentTitle = song.title || `Song ${globalIdx + 1}`;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'song-inline-rename-input';
+      input.value = currentTitle;
+      input.maxLength = 80;
+
+      let committed = false;
+      const commit = () => {
+        if (committed) return;
+        committed = true;
+        const newTitle = input.value.trim();
+        if (newTitle && newTitle !== currentTitle) {
+          song.title = newTitle;
+          void saveSongsWorkspace();
+        }
+        renderProjectSongsSelector();
+      };
+
+      input.addEventListener('keydown', (ke) => {
+        if (ke.key === 'Enter') {
+          ke.preventDefault();
+          commit();
+        } else if (ke.key === 'Escape') {
+          ke.preventDefault();
+          committed = true;
+          renderProjectSongsSelector();
+        }
+      });
+      input.addEventListener('click', (ce) => ce.stopPropagation());
+      input.addEventListener('dblclick', (de) => de.stopPropagation());
+      input.addEventListener('blur', commit);
+
+      titleEl.replaceChildren(input);
+      input.focus();
+      input.select();
+    };
+
+    titleEl?.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+
+    titleEl?.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      startRename();
+    });
+
+    const openBtn = card.querySelector('.btn-open-song-studio') as HTMLElement;
+    openBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openSongStudio(song.id, 'lyrics');
+    });
+
+    card.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).tagName === 'INPUT') return;
+      openSongStudio(song.id, 'lyrics');
+    });
+
+    listEl.appendChild(card);
+  });
+
+  // Render pagination controls
+  if (pagEl) {
+    if (totalPages > 1) {
+      pagEl.classList.remove('hidden');
+      const prevBtn = $('btn-songs-prev-page') as HTMLButtonElement;
+      const nextBtn = $('btn-songs-next-page') as HTMLButtonElement;
+      if (prevBtn) prevBtn.disabled = currentSongsOverviewPage <= 1;
+      if (nextBtn) nextBtn.disabled = currentSongsOverviewPage >= totalPages;
+
+      const indicatorsEl = $('songs-page-indicators');
+      if (indicatorsEl) {
+        indicatorsEl.innerHTML = '';
+        for (let i = 1; i <= totalPages; i++) {
+          const pill = document.createElement('button');
+          pill.type = 'button';
+          pill.className = `btn-songs-page-pill ${i === currentSongsOverviewPage ? 'active' : ''}`;
+          pill.textContent = String(i);
+          pill.addEventListener('click', (e) => {
+            e.stopPropagation();
+            currentSongsOverviewPage = i;
+            renderProjectOverviewSongsList();
+          });
+          indicatorsEl.appendChild(pill);
+        }
+      }
+    } else {
+      pagEl.classList.add('hidden');
+    }
+  }
+}
+
+function renderProjectSongsSelector(): void {
+  if (!activeProject?.workspace) return;
+  const activeSong = getActiveSong();
+  const ws = activeProject.workspace;
+  const songs = ws.songs || [];
+
+  // 1. Update active song trigger title & studio headers
+  setText('active-song-title-display', activeSong.title || 'Untitled Song');
+  setText('song-studio-active-title', activeSong.title || 'Untitled Song');
+  setText('songs-dropdown-count', `${songs.length} Track${songs.length === 1 ? '' : 's'}`);
+
+  // 2. Render Overview songs list
+  renderProjectOverviewSongsList();
+
+  // 3. Update Quick Switch in Song Studio
+  const quickSelect = $<HTMLSelectElement>('select-song-studio-quick-switch');
+  if (quickSelect) {
+    quickSelect.innerHTML = '';
+    songs.forEach((s, i) => {
+      if (!s) return;
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = `${i + 1}. ${s.title || `Song ${i + 1}`}`;
+      opt.selected = s.id === activeSong.id;
+      quickSelect.appendChild(opt);
+    });
+  }
+
+  // 4. Render dropdown songs list
+  const listEl = $('project-songs-list');
+  if (listEl) {
+    listEl.innerHTML = '';
+    songs.forEach((song, idx) => {
+      if (!song) return;
+      const isActive = song.id === activeSong.id;
+      const item = document.createElement('div');
+      item.className = `song-dropdown-item ${isActive ? 'active' : ''}`;
+      item.dataset.songId = song.id;
+      item.draggable = true;
+
+      item.innerHTML = `
+        <div class="song-item-left">
+          <span class="song-item-idx">${idx + 1}</span>
+          <span class="song-item-name" title="Double click to rename">${escapeHtml(song.title || `Song ${idx + 1}`)}</span>
+        </div>
+        <div class="song-item-actions">
+          <button type="button" class="btn-song-item-action btn-rename" title="Rename"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
+          <button type="button" class="btn-song-item-action btn-dup" title="Duplicate"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
+          ${songs.length > 1 ? `<button type="button" class="btn-song-item-action delete btn-del" title="Delete Song"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/></svg></button>` : ''}
+        </div>
+      `;
+
+      // Inline rename
+      const nameEl = item.querySelector('.song-item-name') as HTMLElement;
+      const startRename = () => {
+        if (nameEl.querySelector('input')) return;
+        const currentTitle = song.title || `Song ${idx + 1}`;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'sidebar-item-rename-input';
+        input.value = currentTitle;
+        input.maxLength = 80;
+
+        const commit = () => {
+          const newTitle = input.value.trim();
+          if (newTitle && newTitle !== currentTitle) {
+            song.title = newTitle;
+            void saveSongsWorkspace();
+          }
+          renderProjectSongsSelector();
+        };
+
+        input.addEventListener('keydown', (ke) => {
+          if (ke.key === 'Enter') {
+            ke.preventDefault();
+            input.blur();
+          } else if (ke.key === 'Escape') {
+            ke.preventDefault();
+            renderProjectSongsSelector();
+          }
+        });
+        input.addEventListener('click', (ce) => ce.stopPropagation());
+        input.addEventListener('dblclick', (de) => de.stopPropagation());
+        input.addEventListener('blur', commit);
+
+        nameEl.replaceChildren(input);
+        input.focus();
+        input.select();
+      };
+
+      item.addEventListener('dblclick', (e) => {
+        if ((e.target as HTMLElement).closest('.btn-song-item-action')) return;
+        e.stopPropagation();
+        startRename();
+      });
+      item.querySelector('.btn-rename')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        startRename();
+      });
+      item.querySelector('.btn-dup')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        duplicateSong(song.id);
+      });
+      item.querySelector('.btn-del')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteSong(song.id);
+      });
+      item.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('.btn-song-item-action') || (e.target as HTMLElement).tagName === 'INPUT') return;
+        switchActiveSong(song.id);
+        $('project-songs-dropdown-menu')?.classList.add('hidden');
+      });
+
+      // Drag & Drop
+      item.addEventListener('dragstart', (e) => {
+        e.dataTransfer?.setData('text/plain', song.id);
+        item.classList.add('dragging');
+      });
+      item.addEventListener('dragend', () => {
+        item.classList.remove('dragging');
+      });
+      item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+      });
+      item.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const sourceId = e.dataTransfer?.getData('text/plain');
+        if (sourceId && sourceId !== song.id) {
+          reorderSongs(sourceId, song.id);
+        }
+      });
+
+      listEl.appendChild(item);
+    });
+  }
+
+  // 5. Update In-Session Drawer Song Select
+  const drawerSongSelect = $<HTMLSelectElement>('session-workspace-song-select');
+  if (drawerSongSelect) {
+    drawerSongSelect.innerHTML = '';
+    songs.forEach((s, idx) => {
+      if (!s) return;
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = `${idx + 1}. ${s.title || `Song ${idx + 1}`}`;
+      opt.selected = s.id === activeSong.id;
+      drawerSongSelect.appendChild(opt);
+    });
+  }
+}
+
+function switchActiveSong(songId: string): void {
+  if (!activeProject?.workspace?.songs) return;
+  const ws = activeProject.workspace;
+  const song = ws.songs.find((s) => s.id === songId);
+  if (!song) return;
+
+  // Persist current active song's edits first if pending
+  if (lyricsSaveTimeout) {
+    clearTimeout(lyricsSaveTimeout);
+    lyricsSaveTimeout = null;
+    const activeDoc = getActiveLyricsDoc();
+    void saveLyricsWorkspace(activeDoc.content, activeDoc.id, activeDoc.title);
+  }
+  if (notesSaveTimeout) {
+    clearTimeout(notesSaveTimeout);
+    notesSaveTimeout = null;
+    const vals = getNotesFieldValues();
+    void saveNotesWorkspace(vals.content, vals.bpm, vals.key);
+  }
+  if (structureSaveTimeout) {
+    clearTimeout(structureSaveTimeout);
+    structureSaveTimeout = null;
+    const sections = activeProject.workspace.structure?.sections || [];
+    void saveStructureWorkspace(sections);
+  }
+
+  ws.activeSongId = songId;
+  ws.lyrics = song.lyrics;
+  ws.notes = song.notes;
+  ws.structure = song.structure;
+
+  syncWorkspaceInputsFromProject(true);
+  void saveSongsWorkspace();
+}
+
+function createNewSong(title: string, autoOpenStudio: boolean = false): void {
+  if (!activeProject) return;
+  const ws = activeProject.workspace || { songs: [] };
+  if (!ws.songs || !Array.isArray(ws.songs)) {
+    ws.songs = [];
+  }
+  const songs = ws.songs;
+  const now = Date.now();
+
+  if (songs.length === 0) {
+    const initSong: ProjectSongItem = {
+      id: 'song-1',
+      title: activeProject.name ? activeProject.name : 'Song 1',
+      order: 0,
+      lyrics: ws.lyrics || { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now },
+      notes: ws.notes || { revision: 1, content: '• ', bpm: '120 BPM', key: 'C Major', updatedAt: now },
+      structure: ws.structure || { revision: 1, sections: [], updatedAt: now },
+      createdAt: now,
+      updatedAt: now
+    };
+    songs.push(initSong);
+  }
+
+  const newId = `song_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const cleanTitle = title.trim() || `Song ${songs.length + 1}`;
+
+  const newSong: ProjectSongItem = {
+    id: newId,
+    title: cleanTitle,
+    order: songs.length,
+    lyrics: {
+      revision: 1,
+      activeDocumentId: 'doc-main',
+      documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }],
+      content: '',
+      updatedAt: now
+    },
+    notes: { revision: 1, content: '• ', bpm: '120 BPM', key: 'C Major', updatedAt: now },
+    structure: { revision: 1, sections: [], updatedAt: now },
+    createdAt: now,
+    updatedAt: now
+  };
+
+  songs.push(newSong);
+  ws.songs = songs;
+  ws.activeSongId = newId;
+  ws.lyrics = newSong.lyrics;
+  ws.notes = newSong.notes;
+  ws.structure = newSong.structure;
+
+  syncWorkspaceInputsFromProject(true);
+  void saveSongsWorkspace();
+  renderProjectSongsSelector();
+  renderProjectOverviewSongsList();
+
+  if (autoOpenStudio) {
+    openSongStudio(newId, 'lyrics');
+  }
+}
+
+function duplicateSong(songId: string): void {
+  if (!activeProject?.workspace?.songs) return;
+  const ws = activeProject.workspace;
+  const source = ws.songs.find((s) => s.id === songId);
+  if (!source) return;
+
+  const newId = `song_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const now = Date.now();
+  const copySong: ProjectSongItem = {
+    id: newId,
+    title: `${source.title} (Copy)`,
+    order: ws.songs.length,
+    lyrics: JSON.parse(JSON.stringify(source.lyrics)),
+    notes: JSON.parse(JSON.stringify(source.notes)),
+    structure: JSON.parse(JSON.stringify(source.structure)),
+    createdAt: now,
+    updatedAt: now
+  };
+  copySong.lyrics.revision = 1;
+  copySong.notes.revision = 1;
+  copySong.structure.revision = 1;
+
+  ws.songs.push(copySong);
+  ws.activeSongId = newId;
+  ws.lyrics = copySong.lyrics;
+  ws.notes = copySong.notes;
+  ws.structure = copySong.structure;
+
+  syncWorkspaceInputsFromProject(true);
+  void saveSongsWorkspace();
+}
+
+function deleteSong(songId: string): void {
+  if (!activeProject?.workspace?.songs) return;
+  const ws = activeProject.workspace;
+  if (ws.songs.length <= 1) return;
+
+  const idx = ws.songs.findIndex((s) => s.id === songId);
+  if (idx === -1) return;
+
+  ws.songs.splice(idx, 1);
+  if (ws.activeSongId === songId) {
+    const nextSong = ws.songs[Math.max(0, idx - 1)] || ws.songs[0];
+    ws.activeSongId = nextSong.id;
+    ws.lyrics = nextSong.lyrics;
+    ws.notes = nextSong.notes;
+    ws.structure = nextSong.structure;
+  }
+
+  syncWorkspaceInputsFromProject(true);
+  void saveSongsWorkspace();
+}
+
+function reorderSongs(sourceId: string, targetId: string): void {
+  if (!activeProject?.workspace?.songs) return;
+  const songs = activeProject.workspace.songs;
+  const fromIdx = songs.findIndex((s) => s && s.id === sourceId);
+  const toIdx = songs.findIndex((s) => s && s.id === targetId);
+  if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+
+  const [moved] = songs.splice(fromIdx, 1);
+  songs.splice(toIdx, 0, moved);
+  songs.forEach((s, i) => { s.order = i; });
+
+  renderProjectSongsSelector();
+  void saveSongsWorkspace();
+}
+
+async function saveSongsWorkspace(): Promise<boolean> {
+  if (!activeProject?.workspace) return false;
+  const token = auth.getToken();
+  if (!token) return false;
+  const targetProjectId = activeProject.id;
+  const payload: UpdateProjectWorkspaceRequest = {
+    activeSongId: activeProject.workspace.activeSongId,
+    songs: JSON.parse(JSON.stringify(activeProject.workspace.songs || []))
+  };
+
+  try {
+    let res: UpdateProjectWorkspaceResponse | null = null;
+    if (signaling.isConnected()) {
+      try {
+        res = await signaling.updateProjectWorkspace(targetProjectId, payload, token);
+      } catch {
+        res = null;
+      }
+    }
+    if (!res || !res.ok) {
+      const httpRes = await projectsApi.updateProjectWorkspace(token, targetProjectId, payload);
+      res = { ok: true, project: httpRes.project, workspace: httpRes.workspace };
+    }
+    if (res?.project && activeProject && activeProject.id === res.project.id) {
+      activeProject.workspace = res.project.workspace;
+      activeProject.updatedAt = res.project.updatedAt;
+    }
+    return true;
+  } catch (err) {
+    console.error('Failed to save songs workspace:', err);
+    return false;
+  }
+}
+
+function getActiveLyricsDoc(): { id: string; title: string; content: string; updatedAt: number } {
+  const activeSong = getActiveSong();
+  const ws = activeSong.lyrics;
   if (!ws.documents || !Array.isArray(ws.documents) || ws.documents.length === 0) {
     ws.documents = [{ id: 'doc-main', title: 'Main Lyrics', content: ws.content || '', updatedAt: ws.updatedAt || Date.now() }];
     ws.activeDocumentId = 'doc-main';
@@ -5840,8 +6573,8 @@ let lyricsFilterQuery = '';
 
 function renderLyricsDocTabs(): void {
   const activeDoc = getActiveLyricsDoc();
-  if (!activeProject?.workspace?.lyrics) return;
-  const ws = activeProject.workspace.lyrics;
+  const activeSong = getActiveSong();
+  const ws = activeSong.lyrics;
   const docs = ws.documents || [];
   const activeId = ws.activeDocumentId || activeDoc.id;
 
@@ -5866,6 +6599,7 @@ function renderLyricsDocTabs(): void {
         const item = document.createElement('div');
         item.className = `lyrics-sidebar-item ${isActive ? 'active' : ''}`;
         item.dataset.docId = doc.id;
+        item.setAttribute('draggable', 'true');
 
         const timeStr = doc.updatedAt ? projectsApi.formatRelativeTime(doc.updatedAt) : 'Draft';
 
@@ -5875,31 +6609,122 @@ function renderLyricsDocTabs(): void {
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
             </span>
             <div class="sidebar-item-info">
-              <div class="sidebar-item-title">${escapeHtml(doc.title || 'Untitled')}</div>
+              <div class="sidebar-item-title" title="Double-click to rename">${escapeHtml(doc.title || 'Untitled')}</div>
               <div class="sidebar-item-sub">${timeStr}</div>
             </div>
           </div>
           <div class="sidebar-item-actions">
-            ${idx > 0 ? `<button type="button" class="btn-sidebar-item-action btn-move-up" title="Move Up"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m18 15-6-6-6 6"/></svg></button>` : ''}
-            ${idx < docs.length - 1 ? `<button type="button" class="btn-sidebar-item-action btn-move-down" title="Move Down"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m6 9 6 6 6-6"/></svg></button>` : ''}
+            <button type="button" class="btn-sidebar-item-action btn-rename" title="Rename"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
             <button type="button" class="btn-sidebar-item-action btn-dup" title="Duplicate"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
-            ${docs.length > 1 ? `<button type="button" class="btn-sidebar-item-action btn-del" title="Delete Draft"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>` : ''}
+            ${docs.length > 1 ? `<button type="button" class="btn-sidebar-item-action btn-del" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>` : ''}
           </div>
         `;
 
-        item.addEventListener('click', (e) => {
+        const titleEl = item.querySelector('.sidebar-item-title') as HTMLElement;
+
+        const startInlineRename = () => {
+          if (titleEl.querySelector('input')) return;
+          const currentTitle = doc.title || 'Untitled';
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'sidebar-item-rename-input';
+          input.value = currentTitle;
+          input.maxLength = 80;
+
+          const commitRename = () => {
+            const newTitle = input.value.trim();
+            if (newTitle && newTitle !== currentTitle) {
+              doc.title = newTitle;
+              if (activeDoc.id === doc.id) {
+                activeDoc.title = newTitle;
+              }
+              lyricsEditGen++;
+              setLyricsStatus('saving');
+              if (lyricsSaveTimeout) clearTimeout(lyricsSaveTimeout);
+              lyricsSaveTimeout = setTimeout(() => {
+                lyricsSaveTimeout = null;
+                void saveLyricsWorkspace(doc.content || '', doc.id, newTitle);
+              }, 300);
+            }
+            renderLyricsDocTabs();
+          };
+
+          input.addEventListener('keydown', (ke) => {
+            if (ke.key === 'Enter') {
+              ke.preventDefault();
+              input.blur();
+            } else if (ke.key === 'Escape') {
+              ke.preventDefault();
+              renderLyricsDocTabs();
+            }
+          });
+
+          input.addEventListener('click', (ce) => ce.stopPropagation());
+          input.addEventListener('dblclick', (de) => de.stopPropagation());
+
+          input.addEventListener('blur', () => {
+            commitRename();
+          });
+
+          titleEl.replaceChildren(input);
+          input.focus();
+          input.select();
+        };
+
+        item.addEventListener('dblclick', (e) => {
           if ((e.target as HTMLElement).closest('.btn-sidebar-item-action')) return;
+          e.stopPropagation();
+          e.preventDefault();
+          startInlineRename();
+        });
+
+        item.querySelector('.btn-rename')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          startInlineRename();
+        });
+
+        item.addEventListener('click', (e) => {
+          if ((e.target as HTMLElement).closest('.btn-sidebar-item-action') || (e.target as HTMLElement).tagName === 'INPUT') return;
           switchActiveLyricsDoc(doc.id);
         });
 
-        item.querySelector('.btn-move-up')?.addEventListener('click', (e) => {
-          e.stopPropagation();
-          moveLyricsDoc(doc.id, 'up');
+        // Native Drag & Drop for reordering
+        item.addEventListener('dragstart', (e) => {
+          if ((e.target as HTMLElement).tagName === 'INPUT') {
+            e.preventDefault();
+            return;
+          }
+          item.classList.add('dragging');
+          e.dataTransfer?.setData('text/plain', doc.id);
+          if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
         });
 
-        item.querySelector('.btn-move-down')?.addEventListener('click', (e) => {
-          e.stopPropagation();
-          moveLyricsDoc(doc.id, 'down');
+        item.addEventListener('dragend', () => {
+          item.classList.remove('dragging');
+          sidebarList.querySelectorAll('.lyrics-sidebar-item').forEach((el) => el.classList.remove('drag-over'));
+        });
+
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        });
+
+        item.addEventListener('dragenter', (e) => {
+          e.preventDefault();
+          item.classList.add('drag-over');
+        });
+
+        item.addEventListener('dragleave', () => {
+          item.classList.remove('drag-over');
+        });
+
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          item.classList.remove('drag-over');
+          const sourceId = e.dataTransfer?.getData('text/plain');
+          if (sourceId && sourceId !== doc.id) {
+            reorderLyricsDocs(sourceId, doc.id);
+          }
         });
 
         item.querySelector('.btn-dup')?.addEventListener('click', (e) => {
@@ -5918,7 +6743,7 @@ function renderLyricsDocTabs(): void {
   }
 
   // Update total drafts count badge
-  setText('lyrics-sidebar-doc-count', `${docs.length} ${docs.length === 1 ? 'Draft' : 'Drafts'} in Project`);
+  setText('lyrics-sidebar-doc-count', `${docs.length} ${docs.length === 1 ? 'Document' : 'Documents'} in Project`);
 
   // 2. Render In-Call Drawer Document Select
   const drawerDocSelect = $<HTMLSelectElement>('session-lyrics-doc-select');
@@ -5941,16 +6766,15 @@ function renderLyricsDocTabs(): void {
   }
 }
 
-function moveLyricsDoc(docId: string, direction: 'up' | 'down'): void {
+function reorderLyricsDocs(sourceId: string, targetId: string): void {
   if (!activeProject?.workspace?.lyrics?.documents) return;
   const docs = activeProject.workspace.lyrics.documents;
-  const idx = docs.findIndex((d) => d && d.id === docId);
-  if (idx === -1) return;
-  const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-  if (targetIdx < 0 || targetIdx >= docs.length) return;
+  const fromIdx = docs.findIndex((d) => d && d.id === sourceId);
+  const toIdx = docs.findIndex((d) => d && d.id === targetId);
+  if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
 
-  const [moved] = docs.splice(idx, 1);
-  docs.splice(targetIdx, 0, moved);
+  const [moved] = docs.splice(fromIdx, 1);
+  docs.splice(toIdx, 0, moved);
   renderLyricsDocTabs();
 
   lyricsEditGen++;
@@ -6075,29 +6899,9 @@ function updateLyricsDocumentPagination(): void {
   if (existingSheets.length !== totalPages) {
     let sheetsHtml = '';
     for (let i = 1; i <= totalPages; i++) {
-      const isFirst = i === 1;
-      sheetsHtml += `
-        <div class="lyrics-page-sheet" data-page="${i}">
-          <div class="page-sheet-header-guide">
-            <span class="page-running-title">${isFirst ? docTitle : `${docTitle} · Page ${i}`}</span>
-            <span class="page-running-doc-badge">${isFirst ? 'US Letter · 8.5" × 11"' : `Page ${i}`}</span>
-          </div>
-          <div class="page-sheet-footer-guide">
-            <span class="page-sheet-number-pill">Page ${i} of ${totalPages}</span>
-          </div>
-        </div>
-      `;
+      sheetsHtml += `<div class="lyrics-page-sheet" data-page="${i}"></div>`;
     }
     pagesBg.innerHTML = sheetsHtml;
-  } else {
-    existingSheets.forEach((sheet, idx) => {
-      const pageNum = idx + 1;
-      const isFirst = pageNum === 1;
-      const titleEl = sheet.querySelector('.page-running-title');
-      const numEl = sheet.querySelector('.page-sheet-number-pill');
-      if (titleEl) titleEl.textContent = isFirst ? rawTitle : `${rawTitle} · Page ${pageNum}`;
-      if (numEl) numEl.textContent = `Page ${pageNum} of ${totalPages}`;
-    });
   }
 
   // Update editor min-height to match total pages
@@ -6166,6 +6970,8 @@ function applyAuthoritativeWorkspaceUpdate(
   if (!activeProject || !serverWorkspace) return;
   if (!activeProject.workspace) {
     activeProject.workspace = {
+      activeSongId: 'song-1',
+      songs: [],
       lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: Date.now() }], content: '', updatedAt: Date.now() },
       notes: { revision: 1, content: '', updatedAt: Date.now() },
       structure: { revision: 1, sections: [], updatedAt: Date.now() },
@@ -6173,15 +6979,31 @@ function applyAuthoritativeWorkspaceUpdate(
     };
   }
 
+  const activeSong = getActiveSong();
+
   // Only apply authoritative state to the specific saved area
   if (savedArea === 'lyrics' && serverWorkspace.lyrics) {
     activeProject.workspace.lyrics = serverWorkspace.lyrics;
+    activeSong.lyrics = serverWorkspace.lyrics;
+    activeSong.updatedAt = Date.now();
   } else if (savedArea === 'notes' && serverWorkspace.notes) {
     activeProject.workspace.notes = serverWorkspace.notes;
+    activeSong.notes = serverWorkspace.notes;
+    activeSong.updatedAt = Date.now();
   } else if (savedArea === 'structure' && serverWorkspace.structure) {
     activeProject.workspace.structure = serverWorkspace.structure;
+    activeSong.structure = serverWorkspace.structure;
+    activeSong.updatedAt = Date.now();
   } else if (savedArea === 'tasks' && serverWorkspace.tasks) {
     activeProject.workspace.tasks = serverWorkspace.tasks;
+  }
+
+  if (serverWorkspace.songs && Array.isArray(serverWorkspace.songs)) {
+    activeProject.workspace.songs = serverWorkspace.songs;
+    if (serverWorkspace.activeSongId) {
+      activeProject.workspace.activeSongId = serverWorkspace.activeSongId;
+    }
+    renderProjectSongsSelector();
   }
 }
 
@@ -6255,6 +7077,9 @@ function applyKeyToControls(keyString: string, force: boolean = false): void {
 
 function syncWorkspaceInputsFromProject(force = false): void {
   if (!activeProject) return;
+  const activeSong = getActiveSong();
+  renderProjectSongsSelector();
+
   const ws = activeProject.workspace || {
     lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: 0 }], content: '', updatedAt: 0 },
     notes: { content: '', updatedAt: 0 }
@@ -6263,9 +7088,9 @@ function syncWorkspaceInputsFromProject(force = false): void {
   renderLyricsDocTabs();
   const activeDoc = getActiveLyricsDoc();
   const lyricsHtml = activeDoc.content || '';
-  const notesContent = ws.notes?.content || '';
-  const notesBpm = ws.notes?.bpm || '';
-  const notesKey = ws.notes?.key || '';
+  const notesContent = activeSong.notes?.content || '';
+  const notesBpm = activeSong.notes?.bpm || '';
+  const notesKey = activeSong.notes?.key || '';
 
   if (force) {
     lastSyncedLyrics = lyricsHtml;
@@ -6298,7 +7123,7 @@ function syncWorkspaceInputsFromProject(force = false): void {
 
   renderStructureWorkspace();
   renderTasksWorkspace();
-  renderProjectActivities(activeProject ?? null);
+  renderProjectActivities(activeProject ?? null, auth.getUser());
 
   if (force || (currentLyricsStatus !== 'unsaved' && currentLyricsStatus !== 'saving' && lyricsSaveTimeout === null)) {
     setLyricsStatus('saved');
@@ -6351,37 +7176,64 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
     setLyricsStatus('unsaved');
     return;
   }
+  const activeSong = getActiveSong();
   const targetProjectId = activeProject.id;
   const targetContextGen = currentWorkspaceContextGen;
   const targetEditGen = lyricsEditGen;
   const targetSaveGen = ++lyricsSaveGen;
-  const baseRevision = activeProject.workspace?.lyrics?.revision ?? 1;
+  const baseRevision = activeSong.lyrics?.revision ?? 1;
 
   try {
     const activeDoc = getActiveLyricsDoc();
     const docId = documentId || activeDoc.id;
     const docTitle = title || activeDoc.title;
 
-    const payload = {
+    activeDoc.content = content;
+    activeDoc.title = docTitle;
+    activeDoc.updatedAt = Date.now();
+    if (activeSong.lyrics) {
+      activeSong.lyrics.content = content;
+      activeSong.lyrics.updatedAt = Date.now();
+    }
+    if (activeProject.workspace?.lyrics) {
+      activeProject.workspace.lyrics.content = content;
+    }
+
+    const payload: UpdateProjectWorkspaceRequest = {
+      activeSongId: activeSong.id,
+      songId: activeSong.id,
+      songs: activeProject.workspace?.songs,
       lyrics: {
         baseRevision,
-        activeDocumentId: activeProject.workspace.lyrics.activeDocumentId,
-        documents: activeProject.workspace.lyrics.documents,
+        activeDocumentId: activeSong.lyrics?.activeDocumentId,
+        documents: activeSong.lyrics?.documents,
         content,
         documentId: docId,
         title: docTitle
       }
     };
 
-    const res = await signaling.updateProjectWorkspace(targetProjectId, payload, token);
+    let res = await signaling.updateProjectWorkspace(targetProjectId, payload, token);
+    if (!res?.ok && !res?.conflict && res?.code !== 'WORKSPACE_CONFLICT') {
+      try {
+        const httpRes = await projectsApi.updateProjectWorkspace(token, targetProjectId, payload);
+        if (httpRes?.workspace) {
+          res = { ok: true, workspace: httpRes.workspace, project: httpRes.project };
+        }
+      } catch (httpErr: any) {
+        console.warn('HTTP workspace update fallback failed:', httpErr);
+      }
+    }
     const isLatest = (activeProject?.id === targetProjectId) &&
       (targetContextGen === currentWorkspaceContextGen) &&
       (targetSaveGen === lyricsSaveGen) &&
       (targetEditGen === lyricsEditGen);
-    if (!isLatest) return;
-
     if (res?.ok && res.workspace && activeProject) {
       applyAuthoritativeWorkspaceUpdate('lyrics', res.workspace);
+      if (res.project?.activities) {
+        activeProject.activities = res.project.activities;
+        renderProjectActivities(activeProject, auth.getUser());
+      }
       const syncedDoc = getActiveLyricsDoc();
       lastSyncedLyrics = syncedDoc.content ?? content;
       setLyricsStatus('saved');
@@ -6451,6 +7303,32 @@ $('btn-doc-indent')?.addEventListener('click', () => execDocFormat('indent'));
 $('btn-doc-outdent')?.addEventListener('click', () => execDocFormat('outdent'));
 $('btn-doc-clear')?.addEventListener('click', () => execDocFormat('removeFormat'));
 
+$('select-doc-zoom')?.addEventListener('change', (e) => {
+  const zoomVal = parseInt((e.target as HTMLSelectElement).value, 10) || 100;
+  const scale = zoomVal / 100;
+  const canvas = $('lyrics-document-canvas');
+  const wrapper = $('lyrics-canvas-wrapper');
+  if (canvas && wrapper) {
+    if (scale === 1) {
+      canvas.style.transform = '';
+      wrapper.style.width = '';
+      wrapper.style.height = '';
+      wrapper.style.minWidth = '';
+      wrapper.style.minHeight = '';
+    } else {
+      canvas.style.transform = `scale(${scale})`;
+      const baseW = 816;
+      const baseH = canvas.offsetHeight || 1056;
+      const scaledW = Math.round(baseW * scale);
+      const scaledH = Math.round(baseH * scale);
+      wrapper.style.width = `${scaledW}px`;
+      wrapper.style.height = `${scaledH}px`;
+      wrapper.style.minWidth = `${scaledW}px`;
+      wrapper.style.minHeight = `${scaledH}px`;
+    }
+  }
+});
+
 $('select-doc-heading')?.addEventListener('change', (e) => {
   const val = (e.target as HTMLSelectElement).value;
   execDocFormat('formatBlock', `<${val}>`);
@@ -6458,15 +7336,37 @@ $('select-doc-heading')?.addEventListener('change', (e) => {
 
 $('select-doc-font')?.addEventListener('change', (e) => {
   const font = (e.target as HTMLSelectElement).value;
-  execDocFormat('fontName', font);
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+    execDocFormat('fontName', font);
+  } else {
+    const projectEditor = $('project-lyrics-editor');
+    if (projectEditor) projectEditor.style.fontFamily = font;
+    const sessionEditor = $('session-lyrics-editor');
+    if (sessionEditor) sessionEditor.style.fontFamily = font;
+  }
+  updateLyricsDocumentPagination();
 });
 
 $('select-doc-fontsize')?.addEventListener('change', (e) => {
   const size = (e.target as HTMLSelectElement).value;
-  const projectEditor = $('project-lyrics-editor');
-  if (projectEditor) projectEditor.style.fontSize = size;
-  const sessionEditor = $('session-lyrics-editor');
-  if (sessionEditor) sessionEditor.style.fontSize = size;
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+    const range = sel.getRangeAt(0);
+    const span = document.createElement('span');
+    span.style.fontSize = size;
+    span.appendChild(range.extractContents());
+    range.insertNode(span);
+    sel.removeAllRanges();
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    sel.addRange(newRange);
+  } else {
+    const projectEditor = $('project-lyrics-editor');
+    if (projectEditor) projectEditor.style.fontSize = size;
+    const sessionEditor = $('session-lyrics-editor');
+    if (sessionEditor) sessionEditor.style.fontSize = size;
+  }
   updateLyricsDocumentPagination();
 });
 
@@ -6522,6 +7422,24 @@ document.querySelectorAll<HTMLButtonElement>('.palette-swatch').forEach((swatch)
     $('doc-color-palette')?.classList.add('hidden');
     $('doc-hilite-palette')?.classList.add('hidden');
   });
+});
+
+$('doc-custom-text-color')?.addEventListener('input', (e) => {
+  const color = (e.target as HTMLInputElement).value;
+  if (color) {
+    execDocFormat('foreColor', color);
+    const bar = $('current-text-color-bar');
+    if (bar) bar.style.background = color;
+  }
+});
+
+$('doc-custom-hilite-color')?.addEventListener('input', (e) => {
+  const color = (e.target as HTMLInputElement).value;
+  if (color) {
+    execDocFormat('hiliteColor', color);
+    const bar = $('current-hilite-color-bar');
+    if (bar) bar.style.background = color;
+  }
 });
 
 // Section Insert Helpers
@@ -6636,11 +7554,30 @@ $('lyrics-current-doc-title')?.addEventListener('input', (e) => {
   }, 400);
 });
 
+// Lyrics Sidebar Toggle (3 lines / hamburger)
+$('btn-toggle-lyrics-sidebar')?.addEventListener('click', () => {
+  const sidebar = $('lyrics-workspace-sidebar');
+  const btn = $('btn-toggle-lyrics-sidebar');
+  if (!sidebar) return;
+  const isCollapsed = sidebar.classList.toggle('collapsed');
+  btn?.classList.toggle('active', !isCollapsed);
+  setTimeout(() => updateLyricsDocumentPagination(), 210);
+});
+
+$('btn-close-lyrics-sidebar')?.addEventListener('click', () => {
+  const sidebar = $('lyrics-workspace-sidebar');
+  const btn = $('btn-toggle-lyrics-sidebar');
+  if (!sidebar) return;
+  sidebar.classList.add('collapsed');
+  btn?.classList.remove('active');
+  setTimeout(() => updateLyricsDocumentPagination(), 210);
+});
+
 // New Document Creation Modal
 $('btn-new-lyrics-doc')?.addEventListener('click', () => {
   setText('new-doc-error', '');
   const titleInp = $<HTMLInputElement>('input-new-doc-title');
-  if (titleInp) titleInp.value = `Draft ${(activeProject?.workspace?.lyrics?.documents?.length || 1) + 1}`;
+  if (titleInp) titleInp.value = `Document ${(activeProject?.workspace?.lyrics?.documents?.length || 1) + 1}`;
   $('new-lyrics-doc-modal')?.classList.remove('hidden');
   titleInp?.focus();
 });
@@ -6648,7 +7585,7 @@ $('btn-new-lyrics-doc')?.addEventListener('click', () => {
 $('btn-session-new-doc')?.addEventListener('click', () => {
   setText('new-doc-error', '');
   const titleInp = $<HTMLInputElement>('input-new-doc-title');
-  if (titleInp) titleInp.value = `Draft ${(activeProject?.workspace?.lyrics?.documents?.length || 1) + 1}`;
+  if (titleInp) titleInp.value = `Document ${(activeProject?.workspace?.lyrics?.documents?.length || 1) + 1}`;
   $('new-lyrics-doc-modal')?.classList.remove('hidden');
   titleInp?.focus();
 });
@@ -6699,7 +7636,8 @@ $('btn-doc-options-menu')?.addEventListener('click', (e) => {
   if (!pop) return;
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
   pop.style.top = `${rect.bottom + 6}px`;
-  pop.style.left = `${Math.max(10, rect.right - 180)}px`;
+  pop.style.right = `${window.innerWidth - rect.right}px`;
+  pop.style.left = 'auto';
   pop.classList.toggle('hidden');
 });
 
@@ -6842,14 +7780,44 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
     setNotesStatus('unsaved');
     return;
   }
+  const activeSong = getActiveSong();
   const targetProjectId = activeProject.id;
   const targetContextGen = currentWorkspaceContextGen;
   const targetEditGen = notesEditGen;
   const targetSaveGen = ++notesSaveGen;
-  const baseRevision = activeProject.workspace?.notes?.revision ?? 1;
+  const baseRevision = activeSong.notes?.revision ?? 1;
+
+  if (activeSong.notes) {
+    activeSong.notes.content = content;
+    activeSong.notes.bpm = bpm;
+    activeSong.notes.key = key;
+    activeSong.updatedAt = Date.now();
+  }
+  if (activeProject.workspace?.notes) {
+    activeProject.workspace.notes.content = content;
+    activeProject.workspace.notes.bpm = bpm;
+    activeProject.workspace.notes.key = key;
+  }
+
+  const payload: UpdateProjectWorkspaceRequest = {
+    activeSongId: activeSong.id,
+    songId: activeSong.id,
+    songs: activeProject.workspace?.songs,
+    notes: { baseRevision, content, bpm, key }
+  };
 
   try {
-    const res = await signaling.updateProjectWorkspace(targetProjectId, { notes: { baseRevision, content, bpm, key } }, token);
+    let res = await signaling.updateProjectWorkspace(targetProjectId, payload, token);
+    if (!res?.ok && !res?.conflict && res?.code !== 'WORKSPACE_CONFLICT') {
+      try {
+        const httpRes = await projectsApi.updateProjectWorkspace(token, targetProjectId, payload);
+        if (httpRes?.workspace) {
+          res = { ok: true, workspace: httpRes.workspace, project: httpRes.project };
+        }
+      } catch (httpErr: any) {
+        console.warn('HTTP workspace update fallback failed for notes:', httpErr);
+      }
+    }
     const isLatest = (activeProject?.id === targetProjectId) &&
       (targetContextGen === currentWorkspaceContextGen) &&
       (targetSaveGen === notesSaveGen) &&
@@ -6858,6 +7826,10 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
 
     if (res?.ok && res.workspace && activeProject) {
       applyAuthoritativeWorkspaceUpdate('notes', res.workspace);
+      if (res.project?.activities) {
+        activeProject.activities = res.project.activities;
+        renderProjectActivities(activeProject, auth.getUser());
+      }
       lastSyncedNotes = res.workspace.notes?.content ?? content;
       lastSyncedNotesBpm = res.workspace.notes?.bpm ?? bpm;
       lastSyncedNotesKey = res.workspace.notes?.key ?? key;
@@ -6947,9 +7919,113 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
   }
 }
 
+// Automatic Bullet Points Management for Project Notes
+function setupBulletPointBehavior(textarea: HTMLTextAreaElement | null): void {
+  if (!textarea) return;
+
+  const enforceBulletsOnAllLines = () => {
+    const val = textarea.value;
+    if (!val || !val.trim()) {
+      textarea.value = '• ';
+      textarea.selectionStart = textarea.selectionEnd = 2;
+      return;
+    }
+    const lines = val.split('\n');
+    let modified = false;
+    const fixedLines = lines.map((line) => {
+      if (line.startsWith('• ')) return line;
+      modified = true;
+      if (line.startsWith('•')) return '• ' + line.slice(1).trimStart();
+      return '• ' + line;
+    });
+    if (modified) {
+      const pos = textarea.selectionStart;
+      textarea.value = fixedLines.join('\n');
+      textarea.selectionStart = textarea.selectionEnd = Math.max(2, pos);
+    }
+  };
+
+  textarea.addEventListener('keydown', (e) => {
+    const val = textarea.value;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+
+    // 1. Enter: Always creates a new permanent bullet line
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const insertText = '\n• ';
+      const newVal = val.substring(0, start) + insertText + val.substring(end);
+      textarea.value = newVal;
+      const newPos = start + insertText.length;
+      textarea.selectionStart = textarea.selectionEnd = newPos;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+
+    // 2. Backspace: Protect the bullet point from deletion
+    if (e.key === 'Backspace') {
+      if (start === end) {
+        const lastNewline = val.lastIndexOf('\n', start - 1);
+        const lineStart = lastNewline === -1 ? 0 : lastNewline + 1;
+        const offsetInLine = start - lineStart;
+
+        // If cursor is at or before the bullet prefix (offset <= 2)
+        if (offsetInLine <= 2) {
+          e.preventDefault();
+          if (lineStart === 0) {
+            // First line: Cannot delete bullet
+            return;
+          }
+          // Line 2+: Remove current empty line or join with previous line
+          const lineEnd = val.indexOf('\n', start);
+          const nextStart = lineEnd === -1 ? val.length : lineEnd;
+          const currentLineContent = val.substring(lineStart + 2, nextStart);
+          const prevLineEnd = lineStart - 1; // position of '\n'
+
+          const newVal = val.substring(0, prevLineEnd) + (currentLineContent ? (' ' + currentLineContent) : '') + val.substring(nextStart);
+          textarea.value = newVal;
+          textarea.selectionStart = textarea.selectionEnd = prevLineEnd;
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          return;
+        }
+      }
+    }
+
+    // 3. Home key: jump after the bullet glyph
+    if (e.key === 'Home') {
+      const lastNewline = val.lastIndexOf('\n', start - 1);
+      const lineStart = lastNewline === -1 ? 0 : lastNewline + 1;
+      e.preventDefault();
+      textarea.selectionStart = textarea.selectionEnd = lineStart + 2;
+      return;
+    }
+  });
+
+  textarea.addEventListener('focus', enforceBulletsOnAllLines);
+  textarea.addEventListener('click', () => {
+    if (!textarea.value.trim()) {
+      enforceBulletsOnAllLines();
+    } else {
+      const start = textarea.selectionStart;
+      const lastNewline = textarea.value.lastIndexOf('\n', start - 1);
+      const lineStart = lastNewline === -1 ? 0 : lastNewline + 1;
+      if (start < lineStart + 2) {
+        textarea.selectionStart = textarea.selectionEnd = lineStart + 2;
+      }
+    }
+  });
+
+  textarea.addEventListener('input', enforceBulletsOnAllLines);
+}
+
+const projectNotesArea = $<HTMLTextAreaElement>('project-notes-input');
+const sessionNotesArea = $<HTMLTextAreaElement>('session-notes-input');
+setupBulletPointBehavior(projectNotesArea);
+setupBulletPointBehavior(sessionNotesArea);
+
 // Attach Input Listeners for Notes
-$<HTMLTextAreaElement>('project-notes-input')?.addEventListener('input', () => handleNotesInput());
-$<HTMLTextAreaElement>('session-notes-input')?.addEventListener('input', () => handleNotesInput());
+projectNotesArea?.addEventListener('input', () => handleNotesInput());
+sessionNotesArea?.addEventListener('input', () => handleNotesInput());
 $<HTMLInputElement>('project-notes-bpm')?.addEventListener('input', () => handleNotesInput());
 $<HTMLInputElement>('session-notes-bpm')?.addEventListener('input', () => handleNotesInput());
 $('project-notes-key-root')?.addEventListener('change', () => handleNotesInput());
@@ -6992,20 +8068,17 @@ const SECTION_TYPE_DEFAULT_BARS: Record<string, number> = {
 
 function getStructureSections(): any[] {
   if (!activeProject) return [];
-  if (!activeProject.workspace) {
-    activeProject.workspace = {
-      lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: Date.now() }], content: '', updatedAt: Date.now() },
-      notes: { content: '', updatedAt: Date.now() },
-      structure: { sections: [], updatedAt: Date.now() }
-    };
+  const activeSong = getActiveSong();
+  if (!activeSong.structure) {
+    activeSong.structure = { revision: 1, sections: [], updatedAt: Date.now() };
   }
-  if (!activeProject.workspace.structure) {
-    activeProject.workspace.structure = { sections: [], updatedAt: Date.now() };
+  if (!Array.isArray(activeSong.structure.sections)) {
+    activeSong.structure.sections = [];
   }
-  if (!Array.isArray(activeProject.workspace.structure.sections)) {
-    activeProject.workspace.structure.sections = [];
+  if (activeProject.workspace) {
+    activeProject.workspace.structure = activeSong.structure;
   }
-  return activeProject.workspace.structure.sections;
+  return activeSong.structure.sections;
 }
 
 function setStructureStatus(status: 'saving' | 'saved' | 'unsaved'): void {
@@ -7043,16 +8116,19 @@ function renderStructureWorkspace(): void {
       return;
     }
 
+    const totalBars = sections.reduce((sum, s) => sum + (Number(s.bars) || 8), 0) || 1;
+
     sections.forEach((sec) => {
       const block = document.createElement('div');
       block.className = `timeline-block type-${sec.type || 'verse'}`;
       block.dataset.sectionId = sec.id;
       
       const bars = Number(sec.bars) || 8;
-      // Proportional bar width: 8 bars ~ 76px, 16 bars ~ 140px, 32 bars ~ 270px
-      const blockWidth = isDrawer ? Math.max(56, bars * 6.5) : Math.max(76, bars * 8.5);
-      block.style.minWidth = `${blockWidth}px`;
-      block.style.flex = `${bars} 0 auto`;
+      const barPercent = ((bars / totalBars) * 100).toFixed(2);
+      block.style.flex = `${bars} ${bars} 0%`;
+      block.style.width = `${barPercent}%`;
+      block.style.minWidth = '48px';
+      block.style.boxSizing = 'border-box';
 
       block.innerHTML = `
         <span class="timeline-block-name">${escapeHtml(sec.name || SECTION_TYPE_LABELS[sec.type] || 'Section')}</span>
@@ -7147,8 +8223,6 @@ function renderStructureWorkspace(): void {
           </div>
 
           <div class="section-card-actions">
-            ${idx > 0 ? `<button type="button" class="btn-card-action btn-move-up" title="Move Up"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m18 15-6-6-6 6"/></svg></button>` : ''}
-            ${idx < sections.length - 1 ? `<button type="button" class="btn-card-action btn-move-down" title="Move Down"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m6 9 6 6 6-6"/></svg></button>` : ''}
             <button type="button" class="btn-card-action btn-dup" title="Duplicate"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
             <button type="button" class="btn-card-action btn-del" title="Delete Section"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
           </div>
@@ -7251,17 +8325,24 @@ function renderStructureWorkspace(): void {
       const applyBarsChange = (val: number | undefined) => {
         sec.bars = val && val > 0 ? val : 8;
         sec.updatedAt = Date.now();
-        // Update timeline block display live and adjust width
-        findTimelineBlocks(sec.id).forEach((block) => {
-          const blockBars = block.querySelector('.timeline-block-bars');
-          if (blockBars) blockBars.textContent = `${sec.bars} Bars`;
-          const bVal = sec.bars;
-          block.style.minWidth = `${Math.max(76, bVal * 8.5)}px`;
-          block.style.flex = `${bVal} 0 auto`;
-        });
-        const totalBars = sections.reduce((sum, s) => sum + (Number(s.bars) || 0), 0);
+        
+        const totalBars = sections.reduce((sum, s) => sum + (Number(s.bars) || 8), 0) || 1;
         setText('structure-summary-bars', `${totalBars} Total Bars`);
         setText('session-structure-summary', `${sections.length} ${sections.length === 1 ? 'Section' : 'Sections'} · ${totalBars} Bars`);
+
+        // Update all timeline blocks proportionally
+        sections.forEach((s) => {
+          const sBars = Number(s.bars) || 8;
+          const sPercent = ((sBars / totalBars) * 100).toFixed(2);
+          findTimelineBlocks(s.id).forEach((block) => {
+            const blockBars = block.querySelector('.timeline-block-bars');
+            if (blockBars) blockBars.textContent = `${sBars} Bars`;
+            block.style.flex = `${sBars} ${sBars} 0%`;
+            block.style.width = `${sPercent}%`;
+            block.style.minWidth = '48px';
+          });
+        });
+
         debounceSaveStructure();
       };
 
@@ -7290,18 +8371,6 @@ function renderStructureWorkspace(): void {
         sec.note = (e.target as HTMLInputElement).value;
         sec.updatedAt = Date.now();
         debounceSaveStructure();
-      });
-
-      // Move Up
-      card.querySelector('.btn-move-up')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        moveStructureSection(sec.id, 'up');
-      });
-
-      // Move Down
-      card.querySelector('.btn-move-down')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        moveStructureSection(sec.id, 'down');
       });
 
       // Duplicate
@@ -7362,15 +8431,41 @@ async function saveStructureWorkspace(): Promise<void> {
     setStructureStatus('unsaved');
     return;
   }
+  const activeSong = getActiveSong();
   const targetProjectId = activeProject.id;
   const targetContextGen = currentWorkspaceContextGen;
   const targetEditGen = structureEditGen;
   const targetSaveGen = ++structureSaveGen;
-  const baseRevision = activeProject.workspace?.structure?.revision ?? 1;
+  const baseRevision = activeSong.structure?.revision ?? 1;
 
   try {
     const sections = getStructureSections();
-    const res = await signaling.updateProjectWorkspace(targetProjectId, { structure: { baseRevision, sections } }, token);
+    if (activeSong.structure) {
+      activeSong.structure.sections = sections;
+      activeSong.updatedAt = Date.now();
+    }
+    if (activeProject.workspace?.structure) {
+      activeProject.workspace.structure.sections = sections;
+    }
+
+    const payload: UpdateProjectWorkspaceRequest = {
+      activeSongId: activeSong.id,
+      songId: activeSong.id,
+      songs: activeProject.workspace?.songs,
+      structure: { baseRevision, sections }
+    };
+
+    let res = await signaling.updateProjectWorkspace(targetProjectId, payload, token);
+    if (!res?.ok && !res?.conflict && res?.code !== 'WORKSPACE_CONFLICT') {
+      try {
+        const httpRes = await projectsApi.updateProjectWorkspace(token, targetProjectId, payload);
+        if (httpRes?.workspace) {
+          res = { ok: true, workspace: httpRes.workspace, project: httpRes.project };
+        }
+      } catch (httpErr: any) {
+        console.warn('HTTP workspace update fallback failed for structure:', httpErr);
+      }
+    }
     const isLatest = (activeProject?.id === targetProjectId) &&
       (targetContextGen === currentWorkspaceContextGen) &&
       (targetSaveGen === structureSaveGen) &&
@@ -7379,6 +8474,10 @@ async function saveStructureWorkspace(): Promise<void> {
 
     if (res?.ok && res.workspace && activeProject) {
       applyAuthoritativeWorkspaceUpdate('structure', res.workspace);
+      if (res.project?.activities) {
+        activeProject.activities = res.project.activities;
+        renderProjectActivities(activeProject);
+      }
       setStructureStatus('saved');
     } else if (res?.conflict || res?.code === 'WORKSPACE_CONFLICT') {
       // Confirmed WORKSPACE_CONFLICT: preserve local edits exactly, keep unsaved, do not overwrite local content
@@ -7493,10 +8592,15 @@ document.addEventListener('click', (e) => {
 });
 
 // Real-Time Socket Workspace Sync
-signaling.on('project:workspace:synced', (data: { projectId: string; workspace: any; updatedBy?: string; updatedByName?: string }) => {
+signaling.on('project:workspace:synced', (data: { projectId: string; workspace: any; activities?: any[]; updatedBy?: string; updatedByName?: string }) => {
   if (!data?.workspace) return;
   const matchesCurrent = activeProject?.id === data.projectId || sessionProjectId === data.projectId;
   if (!matchesCurrent) return;
+
+  if (data.activities && activeProject) {
+    activeProject.activities = data.activities;
+    renderProjectActivities(activeProject, auth.getUser());
+  }
 
   if (!activeProject) return;
   if (!activeProject.workspace) {
@@ -7689,14 +8793,14 @@ signaling.on('project:workspace:synced', (data: { projectId: string; workspace: 
   // 5. Sync Project Activities
   if (data.activities && activeProject) {
     activeProject.activities = data.activities;
-    renderProjectActivities(activeProject ?? null);
+    renderProjectActivities(activeProject ?? null, auth.getUser());
   }
 });
 
 signaling.on('project:activity:new', (data: { projectId: string; activities: ProjectActivityItem[] }) => {
   if (activeProject && activeProject.id === data.projectId) {
     activeProject.activities = data.activities;
-    renderProjectActivities(activeProject ?? null);
+    renderProjectActivities(activeProject ?? null, auth.getUser());
   }
 });
 
@@ -7869,9 +8973,21 @@ async function saveTasksWorkspace(): Promise<void> {
   const tasks = getProjectTasks();
 
   try {
-    const res = await signaling.updateProjectWorkspace(targetProjectId, {
+    let res = await signaling.updateProjectWorkspace(targetProjectId, {
       tasks: { baseRevision, tasks }
     }, token);
+    if (!res?.ok && !res?.conflict && res?.code !== 'WORKSPACE_CONFLICT') {
+      try {
+        const httpRes = await projectsApi.updateProjectWorkspace(token, targetProjectId, {
+          tasks: { baseRevision, tasks }
+        });
+        if (httpRes?.workspace) {
+          res = { ok: true, workspace: httpRes.workspace, project: httpRes.project };
+        }
+      } catch (httpErr: any) {
+        console.warn('HTTP workspace update fallback failed for tasks:', httpErr);
+      }
+    }
     const isLatest = (activeProject?.id === targetProjectId) &&
       (targetContextGen === currentWorkspaceContextGen) &&
       (targetSaveGen === tasksSaveGen) &&
@@ -8316,11 +9432,11 @@ function renderTasksWorkspace(): void {
     if (pendingTasks.length === 0) {
       overviewListEl.innerHTML = `
         <div class="projects-empty" style="padding: 16px;">
-          <p style="margin: 0; font-size: 12.5px; color: #94a3b8;">${tasks.length > 0 ? 'All production tasks are completed! 🎉' : 'No tasks added yet. Click View All Tasks to start tracking your to-dos.'}</p>
+          <p style="margin: 0; font-size: 12.5px; color: #94a3b8;">${tasks.length > 0 ? 'All production tasks are completed! 🎉' : 'No tasks added yet. Click All Tasks to start tracking your to-dos.'}</p>
         </div>
       `;
     } else {
-      pendingTasks.slice(0, 6).forEach((task) => {
+      pendingTasks.slice(0, 5).forEach((task) => {
         const item = document.createElement('div');
         item.className = `overview-task-item status-${task.status}`;
         const assigneeBadge = task.assigneeName ? `<span class="overview-task-assignee">${escapeHtml(task.assigneeName)}</span>` : '';
@@ -8520,7 +9636,198 @@ $('btn-overview-view-tasks')?.addEventListener('click', () => {
 });
 
 // ========================================================
+// SONG SWITCHER & MANAGEMENT DOM LISTENERS
+// ========================================================
+$('btn-active-song-trigger')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  $('project-songs-dropdown-menu')?.classList.toggle('hidden');
+});
+
+document.addEventListener('click', (e) => {
+  const menu = $('project-songs-dropdown-menu');
+  if (menu && !menu.contains(e.target as Node) && e.target !== $('btn-active-song-trigger')) {
+    menu.classList.add('hidden');
+  }
+});
+
+const quickCreateNextSong = () => {
+  const songs = activeProject?.workspace?.songs || [];
+  const nextNum = songs.length + 1;
+  currentSongsOverviewPage = Math.ceil(nextNum / SONGS_PER_PAGE);
+  createNewSong(`Song ${nextNum}`);
+  $('project-songs-dropdown-menu')?.classList.add('hidden');
+};
+
+const openNewSongModal = () => {
+  quickCreateNextSong();
+};
+
+const closeNewSongModal = () => {
+  $('new-song-modal')?.classList.add('hidden');
+};
+
+$('btn-songs-prev-page')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (currentSongsOverviewPage > 1) {
+    currentSongsOverviewPage--;
+    renderProjectOverviewSongsList();
+  }
+});
+
+$('btn-songs-next-page')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const songs = activeProject?.workspace?.songs || [];
+  const totalPages = Math.ceil(songs.length / SONGS_PER_PAGE) || 1;
+  if (currentSongsOverviewPage < totalPages) {
+    currentSongsOverviewPage++;
+    renderProjectOverviewSongsList();
+  }
+});
+
+$('btn-quick-new-song')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  quickCreateNextSong();
+});
+
+$('btn-open-new-song-modal')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  quickCreateNextSong();
+});
+
+$('btn-overview-new-song')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  quickCreateNextSong();
+});
+
+$('btn-session-new-song')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  quickCreateNextSong();
+});
+
+$('btn-back-to-project-overview')?.addEventListener('click', () => {
+  closeSongStudio();
+});
+
+// Double-click to rename active song inside Song Studio Header
+$('song-studio-active-title')?.parentElement?.addEventListener('dblclick', (e) => {
+  e.stopPropagation();
+  e.preventDefault();
+  const titleEl = $('song-studio-active-title');
+  if (!titleEl || titleEl.querySelector('input')) return;
+  const activeSong = getActiveSong();
+  const currentTitle = activeSong.title || 'Untitled Song';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'song-inline-rename-input';
+  input.value = currentTitle;
+  input.maxLength = 80;
+
+  let committed = false;
+  const commit = () => {
+    if (committed) return;
+    committed = true;
+    const newTitle = input.value.trim();
+    if (newTitle && newTitle !== currentTitle) {
+      activeSong.title = newTitle;
+      void saveSongsWorkspace();
+    }
+    renderProjectSongsSelector();
+  };
+
+  input.addEventListener('keydown', (ke) => {
+    if (ke.key === 'Enter') {
+      ke.preventDefault();
+      commit();
+    } else if (ke.key === 'Escape') {
+      ke.preventDefault();
+      committed = true;
+      renderProjectSongsSelector();
+    }
+  });
+  input.addEventListener('click', (ce) => ce.stopPropagation());
+  input.addEventListener('dblclick', (de) => de.stopPropagation());
+  input.addEventListener('blur', commit);
+
+  titleEl.replaceChildren(input);
+  input.focus();
+  input.select();
+});
+
+// Song Studio Tab Buttons (Lyrics, Structure, Notes)
+document.querySelectorAll<HTMLButtonElement>('.song-studio-tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const targetSongTab = btn.dataset.songTab as 'lyrics' | 'structure' | 'notes';
+    if (!targetSongTab) return;
+    currentSongStudioTab = targetSongTab;
+    document.querySelectorAll<HTMLButtonElement>('.song-studio-tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    $('project-panel-lyrics')?.classList.toggle('hidden', targetSongTab !== 'lyrics');
+    $('project-panel-structure')?.classList.toggle('hidden', targetSongTab !== 'structure');
+    $('project-panel-notes')?.classList.toggle('hidden', targetSongTab !== 'notes');
+    if (targetSongTab === 'lyrics') {
+      setTimeout(() => updateLyricsDocumentPagination(), 20);
+    }
+  });
+});
+
+// Quick Switch Song Dropdown inside Song Studio
+$<HTMLSelectElement>('select-song-studio-quick-switch')?.addEventListener('change', (e) => {
+  const targetId = (e.target as HTMLSelectElement).value;
+  if (targetId) {
+    switchActiveSong(targetId);
+    openSongStudio(targetId, currentSongStudioTab);
+  }
+});
+
+$('btn-close-new-song-modal')?.addEventListener('click', closeNewSongModal);
+$('btn-cancel-new-song')?.addEventListener('click', closeNewSongModal);
+
+$('btn-confirm-create-song')?.addEventListener('click', () => {
+  const input = $<HTMLInputElement>('input-new-song-title');
+  const title = input?.value.trim() || '';
+  if (!title) {
+    const err = $('new-song-error');
+    if (err) {
+      err.textContent = 'Please enter a song title.';
+      err.classList.remove('hidden');
+    }
+    return;
+  }
+  createNewSong(title);
+  closeNewSongModal();
+});
+
+$('input-new-song-title')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    $('btn-confirm-create-song')?.click();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeNewSongModal();
+  }
+});
+
+// Song Title Preset Chips
+document.querySelectorAll<HTMLButtonElement>('.btn-song-title-preset').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const title = btn.dataset.title;
+    const input = $<HTMLInputElement>('input-new-song-title');
+    if (input && title) {
+      input.value = title;
+      input.focus();
+    }
+  });
+});
+
+// Drawer Song Select Change
+$<HTMLSelectElement>('session-workspace-song-select')?.addEventListener('change', (e) => {
+  const targetId = (e.target as HTMLSelectElement).value;
+  if (targetId) {
+    switchActiveSong(targetId);
+  }
+});
+
+// ========================================================
 // ACTIVITY HISTORY & SESSION CHAT SUBSYSTEMS
 // ========================================================
-initActivityHistory(() => activeProject ?? null);
+initActivityHistory(() => activeProject ?? null, () => auth.getUser());
 initSessionChat({ getSessionCode: () => currentCode, signaling });

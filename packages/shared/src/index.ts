@@ -175,6 +175,7 @@ export const projectCollaboratorSchema = z.object({
   displayName: z.string(),
   username: z.string(),
   avatarColor: z.string().default('#06b6d4'),
+  avatarUrl: z.string().optional(),
   role: projectCollaboratorRoleSchema.default('collaborator'),
   addedAt: z.number()
 });
@@ -307,7 +308,27 @@ export const projectWorkspaceTasksSchema = z.object({
 });
 export type ProjectWorkspaceTasks = z.infer<typeof projectWorkspaceTasksSchema>;
 
+export const projectSongItemSchema = z.object({
+  id: z.string().trim().min(1, 'Song ID is required'),
+  title: z.string().trim().min(1).default('Untitled Song'),
+  order: z.number().default(0),
+  lyrics: projectWorkspaceLyricsSchema.default({
+    revision: 1,
+    activeDocumentId: 'doc-main',
+    documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: 0 }],
+    content: '',
+    updatedAt: 0
+  }),
+  notes: projectWorkspaceNotesSchema.default({ revision: 1, content: '', updatedAt: 0 }),
+  structure: projectWorkspaceStructureSchema.default({ revision: 1, sections: [], updatedAt: 0 }),
+  createdAt: z.number().default(0),
+  updatedAt: z.number().default(0)
+});
+export type ProjectSongItem = z.infer<typeof projectSongItemSchema>;
+
 export const projectWorkspaceSchema = z.object({
+  activeSongId: z.string().optional(),
+  songs: z.array(projectSongItemSchema).default([]),
   lyrics: projectWorkspaceLyricsSchema.default({
     revision: 1,
     activeDocumentId: 'doc-main',
@@ -354,6 +375,7 @@ export const projectActivityItemSchema = z.object({
   userDisplayName: z.string(),
   userUsername: z.string(),
   userAvatarColor: z.string().optional(),
+  userAvatarUrl: z.string().optional(),
   title: z.string(),
   summary: z.string(),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -369,6 +391,7 @@ export const projectSchema = z.object({
   ownerDisplayName: z.string(),
   ownerUsername: z.string(),
   ownerAvatarColor: z.string().optional(),
+  ownerAvatarUrl: z.string().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
   lastActivityAt: z.number(),
@@ -378,6 +401,23 @@ export const projectSchema = z.object({
   sessionCount: z.number().int().default(0),
   activities: z.array(projectActivityItemSchema).default([]),
   workspace: projectWorkspaceSchema.default({
+    activeSongId: 'song-1',
+    songs: [{
+      id: 'song-1',
+      title: 'Song 1',
+      order: 0,
+      lyrics: {
+        revision: 1,
+        activeDocumentId: 'doc-main',
+        documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: 0 }],
+        content: '',
+        updatedAt: 0
+      },
+      notes: { revision: 1, content: '', updatedAt: 0 },
+      structure: { revision: 1, sections: [], updatedAt: 0 },
+      createdAt: 0,
+      updatedAt: 0
+    }],
     lyrics: {
       revision: 1,
       activeDocumentId: 'doc-main',
@@ -408,6 +448,9 @@ export const updateProjectRequestSchema = z.object({
 export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;
 
 export const updateProjectWorkspaceRequestSchema = z.object({
+  activeSongId: z.string().optional(),
+  songId: z.string().optional(),
+  songs: z.array(projectSongItemSchema).optional(),
   lyrics: z.object({
     baseRevision: z.number().int().nonnegative().optional(),
     activeDocumentId: z.string().optional(),

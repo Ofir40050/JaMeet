@@ -26,8 +26,9 @@ export function getApiBase(): string {
   return DEFAULT_DEV_SERVER_URL;
 }
 
-function authHeaders(token?: string): HeadersInit {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+function authHeaders(token?: string, hasBody = true): HeadersInit {
+  const headers: Record<string, string> = {};
+  if (hasBody) headers['Content-Type'] = 'application/json';
   if (token) headers['Authorization'] = `Bearer ${token}`;
   return headers;
 }
@@ -69,13 +70,13 @@ async function parseResponse<T>(res: Response, fallbackError: string): Promise<T
 
 export async function fetchProjects(token: string, includeArchived = false): Promise<Project[]> {
   const url = `${getApiBase()}/api/projects${includeArchived ? '?archived=true' : ''}`;
-  const res = await fetch(url, { headers: authHeaders(token) });
+  const res = await fetch(url, { headers: authHeaders(token, false) });
   const data = await parseResponse<{ ok: boolean; projects: Project[] }>(res, 'Failed to load projects.');
   return (data.projects || []) as Project[];
 }
 
 export async function fetchProject(token: string, projectId: string): Promise<Project> {
-  const res = await fetch(`${getApiBase()}/api/projects/${projectId}`, { headers: authHeaders(token) });
+  const res = await fetch(`${getApiBase()}/api/projects/${projectId}`, { headers: authHeaders(token, false) });
   const data = await parseResponse<{ ok: boolean; project: Project }>(res, 'Project not found.');
   return data.project;
 }
@@ -83,7 +84,7 @@ export async function fetchProject(token: string, projectId: string): Promise<Pr
 export async function createProject(token: string, req: CreateProjectRequest): Promise<Project> {
   const res = await fetch(`${getApiBase()}/api/projects`, {
     method: 'POST',
-    headers: authHeaders(token),
+    headers: authHeaders(token, true),
     body: JSON.stringify(req)
   });
   const data = await parseResponse<{ ok: boolean; project: Project }>(res, 'Failed to create project.');
@@ -93,7 +94,7 @@ export async function createProject(token: string, req: CreateProjectRequest): P
 export async function updateProject(token: string, projectId: string, req: UpdateProjectRequest): Promise<Project> {
   const res = await fetch(`${getApiBase()}/api/projects/${projectId}`, {
     method: 'PATCH',
-    headers: authHeaders(token),
+    headers: authHeaders(token, true),
     body: JSON.stringify(req)
   });
   const data = await parseResponse<{ ok: boolean; project: Project }>(res, 'Failed to update project.');
@@ -107,7 +108,7 @@ export async function updateProjectWorkspace(
 ): Promise<{ project: Project; workspace: ProjectWorkspace }> {
   const res = await fetch(`${getApiBase()}/api/projects/${projectId}/workspace`, {
     method: 'PUT',
-    headers: authHeaders(token),
+    headers: authHeaders(token, true),
     body: JSON.stringify(req)
   });
   return parseResponse<{ ok: boolean; project: Project; workspace: ProjectWorkspace }>(res, 'Failed to update workspace.');
@@ -124,7 +125,7 @@ export async function unarchiveProject(token: string, projectId: string): Promis
 export async function deleteProject(token: string, projectId: string): Promise<void> {
   const res = await fetch(`${getApiBase()}/api/projects/${projectId}`, {
     method: 'DELETE',
-    headers: authHeaders(token)
+    headers: authHeaders(token, false)
   });
   await parseResponse<{ ok: boolean }>(res, 'Failed to delete project.');
 }
@@ -132,7 +133,7 @@ export async function deleteProject(token: string, projectId: string): Promise<v
 export async function addCollaborator(token: string, projectId: string, usernameOrEmail: string, role = 'collaborator'): Promise<Project> {
   const res = await fetch(`${getApiBase()}/api/projects/${projectId}/collaborators`, {
     method: 'POST',
-    headers: authHeaders(token),
+    headers: authHeaders(token, true),
     body: JSON.stringify({ usernameOrEmail, role })
   });
   const data = await parseResponse<{ ok: boolean; project: Project }>(res, 'Failed to add collaborator.');
@@ -142,7 +143,7 @@ export async function addCollaborator(token: string, projectId: string, username
 export async function removeCollaborator(token: string, projectId: string, userId: string): Promise<Project> {
   const res = await fetch(`${getApiBase()}/api/projects/${projectId}/collaborators/${userId}`, {
     method: 'DELETE',
-    headers: authHeaders(token)
+    headers: authHeaders(token, false)
   });
   const data = await parseResponse<{ ok: boolean; project: Project }>(res, 'Failed to remove collaborator.');
   return data.project;
@@ -164,7 +165,7 @@ export function formatRelativeTime(timestamp: number): string {
 }
 
 export function formatSessionDuration(seconds?: number): string {
-  if (!seconds || seconds <= 0) return '—';
+  if (!seconds || seconds <= 0) return '< 1m';
   if (seconds < 60) return `${seconds}s`;
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;

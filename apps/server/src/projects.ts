@@ -17,6 +17,7 @@ import {
   type UserProfile,
   type ParticipantIdentity
 } from '@jameet/shared';
+import type { UserStore } from './auth.js';
 
 export class WorkspaceConflictError extends Error {
   readonly code = 'WORKSPACE_CONFLICT';
@@ -100,8 +101,10 @@ export class ProjectStore {
   private dataFilePath: string;
   private projectQueues = new Map<string, Promise<void>>();
   private ownerQueues = new Map<string, Promise<void>>();
+  private userStore?: UserStore;
 
-  constructor(storageDir?: string) {
+  constructor(storageDir?: string, userStore?: UserStore) {
+    this.userStore = userStore;
     const baseDir = storageDir ?? path.join(process.cwd(), 'data');
     this.baseDir = baseDir;
     this.projectsDir = path.join(baseDir, 'projects');
@@ -112,6 +115,40 @@ export class ProjectStore {
     const primaryPath = path.join(baseDir, 'jameet-projects.json');
     this.dataFilePath = !fs.existsSync(primaryPath) && fs.existsSync(legacyPath) ? legacyPath : primaryPath;
     this.loadFromDisk();
+  }
+
+  public enrichUserAvatars(project: Project): Project {
+    if (!this.userStore) return project;
+    try {
+      // 1. Owner
+      const ownerProfile = this.userStore.getStoredUser(project.ownerId);
+      if (ownerProfile) {
+        if (ownerProfile.avatarUrl) project.ownerAvatarUrl = ownerProfile.avatarUrl;
+        if (ownerProfile.avatarColor) project.ownerAvatarColor = ownerProfile.avatarColor;
+      }
+      // 2. Collaborators
+      if (Array.isArray(project.collaborators)) {
+        for (const c of project.collaborators) {
+          const collabProfile = this.userStore.getStoredUser(c.userId);
+          if (collabProfile) {
+            if (collabProfile.avatarUrl) c.avatarUrl = collabProfile.avatarUrl;
+            if (collabProfile.avatarColor) c.avatarColor = collabProfile.avatarColor;
+          }
+        }
+      }
+      // 3. Activities
+      if (Array.isArray(project.activities)) {
+        for (const a of project.activities) {
+          if (!a.userAvatarUrl) {
+            const actProfile = this.userStore.getStoredUser(a.userId);
+            if (actProfile?.avatarUrl) {
+              a.userAvatarUrl = actProfile.avatarUrl;
+            }
+          }
+        }
+      }
+    } catch { /* ignore */ }
+    return project;
   }
 
   private normalizeLoadedProject(p: Project): void {
@@ -126,31 +163,44 @@ export class ProjectStore {
         }
       }
     }
+    const now = p.updatedAt || p.createdAt || Date.now();
     if (!p.workspace) {
+      const defaultSong = {
+        id: 'song-1',
+        title: 'Song 1',
+        order: 0,
+        lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now },
+        notes: { revision: 1, content: '', updatedAt: now },
+        structure: { revision: 1, sections: [], updatedAt: now },
+        createdAt: now,
+        updatedAt: now
+      };
       p.workspace = {
-        lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() }], content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() },
-        notes: { revision: 1, content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() },
-        structure: { revision: 1, sections: [], updatedAt: p.updatedAt || p.createdAt || Date.now() },
-        tasks: { revision: 1, tasks: [], updatedAt: p.updatedAt || p.createdAt || Date.now() }
+        activeSongId: 'song-1',
+        songs: [defaultSong],
+        lyrics: defaultSong.lyrics,
+        notes: defaultSong.notes,
+        structure: defaultSong.structure,
+        tasks: { revision: 1, tasks: [], updatedAt: now }
       };
     } else {
       if (!p.workspace.lyrics) {
-        p.workspace.lyrics = { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() }], content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() };
+        p.workspace.lyrics = { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now };
       } else if (p.workspace.lyrics.revision === undefined) {
         p.workspace.lyrics.revision = 1;
       }
       if (!p.workspace.notes) {
-        p.workspace.notes = { revision: 1, content: '', updatedAt: p.updatedAt || p.createdAt || Date.now() };
+        p.workspace.notes = { revision: 1, content: '', updatedAt: now };
       } else if (p.workspace.notes.revision === undefined) {
         p.workspace.notes.revision = 1;
       }
       if (!p.workspace.structure) {
-        p.workspace.structure = { revision: 1, sections: [], updatedAt: p.updatedAt || p.createdAt || Date.now() };
+        p.workspace.structure = { revision: 1, sections: [], updatedAt: now };
       } else if (p.workspace.structure.revision === undefined) {
         p.workspace.structure.revision = 1;
       }
       if (!p.workspace.tasks) {
-        p.workspace.tasks = { revision: 1, tasks: [], updatedAt: p.updatedAt || p.createdAt || Date.now() };
+        p.workspace.tasks = { revision: 1, tasks: [], updatedAt: now };
       } else {
         if (p.workspace.tasks.revision === undefined) {
           p.workspace.tasks.revision = 1;
@@ -162,6 +212,29 @@ export class ProjectStore {
             }
           });
         }
+      }
+
+      if (!p.workspace.songs || !Array.isArray(p.workspace.songs) || p.workspace.songs.length === 0) {
+        p.workspace.songs = [{
+          id: 'song-1',
+          title: 'Song 1',
+          order: 0,
+          lyrics: p.workspace.lyrics,
+          notes: p.workspace.notes,
+          structure: p.workspace.structure,
+          createdAt: now,
+          updatedAt: now
+        }];
+        p.workspace.activeSongId = 'song-1';
+      }
+      if (!p.workspace.activeSongId) {
+        p.workspace.activeSongId = p.workspace.songs[0]?.id || 'song-1';
+      }
+      const activeSong = p.workspace.songs.find((s) => s.id === p.workspace.activeSongId) || p.workspace.songs[0];
+      if (activeSong) {
+        p.workspace.lyrics = activeSong.lyrics;
+        p.workspace.notes = activeSong.notes;
+        p.workspace.structure = activeSong.structure;
       }
     }
   }
@@ -420,7 +493,7 @@ export class ProjectStore {
       const isCollaborator = project.collaborators.some((c) => c.userId === userId);
       if (isOwner || isCollaborator) {
         if (!includeArchived && project.archived) continue;
-        results.push(project);
+        results.push(this.enrichUserAvatars(project));
       }
     }
     // Sort by last activity descending
@@ -433,7 +506,7 @@ export class ProjectStore {
     const isOwner = project.ownerId === userId;
     const isCollaborator = project.collaborators.some((c) => c.userId === userId);
     if (!isOwner && !isCollaborator) return null;
-    return project;
+    return this.enrichUserAvatars(project);
   }
 
   hasAccess(projectId: string, userId: string): boolean {
@@ -454,10 +527,18 @@ export class ProjectStore {
     return null;
   }
 
-  isOwner(projectId: string, userId: string): boolean {
+  isOwner(projectId: string, userId: string, username?: string): boolean {
     const project = this.projects.get(projectId);
     if (!project) return false;
-    return project.ownerId === userId;
+    if (project.ownerId === userId) return true;
+    if (username && project.ownerUsername?.toLowerCase() === username.toLowerCase()) return true;
+    if (this.userStore) {
+      const u = this.userStore.getStoredUser(userId);
+      if (u && project.ownerUsername?.toLowerCase() === u.username?.toLowerCase()) return true;
+      const ownerU = this.userStore.getStoredUser(project.ownerId);
+      if (ownerU && u && ownerU.id === u.id) return true;
+    }
+    return false;
   }
 
   canModifyWorkspace(projectId: string, userId: string): boolean {
@@ -512,6 +593,7 @@ export class ProjectStore {
         ownerDisplayName: owner.displayName,
         ownerUsername: owner.username,
         ownerAvatarColor: owner.avatarColor || '#06b6d4',
+        ownerAvatarUrl: owner.avatarUrl,
         createdAt: now,
         updatedAt: now,
         lastActivityAt: now,
@@ -521,6 +603,34 @@ export class ProjectStore {
         sessionCount: 0,
         activities: [],
         workspace: {
+          activeSongId: 'song-1',
+          songs: [
+            {
+              id: 'song-1',
+              title: data.name.trim(),
+              order: 0,
+              lyrics: {
+                revision: 1,
+                activeDocumentId: 'doc-main',
+                documents: [
+                  {
+                    id: 'doc-main',
+                    title: 'Main Lyrics',
+                    content: '',
+                    updatedAt: now,
+                    updatedBy: owner.id,
+                    updatedByName: owner.displayName
+                  }
+                ],
+                content: '',
+                updatedAt: now
+              },
+              notes: { revision: 1, content: '', updatedAt: now },
+              structure: { revision: 1, sections: [], updatedAt: now },
+              createdAt: now,
+              updatedAt: now
+            }
+          ],
           lyrics: {
             revision: 1,
             activeDocumentId: 'doc-main',
@@ -567,7 +677,7 @@ export class ProjectStore {
 
   async recordActivity(
     projectId: string,
-    user: { id?: string; displayName?: string; username?: string; avatarColor?: string },
+    user: { id?: string; displayName?: string; username?: string; avatarColor?: string; avatarUrl?: string },
     type: ProjectActivityType,
     summary: string,
     title?: string,
@@ -586,6 +696,7 @@ export class ProjectStore {
     const userDisplayName = user.displayName || user.username || 'Collaborator';
     const userUsername = user.username || 'collaborator';
     const userAvatarColor = user.avatarColor;
+    const userAvatarUrl = user.avatarUrl;
 
     // Intelligent consolidation for continuous edits (e.g. typing lyrics, typing notes)
     if (type === 'lyrics_edited' || type === 'notes_edited') {
@@ -595,6 +706,7 @@ export class ProjectStore {
         top.summary = summary;
         if (title) top.title = title;
         if (metadata) top.metadata = { ...(top.metadata || {}), ...metadata };
+        if (userAvatarUrl) top.userAvatarUrl = userAvatarUrl;
         project.updatedAt = now;
         project.lastActivityAt = now;
         if (persist) {
@@ -617,6 +729,7 @@ export class ProjectStore {
       userDisplayName,
       userUsername,
       userAvatarColor,
+      userAvatarUrl,
       title: title || '',
       summary,
       metadata,
@@ -996,6 +1109,8 @@ export class ProjectStore {
       const now = Date.now();
       if (!project.workspace) {
         project.workspace = {
+          activeSongId: 'song-1',
+          songs: [],
           lyrics: {
             revision: 1,
             activeDocumentId: 'doc-main',
@@ -1007,6 +1122,9 @@ export class ProjectStore {
           structure: { revision: 1, sections: [], updatedAt: now },
           tasks: { revision: 1, tasks: [], updatedAt: now }
         };
+      }
+      if (!project.workspace.songs || !Array.isArray(project.workspace.songs)) {
+        project.workspace.songs = [];
       }
       if (!project.workspace.lyrics) {
         project.workspace.lyrics = { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now };
@@ -1029,21 +1147,70 @@ export class ProjectStore {
         project.workspace.tasks.revision = 1;
       }
 
-      // Pre-mutation Optimistic Concurrency Control (OCC) validation - Fail Closed
+      let songsChanged = false;
+      let lyricsChanged = false;
+      let notesChanged = false;
+      let structureChanged = false;
+      let tasksChanged = false;
+
+      if (updates.activeSongId && updates.activeSongId !== project.workspace.activeSongId) {
+        project.workspace.activeSongId = updates.activeSongId;
+        songsChanged = true;
+      }
+      if (updates.songs && Array.isArray(updates.songs)) {
+        project.workspace.songs = updates.songs;
+        songsChanged = true;
+      }
+
+      if (!project.workspace.songs || !Array.isArray(project.workspace.songs) || project.workspace.songs.length === 0) {
+        project.workspace.songs = [
+          {
+            id: 'song-1',
+            title: project.name || 'Song 1',
+            order: 0,
+            lyrics: JSON.parse(JSON.stringify(project.workspace.lyrics || { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now })),
+            notes: JSON.parse(JSON.stringify(project.workspace.notes || { revision: 1, content: '', updatedAt: now })),
+            structure: JSON.parse(JSON.stringify(project.workspace.structure || { revision: 1, sections: [], updatedAt: now })),
+            createdAt: now,
+            updatedAt: now
+          }
+        ];
+        project.workspace.activeSongId = 'song-1';
+        songsChanged = true;
+      }
+
+      const targetSongId = updates.songId || updates.activeSongId || project.workspace.activeSongId || project.workspace.songs[0]?.id || 'song-1';
+      const foundSong = project.workspace.songs.find((s) => s && s.id === targetSongId) || project.workspace.songs[0];
+      if (!foundSong) {
+        throw new Error('No song available in workspace.');
+      }
+      const targetSong = foundSong;
+
+      if (!targetSong.lyrics) {
+        targetSong.lyrics = { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now };
+      }
+      if (!targetSong.notes) {
+        targetSong.notes = { revision: 1, content: '', updatedAt: now };
+      }
+      if (!targetSong.structure) {
+        targetSong.structure = { revision: 1, sections: [], updatedAt: now };
+      }
+
+      // Pre-mutation Optimistic Concurrency Control (OCC) validation against targeted song
       if (updates.lyrics) {
-        const currentRev = project.workspace.lyrics.revision ?? 1;
+        const currentRev = targetSong.lyrics.revision ?? 1;
         if (typeof updates.lyrics.baseRevision !== 'number' || updates.lyrics.baseRevision !== currentRev) {
           throw new WorkspaceConflictError('lyrics', currentRev, updates.lyrics.baseRevision);
         }
       }
       if (updates.notes) {
-        const currentRev = project.workspace.notes.revision ?? 1;
+        const currentRev = targetSong.notes.revision ?? 1;
         if (typeof updates.notes.baseRevision !== 'number' || updates.notes.baseRevision !== currentRev) {
           throw new WorkspaceConflictError('notes', currentRev, updates.notes.baseRevision);
         }
       }
       if (updates.structure) {
-        const currentRev = project.workspace.structure.revision ?? 1;
+        const currentRev = targetSong.structure.revision ?? 1;
         if (typeof updates.structure.baseRevision !== 'number' || updates.structure.baseRevision !== currentRev) {
           throw new WorkspaceConflictError('structure', currentRev, updates.structure.baseRevision);
         }
@@ -1056,13 +1223,10 @@ export class ProjectStore {
       }
 
       const snapshot = JSON.parse(JSON.stringify(project)) as Project;
-      let lyricsChanged = false;
-      let notesChanged = false;
-      let structureChanged = false;
-      let tasksChanged = false;
 
     if (updates.lyrics) {
-      const curLyrics = project.workspace.lyrics;
+      const incLyrics = updates.lyrics;
+      const curLyrics = targetSong.lyrics;
       if (!curLyrics.documents || curLyrics.documents.length === 0) {
         curLyrics.documents = [
           { id: 'doc-main', title: 'Main Lyrics', content: curLyrics.content || '', updatedAt: now }
@@ -1071,10 +1235,10 @@ export class ProjectStore {
       }
       const initialDocsList = (curLyrics.documents || []).map((d) => ({ ...d }));
 
-      if (updates.lyrics.documents) {
+      if (incLyrics.documents) {
         const oldDocs = new Map(initialDocsList.map((d) => [d.id, { ...d }]));
-        let docsModified = initialDocsList.length !== updates.lyrics.documents.length;
-        const newDocs = updates.lyrics.documents.map((incDoc) => {
+        let docsModified = initialDocsList.length !== incLyrics.documents.length;
+        const newDocs = incLyrics.documents.map((incDoc) => {
           const existing = oldDocs.get(incDoc.id);
           if (existing) {
             const hasTitleUpdate = incDoc.title !== undefined && incDoc.title.trim().length > 0;
@@ -1115,34 +1279,19 @@ export class ProjectStore {
         });
 
         if (docsModified) {
-          lyricsChanged = true;
           curLyrics.documents = newDocs;
-        }
-
-        if (curLyrics.documents.length === 0) {
-          curLyrics.documents = [
-            { id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now, updatedBy: user.id, updatedByName: user.displayName }
-          ];
-          curLyrics.activeDocumentId = 'doc-main';
           lyricsChanged = true;
         }
       }
 
-      if (updates.lyrics.activeDocumentId && updates.lyrics.activeDocumentId !== curLyrics.activeDocumentId) {
-        curLyrics.activeDocumentId = updates.lyrics.activeDocumentId;
-        lyricsChanged = true;
-      }
-
-      if (updates.lyrics.documentId !== undefined || updates.lyrics.title !== undefined || updates.lyrics.content !== undefined) {
-        // Target document ID
-        const targetDocId = updates.lyrics.documentId || curLyrics.activeDocumentId || curLyrics.documents[0]?.id || 'doc-main';
+      if (incLyrics.documentId !== undefined || incLyrics.title !== undefined || incLyrics.content !== undefined) {
+        const targetDocId = incLyrics.documentId || curLyrics.activeDocumentId || curLyrics.documents[0]?.id || 'doc-main';
         let doc = curLyrics.documents.find((d) => d.id === targetDocId);
-
         if (!doc) {
           doc = {
             id: targetDocId,
-            title: updates.lyrics.title || 'Untitled Lyrics',
-            content: updates.lyrics.content || '',
+            title: incLyrics.title || 'Untitled Lyrics',
+            content: incLyrics.content || '',
             updatedAt: now,
             updatedBy: user.id,
             updatedByName: user.displayName
@@ -1158,12 +1307,12 @@ export class ProjectStore {
             undefined,
             false
           );
-        } else if (updates.lyrics.title !== undefined || updates.lyrics.content !== undefined) {
+        } else if (incLyrics.title !== undefined || incLyrics.content !== undefined) {
           const oldTitle = doc.title;
           const oldContent = doc.content;
           let changed = false;
-          if (updates.lyrics.title !== undefined && updates.lyrics.title.trim().length > 0) {
-            const nextTitle = updates.lyrics.title.trim();
+          if (incLyrics.title !== undefined && incLyrics.title.trim().length > 0) {
+            const nextTitle = incLyrics.title.trim();
             if (nextTitle !== oldTitle) {
               doc.title = nextTitle;
               changed = true;
@@ -1178,8 +1327,8 @@ export class ProjectStore {
               );
             }
           }
-          if (updates.lyrics.content !== undefined && updates.lyrics.content !== oldContent) {
-            doc.content = updates.lyrics.content;
+          if (incLyrics.content !== undefined && incLyrics.content !== oldContent) {
+            doc.content = incLyrics.content;
             changed = true;
             this.recordActivity(
               projectId,
@@ -1200,19 +1349,21 @@ export class ProjectStore {
         }
       }
 
-      // Ensure activeDocumentId is still valid after any document additions
-      if (!curLyrics.activeDocumentId || !curLyrics.documents.some((d) => d.id === curLyrics.activeDocumentId)) {
-        curLyrics.activeDocumentId = curLyrics.documents[0]?.id || 'doc-main';
+      if (incLyrics.activeDocumentId && incLyrics.activeDocumentId !== curLyrics.activeDocumentId) {
+        if (curLyrics.documents.some((d) => d.id === incLyrics.activeDocumentId)) {
+          curLyrics.activeDocumentId = incLyrics.activeDocumentId;
+          lyricsChanged = true;
+        }
       }
 
-      // Sync active document content to top-level content for backwards compatibility
-      const activeDoc = curLyrics.documents.find((d) => d.id === curLyrics.activeDocumentId) || curLyrics.documents[0];
-      const activeDocContent = activeDoc ? activeDoc.content : '';
-      if (curLyrics.content !== activeDocContent) {
-        curLyrics.content = activeDocContent;
+      if (curLyrics.documents.length === 0) {
+        curLyrics.documents = [
+          { id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now, updatedBy: user.id, updatedByName: user.displayName }
+        ];
+        curLyrics.activeDocumentId = 'doc-main';
       }
 
-      if (updates.lyrics.documents) {
+      if (incLyrics.documents) {
         const finalDocIds = new Set(curLyrics.documents.map((d) => d.id));
         for (const initialDoc of initialDocsList) {
           if (!finalDocIds.has(initialDoc.id)) {
@@ -1230,18 +1381,30 @@ export class ProjectStore {
         }
       }
 
+      if (!curLyrics.activeDocumentId || !curLyrics.documents.some((d) => d.id === curLyrics.activeDocumentId)) {
+        curLyrics.activeDocumentId = curLyrics.documents[0]?.id || 'doc-main';
+      }
+
+      const activeDoc = curLyrics.documents.find((d) => d.id === curLyrics.activeDocumentId) || curLyrics.documents[0];
+      const activeDocContent = activeDoc ? activeDoc.content : '';
+      if (curLyrics.content !== activeDocContent) {
+        curLyrics.content = activeDocContent;
+      }
+
       if (lyricsChanged) {
         curLyrics.revision = (curLyrics.revision || 1) + 1;
         curLyrics.updatedAt = now;
         curLyrics.updatedBy = user.id;
         curLyrics.updatedByName = user.displayName;
+        targetSong.updatedAt = now;
       }
     }
 
     if (updates.notes) {
-      const oldBpm = project.workspace.notes.bpm;
-      const oldKey = project.workspace.notes.key;
-      const oldContent = project.workspace.notes.content;
+      const curNotes = targetSong.notes;
+      const oldBpm = curNotes.bpm;
+      const oldKey = curNotes.key;
+      const oldContent = curNotes.content;
 
       const normalizedOldBpm = oldBpm ? oldBpm.trim() : '';
       const normalizedNewBpm = updates.notes.bpm !== undefined ? (updates.notes.bpm ? updates.notes.bpm.trim() : '') : undefined;
@@ -1255,13 +1418,14 @@ export class ProjectStore {
 
       if (bpmDiff || keyDiff || contentDiff) {
         notesChanged = true;
-        project.workspace.notes.content = updates.notes.content !== undefined ? updates.notes.content : project.workspace.notes.content;
-        project.workspace.notes.bpm = updates.notes.bpm !== undefined ? updates.notes.bpm : project.workspace.notes.bpm;
-        project.workspace.notes.key = updates.notes.key !== undefined ? updates.notes.key : project.workspace.notes.key;
-        project.workspace.notes.revision = (project.workspace.notes.revision || 1) + 1;
-        project.workspace.notes.updatedAt = now;
-        project.workspace.notes.updatedBy = user.id;
-        project.workspace.notes.updatedByName = user.displayName;
+        curNotes.content = updates.notes.content !== undefined ? updates.notes.content : curNotes.content;
+        curNotes.bpm = updates.notes.bpm !== undefined ? updates.notes.bpm : curNotes.bpm;
+        curNotes.key = updates.notes.key !== undefined ? updates.notes.key : curNotes.key;
+        curNotes.revision = (curNotes.revision || 1) + 1;
+        curNotes.updatedAt = now;
+        curNotes.updatedBy = user.id;
+        curNotes.updatedByName = user.displayName;
+        targetSong.updatedAt = now;
 
         if (bpmDiff) {
           if (normalizedNewBpm) {
@@ -1340,7 +1504,8 @@ export class ProjectStore {
 
     if (updates.structure) {
       if (updates.structure.sections !== undefined) {
-        const oldSections = project.workspace.structure.sections || [];
+        const curStructure = targetSong.structure;
+        const oldSections = curStructure.sections || [];
         const newSections = updates.structure.sections;
         structureChanged =
           oldSections.length !== newSections.length ||
@@ -1358,23 +1523,33 @@ export class ProjectStore {
           });
 
         if (structureChanged) {
-          project.workspace.structure.sections = newSections;
-          project.workspace.structure.revision = (project.workspace.structure.revision || 1) + 1;
-          project.workspace.structure.updatedAt = now;
-          project.workspace.structure.updatedBy = user.id;
-          project.workspace.structure.updatedByName = user.displayName;
-
+          curStructure.sections = newSections;
+          curStructure.revision = (curStructure.revision || 1) + 1;
+          curStructure.updatedAt = now;
+          curStructure.updatedBy = user.id;
+          curStructure.updatedByName = user.displayName;
+          targetSong.updatedAt = now;
           this.recordActivity(
             projectId,
             user,
             'structure_changed',
-            `${user.displayName} updated Song Structure arrangement`,
-            'Song Structure',
+            `${user.displayName} updated arrangement structure for ${targetSong.title}`,
+            `Structure (${targetSong.title})`,
             undefined,
             false
           );
         }
       }
+    }
+
+    // Mirror active song to top-level for backward compatibility and session listeners
+    const finalActiveId = project.workspace.activeSongId || project.workspace.songs[0]?.id || 'song-1';
+    const finalActiveSong = project.workspace.songs.find((s) => s && s.id === finalActiveId) || project.workspace.songs[0];
+    if (finalActiveSong) {
+      project.workspace.activeSongId = finalActiveSong.id;
+      project.workspace.lyrics = JSON.parse(JSON.stringify(finalActiveSong.lyrics));
+      project.workspace.notes = JSON.parse(JSON.stringify(finalActiveSong.notes));
+      project.workspace.structure = JSON.parse(JSON.stringify(finalActiveSong.structure));
     }
 
     if (updates.tasks && updates.tasks.tasks !== undefined) {
@@ -1508,11 +1683,10 @@ export class ProjectStore {
         project.workspace.tasks.revision = (project.workspace.tasks.revision || 1) + 1;
         project.workspace.tasks.updatedAt = now;
         project.workspace.tasks.updatedBy = user.id;
-        project.workspace.tasks.updatedByName = user.displayName;
       }
     }
 
-      if (lyricsChanged || notesChanged || structureChanged || tasksChanged) {
+    if (lyricsChanged || notesChanged || structureChanged || tasksChanged || songsChanged) {
         project.updatedAt = now;
         project.lastActivityAt = now;
         try {
@@ -1523,7 +1697,7 @@ export class ProjectStore {
         }
       }
 
-      return JSON.parse(JSON.stringify(project)) as Project;
+      return JSON.parse(JSON.stringify(this.enrichUserAvatars(project))) as Project;
     });
   }
 
@@ -1560,12 +1734,12 @@ export class ProjectStore {
     });
   }
 
-  async deleteProject(projectId: string, userId: string): Promise<boolean> {
+  async deleteProject(projectId: string, userId: string, username?: string): Promise<boolean> {
     return this.runProjectTransaction(projectId, async () => {
       const project = this.projects.get(projectId);
       if (!project) return false;
       // Only the project owner can delete
-      if (!this.isOwner(projectId, userId)) return false;
+      if (!this.isOwner(projectId, userId, username)) return false;
 
       const snapshot = JSON.parse(JSON.stringify(project)) as Project;
       this.projects.delete(projectId);
@@ -1620,6 +1794,7 @@ export class ProjectStore {
           displayName: collaborator.displayName,
           username: collaborator.username,
           avatarColor: collaborator.avatarColor || '#06b6d4',
+          avatarUrl: collaborator.avatarUrl,
           role,
           addedAt: now
         });

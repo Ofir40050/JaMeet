@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' http://localhost:* ws://localhost:* https: wss:; object-src 'none'; base-uri 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' http://localhost:* ws://localhost:* https: wss:; object-src 'none'; base-uri 'none'" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700;800&family=Caveat:wght@600&family=Cinzel:wght@600&family=Dancing+Script:wght@600&family=EB+Garamond:ital,wght@0,500;1,500&family=Heebo:wght@400;600&family=Inter:wght@400;600&family=Lora:ital,wght@0,500;1,500&family=Merriweather:ital,wght@0,400;1,400&family=Montserrat:wght@500;700&family=Open+Sans:wght@400;600&family=Outfit:wght@400;600&family=Playfair+Display:ital,wght@0,600;1,600&family=Poppins:wght@400;600&family=Roboto+Mono:wght@400;600&family=Rubik:wght@400;600&display=swap" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/icon.png" />
@@ -191,8 +194,8 @@
                 <span id="recent-sessions-count" class="badge-count">0</span>
               </div>
               <div class="section-actions-wrap">
-                <button id="btn-view-all-sessions-header" type="button" class="btn-view-all-sessions hidden" title="View all sessions in a dedicated screen">
-                  <span>View All</span>
+                <button id="btn-view-all-sessions-header" type="button" class="btn-view-all-sessions hidden" title="All sessions in a dedicated screen">
+                  <span>All Sessions</span>
                   <span class="arrow-icon">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                   </span>
@@ -219,7 +222,7 @@
                 <span class="icon">
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h6"/></svg>
                 </span>
-                <span id="recent-sessions-footer-text">View All Sessions</span>
+                <span id="recent-sessions-footer-text">All Sessions</span>
                 <span class="arrow">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                 </span>
@@ -235,26 +238,37 @@
 
       <!-- PROJECT VIEW -->
       <section id="project-view" class="view hidden">
-        <div class="project-view-content">
-          <!-- Integrated Centered Top Navigation Bar -->
-          <div class="project-topbar">
-            <button id="btn-project-back" type="button" class="btn-project-back-pill" title="Back to Projects">
-              <span class="btn-back-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-              </span>
-              <span>Projects</span>
-            </button>
-            <div class="project-breadcrumbs">
-              <span class="crumb-brand">JAMEET</span>
-              <span class="crumb-sep">/</span>
-              <span class="crumb-current" id="project-view-name-crumb">Project</span>
-            </div>
-            <div class="project-topbar-actions">
-              <button id="btn-project-menu" type="button" class="btn-project-menu-pill" title="Project options">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        <!-- Persistent Full-Width Application Top Navigation Bar -->
+        <header class="home-topbar">
+          <div class="home-topbar-inner">
+            <div class="home-topbar-left">
+              <div class="home-brand-lockup">
+                <img src="/logo.png" alt="JaMeet" class="home-brand-icon" />
+                <span class="home-brand-wordmark">JaMeet</span>
+                <span class="home-brand-badge">Beta</span>
+              </div>
+              <span class="topbar-nav-slash">/</span>
+              <button id="btn-project-back" type="button" class="btn-topbar-breadcrumb" title="Back to all projects">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m15 18-6-6 6-6"/></svg>
+                <span>Projects</span>
               </button>
             </div>
+            <div class="home-topbar-right">
+              <div class="auth-nav-group">
+                <button id="project-user-btn" type="button" class="btn-topbar-account" title="Account Menu" aria-label="Account Menu" aria-haspopup="true">
+                  <span id="project-user-avatar" class="topbar-account-avatar">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  </span>
+                  <span class="topbar-account-chevron">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m6 9 6 6 6-6"/></svg>
+                  </span>
+                </button>
+              </div>
+            </div>
           </div>
+        </header>
+
+        <div class="project-view-content">
 
           <!-- Compact Project Hero Card -->
           <div class="project-hero-card">
@@ -262,10 +276,6 @@
               <div class="project-hero-identity">
                 <div class="project-hero-title-row">
                   <h2 id="project-title" class="project-title">Project Name</h2>
-                  <span id="project-role-badge" class="project-status-pill badge-owner">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.269a4 4 0 0 1-3.854 2.937H8.707a4 4 0 0 1-3.854-2.937L2.02 6.02a.5.5 0 0 1 .798-.52l4.276 3.664a1 1 0 0 0 1.516-.294z"/></svg>
-                    <span>Owner</span>
-                  </span>
                 </div>
                 <p id="project-description" class="project-description"></p>
                 <div class="project-meta-chips">
@@ -281,27 +291,18 @@
                   </span>
                   <span>Start Project Session</span>
                 </button>
+                <button id="btn-project-menu" type="button" class="btn-project-hero-menu" title="Project options" aria-label="Project options">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
               </div>
             </div>
           </div>
 
-          <!-- Project Workspace Navigation Tabs -->
-          <div class="project-tabs-bar">
+          <!-- Project Workspace Navigation Tabs (Project-Level Only) -->
+          <div class="project-tabs-bar" id="project-main-tabs-bar">
             <button type="button" class="project-tab-btn active" data-tab="overview">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h6"/></svg>
               <span>Overview</span>
-            </button>
-            <button type="button" class="project-tab-btn" data-tab="lyrics">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
-              <span>Lyrics</span>
-            </button>
-            <button type="button" class="project-tab-btn" data-tab="structure">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
-              <span>Structure</span>
-            </button>
-            <button type="button" class="project-tab-btn" data-tab="notes">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v5a1 1 0 0 0 1 1h5"/></svg>
-              <span>Notes</span>
             </button>
             <button type="button" class="project-tab-btn" data-tab="tasks">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
@@ -323,8 +324,40 @@
           <!-- TAB PANEL: OVERVIEW -->
           <div id="project-panel-overview" class="project-tab-panel">
             <div class="project-overview-grid">
-              <!-- Left Column: Collaborators -->
-              <div class="project-panel-card">
+              
+              <!-- Left Column: Songs & Tracks in Project -->
+              <div class="project-panel-card project-overview-songs-card">
+                <div class="section-header-row">
+                  <div class="section-title-wrap">
+                    <span class="section-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                    </span>
+                    <h3>Songs &amp; Tracks</h3>
+                    <span id="project-overview-songs-count" class="badge-count">1</span>
+                  </div>
+                  <button id="btn-overview-new-song" type="button" class="btn-new-project" title="Add Track / Song to Project" aria-label="Add Track / Song to Project">
+                    <span class="action-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                    </span>
+                  </button>
+                </div>
+                <div id="project-overview-songs-list" class="overview-songs-list">
+                  <!-- Rendered dynamically by main.ts -->
+                </div>
+                <!-- Songs Pagination Bar (5 songs per page) -->
+                <div id="project-overview-songs-pagination" class="overview-songs-pagination hidden">
+                  <button id="btn-songs-prev-page" type="button" class="btn-songs-page-nav" title="Previous Page" aria-label="Previous Page">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m15 18-6-6 6-6"/></svg>
+                  </button>
+                  <div id="songs-page-indicators" class="songs-page-indicators"></div>
+                  <button id="btn-songs-next-page" type="button" class="btn-songs-page-nav" title="Next Page" aria-label="Next Page">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m9 18 6-6-6-6"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Right Column: Collaborators -->
+              <div class="project-panel-card project-overview-collab-card">
                 <div class="section-header-row">
                   <div class="section-title-wrap">
                     <span class="section-icon">
@@ -333,36 +366,13 @@
                     <h3>Collaborators</h3>
                     <span id="project-collaborators-count" class="badge-count">1</span>
                   </div>
-                  <button id="btn-project-add-collab" type="button" class="btn-new-project btn-small">
-                    <span class="btn-icon-inner">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                  <button id="btn-project-add-collab" type="button" class="btn-new-project" title="Add Collaborator" aria-label="Add Collaborator">
+                    <span class="action-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                     </span>
-                    <span>Add</span>
                   </button>
                 </div>
                 <div id="project-collaborators-list" class="project-collaborators-list"></div>
-              </div>
-
-              <!-- Right Column: Recent Sessions -->
-              <div class="project-panel-card">
-                <div class="section-header-row">
-                  <div class="section-title-wrap">
-                    <span class="section-icon">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    </span>
-                    <h3>Recent Sessions</h3>
-                    <span id="project-session-count" class="badge-count">0</span>
-                  </div>
-                </div>
-                <div id="project-sessions-list" class="project-sessions-list">
-                  <div id="project-sessions-empty" class="projects-empty">
-                    <div class="empty-icon">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></svg>
-                    </div>
-                    <h4>No sessions yet</h4>
-                    <p>Start a session using the button above to record your first studio session in this project.</p>
-                  </div>
-                </div>
               </div>
 
               <!-- Full-Width Tasks Overview Card -->
@@ -375,53 +385,120 @@
                     <h3>Remaining Production Tasks</h3>
                     <span id="overview-tasks-count" class="badge-count">0</span>
                   </div>
-                  <button id="btn-overview-view-tasks" type="button" class="btn-new-project btn-small">
-                    <span>View All Tasks →</span>
+                  <button id="btn-overview-view-tasks" type="button" class="btn-card-header-action" title="All Tasks">
+                    <span>All Tasks →</span>
                   </button>
                 </div>
                 <div id="overview-tasks-list" class="overview-tasks-list"></div>
               </div>
 
-              <!-- Full-Width Recent Project Activity Card -->
-              <div class="project-panel-card project-overview-activity-card">
-                <div class="section-header-row">
-                  <div class="section-title-wrap">
-                    <span class="section-icon">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
-                    </span>
-                    <h3>Project Activity</h3>
-                    <span id="overview-activity-count" class="badge-count">0</span>
+              <!-- Bottom Row: Sessions & Activity (Side-by-Side 50/50 Equal Height) -->
+              <div class="project-overview-bottom-row">
+                <!-- Bottom Row Left: Recent Studio Sessions -->
+                <div class="project-panel-card project-overview-sessions-card">
+                  <div class="section-header-row">
+                    <div class="section-title-wrap">
+                      <span class="section-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      </span>
+                      <h3>Recent Studio Sessions</h3>
+                      <span id="project-session-count" class="badge-count">0</span>
+                    </div>
                   </div>
-                  <button id="btn-overview-view-activity" type="button" class="btn-new-project btn-small">
-                    <span>View All Activity →</span>
-                  </button>
+                  <div id="project-sessions-list" class="project-sessions-list">
+                    <div id="project-sessions-empty" class="workspace-empty-row" style="padding: 6px 0;">
+                      <div class="workspace-empty-text">
+                        <span class="workspace-empty-title" style="font-size: 12px; font-weight: 600;">No previous sessions yet</span>
+                        <span class="workspace-empty-desc" style="font-size: 11px;">Completed studio sessions for this project will appear here.</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div id="overview-activity-list" class="overview-activity-list"></div>
+
+                <!-- Bottom Row Right: Recent Project Activity -->
+                <div class="project-panel-card project-overview-activity-card">
+                  <div class="section-header-row">
+                    <div class="section-title-wrap">
+                      <span class="section-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+                      </span>
+                      <h3>Project Activity</h3>
+                      <span id="overview-activity-count" class="badge-count">0</span>
+                    </div>
+                    <button id="btn-overview-view-activity" type="button" class="btn-card-header-action" title="All Activity">
+                      <span>All Activity →</span>
+                    </button>
+                  </div>
+                  <div id="overview-activity-list" class="overview-activity-list"></div>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- TAB PANEL: LYRICS (DOCUMENT-STYLE SONGWRITING STUDIO) -->
-          <div id="project-panel-lyrics" class="project-tab-panel hidden">
+          <!-- DEDICATED SONG STUDIO VIEW (SONG-LEVEL: LYRICS, STRUCTURE, NOTES) -->
+          <div id="project-song-studio-view" class="project-song-studio-view hidden">
+            <!-- Song Studio Navigation Bar -->
+            <div class="song-studio-nav-bar">
+              <div class="song-studio-nav-left">
+                <button id="btn-back-to-project-overview" type="button" class="btn-back-to-project" title="Back to Project Overview">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m15 18-6-6 6-6"/></svg>
+                  <span id="song-nav-project-name">Project Overview</span>
+                </button>
+                <span class="song-nav-divider">/</span>
+                <div class="song-active-title-pill">
+                  <span id="song-studio-active-title" class="song-active-title-text">Song 1</span>
+                </div>
+              </div>
+
+              <!-- Song Studio Trio Navigation Tabs -->
+              <div class="song-studio-tabs-bar">
+                <button type="button" class="song-studio-tab-btn active" data-song-tab="lyrics">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+                  <span>Lyrics</span>
+                </button>
+                <button type="button" class="song-studio-tab-btn" data-song-tab="structure">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+                  <span>Structure</span>
+                </button>
+                <button type="button" class="song-studio-tab-btn" data-song-tab="notes">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v5a1 1 0 0 0 1 1h5"/></svg>
+                  <span>Notes</span>
+                </button>
+              </div>
+
+              <!-- Quick Song Switcher Dropdown in Studio -->
+              <div class="song-studio-nav-right">
+                <select id="select-song-studio-quick-switch" class="custom-select song-studio-quick-select" title="Switch Track"></select>
+              </div>
+            </div>
+
+            <!-- Song Trio Workspace Panels -->
+            <div class="song-studio-panels">
+
+              <!-- TAB PANEL: LYRICS (DOCUMENT-STYLE SONGWRITING STUDIO) -->
+              <div id="project-panel-lyrics" class="project-tab-panel">
             <div class="lyrics-workspace-layout">
               
-              <!-- LEFT: DEDICATED LYRICS DOCUMENTS SIDEBAR -->
-              <aside class="lyrics-workspace-sidebar">
+              <!-- LEFT: DEDICATED LYRICS DOCUMENTS SIDEBAR (COLLAPSED BY DEFAULT) -->
+              <aside id="lyrics-workspace-sidebar" class="lyrics-workspace-sidebar collapsed">
                 <div class="lyrics-sidebar-header">
                   <div class="lyrics-sidebar-title-row">
                     <div class="sidebar-heading-wrap">
                       <span class="sidebar-heading-icon">
                         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
                       </span>
-                      <h4>Lyrics Drafts</h4>
+                      <h4>Documents</h4>
                     </div>
-                    <button id="btn-new-lyrics-doc" type="button" class="btn-sidebar-new-doc" title="Create new Lyrics draft">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
-                      <span>New</span>
-                    </button>
+                    <div class="sidebar-header-actions">
+                      <button id="btn-new-lyrics-doc" type="button" class="btn-sidebar-new-doc" title="Create new Lyrics document">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                        <span>New</span>
+                      </button>
+                      <button id="btn-close-lyrics-sidebar" type="button" class="btn-sidebar-close" title="Hide Documents Sidebar">✕</button>
+                    </div>
                   </div>
                   <div class="lyrics-sidebar-search">
-                    <input id="lyrics-doc-filter-input" type="text" class="custom-input sidebar-search-input" placeholder="Filter drafts…" />
+                    <input id="lyrics-doc-filter-input" type="text" class="custom-input sidebar-search-input" placeholder="Search documents…" />
                   </div>
                 </div>
 
@@ -441,6 +518,14 @@
                 
                 <!-- 1. Compact Google Docs-Style Formatting Toolbar -->
                 <div class="doc-formatting-toolbar" id="lyrics-formatting-toolbar">
+                  <!-- Group 0: Sidebar Toggle (3 lines / hamburger) -->
+                  <div class="toolbar-group">
+                    <button id="btn-toggle-lyrics-sidebar" type="button" class="toolbar-btn btn-toggle-lyrics-sidebar" title="Toggle Documents Sidebar">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                    </button>
+                  </div>
+                  <div class="toolbar-divider"></div>
+
                   <!-- Group 1: Undo / Redo -->
                   <div class="toolbar-group">
                     <button id="btn-doc-undo" type="button" class="toolbar-btn" title="Undo (Ctrl+Z)">
@@ -449,6 +534,23 @@
                     <button id="btn-doc-redo" type="button" class="toolbar-btn" title="Redo (Ctrl+Y)">
                       <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
                     </button>
+                  </div>
+                  <div class="toolbar-divider"></div>
+
+                  <!-- Group 1.5: Document Zoom (50% to 300%) -->
+                  <div class="toolbar-group zoom-group">
+                    <select id="select-doc-zoom" class="toolbar-select doc-zoom-select" title="Zoom">
+                      <option value="50">50%</option>
+                      <option value="75">75%</option>
+                      <option value="90">90%</option>
+                      <option value="100" selected>100%</option>
+                      <option value="125">125%</option>
+                      <option value="150">150%</option>
+                      <option value="175">175%</option>
+                      <option value="200">200%</option>
+                      <option value="250">250%</option>
+                      <option value="300">300%</option>
+                    </select>
                   </div>
                   <div class="toolbar-divider"></div>
 
@@ -463,21 +565,61 @@
                     </select>
 
                     <select id="select-doc-font" class="toolbar-select font-family-select" title="Font Family">
-                      <option value="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Studio Sans</option>
-                      <option value="Georgia, Cambria, 'Times New Roman', serif">Songbook Serif</option>
-                      <option value="'JetBrains Mono', Monaco, Menlo, Consolas, monospace">Monospace</option>
-                      <option value="'Playfair Display', Georgia, serif">Poetic Serif</option>
-                      <option value="'Outfit', 'Inter', sans-serif">Modern Clean</option>
+                      <optgroup label="Modern Sans">
+                        <option value="'Assistant', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" selected>Assistant (Default)</option>
+                        <option value="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Studio Sans</option>
+                        <option value="'Inter', sans-serif">Inter</option>
+                        <option value="'Poppins', sans-serif">Poppins</option>
+                        <option value="'Montserrat', sans-serif">Montserrat</option>
+                        <option value="'Outfit', sans-serif">Outfit</option>
+                        <option value="'Open Sans', sans-serif">Open Sans</option>
+                        <option value="'Rubik', sans-serif">Rubik</option>
+                        <option value="'Heebo', sans-serif">Heebo</option>
+                      </optgroup>
+                      <optgroup label="Serif & Songbook">
+                        <option value="Georgia, Cambria, 'Times New Roman', serif">Songbook Serif (Georgia)</option>
+                        <option value="'Playfair Display', Georgia, serif">Playfair Display</option>
+                        <option value="'EB Garamond', serif">EB Garamond</option>
+                        <option value="'Lora', Georgia, serif">Lora</option>
+                        <option value="'Merriweather', serif">Merriweather</option>
+                        <option value="'Cinzel', serif">Cinzel Epic</option>
+                      </optgroup>
+                      <optgroup label="Handwriting & Script">
+                        <option value="'Caveat', cursive">Caveat (Handwritten)</option>
+                        <option value="'Dancing Script', cursive">Dancing Script</option>
+                      </optgroup>
+                      <optgroup label="Monospace & Chords">
+                        <option value="'JetBrains Mono', Monaco, Menlo, Consolas, monospace">JetBrains Mono</option>
+                        <option value="'Roboto Mono', monospace">Roboto Mono</option>
+                        <option value="'Courier New', Courier, monospace">Courier Typewriter</option>
+                      </optgroup>
                     </select>
 
                     <select id="select-doc-fontsize" class="toolbar-select font-size-select" title="Font Size">
-                      <option value="13px">13</option>
-                      <option value="14px">14</option>
-                      <option value="16px" selected>16</option>
-                      <option value="18px">18</option>
-                      <option value="20px">20</option>
-                      <option value="24px">24</option>
-                      <option value="28px">28</option>
+                      <option value="8pt">8</option>
+                      <option value="9pt">9</option>
+                      <option value="10pt">10</option>
+                      <option value="11pt" selected>11</option>
+                      <option value="12pt">12</option>
+                      <option value="13pt">13</option>
+                      <option value="14pt">14</option>
+                      <option value="15pt">15</option>
+                      <option value="16pt">16</option>
+                      <option value="18pt">18</option>
+                      <option value="20pt">20</option>
+                      <option value="22pt">22</option>
+                      <option value="24pt">24</option>
+                      <option value="26pt">26</option>
+                      <option value="28pt">28</option>
+                      <option value="32pt">32</option>
+                      <option value="36pt">36</option>
+                      <option value="42pt">42</option>
+                      <option value="48pt">48</option>
+                      <option value="56pt">56</option>
+                      <option value="64pt">64</option>
+                      <option value="72pt">72</option>
+                      <option value="84pt">84</option>
+                      <option value="96pt">96</option>
                     </select>
                   </div>
                   <div class="toolbar-divider"></div>
@@ -495,19 +637,63 @@
                   <div class="toolbar-group color-pickers-group">
                     <div class="color-dropdown-wrap">
                       <button id="btn-doc-color-trigger" type="button" class="toolbar-btn color-trigger-btn" title="Text Color">
-                        <span class="color-indicator-icon" style="color: #f8fafc;">A</span>
-                        <span class="color-bar" id="current-text-color-bar" style="background: #f8fafc;"></span>
+                        <span class="color-indicator-icon" style="color: #ffffff;">A</span>
+                        <span class="color-bar" id="current-text-color-bar" style="background: #111827;"></span>
                       </button>
                       <div id="doc-color-palette" class="color-palette-popover hidden">
-                        <span class="palette-label">Text Color:</span>
+                        <span class="palette-label">Text Color</span>
                         <div class="palette-grid">
-                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#f8fafc" style="background:#f8fafc;" title="White"></button>
-                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#94a3b8" style="background:#94a3b8;" title="Muted Gray"></button>
-                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#38bdf8" style="background:#38bdf8;" title="Studio Cyan"></button>
-                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#f59e0b" style="background:#f59e0b;" title="Amber Gold"></button>
+                          <!-- Row 1: Grayscale -->
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#000000" style="background:#000000;" title="Black"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#434343" style="background:#434343;" title="Dark Gray 4"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#666666" style="background:#666666;" title="Dark Gray 3"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#999999" style="background:#999999;" title="Gray"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#b7b7b7" style="background:#b7b7b7;" title="Light Gray 1"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#cccccc" style="background:#cccccc;" title="Light Gray 2"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#d9d9d9" style="background:#d9d9d9;" title="Light Gray 3"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#efefef" style="background:#efefef;" title="Light Gray 4"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#f3f3f3" style="background:#f3f3f3;" title="Light Gray 5"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#ffffff" style="background:#ffffff;" title="White"></button>
+
+                          <!-- Row 2: Pure / Primary Hues -->
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#980000" style="background:#980000;" title="Berry Red"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#ff0000" style="background:#ff0000;" title="Red"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#ff9900" style="background:#ff9900;" title="Orange"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#ffff00" style="background:#ffff00;" title="Yellow"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#00ff00" style="background:#00ff00;" title="Green"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#00ffff" style="background:#00ffff;" title="Cyan"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#4a86e8" style="background:#4a86e8;" title="Cornflower Blue"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#0000ff" style="background:#0000ff;" title="Blue"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#9900ff" style="background:#9900ff;" title="Purple"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#ff00ff" style="background:#ff00ff;" title="Magenta"></button>
+
+                          <!-- Row 3: Light Tints -->
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#e06666" style="background:#e06666;" title="Light Red"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#f6b26b" style="background:#f6b26b;" title="Light Orange"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#ffd966" style="background:#ffd966;" title="Light Yellow"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#93c47d" style="background:#93c47d;" title="Light Green"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#76a5af" style="background:#76a5af;" title="Light Cyan"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#6fa8dc" style="background:#6fa8dc;" title="Light Cornflower"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#8e7cc3" style="background:#8e7cc3;" title="Light Purple"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#c27ba0" style="background:#c27ba0;" title="Light Magenta"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#38bdf8" style="background:#38bdf8;" title="Studio Sky"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#10b981" style="background:#10b981;" title="Emerald"></button>
+
+                          <!-- Row 4: Deep Shades -->
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#cc0000" style="background:#cc0000;" title="Dark Red"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#e69138" style="background:#e69138;" title="Dark Orange"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#f1c232" style="background:#f1c232;" title="Dark Yellow"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#6aa84f" style="background:#6aa84f;" title="Dark Green"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#45818e" style="background:#45818e;" title="Dark Cyan"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#3d85c6" style="background:#3d85c6;" title="Dark Blue"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#674ea7" style="background:#674ea7;" title="Dark Purple"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#a64d79" style="background:#a64d79;" title="Dark Magenta"></button>
                           <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#f43f5e" style="background:#f43f5e;" title="Rose Red"></button>
-                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#10b981" style="background:#10b981;" title="Emerald Green"></button>
-                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#c084fc" style="background:#c084fc;" title="Violet Purple"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#fbbf24" style="background:#fbbf24;" title="Gold"></button>
+                        </div>
+                        <div class="palette-custom-row">
+                          <span class="palette-custom-label">Custom color:</span>
+                          <input type="color" id="doc-custom-text-color" class="palette-color-input" value="#38bdf8" title="Pick custom color" />
                         </div>
                       </div>
                     </div>
@@ -518,13 +704,34 @@
                         <span class="color-bar" id="current-hilite-color-bar" style="background: transparent;"></span>
                       </button>
                       <div id="doc-hilite-palette" class="color-palette-popover hidden">
-                        <span class="palette-label">Highlight:</span>
+                        <span class="palette-label">Highlight Color</span>
                         <div class="palette-grid">
                           <button type="button" class="palette-swatch transparent" data-cmd="hiliteColor" data-color="transparent" title="No Highlight">✕</button>
-                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(245, 158, 11, 0.3)" style="background:rgba(245, 158, 11, 0.35); border:1px solid #f59e0b;" title="Amber Marker"></button>
-                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(56, 189, 248, 0.3)" style="background:rgba(56, 189, 248, 0.35); border:1px solid #38bdf8;" title="Cyan Marker"></button>
-                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(192, 132, 252, 0.3)" style="background:rgba(192, 132, 252, 0.35); border:1px solid #c084fc;" title="Violet Marker"></button>
-                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(16, 185, 129, 0.3)" style="background:rgba(16, 185, 129, 0.35); border:1px solid #10b981;" title="Emerald Marker"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="#ffff00" style="background:#ffff00;" title="Yellow Marker"></button>
+                          <button type="button" class="palette-swatch" data-cmd="foreColor" data-color="#00ffff" style="background:#00ffff;" title="Cyan Marker"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="#00ff00" style="background:#00ff00;" title="Green Marker"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="#ff00ff" style="background:#ff00ff;" title="Magenta Marker"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="#ff9900" style="background:#ff9900;" title="Orange Marker"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="#4a86e8" style="background:#4a86e8;" title="Blue Marker"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="#9900ff" style="background:#9900ff;" title="Purple Marker"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="#ff0000" style="background:#ff0000;" title="Red Marker"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="#cccccc" style="background:#cccccc;" title="Gray Marker"></button>
+
+                          <!-- Row 2: Soft Pastel Highlighters -->
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(254, 240, 138, 0.45)" style="background:#fef08a;" title="Pastel Yellow"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(186, 230, 253, 0.45)" style="background:#bae6fd;" title="Pastel Cyan"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(187, 247, 208, 0.45)" style="background:#bbf7d0;" title="Pastel Green"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(251, 207, 232, 0.45)" style="background:#fbcfe8;" title="Pastel Pink"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(254, 215, 170, 0.45)" style="background:#fed7aa;" title="Pastel Orange"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(221, 214, 254, 0.45)" style="background:#ddd6fe;" title="Pastel Purple"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(254, 205, 211, 0.45)" style="background:#fecdd3;" title="Pastel Rose"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(148, 163, 184, 0.35)" style="background:#94a3b8;" title="Pastel Slate"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(134, 239, 172, 0.45)" style="background:#86efac;" title="Pastel Lime"></button>
+                          <button type="button" class="palette-swatch" data-cmd="hiliteColor" data-color="rgba(253, 230, 138, 0.45)" style="background:#fde68a;" title="Pastel Amber"></button>
+                        </div>
+                        <div class="palette-custom-row">
+                          <span class="palette-custom-label">Custom highlight:</span>
+                          <input type="color" id="doc-custom-hilite-color" class="palette-color-input" value="#ffff00" title="Pick custom highlight" />
                         </div>
                       </div>
                     </div>
@@ -610,56 +817,27 @@
 
                 <!-- 4. Studio Document Sheet Canvas Viewport -->
                 <div class="lyrics-sheet-viewport" id="lyrics-sheet-viewport">
-                  <div class="lyrics-document-canvas" id="lyrics-document-canvas">
-                    
-                    <!-- Dynamic Page Sheets Layer (US Letter 8.5" x 11" pages) -->
-                    <div class="lyrics-pages-background" id="lyrics-pages-background">
-                      <div class="lyrics-page-sheet" data-page="1">
-                        <div class="page-sheet-header-guide">
-                          <span class="page-running-title">Main Lyrics</span>
-                          <span class="page-running-doc-badge">US Letter · 8.5" × 11"</span>
-                        </div>
-                        <div class="page-sheet-footer-guide">
-                          <span class="page-sheet-number-pill">Page 1 of 1</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- Document Content Layer (Header & Contenteditable Editor) -->
-                    <div class="lyrics-document-content-layer" id="lyrics-document-content-layer">
-                      <!-- Clean Document Header inside First Sheet -->
-                      <div class="doc-sheet-header">
-                        <div class="doc-sheet-title-row">
-                          <input id="lyrics-current-doc-title" type="text" class="lyrics-doc-title-input" value="Main Lyrics" placeholder="Document Title…" maxlength="80" />
-                          <div class="doc-sheet-meta">
-                            <span id="project-lyrics-status" class="workspace-status-badge saved"><span class="status-dot"></span> Saved</span>
-                            <span id="project-lyrics-stats" class="workspace-stats-pill">0 words · 0 lines</span>
-                          </div>
-                        </div>
+                  <div class="lyrics-canvas-wrapper" id="lyrics-canvas-wrapper">
+                    <div class="lyrics-document-canvas" id="lyrics-document-canvas">
+                      
+                      <!-- Dynamic Page Sheets Layer (US Letter 8.5" x 11" pages) -->
+                      <div class="lyrics-pages-background" id="lyrics-pages-background">
+                        <div class="lyrics-page-sheet" data-page="1"></div>
                       </div>
 
-                      <!-- Rich Contenteditable Document Editor -->
-                      <div
-                        id="project-lyrics-editor"
-                        class="lyrics-document-editor"
-                        contenteditable="true"
-                        spellcheck="false"
-                        data-placeholder="Start writing lyrics, verses, choruses, and vocal arrangements here…"
-                      ></div>
+                      <!-- Document Content Layer (Contenteditable Editor) -->
+                      <div class="lyrics-document-content-layer" id="lyrics-document-content-layer">
+                        <!-- Rich Contenteditable Document Editor -->
+                        <div
+                          id="project-lyrics-editor"
+                          class="lyrics-document-editor"
+                          contenteditable="true"
+                          spellcheck="false"
+                          data-placeholder="Start writing lyrics, verses, choruses, and vocal arrangements here…"
+                        ></div>
+                      </div>
+
                     </div>
-
-                  </div>
-                </div>
-
-                <!-- 5. Document Bottom Status Bar -->
-                <div class="lyrics-doc-footer">
-                  <div class="footer-left">
-                    <span id="lyrics-footer-char-count">0 characters</span>
-                    <span class="meta-dot">·</span>
-                    <span id="lyrics-footer-read-time">~0:00 singing time</span>
-                  </div>
-                  <div class="footer-right">
-                    <span id="lyrics-footer-last-saved">Auto-saved to cloud</span>
                   </div>
                 </div>
               </main>
@@ -684,7 +862,6 @@
                 <div class="structure-meta-pills">
                   <span id="structure-summary-sections" class="workspace-stats-pill">0 Sections</span>
                   <span id="structure-summary-bars" class="workspace-stats-pill">0 Total Bars</span>
-                  <span id="project-structure-status" class="workspace-status-badge saved"><span class="status-dot"></span> Saved</span>
                 </div>
               </div>
 
@@ -707,8 +884,8 @@
                 <span class="insert-palette-label">Add Section:</span>
                 <div class="insert-palette-buttons">
                   <button type="button" class="btn-add-section-preset type-verse" data-section-type="verse">+ Verse</button>
-                  <button type="button" class="btn-add-section-preset type-chorus" data-section-type="chorus">+ Chorus</button>
                   <button type="button" class="btn-add-section-preset type-pre-chorus" data-section-type="pre-chorus">+ Pre-Chorus</button>
+                  <button type="button" class="btn-add-section-preset type-chorus" data-section-type="chorus">+ Chorus</button>
                   <button type="button" class="btn-add-section-preset type-bridge" data-section-type="bridge">+ Bridge</button>
                   
                   <!-- More Sections Dropdown Menu -->
@@ -754,18 +931,10 @@
               <!-- 1. Notes Studio Header & Compact Meta Chips -->
               <div class="notes-workspace-header">
                 <div class="notes-header-left">
-                  <div class="notes-title-wrap">
-                    <span class="notes-brand-icon">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v5a1 1 0 0 0 1 1h5"/></svg>
-                    </span>
-                    <div>
-                      <h3 class="notes-workspace-title">Project Notes &amp; Production Log</h3>
-                      <p class="notes-workspace-sub">Arrangement thoughts, mix feedback, reference links &amp; session reminders</p>
-                    </div>
-                  </div>
+                  <h3 class="notes-workspace-title">Project Notes</h3>
                 </div>
 
-                <!-- Compact Project Meta Chips: BPM & Musical Key + Stable Saved Status -->
+                <!-- Compact Project Meta Chips: BPM & Musical Key -->
                 <div class="notes-header-right">
                   <div class="notes-meta-chips-group">
                     <div class="notes-chip-field">
@@ -776,14 +945,14 @@
                       <span class="chip-label">KEY</span>
                       <div class="notes-chip-dual-wrap">
                         <select id="project-notes-key-root" class="notes-chip-select notes-key-root-select" aria-label="Key Root Note" title="Root Note">
-                          <option value="">No Key</option>
+                          <option value="">—</option>
                           <option value="C">C</option>
-                          <option value="C#">C♯ / D♭</option>
+                          <option value="C#">C♯</option>
                           <option value="D">D</option>
                           <option value="Eb">E♭</option>
                           <option value="E">E</option>
                           <option value="F">F</option>
-                          <option value="F#">F♯ / G♭</option>
+                          <option value="F#">F♯</option>
                           <option value="G">G</option>
                           <option value="Ab">A♭</option>
                           <option value="A">A</option>
@@ -797,7 +966,6 @@
                       </div>
                     </div>
                   </div>
-                  <span id="project-notes-status" class="workspace-status-badge saved"><span class="status-dot"></span> Saved</span>
                 </div>
               </div>
 
@@ -806,17 +974,15 @@
                 <textarea
                   id="project-notes-input"
                   class="notes-studio-textarea"
-                  placeholder="Type production notes, arrangement feedback, mix revisions, reference links, recording gear settings, and studio tasks here…"
+                  placeholder="• Type production notes, arrangement feedback, mix revisions, reference links, and reminders here…"
                   spellcheck="false"
                 ></textarea>
               </div>
-
-              <!-- 3. Notes Footer -->
-              <div class="notes-workspace-footer">
-                <span id="notes-footer-hint" class="notes-footer-text">Changes save automatically to the cloud and sync with collaborators</span>
-              </div>
             </div>
           </div>
+
+            </div> <!-- end .song-studio-panels -->
+          </div> <!-- end #project-song-studio-view -->
 
           <!-- TAB PANEL: TASKS (PRODUCTION CHECKLIST & ASSIGNMENTS) -->
           <div id="project-panel-tasks" class="project-tab-panel hidden">
@@ -836,7 +1002,6 @@
                 <div class="tasks-meta-pills">
                   <span id="tasks-summary-remaining" class="workspace-stats-pill">0 Remaining</span>
                   <span id="tasks-summary-completed" class="workspace-stats-pill">0 Done</span>
-                  <span id="project-tasks-status" class="workspace-status-badge saved"><span class="status-dot"></span> Saved</span>
                 </div>
               </div>
 
@@ -948,11 +1113,10 @@
                   </span>
                   <h3>Project Members &amp; Access</h3>
                 </div>
-                <button id="btn-project-add-collab-tab" type="button" class="btn-new-project btn-small">
-                  <span class="btn-icon-inner">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                <button id="btn-project-add-collab-tab" type="button" class="btn-new-project" title="Add Collaborator" aria-label="Add Collaborator">
+                  <span class="action-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                   </span>
-                  <span>Add Collaborator</span>
                 </button>
               </div>
               <div id="project-collaborators-full-list" class="project-collaborators-list"></div>
@@ -1066,23 +1230,45 @@
 
       <!-- Delete Confirmation Modal -->
       <div id="delete-project-modal" class="modal-overlay hidden">
-        <div class="modal-card modal-project">
-          <div class="modal-header modal-header-danger">
-            <div class="modal-danger-title">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
-              <h3>Delete Project</h3>
+        <div class="modal-card modal-project modal-delete-card">
+          <div class="modal-header modal-delete-header">
+            <div class="modal-delete-header-wrap">
+              <span class="modal-delete-icon-badge">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+              </span>
+              <div>
+                <h3 class="modal-delete-title">Delete Project</h3>
+                <p class="modal-delete-subtitle">Permanent & irreversible action</p>
+              </div>
             </div>
-            <button id="btn-close-delete-project" type="button" class="modal-close-btn">
+            <button id="btn-close-delete-project" type="button" class="modal-close-btn" aria-label="Close">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
           </div>
-          <div class="modal-body">
-            <p class="delete-warning">This will permanently delete <strong id="delete-project-name-confirm"></strong> and all its session history. This action cannot be undone.</p>
-            <p class="delete-warning-hint">Consider archiving the project instead to preserve its history.</p>
+          <div class="modal-body modal-delete-body">
+            <div class="modal-danger-banner">
+              <span class="danger-banner-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </span>
+              <div class="danger-banner-content">
+                <strong class="danger-banner-heading">Warning: Irreversible Action</strong>
+                <p class="danger-banner-text">This will permanently delete <strong id="delete-project-name-confirm"></strong> and all its lyrics, notes, structure, tasks, and creative history. This action <strong>cannot be undone</strong>.</p>
+              </div>
+            </div>
+            <div class="delete-confirmation-prompt">
+              <label for="delete-project-confirm-input" class="delete-prompt-label">
+                To confirm, type <span id="delete-phrase-target" class="delete-target-phrase">delete</span> below:
+              </label>
+              <input id="delete-project-confirm-input" type="text" class="custom-input delete-phrase-input" placeholder="Type confirmation phrase here…" autocomplete="off" />
+            </div>
+            <div id="delete-project-error" class="modal-error" style="display: none; color: #ef4444; font-size: 12px; margin-top: -4px;"></div>
           </div>
-          <div class="modal-footer">
-            <button id="btn-cancel-delete-project" type="button" class="secondary">Cancel</button>
-            <button id="btn-confirm-delete-project" type="button" class="btn-danger">Delete Permanently</button>
+          <div class="modal-footer modal-delete-footer">
+            <button id="btn-cancel-delete-project" type="button" class="btn-modal-cancel">Cancel</button>
+            <button id="btn-confirm-delete-project" type="button" class="btn-modal-delete-danger" disabled>
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/></svg>
+              <span>Delete Project</span>
+            </button>
           </div>
         </div>
       </div>
@@ -2004,11 +2190,22 @@
               <h4 id="session-workspace-project-name" class="drawer-project-title">Project Workspace</h4>
             </div>
             <div class="drawer-header-actions">
-              <span id="session-workspace-status" class="workspace-status-badge saved"><span class="status-dot"></span> Saved</span>
               <button id="btn-close-session-workspace" type="button" class="drawer-close-btn" title="Close Workspace">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
               </button>
             </div>
+          </div>
+
+          <!-- Drawer Track / Song Selector Bar -->
+          <div class="drawer-song-bar">
+            <span class="drawer-song-label">TRACK:</span>
+            <div class="drawer-song-select-wrap">
+              <select id="session-workspace-song-select" class="custom-select drawer-song-select" title="Switch Active Track"></select>
+            </div>
+            <button id="btn-session-new-song" type="button" class="btn-drawer-new-song" title="Add Track / Song to Project">
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+              <span>+ Song</span>
+            </button>
           </div>
 
           <!-- Studio Segmented Navigation Tabs -->
@@ -3041,37 +3238,58 @@
       </dialog>
       <!-- NEW LYRICS DOCUMENT MODAL -->
       <div id="new-lyrics-doc-modal" class="modal-overlay hidden">
-        <div class="modal-card">
+        <div class="modal-card modal-card-sm">
           <div class="modal-header">
-            <div class="modal-title-with-icon">
-              <span class="modal-icon-badge">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>
-              </span>
-              <div>
-                <h3>New Lyrics Document</h3>
-                <p>Create another songwriting draft, alternate chorus, or version for this project.</p>
-              </div>
-            </div>
+            <h3>New Document</h3>
             <button id="btn-close-new-doc-modal" type="button" class="modal-close-btn">✕</button>
           </div>
           <div class="modal-body">
             <div class="form-group">
-              <label for="input-new-doc-title">Document Title</label>
-              <input id="input-new-doc-title" class="custom-input" placeholder="e.g. Draft 2, Acoustic Version, Clean Lyrics" maxlength="80" autofocus />
+              <label for="input-new-doc-title">Document Name</label>
+              <input id="input-new-doc-title" class="custom-input" placeholder="e.g. Acoustic Version" maxlength="80" autofocus />
             </div>
             <div class="doc-preset-chips mt-2">
-              <span class="presets-label">Quick suggestions:</span>
-              <button type="button" class="btn-doc-title-preset" data-title="Draft 2">Draft 2</button>
-              <button type="button" class="btn-doc-title-preset" data-title="Alternate Chorus">Alternate Chorus</button>
+              <button type="button" class="btn-doc-title-preset" data-title="Version 2">Version 2</button>
               <button type="button" class="btn-doc-title-preset" data-title="Acoustic Version">Acoustic</button>
-              <button type="button" class="btn-doc-title-preset" data-title="Clean / Radio Edit">Radio Edit</button>
-              <button type="button" class="btn-doc-title-preset" data-title="Hebrew Translation">Translation</button>
+              <button type="button" class="btn-doc-title-preset" data-title="Radio Edit">Radio Edit</button>
             </div>
             <p id="new-doc-error" class="modal-error hidden"></p>
           </div>
           <div class="modal-footer">
             <button id="btn-cancel-new-doc" type="button" class="btn-secondary">Cancel</button>
-            <button id="btn-confirm-create-doc" type="button" class="btn-primary">Create Document</button>
+            <button id="btn-confirm-create-doc" type="button" class="btn-primary">Create</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: NEW SONG / TRACK IN PROJECT -->
+      <div id="new-song-modal" class="modal hidden">
+        <div class="modal-card modal-card-sm">
+          <div class="modal-header">
+            <h3 class="modal-title-clean">New Song / Track</h3>
+            <button id="btn-close-new-song-modal" type="button" class="modal-close-btn" aria-label="Close">✕</button>
+          </div>
+          <div class="modal-body">
+            <label for="input-new-song-title" class="custom-label">Song Title</label>
+            <input
+              id="input-new-song-title"
+              type="text"
+              class="custom-input"
+              placeholder="e.g. Midnight Drive, Track 2, Acoustic Ballad…"
+              maxlength="80"
+              autocomplete="off"
+            />
+            <div class="doc-preset-chips" id="song-title-presets">
+              <button type="button" class="btn-song-title-preset" data-title="Track 2">Track 2</button>
+              <button type="button" class="btn-song-title-preset" data-title="Track 3">Track 3</button>
+              <button type="button" class="btn-song-title-preset" data-title="Acoustic Version">Acoustic</button>
+              <button type="button" class="btn-song-title-preset" data-title="Instrumental">Instrumental</button>
+            </div>
+            <p id="new-song-error" class="modal-error hidden"></p>
+          </div>
+          <div class="modal-footer">
+            <button id="btn-cancel-new-song" type="button" class="btn-secondary">Cancel</button>
+            <button id="btn-confirm-create-song" type="button" class="btn-primary">Create Song</button>
           </div>
         </div>
       </div>
@@ -3096,29 +3314,46 @@
       <!-- MODAL: PROJECT ACTIVITY HISTORY DIALOG -->
       <div id="project-activity-dialog" class="dialog-overlay hidden">
         <div class="dialog-card activity-dialog-card">
-          <div class="dialog-header">
+          <div class="dialog-header activity-dialog-header">
             <div class="dialog-title-wrap">
-              <span class="activity-brand-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+              <span class="activity-header-icon-badge">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
               </span>
               <div>
                 <h3 class="dialog-title">Project Activity History</h3>
                 <p class="dialog-subtitle" id="activity-dialog-subtitle">Creative changes and milestones for this song</p>
               </div>
             </div>
-            <button id="btn-close-activity-dialog" type="button" class="btn-close-dialog" title="Close">✕</button>
+            <button id="btn-close-activity-dialog" type="button" class="modal-close-btn" aria-label="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
           </div>
 
           <div class="activity-dialog-toolbar">
             <div class="activity-search-wrap">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input id="activity-search-input" type="text" class="activity-search-input" placeholder="Search activity history (e.g. lyrics, Zoe, tempo, vocals)…" />
+              <input id="activity-search-input" type="text" class="activity-search-input" placeholder="Search activity history…" />
             </div>
             <span id="activity-dialog-count-badge" class="badge-count">0 Events</span>
           </div>
 
           <div class="activity-dialog-body" id="activity-dialog-list">
             <!-- Populated dynamically -->
+          </div>
+
+          <div id="activity-dialog-pagination" class="activity-dialog-pagination">
+            <span id="activity-pagination-info" class="activity-pagination-info">Showing 1–10 of 10</span>
+            <div class="activity-pagination-actions">
+              <button id="btn-activity-prev-page" type="button" class="btn-pagination" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m15 18-6-6 6-6"/></svg>
+                <span>Prev</span>
+              </button>
+              <span id="activity-page-number" class="activity-page-indicator">1 / 1</span>
+              <button id="btn-activity-next-page" type="button" class="btn-pagination" disabled>
+                <span>Next</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
