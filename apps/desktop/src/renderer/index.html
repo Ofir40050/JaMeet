@@ -92,29 +92,33 @@
           
           <div class="home-cards">
             <div class="home-card host-card">
-              <div class="card-icon card-icon-zap">
-                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              <div class="home-card-header">
+                <div class="card-icon card-icon-zap">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                </div>
+                <div class="home-card-title-group">
+                  <h3>Start a Session</h3>
+                  <p>Host an encrypted peer-to-peer remote session with pristine audio dynamics and multiple microphone support.</p>
+                </div>
               </div>
-              <h3>Start a Session</h3>
-              <p>Host an encrypted peer-to-peer remote session with pristine audio dynamics and multiple microphone support.</p>
               <div class="home-card-action-box host-action-box">
-                <button id="create-button" class="primary large w-full">Start New Session</button>
+                <button id="create-button" class="primary">Start New Session</button>
               </div>
-            </div>
-
-            <div class="home-card-divider">
-              <span>OR</span>
             </div>
 
             <div class="home-card join-card">
-              <div class="card-icon card-icon-link">
-                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              <div class="home-card-header">
+                <div class="card-icon card-icon-link">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                </div>
+                <div class="home-card-title-group">
+                  <h3>Join a Session</h3>
+                  <p>Enter an 8-character session invite code or paste a room link to connect with another musician or collaborator.</p>
+                </div>
               </div>
-              <h3>Join a Session</h3>
-              <p>Enter an 8-character session invite code or paste a room link to connect with another musician or collaborator.</p>
               <div class="home-card-action-box join-box">
                 <input id="join-code" maxlength="32" autocomplete="off" placeholder="e.g. ABC1-DEF2 or link" aria-label="Session code or link" />
-                <button id="join-button" class="secondary w-full">Join Room</button>
+                <button id="join-button" class="secondary">Join Room</button>
               </div>
             </div>
           </div>
