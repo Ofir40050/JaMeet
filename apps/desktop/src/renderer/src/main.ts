@@ -2434,7 +2434,7 @@ let remoteLimiter: DynamicsCompressorNode | undefined;
 let lastConnectedVoiceFx: string = '__uninitialized__';
 let lastConnectedMusicFx: string = '__uninitialized__';
 let remoteVoiceSourceNode: MediaStreamAudioSourceNode | undefined;
-let remoteMusicSourceNode: MediaStreamAudioSourceNode | undefined;
+const remoteMusicSourceNodes = new Map<string, { track: MediaStreamTrack; sourceNode: MediaStreamAudioSourceNode }>();
 
 async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
   if (!remoteAudioCtx || remoteAudioCtx.state === 'closed') {
@@ -2534,11 +2534,23 @@ function setRemoteAudio(id: string, purpose: 'voice' | 'music', track: MediaStre
   const existing = remoteAudioTracks.get(id);
   if (existing) {
     existing.track.onended = null;
-    existing.track.stop();
+    if (existing.track !== track) {
+      try { existing.track.stop(); } catch {}
+      const existingSource = remoteMusicSourceNodes.get(id);
+      if (existingSource) {
+        try { existingSource.sourceNode.disconnect(); } catch {}
+        remoteMusicSourceNodes.delete(id);
+      }
+    }
   }
   remoteAudioTracks.set(id, { purpose, track });
   track.onended = () => {
     remoteAudioTracks.delete(id);
+    const existingSource = remoteMusicSourceNodes.get(id);
+    if (existingSource) {
+      try { existingSource.sourceNode.disconnect(); } catch {}
+      remoteMusicSourceNodes.delete(id);
+    }
     if (!inCall) return;
     void refreshRemoteAudio();
   };
@@ -2549,9 +2561,9 @@ function setRemoteAudio(id: string, purpose: 'voice' | 'music', track: MediaStre
 
 async function refreshRemoteAudio(): Promise<void> {
   const voice = [...remoteAudioTracks.values()].filter((item) => item.purpose === 'voice').map((item) => item.track);
-  const music = [...remoteAudioTracks.values()].filter((item) => item.purpose === 'music').map((item) => item.track);
+  const musicEntries = [...remoteAudioTracks.entries()].filter(([, item]) => item.purpose === 'music');
 
-  if (voice.length === 0 && music.length === 0) {
+  if (voice.length === 0 && musicEntries.length === 0) {
     stopRemoteVoiceBridge();
     try { remoteVoiceSourceNode?.disconnect(); } catch {}
     remoteVoiceSourceNode = undefined;
@@ -2562,8 +2574,10 @@ async function refreshRemoteAudio(): Promise<void> {
     lastRemoteVoiceDb = -60;
     checkActiveSpeaker();
 
-    try { remoteMusicSourceNode?.disconnect(); } catch {}
-    remoteMusicSourceNode = undefined;
+    for (const [, entry] of remoteMusicSourceNodes) {
+      try { entry.sourceNode.disconnect(); } catch {}
+    }
+    remoteMusicSourceNodes.clear();
 
     const voiceEl = $<HTMLAudioElement>('remote-voice-audio');
     const musicEl = $<HTMLAudioElement>('remote-music-audio');
@@ -2612,14 +2626,38 @@ async function refreshRemoteAudio(): Promise<void> {
     checkActiveSpeaker();
   }
 
-  if (music.length > 0) {
-    const musicStream = new MediaStream(music);
-    try { remoteMusicSourceNode?.disconnect(); } catch {}
-    remoteMusicSourceNode = ctx.createMediaStreamSource(musicStream);
-    if (remoteMusicGain) remoteMusicSourceNode.connect(remoteMusicGain);
+  if (musicEntries.length > 0) {
+    // Clean up any existing sources that are no longer active or ended
+    for (const [id, entry] of remoteMusicSourceNodes) {
+      const stillActive = musicEntries.some(([trackId, item]) => trackId === id && item.track === entry.track && item.track.readyState !== 'ended');
+      if (!stillActive) {
+        try { entry.sourceNode.disconnect(); } catch {}
+        remoteMusicSourceNodes.delete(id);
+      }
+    }
+
+    // Create or connect source nodes for all active remote music tracks
+    for (const [id, item] of musicEntries) {
+      if (item.track.readyState === 'ended') continue;
+      const existing = remoteMusicSourceNodes.get(id);
+      if (!existing || existing.track !== item.track) {
+        if (existing) {
+          try { existing.sourceNode.disconnect(); } catch {}
+          remoteMusicSourceNodes.delete(id);
+        }
+        const stream = new MediaStream([item.track]);
+        const sourceNode = ctx.createMediaStreamSource(stream);
+        if (remoteMusicGain) {
+          sourceNode.connect(remoteMusicGain);
+        }
+        remoteMusicSourceNodes.set(id, { track: item.track, sourceNode });
+      }
+    }
   } else {
-    try { remoteMusicSourceNode?.disconnect(); } catch {}
-    remoteMusicSourceNode = undefined;
+    for (const [, entry] of remoteMusicSourceNodes) {
+      try { entry.sourceNode.disconnect(); } catch {}
+    }
+    remoteMusicSourceNodes.clear();
   }
 
   const voiceEl = $<HTMLAudioElement>('remote-voice-audio');
@@ -2684,8 +2722,10 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   try { remoteVoiceSourceNode?.disconnect(); } catch {}
   remoteVoiceSourceNode = undefined;
 
-  try { remoteMusicSourceNode?.disconnect(); } catch {}
-  remoteMusicSourceNode = undefined;
+  for (const [, entry] of remoteMusicSourceNodes) {
+    try { entry.sourceNode.disconnect(); } catch {}
+  }
+  remoteMusicSourceNodes.clear();
 
   if (remoteVoiceMeter) {
     await remoteVoiceMeter.stop();
