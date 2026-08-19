@@ -12449,7 +12449,7 @@ function syncMixerChannelsWithVoiceInputs(): void {
 
   const masterOut = existingMap.get('master-out') || {
     id: 'master-out',
-    name: 'Master',
+    name: 'Monitor Master',
     icon: 'crown',
     color: MASTER_GOLD,
     volume: 1.0,
@@ -12460,6 +12460,9 @@ function syncMixerChannelsWithVoiceInputs(): void {
     isMaster: true,
     section: 'remote'
   };
+  if (!existingMap.has('master-out') || masterOut.name === 'Master') {
+    masterOut.name = 'Monitor Master';
+  }
   masterOut.color = MASTER_GOLD;
 
   studioMixerChannels = [
@@ -13385,7 +13388,7 @@ function renderStudioMixer(): void {
     msGroup.className = 'mixer-ms-group';
     if (channel.isMaster) {
       msGroup.innerHTML = `
-        <button type="button" class="btn-mixer-ms btn-m ${channel.muted ? 'active' : ''}" style="width: 100%;" title="Mute Master Output">M</button>
+        <button type="button" class="btn-mixer-ms btn-m ${channel.muted ? 'active' : ''}" style="width: 100%;" title="Mute Monitor Master (Remote Mix)">M</button>
       `;
       msGroup.querySelector('.btn-m')?.addEventListener('click', () => {
         channel.muted = !channel.muted;
