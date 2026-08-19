@@ -1219,19 +1219,20 @@ function updateVoiceInIndicator(): void {
 }
 
 function renderVoiceLevel(micId: number, reading: LevelReading): void {
+  const numId = Number(micId);
   const width = `${Math.max(0, Math.min(100, ((reading.rmsDb + 60) / 60) * 100))}%`;
   for (const prefix of ['setup-meter', 'call-meter', 'topbar-meter', 'unit-meter']) {
-    const bar = document.getElementById(`${prefix}-${micId}`);
+    const bar = document.getElementById(`${prefix}-${numId}`);
     if (bar) {
       bar.style.width = width;
       bar.parentElement?.classList.toggle('clip', reading.clipping);
     }
   }
   for (const prefix of ['setup-db', 'call-db', 'topbar-db', 'unit-db']) {
-    const el = document.getElementById(`${prefix}-${micId}`);
+    const el = document.getElementById(`${prefix}-${numId}`);
     if (el) el.textContent = `${Math.round(reading.rmsDb)} dB`;
   }
-  activeMicLevels.set(micId, reading.rmsDb);
+  activeMicLevels.set(numId, reading.rmsDb);
   let maxLocal = -60;
   for (const db of activeMicLevels.values()) {
     if (db > maxLocal) maxLocal = db;
@@ -12537,7 +12538,11 @@ function startMixerVuAnimation(): void {
         const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
         const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
         if (vuLeft && vuRight) {
-          const micDb = activeMicLevels.get(mic.id) ?? (mic.id === 1 ? lastLocalVoiceDb : -100);
+          const numMicId = Number(mic.id);
+          let micDb = activeMicLevels.get(numMicId);
+          if (micDb === undefined || isNaN(micDb)) {
+             micDb = (numMicId === 1 ? lastLocalVoiceDb : -100);
+          }
           if (!isAudible || micCh.volume <= 0.001 || micDb <= -55) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
@@ -12546,12 +12551,13 @@ function startMixerVuAnimation(): void {
               peakEl.classList.remove('is-clipping');
             }
           } else {
-            const rawPct = Math.max(0, Math.min(100, ((micDb + 55) / 55) * 100 * micCh.volume));
-            const { left: panL, right: panR } = getStereoPanGains(micCh.pan);
+            const safeVolume = Math.max(0, Number(micCh.volume) || 0);
+            const rawPct = Math.max(0, Math.min(100, ((micDb + 55) / 55) * 100 * safeVolume));
+            const { left: panL, right: panR } = getStereoPanGains(Number(micCh.pan) || 0);
             vuLeft.style.height = `${(rawPct * panL).toFixed(1)}%`;
             vuRight.style.height = `${(rawPct * panR).toFixed(1)}%`;
             if (peakEl) {
-              const peakDb = micDb + (micCh.volume <= 0.0001 ? -100 : 20 * Math.log10(micCh.volume));
+              const peakDb = micDb + (safeVolume <= 0.0001 ? -100 : 20 * Math.log10(safeVolume));
               peakEl.textContent = formatPeakDbText(peakDb);
               peakEl.classList.toggle('is-clipping', peakDb >= -0.5);
             }
