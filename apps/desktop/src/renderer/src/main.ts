@@ -12342,17 +12342,18 @@ function syncMixerChannelsWithVoiceInputs(): void {
   const existingMap = new Map<string, StudioMixerChannel>();
   studioMixerChannels.forEach((ch) => existingMap.set(ch.id, ch));
 
-  const newLocalMicChannels: StudioMixerChannel[] = enabledMics.map((mic, idx) => {
+  const DEFAULT_APP_BLUE = '#3b82f6';
+  const MASTER_GOLD = '#f59e0b';
+
+  const newLocalMicChannels: StudioMixerChannel[] = enabledMics.map((mic) => {
     const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
     const existing = existingMap.get(chId) || (mic.id === 1 ? existingMap.get('you-mic-1') : undefined);
-    const defaultColors = ['#3b82f6', '#60a5fa', '#38bdf8', '#818cf8', '#a78bfa', '#c084fc'];
-    const defaultColor = defaultColors[idx % defaultColors.length] || '#3b82f6';
 
     return {
       id: chId,
       name: existing?.name || (mic.id === 1 ? 'Mic 1' : `Mic ${mic.id}`),
       icon: existing?.icon || 'mic',
-      color: existing?.color || defaultColor,
+      color: existing?.color === '#f59e0b' ? DEFAULT_APP_BLUE : (existing?.color || DEFAULT_APP_BLUE),
       volume: existing?.volume ?? (mic.gain ?? 1.0),
       pan: existing?.pan ?? 0,
       muted: existing?.muted ?? false,
@@ -12367,7 +12368,7 @@ function syncMixerChannelsWithVoiceInputs(): void {
     id: 'music-stream',
     name: 'Music',
     icon: 'waves',
-    color: '#a855f7',
+    color: DEFAULT_APP_BLUE,
     volume: 1.0,
     pan: 0,
     muted: false,
@@ -12375,13 +12376,16 @@ function syncMixerChannelsWithVoiceInputs(): void {
     fx: [],
     section: 'local'
   };
+  if (!existingMap.has('music-stream') || existingMusic.color === '#a855f7') {
+    existingMusic.color = DEFAULT_APP_BLUE;
+  }
 
   // Remote Section
   const remoteVoice = existingMap.get('remote-voice') || {
     id: 'remote-voice',
     name: 'Mic 1',
     icon: 'headphones',
-    color: '#22c55e',
+    color: DEFAULT_APP_BLUE,
     volume: 1.0,
     pan: 0,
     muted: false,
@@ -12389,12 +12393,15 @@ function syncMixerChannelsWithVoiceInputs(): void {
     fx: [],
     section: 'remote'
   };
+  if (!existingMap.has('remote-voice') || remoteVoice.color === '#22c55e') {
+    remoteVoice.color = DEFAULT_APP_BLUE;
+  }
 
   const remoteMusic = existingMap.get('remote-music') || {
     id: 'remote-music',
     name: 'Music',
     icon: 'waves',
-    color: '#06b6d4',
+    color: DEFAULT_APP_BLUE,
     volume: 1.0,
     pan: 0,
     muted: false,
@@ -12402,12 +12409,15 @@ function syncMixerChannelsWithVoiceInputs(): void {
     fx: [],
     section: 'remote'
   };
+  if (!existingMap.has('remote-music') || remoteMusic.color === '#06b6d4') {
+    remoteMusic.color = DEFAULT_APP_BLUE;
+  }
 
   const masterOut = existingMap.get('master-out') || {
     id: 'master-out',
     name: 'Master',
     icon: 'crown',
-    color: '#f59e0b',
+    color: MASTER_GOLD,
     volume: 1.0,
     pan: 0,
     muted: false,
@@ -12416,6 +12426,7 @@ function syncMixerChannelsWithVoiceInputs(): void {
     isMaster: true,
     section: 'remote'
   };
+  masterOut.color = MASTER_GOLD;
 
   studioMixerChannels = [
     ...newLocalMicChannels,
