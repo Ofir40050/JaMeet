@@ -1398,7 +1398,7 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
         const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
         if (micCh) {
           micCh.volume = val;
-          saveStudioMixerConfig();
+          saveStudioMixerConfig(false);
           if (studioMixerOpen) {
             renderStudioMixer();
           }
@@ -3574,7 +3574,7 @@ for (const id of ['input-gain', 'call-input-gain']) {
     const micCh = studioMixerChannels.find((c) => c.id === 'you-mic');
     if (micCh) {
       micCh.volume = val;
-      saveStudioMixerConfig();
+      saveStudioMixerConfig(false);
       if (studioMixerOpen) {
         renderStudioMixer();
       }
@@ -12495,7 +12495,21 @@ function loadSavedStudioMixerConfig(): PersistentStudioMixerMap {
   return {};
 }
 
-function saveStudioMixerConfig(): void {
+let mixerSaveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function saveStudioMixerConfig(immediate = true): void {
+  if (!immediate) {
+    if (mixerSaveDebounceTimer) clearTimeout(mixerSaveDebounceTimer);
+    mixerSaveDebounceTimer = setTimeout(() => {
+      mixerSaveDebounceTimer = null;
+      saveStudioMixerConfig(true);
+    }, 300);
+    return;
+  }
+  if (mixerSaveDebounceTimer) {
+    clearTimeout(mixerSaveDebounceTimer);
+    mixerSaveDebounceTimer = null;
+  }
   try {
     const map = loadSavedStudioMixerConfig();
     const MASTER_GOLD = '#f59e0b';
@@ -13397,7 +13411,7 @@ function renderStudioMixer(): void {
           panRing.removeEventListener('pointermove', onPanMove);
           panRing.removeEventListener('pointerup', onPanUp);
           panRing.removeEventListener('pointercancel', onPanUp);
-          saveStudioMixerConfig();
+          saveStudioMixerConfig(true);
         };
 
         panRing.addEventListener('pointermove', onPanMove);
@@ -13410,7 +13424,7 @@ function renderStudioMixer(): void {
         channel.pan = 0;
         updatePanVisuals(0);
         applyMixerAudioRouting();
-        saveStudioMixerConfig();
+        saveStudioMixerConfig(true);
       });
 
       panRing.addEventListener('wheel', (e) => {
@@ -13419,7 +13433,7 @@ function renderStudioMixer(): void {
         channel.pan = Math.max(-1, Math.min(1, channel.pan + delta));
         updatePanVisuals(channel.pan);
         applyMixerAudioRouting();
-        saveStudioMixerConfig();
+        saveStudioMixerConfig(false);
       }, { passive: false });
 
       strip.appendChild(panWrap);
@@ -13438,7 +13452,7 @@ function renderStudioMixer(): void {
       channel.volume = 1.0;
       renderStudioMixer();
       applyMixerAudioRouting();
-      saveStudioMixerConfig();
+      saveStudioMixerConfig(true);
     });
     strip.appendChild(readoutRow);
 
@@ -13505,7 +13519,6 @@ function renderStudioMixer(): void {
       faderCap.style.top = `${clampedPct.toFixed(2)}%`;
       faderValEl.textContent = formatDbText(db);
       applyMixerAudioRouting();
-      saveStudioMixerConfig();
     };
 
     faderCap.addEventListener('pointerdown', (e) => {
@@ -13531,6 +13544,7 @@ function renderStudioMixer(): void {
         faderCap.removeEventListener('pointermove', onPointerMove);
         faderCap.removeEventListener('pointerup', onPointerUp);
         faderCap.removeEventListener('pointercancel', onPointerUp);
+        saveStudioMixerConfig(true);
       };
 
       faderCap.addEventListener('pointermove', onPointerMove);
@@ -13560,6 +13574,7 @@ function renderStudioMixer(): void {
         faderColumn.removeEventListener('pointermove', onTrackPointerMove);
         faderColumn.removeEventListener('pointerup', onTrackPointerUp);
         faderColumn.removeEventListener('pointercancel', onTrackPointerUp);
+        saveStudioMixerConfig(true);
       };
 
       faderColumn.addEventListener('pointermove', onTrackPointerMove);
@@ -13573,7 +13588,7 @@ function renderStudioMixer(): void {
       faderCap.style.top = '16%';
       faderValEl.textContent = '0.0';
       applyMixerAudioRouting();
-      saveStudioMixerConfig();
+      saveStudioMixerConfig(true);
     });
 
     faderColumn.addEventListener('dblclick', (e) => {
@@ -13582,7 +13597,7 @@ function renderStudioMixer(): void {
       faderCap.style.top = '16%';
       faderValEl.textContent = '0.0';
       applyMixerAudioRouting();
-      saveStudioMixerConfig();
+      saveStudioMixerConfig(true);
     });
 
     faderColumn.addEventListener('wheel', (e) => {
@@ -13594,7 +13609,7 @@ function renderStudioMixer(): void {
       faderCap.style.top = `${dbToFaderTopPercent(newDb).toFixed(2)}%`;
       faderValEl.textContent = formatDbText(newDb);
       applyMixerAudioRouting();
-      saveStudioMixerConfig();
+      saveStudioMixerConfig(false);
     }, { passive: false });
 
     strip.appendChild(faderArea);
