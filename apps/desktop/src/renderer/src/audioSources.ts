@@ -35,6 +35,7 @@ type VoiceMicChannel = {
   leftGainNode?: GainNode;
   rightGainNode?: GainNode;
   stereoMerger?: ChannelMergerNode;
+  downmixGainNode?: GainNode;
   analyserNode: AnalyserNode;  // Always-connected analyser for VU metering
   micDestination: MediaStreamAudioDestinationNode;
   preferences: AudioCapturePreferences;
@@ -157,6 +158,20 @@ export class LocalAudioSourceManager {
             leftData[f] = floatSamples[f * totalChannels + leftIdx]!;
             rightData[f] = floatSamples[f * totalChannels + rightIdx]!;
           }
+        } else if (route === '1-2' || route === '3-4' || route === '5-6' || route === '7-8') {
+          let leftIdx = 0;
+          let rightIdx = 1;
+          if (route === '3-4') { leftIdx = 2; rightIdx = 3; }
+          else if (route === '5-6') { leftIdx = 4; rightIdx = 5; }
+          else if (route === '7-8') { leftIdx = 6; rightIdx = 7; }
+
+          leftIdx = Math.min(leftIdx, totalChannels - 1);
+          rightIdx = Math.min(rightIdx, totalChannels - 1);
+
+          const monoData = audioBuffer.getChannelData(0);
+          for (let f = 0; f < frameCount; f++) {
+            monoData[f] = 0.5 * (floatSamples[f * totalChannels + leftIdx]! + floatSamples[f * totalChannels + rightIdx]!);
+          }
         } else {
           let chIdx = 0;
           if (route === '1') chIdx = 0;
@@ -207,6 +222,7 @@ export class LocalAudioSourceManager {
       try { mic.leftGainNode?.disconnect(); } catch {}
       try { mic.rightGainNode?.disconnect(); } catch {}
       try { mic.stereoMerger?.disconnect(); } catch {}
+      try { mic.downmixGainNode?.disconnect(); } catch {}
       try { mic.micDestination?.disconnect(); } catch {}
       this.voiceMics.delete(micIndex);
       this.gainNodes.delete(`voice-${micIndex}`);
@@ -242,6 +258,7 @@ export class LocalAudioSourceManager {
       try { prevMic.leftGainNode?.disconnect(); } catch {}
       try { prevMic.rightGainNode?.disconnect(); } catch {}
       try { prevMic.stereoMerger?.disconnect(); } catch {}
+      try { prevMic.downmixGainNode?.disconnect(); } catch {}
       try { prevMic.micDestination?.disconnect(); } catch {}
     }
 
@@ -273,6 +290,12 @@ export class LocalAudioSourceManager {
     const outChannels = isStereoRoute ? 2 : 1;
     const micMerger = ctx.createChannelMerger(outChannels);
 
+    let downmixGainNode: GainNode | undefined;
+    if (!isStereoRoute && (route === '1-2' || route === '3-4' || route === '5-6' || route === '7-8' || (route === 'all' && sourceNode.channelCount >= 2))) {
+      downmixGainNode = ctx.createGain();
+      downmixGainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+    }
+
     if (route !== 'all') {
       let splitter: ChannelSplitterNode;
       try { splitter = ctx.createChannelSplitter(32); }
@@ -280,32 +303,48 @@ export class LocalAudioSourceManager {
       sourceNode.connect(splitter);
 
       if (route === '1-2') {
-        splitter.connect(micMerger, 0, 0);
         if (outChannels > 1) {
+          splitter.connect(micMerger, 0, 0);
           splitter.connect(micMerger, 1, 1);
+        } else if (downmixGainNode) {
+          splitter.connect(downmixGainNode, 0);
+          splitter.connect(downmixGainNode, 1);
+          downmixGainNode.connect(micMerger, 0, 0);
         } else {
-          splitter.connect(micMerger, 1, 0);
+          splitter.connect(micMerger, 0, 0);
         }
       } else if (route === '3-4') {
-        splitter.connect(micMerger, 2, 0);
         if (outChannels > 1) {
+          splitter.connect(micMerger, 2, 0);
           splitter.connect(micMerger, 3, 1);
+        } else if (downmixGainNode) {
+          splitter.connect(downmixGainNode, 2);
+          splitter.connect(downmixGainNode, 3);
+          downmixGainNode.connect(micMerger, 0, 0);
         } else {
-          splitter.connect(micMerger, 3, 0);
+          splitter.connect(micMerger, 2, 0);
         }
       } else if (route === '5-6') {
-        splitter.connect(micMerger, 4, 0);
         if (outChannels > 1) {
+          splitter.connect(micMerger, 4, 0);
           splitter.connect(micMerger, 5, 1);
+        } else if (downmixGainNode) {
+          splitter.connect(downmixGainNode, 4);
+          splitter.connect(downmixGainNode, 5);
+          downmixGainNode.connect(micMerger, 0, 0);
         } else {
-          splitter.connect(micMerger, 5, 0);
+          splitter.connect(micMerger, 4, 0);
         }
       } else if (route === '7-8') {
-        splitter.connect(micMerger, 6, 0);
         if (outChannels > 1) {
+          splitter.connect(micMerger, 6, 0);
           splitter.connect(micMerger, 7, 1);
+        } else if (downmixGainNode) {
+          splitter.connect(downmixGainNode, 6);
+          splitter.connect(downmixGainNode, 7);
+          downmixGainNode.connect(micMerger, 0, 0);
         } else {
-          splitter.connect(micMerger, 7, 0);
+          splitter.connect(micMerger, 6, 0);
         }
       } else {
         let chIdx = 0;
@@ -315,6 +354,13 @@ export class LocalAudioSourceManager {
         }
         splitter.connect(micMerger, chIdx, 0);
       }
+    } else if (downmixGainNode) {
+      let allSplitter: ChannelSplitterNode;
+      try { allSplitter = ctx.createChannelSplitter(2); } catch { allSplitter = ctx.createChannelSplitter(1); }
+      sourceNode.connect(allSplitter);
+      allSplitter.connect(downmixGainNode, 0);
+      try { allSplitter.connect(downmixGainNode, 1); } catch {}
+      downmixGainNode.connect(micMerger, 0, 0);
     } else {
       sourceNode.connect(micMerger);
     }
@@ -383,6 +429,7 @@ export class LocalAudioSourceManager {
       leftGainNode,
       rightGainNode,
       stereoMerger,
+      downmixGainNode,
       analyserNode,
       micDestination,
       preferences,
@@ -1094,6 +1141,7 @@ export class LocalAudioSourceManager {
       try { mic.leftGainNode?.disconnect(); } catch {}
       try { mic.rightGainNode?.disconnect(); } catch {}
       try { mic.stereoMerger?.disconnect(); } catch {}
+      try { mic.downmixGainNode?.disconnect(); } catch {}
       try { mic.micDestination?.disconnect(); } catch {}
     }
     this.voiceMics.clear();
