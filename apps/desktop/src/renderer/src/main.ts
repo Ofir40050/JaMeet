@@ -12672,28 +12672,19 @@ function startMixerVuAnimation(): void {
       }
     }
 
-    // 3. DAW Music Channel Metering (from real Web Audio Music Analyser)
-    const musicCh = studioMixerChannels.find((c) => c.id === 'music-stream');
-    if (musicCh) {
-      const isAudible = !musicCh.muted && (!hasAnySolo || musicCh.soloed);
-      const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${musicCh.id}"]`);
+    // 3. Local Music Channel Metering (from local music level only)
+    const localMusicCh = studioMixerChannels.find((c) => c.id === 'music-stream');
+    if (localMusicCh) {
+      const isAudible = !localMusicCh.muted && (!hasAnySolo || localMusicCh.soloed);
+      const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${localMusicCh.id}"]`);
       if (stripEl) {
         const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
         const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
         const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
         if (vuLeft && vuRight) {
-          let remoteAvg = 0;
-          if (remoteMusicAnalyser) {
-            remoteMusicAnalyser.getByteFrequencyData(musicDataArray);
-            let sum = 0;
-            for (let i = 0; i < musicDataArray.length; i++) sum += musicDataArray[i];
-            remoteAvg = sum / musicDataArray.length;
-          }
+          const hasLocal = typeof lastLocalMusicDb === 'number' && !isNaN(lastLocalMusicDb) && lastLocalMusicDb > -58;
 
-          const hasLocal = lastLocalMusicDb > -55;
-          const hasRemote = remoteAvg > 1;
-
-          if (!isAudible || musicCh.volume <= 0.001 || (!hasLocal && !hasRemote)) {
+          if (!isAudible || localMusicCh.volume <= 0.001 || !hasLocal) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
@@ -12701,23 +12692,13 @@ function startMixerVuAnimation(): void {
               peakEl.classList.remove('is-clipping');
             }
           } else {
-            let activeDb = -60;
-            if (hasLocal && hasRemote) {
-              const remoteDb = -60 + (remoteAvg / 255) * 60;
-              activeDb = Math.max(lastLocalMusicDb, remoteDb);
-            } else if (hasLocal) {
-              activeDb = lastLocalMusicDb;
-            } else {
-              activeDb = -60 + (remoteAvg / 255) * 60;
-            }
-
-            const rawPct = Math.max(0, Math.min(100, ((activeDb + 55) / 55) * 100 * musicCh.volume));
-            const { left: panL, right: panR } = getStereoPanGains(musicCh.pan);
+            const rawPct = Math.max(0, Math.min(100, ((lastLocalMusicDb + 55) / 55) * 100 * localMusicCh.volume));
+            const { left: panL, right: panR } = getStereoPanGains(Number(localMusicCh.pan) || 0);
             vuLeft.style.height = `${Math.min(100, rawPct * panL).toFixed(1)}%`;
             vuRight.style.height = `${Math.min(100, rawPct * panR).toFixed(1)}%`;
 
             if (peakEl) {
-              const peakDb = activeDb + (musicCh.volume <= 0.0001 ? -100 : 20 * Math.log10(musicCh.volume));
+              const peakDb = lastLocalMusicDb + (localMusicCh.volume <= 0.0001 ? -100 : 20 * Math.log10(localMusicCh.volume));
               peakEl.textContent = formatPeakDbText(peakDb);
               peakEl.classList.toggle('is-clipping', peakDb >= -0.5);
             }
@@ -12726,7 +12707,52 @@ function startMixerVuAnimation(): void {
       }
     }
 
-    // 4. Master Output Metering (from real Master Analyser)
+    // 4. Remote Music Channel Metering (from real Web Audio Remote Music Analyser)
+    const remoteMusicCh = studioMixerChannels.find((c) => c.id === 'remote-music');
+    if (remoteMusicCh) {
+      const isAudible = !remoteMusicCh.muted && (!hasAnySolo || remoteMusicCh.soloed);
+      const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${remoteMusicCh.id}"]`);
+      if (stripEl) {
+        const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
+        const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
+        const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
+        if (vuLeft && vuRight) {
+          if (!isAudible || remoteMusicCh.volume <= 0.001 || !remoteMusicAnalyser) {
+            vuLeft.style.height = '0%';
+            vuRight.style.height = '0%';
+            if (peakEl) {
+              peakEl.textContent = '';
+              peakEl.classList.remove('is-clipping');
+            }
+          } else {
+            remoteMusicAnalyser.getByteFrequencyData(musicDataArray);
+            let sum = 0;
+            for (let i = 0; i < musicDataArray.length; i++) sum += musicDataArray[i];
+            const avg = sum / musicDataArray.length;
+            if (avg <= 1) {
+              vuLeft.style.height = '0%';
+              vuRight.style.height = '0%';
+              if (peakEl) {
+                peakEl.textContent = '';
+                peakEl.classList.remove('is-clipping');
+              }
+            } else {
+              const pct = Math.min(100, (avg / 200) * 100 * remoteMusicCh.volume);
+              const { left: panL, right: panR } = getStereoPanGains(Number(remoteMusicCh.pan) || 0);
+              vuLeft.style.height = `${Math.min(100, pct * panL).toFixed(1)}%`;
+              vuRight.style.height = `${Math.min(100, pct * panR).toFixed(1)}%`;
+              if (peakEl) {
+                const db = -60 + (avg / 255) * 60 + (remoteMusicCh.volume <= 0.0001 ? -100 : 20 * Math.log10(remoteMusicCh.volume));
+                peakEl.textContent = formatPeakDbText(db);
+                peakEl.classList.toggle('is-clipping', db >= -0.5);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 5. Master Output Metering (from real Master Analyser)
     const masterCh = studioMixerChannels.find((c) => c.id === 'master-out');
     if (masterCh) {
       const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${masterCh.id}"]`);
@@ -12769,9 +12795,9 @@ function startMixerVuAnimation(): void {
       }
     }
 
-    // 5. Aux & Other Channels (exclude all local mic channels, remote voice, music stream, and master)
+    // 6. Aux & Other Channels (exclude all local mic channels, remote voice, remote music, music stream, and master)
     studioMixerChannels
-      .filter((c) => !localMicChannelIds.has(c.id) && !c.id.startsWith('you-mic') && c.id !== 'remote-voice' && c.id !== 'music-stream' && c.id !== 'master-out')
+      .filter((c) => !localMicChannelIds.has(c.id) && !c.id.startsWith('you-mic') && c.id !== 'remote-voice' && c.id !== 'remote-music' && c.id !== 'music-stream' && c.id !== 'master-out')
       .forEach((ch) => {
       const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${ch.id}"]`);
       if (stripEl) {
