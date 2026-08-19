@@ -2424,9 +2424,13 @@ let remoteVoiceCompressor: DynamicsCompressorNode | undefined;
 let remoteMusicEqPeaking: BiquadFilterNode | undefined;
 let remoteMusicCompressor: DynamicsCompressorNode | undefined;
 let remoteLimiter: DynamicsCompressorNode | undefined;
+let lastConnectedVoiceFx: string = '__uninitialized__';
+let lastConnectedMusicFx: string = '__uninitialized__';
 
 async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
   if (!remoteAudioCtx || remoteAudioCtx.state === 'closed') {
+    lastConnectedVoiceFx = '__uninitialized__';
+    lastConnectedMusicFx = '__uninitialized__';
     remoteAudioCtx = new AudioContext({ sampleRate: 48000 });
     remoteVoiceGain = remoteAudioCtx.createGain();
     remoteMusicGain = remoteAudioCtx.createGain();
@@ -2622,6 +2626,8 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
     void remoteAudioCtx.close().catch(() => {});
     remoteAudioCtx = undefined;
+    lastConnectedVoiceFx = '__uninitialized__';
+    lastConnectedMusicFx = '__uninitialized__';
   }
   remoteMedia = undefined;
   currentCode = '';
@@ -12895,52 +12901,60 @@ function applyMixerAudioRouting(): void {
     if (remoteVoicePanner && remoteVoiceCh) remoteVoicePanner.pan.setValueAtTime(remoteVoiceCh.pan, now);
     if (remoteMusicPanner && remoteMusicCh) remoteMusicPanner.pan.setValueAtTime(remoteMusicCh.pan, now);
 
-    // Dynamic Channel FX Routing: Remote Voice (Gain -> Selected Plugins in order -> Panner)
+    // Dynamic Channel FX Routing: Remote Voice (rebuild topology only when fx array changes)
     if (remoteVoiceGain && remoteVoicePanner) {
-      try { remoteVoiceGain.disconnect(); } catch {}
-      if (remoteVoiceEqHighpass) try { remoteVoiceEqHighpass.disconnect(); } catch {}
-      if (remoteVoiceEqPeaking) try { remoteVoiceEqPeaking.disconnect(); } catch {}
-      if (remoteVoiceCompressor) try { remoteVoiceCompressor.disconnect(); } catch {}
-
-      let currentVoiceSource: AudioNode = remoteVoiceGain;
       const voiceFx = remoteVoiceCh?.fx || [];
-      for (const fxName of voiceFx) {
-        if (fxName === 'Chan EQ' && remoteVoiceEqHighpass && remoteVoiceEqPeaking) {
-          remoteVoiceEqHighpass.frequency.setValueAtTime(80, now);
-          remoteVoiceEqPeaking.gain.setValueAtTime(3.0, now);
-          currentVoiceSource.connect(remoteVoiceEqHighpass);
-          remoteVoiceEqHighpass.connect(remoteVoiceEqPeaking);
-          currentVoiceSource = remoteVoiceEqPeaking;
-        } else if (fxName === 'Compressor' && remoteVoiceCompressor) {
-          remoteVoiceCompressor.ratio.setValueAtTime(4.0, now);
-          remoteVoiceCompressor.threshold.setValueAtTime(-18.0, now);
-          currentVoiceSource.connect(remoteVoiceCompressor);
-          currentVoiceSource = remoteVoiceCompressor;
+      const voiceFxKey = voiceFx.join('|');
+      if (voiceFxKey !== lastConnectedVoiceFx) {
+        try { remoteVoiceGain.disconnect(); } catch {}
+        if (remoteVoiceEqHighpass) try { remoteVoiceEqHighpass.disconnect(); } catch {}
+        if (remoteVoiceEqPeaking) try { remoteVoiceEqPeaking.disconnect(); } catch {}
+        if (remoteVoiceCompressor) try { remoteVoiceCompressor.disconnect(); } catch {}
+
+        let currentVoiceSource: AudioNode = remoteVoiceGain;
+        for (const fxName of voiceFx) {
+          if (fxName === 'Chan EQ' && remoteVoiceEqHighpass && remoteVoiceEqPeaking) {
+            remoteVoiceEqHighpass.frequency.setValueAtTime(80, now);
+            remoteVoiceEqPeaking.gain.setValueAtTime(3.0, now);
+            currentVoiceSource.connect(remoteVoiceEqHighpass);
+            remoteVoiceEqHighpass.connect(remoteVoiceEqPeaking);
+            currentVoiceSource = remoteVoiceEqPeaking;
+          } else if (fxName === 'Compressor' && remoteVoiceCompressor) {
+            remoteVoiceCompressor.ratio.setValueAtTime(4.0, now);
+            remoteVoiceCompressor.threshold.setValueAtTime(-18.0, now);
+            currentVoiceSource.connect(remoteVoiceCompressor);
+            currentVoiceSource = remoteVoiceCompressor;
+          }
         }
+        currentVoiceSource.connect(remoteVoicePanner);
+        lastConnectedVoiceFx = voiceFxKey;
       }
-      currentVoiceSource.connect(remoteVoicePanner);
     }
 
-    // Dynamic Channel FX Routing: Remote Music (Gain -> Selected Plugins in order -> Panner)
+    // Dynamic Channel FX Routing: Remote Music (rebuild topology only when fx array changes)
     if (remoteMusicGain && remoteMusicPanner) {
-      try { remoteMusicGain.disconnect(); } catch {}
-      if (remoteMusicEqPeaking) try { remoteMusicEqPeaking.disconnect(); } catch {}
-      if (remoteMusicCompressor) try { remoteMusicCompressor.disconnect(); } catch {}
-
-      let currentMusicSource: AudioNode = remoteMusicGain;
       const musicFx = remoteMusicCh?.fx || [];
-      for (const fxName of musicFx) {
-        if (fxName === 'Chan EQ' && remoteMusicEqPeaking) {
-          remoteMusicEqPeaking.gain.setValueAtTime(2.5, now);
-          currentMusicSource.connect(remoteMusicEqPeaking);
-          currentMusicSource = remoteMusicEqPeaking;
-        } else if (fxName === 'Compressor' && remoteMusicCompressor) {
-          remoteMusicCompressor.ratio.setValueAtTime(3.0, now);
-          currentMusicSource.connect(remoteMusicCompressor);
-          currentMusicSource = remoteMusicCompressor;
+      const musicFxKey = musicFx.join('|');
+      if (musicFxKey !== lastConnectedMusicFx) {
+        try { remoteMusicGain.disconnect(); } catch {}
+        if (remoteMusicEqPeaking) try { remoteMusicEqPeaking.disconnect(); } catch {}
+        if (remoteMusicCompressor) try { remoteMusicCompressor.disconnect(); } catch {}
+
+        let currentMusicSource: AudioNode = remoteMusicGain;
+        for (const fxName of musicFx) {
+          if (fxName === 'Chan EQ' && remoteMusicEqPeaking) {
+            remoteMusicEqPeaking.gain.setValueAtTime(2.5, now);
+            currentMusicSource.connect(remoteMusicEqPeaking);
+            currentMusicSource = remoteMusicEqPeaking;
+          } else if (fxName === 'Compressor' && remoteMusicCompressor) {
+            remoteMusicCompressor.ratio.setValueAtTime(3.0, now);
+            currentMusicSource.connect(remoteMusicCompressor);
+            currentMusicSource = remoteMusicCompressor;
+          }
         }
+        currentMusicSource.connect(remoteMusicPanner);
+        lastConnectedMusicFx = musicFxKey;
       }
-      currentMusicSource.connect(remoteMusicPanner);
     }
   }
 
