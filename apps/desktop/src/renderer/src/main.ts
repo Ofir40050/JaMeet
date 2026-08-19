@@ -1376,6 +1376,17 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
           if (otherValLabel && otherValLabel !== valLabel) otherValLabel.textContent = `${Math.round(val * 100)}%`;
         }
         void audio.setVoiceMicGain(mic.id, val);
+        
+        // SYNC WITH STUDIO MIXER
+        const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
+        const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
+        if (micCh) {
+          micCh.volume = val;
+          if (studioMixerOpen) {
+            renderStudioMixer();
+          }
+        }
+
         const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
         if (desktopApi?.setSystemInputVolume && isPrimary) {
           void desktopApi.setSystemInputVolume(Math.min(1.0, val));
@@ -12787,6 +12798,18 @@ function applyMixerAudioRouting(): void {
     const isMutedGlobally = mic.id === 1 ? muted : false;
     const effectiveVol = isAudible && micCh && !isMutedGlobally ? micCh.volume : 0;
     if (effectiveVol > 0) anyLocalMicActive = true;
+    
+    if (micCh) {
+      mic.gain = micCh.volume;
+      if (mic.id === 1) prefs.inputGain = micCh.volume;
+      
+      for (const prefix of ['', 'call-']) {
+        const slider = document.querySelector<HTMLInputElement>(`#${prefix}gain-${mic.id}`);
+        const valLabel = document.querySelector<HTMLElement>(`#${prefix}gain-val-${mic.id}`);
+        if (slider) slider.value = String(micCh.volume);
+        if (valLabel) valLabel.textContent = `${Math.round(micCh.volume * 100)}%`;
+      }
+    }
 
     // Apply to audio engine
     void audio.setVoiceMicGain(mic.id, effectiveVol);
