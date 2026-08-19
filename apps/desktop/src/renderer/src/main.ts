@@ -3060,17 +3060,133 @@ $('btn-return-presenter')?.addEventListener('click', () => {
   });
 });
 
+let pttActive = false;
+let pttPreviousMutedState = false;
+
+function isTypingContext(target: EventTarget | null): boolean {
+  if (!target || !(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (target.isContentEditable || target.getAttribute('contenteditable') === 'true') return true;
+  if (target.closest('.ql-editor') || target.closest('[contenteditable="true"]')) return true;
+  return false;
+}
+
+function toggleShortcutsModal(show?: boolean): void {
+  const modal = $('call-shortcuts-modal');
+  if (!modal) return;
+  const shouldOpen = show !== undefined ? show : modal.classList.contains('hidden');
+  modal.classList.toggle('hidden', !shouldOpen);
+}
+
+$('call-shortcuts-btn')?.addEventListener('click', () => {
+  toggleShortcutsModal();
+});
+
+$('btn-close-shortcuts-modal')?.addEventListener('click', () => {
+  toggleShortcutsModal(false);
+});
+
+$('call-shortcuts-modal')?.addEventListener('click', (e) => {
+  if (e.target === $('call-shortcuts-modal')) {
+    toggleShortcutsModal(false);
+  }
+});
+
 window.addEventListener('keydown', (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd') {
-    e.preventDefault();
-    if (inCall) toggleMute();
-  }
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
-    e.preventDefault();
-    if (inCall) void toggleCamera().catch(() => {});
-  }
+  // Always handle Escape
   if (e.key === 'Escape') {
+    const shortcutsModal = $('call-shortcuts-modal');
+    if (shortcutsModal && !shortcutsModal.classList.contains('hidden')) {
+      toggleShortcutsModal(false);
+      return;
+    }
     document.querySelectorAll<HTMLDialogElement>('dialog[open]').forEach((d) => d.close());
+    document.querySelectorAll<HTMLElement>('.modal-overlay:not(.hidden)').forEach((m) => m.classList.add('hidden'));
+    return;
+  }
+
+  // If user is actively typing in a text field, do not trigger single-letter shortcuts
+  if (isTypingContext(e.target)) return;
+
+  // Shortcuts Cheatsheet: '?' or '/'
+  if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+    e.preventDefault();
+    toggleShortcutsModal();
+    return;
+  }
+
+  // In-Call Shortcuts
+  if (inCall) {
+    // Push-to-Talk (Space bar)
+    if (e.code === 'Space' && !e.repeat) {
+      e.preventDefault();
+      if (!pttActive) {
+        pttActive = true;
+        pttPreviousMutedState = muted;
+        if (muted) {
+          toggleMute();
+        }
+        $('push-to-talk-hud')?.classList.remove('hidden');
+      }
+      return;
+    }
+
+    // Mute / Unmute Microphone: M or Cmd+D
+    if (e.key === 'm' || e.key === 'M' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd')) {
+      e.preventDefault();
+      toggleMute();
+      return;
+    }
+
+    // Toggle Camera: V or Cmd+E
+    if (e.key === 'v' || e.key === 'V' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e')) {
+      e.preventDefault();
+      void toggleCamera().catch(() => {});
+      return;
+    }
+
+    // Toggle Screen Share: S
+    if (e.key === 's' || e.key === 'S') {
+      e.preventDefault();
+      $('toggle-screen')?.click();
+      return;
+    }
+
+    // Toggle Talk / Music Mode: T
+    if (e.key === 't' || e.key === 'T') {
+      e.preventDefault();
+      const nextMode = prefs.mode === 'talk' ? 'music' : 'talk';
+      void switchAudioMode(nextMode);
+      return;
+    }
+
+    // Toggle Workspace Drawer: W
+    if (e.key === 'w' || e.key === 'W') {
+      e.preventDefault();
+      if (activeProject) {
+        setSessionWorkspaceOpen(!sessionWorkspaceOpen);
+      }
+      return;
+    }
+
+    // Toggle Session Chat: C
+    if (e.key === 'c' || e.key === 'C') {
+      e.preventDefault();
+      $('toggle-session-chat')?.click();
+      return;
+    }
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'Space' && pttActive) {
+    pttActive = false;
+    $('push-to-talk-hud')?.classList.add('hidden');
+    // If it was muted before holding space, return to muted
+    if (pttPreviousMutedState && !muted) {
+      toggleMute();
+    }
   }
 });
 
@@ -5195,6 +5311,7 @@ function renderProjectView(): void {
   renderProjectCollaborators();
 
   // Sessions
+  currentProjectSessionsPage = 1;
   renderProjectSessions();
 
   // Enforce workspace edit/view permissions across UI
@@ -5304,6 +5421,8 @@ function renderProjectCollaborators(): void {
 let currentProjectSessionsSearch = '';
 let currentProjectSessionsFilter: 'all' | 'solo' | 'collab' = 'all';
 let activeSummarySession: ProjectSessionItem | null = null;
+const SESSIONS_PER_PAGE = 10;
+let currentProjectSessionsPage = 1;
 
 function formatTotalStudioTime(totalSeconds: number): string {
   if (!totalSeconds || totalSeconds < 60) return '< 1m';
@@ -5320,6 +5439,11 @@ function renderProjectSessions(): void {
   const listOverview = $('project-sessions-list');
   const listFull = $('project-sessions-full-list');
   const emptyEl = $('project-sessions-empty');
+  const paginationEl = $('project-sessions-pagination');
+  const paginationInfoEl = $('project-sessions-pagination-info');
+  const pageBadgeEl = $('project-sessions-page-badge');
+  const btnPrev = $<HTMLButtonElement>('btn-sessions-prev-page');
+  const btnNext = $<HTMLButtonElement>('btn-sessions-next-page');
 
   const sessions = activeProject.sessions || [];
 
@@ -5370,7 +5494,16 @@ function renderProjectSessions(): void {
     // Update counter badge
     setText('project-sessions-counter-badge', `${filtered.length}`);
 
+    const totalFiltered = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalFiltered / SESSIONS_PER_PAGE));
+    if (currentProjectSessionsPage > totalPages) currentProjectSessionsPage = totalPages;
+    if (currentProjectSessionsPage < 1) currentProjectSessionsPage = 1;
+
+    const startIndex = (currentProjectSessionsPage - 1) * SESSIONS_PER_PAGE;
+    const paginated = filtered.slice(startIndex, startIndex + SESSIONS_PER_PAGE);
+
     if (!filtered.length) {
+      if (paginationEl) paginationEl.classList.add('hidden');
       listFull.innerHTML = `
         <div class="projects-empty" style="padding: 24px 0; text-align: center;">
           <p style="margin: 0 0 4px; font-size: 12.5px; color: #cbd5e1; font-weight: 500;">
@@ -5383,8 +5516,31 @@ function renderProjectSessions(): void {
       `;
     } else {
       listFull.replaceChildren();
-      for (const session of filtered) {
+      for (const session of paginated) {
         listFull.appendChild(createProjectSessionCard(session));
+      }
+
+      // Update Pagination UI
+      if (paginationEl) {
+        if (totalFiltered <= SESSIONS_PER_PAGE) {
+          paginationEl.classList.add('hidden');
+        } else {
+          paginationEl.classList.remove('hidden');
+          const startNum = startIndex + 1;
+          const endNum = Math.min(startIndex + SESSIONS_PER_PAGE, totalFiltered);
+          if (paginationInfoEl) {
+            paginationInfoEl.textContent = `Showing ${startNum}–${endNum} of ${totalFiltered}`;
+          }
+          if (pageBadgeEl) {
+            pageBadgeEl.textContent = `Page ${currentProjectSessionsPage} of ${totalPages}`;
+          }
+          if (btnPrev) {
+            btnPrev.disabled = currentProjectSessionsPage <= 1;
+          }
+          if (btnNext) {
+            btnNext.disabled = currentProjectSessionsPage >= totalPages;
+          }
+        }
       }
     }
   }
@@ -5732,16 +5888,31 @@ $('btn-sessions-tab-start')?.addEventListener('click', async () => {
 
 $('project-sessions-search-input')?.addEventListener('input', (e) => {
   currentProjectSessionsSearch = (e.target as HTMLInputElement).value;
+  currentProjectSessionsPage = 1;
   renderProjectSessions();
 });
 
 document.querySelectorAll<HTMLButtonElement>('.sessions-filter-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     currentProjectSessionsFilter = (btn.dataset.filter as any) || 'all';
+    currentProjectSessionsPage = 1;
     document.querySelectorAll('.sessions-filter-btn').forEach((b) => b.classList.toggle('active', b === btn));
     renderProjectSessions();
   });
 });
+
+$('btn-sessions-prev-page')?.addEventListener('click', () => {
+  if (currentProjectSessionsPage > 1) {
+    currentProjectSessionsPage--;
+    renderProjectSessions();
+  }
+});
+
+$('btn-sessions-next-page')?.addEventListener('click', () => {
+  currentProjectSessionsPage++;
+  renderProjectSessions();
+});
+
 
 $('btn-close-session-summary')?.addEventListener('click', () => {
   $('project-session-summary-modal')?.classList.add('hidden');
@@ -9461,6 +9632,10 @@ document.querySelectorAll<HTMLButtonElement>('.drawer-tab-btn').forEach((btn) =>
     $('drawer-panel-structure')?.classList.toggle('hidden', tab !== 'structure');
     $('drawer-panel-notes')?.classList.toggle('hidden', tab !== 'notes');
     $('drawer-panel-tasks')?.classList.toggle('hidden', tab !== 'tasks');
+    
+    // Hide top track selector bar specifically in Tasks tab
+    $('session-drawer-song-bar')?.classList.toggle('hidden', tab === 'tasks');
+
     if (tab === 'tasks') {
       renderTasksWorkspace();
     } else if (tab === 'structure') {

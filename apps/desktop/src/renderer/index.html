@@ -1154,6 +1154,22 @@
 
               <!-- SESSIONS SEAMLESS LIST (like Tasks) -->
               <div id="project-sessions-full-list" class="project-sessions-seamless-list"></div>
+
+              <!-- SESSIONS PAGINATION BAR (10 per page) -->
+              <div id="project-sessions-pagination" class="project-sessions-pagination hidden">
+                <span id="project-sessions-pagination-info" class="sessions-pagination-info">Showing 1–10 of 10</span>
+                <div class="sessions-pagination-actions">
+                  <button id="btn-sessions-prev-page" type="button" class="btn-pagination" disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m15 18-6-6 6-6"/></svg>
+                    <span>Previous</span>
+                  </button>
+                  <span id="project-sessions-page-badge" class="sessions-page-badge">Page 1 of 1</span>
+                  <button id="btn-sessions-next-page" type="button" class="btn-pagination" disabled>
+                    <span>Next</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m9 18 6-6-6-6"/></svg>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -2218,7 +2234,7 @@
           <div class="modal-header session-error-header">
             <div class="modal-title-with-icon">
               <span id="session-error-icon" class="modal-icon-badge error-icon-badge">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
               </span>
               <h3 id="session-error-title">Unable to Start Session</h3>
             </div>
@@ -2236,6 +2252,78 @@
           <div class="modal-footer session-error-footer">
             <button id="btn-session-error-dismiss" type="button" class="ghost">Close</button>
             <button id="btn-session-error-action" type="button" class="primary">Sign In / Continue</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- KEYBOARD SHORTCUTS MODAL HUD -->
+      <div id="call-shortcuts-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+        <div class="modal-card shortcuts-modal-card">
+          <div class="modal-header shortcuts-modal-header">
+            <div class="modal-title-with-icon">
+              <span class="modal-icon-badge">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>
+              </span>
+              <h3>Studio Keyboard Shortcuts</h3>
+            </div>
+            <button id="btn-close-shortcuts-modal" type="button" class="modal-close-btn" aria-label="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+          <div class="modal-body shortcuts-modal-body">
+            <div class="shortcuts-grid">
+              <div class="shortcut-group">
+                <div class="shortcut-group-title">Audio &amp; Mic</div>
+                <div class="shortcut-item">
+                  <span class="shortcut-label">Mute / Unmute Microphone</span>
+                  <kbd class="keycap">M</kbd>
+                </div>
+                <div class="shortcut-item">
+                  <span class="shortcut-label">Push-to-Talk (Hold)</span>
+                  <kbd class="keycap keycap-wide">Space</kbd>
+                </div>
+                <div class="shortcut-item">
+                  <span class="shortcut-label">Toggle Talk / Music Mode</span>
+                  <kbd class="keycap">T</kbd>
+                </div>
+              </div>
+
+              <div class="shortcut-group">
+                <div class="shortcut-group-title">Video &amp; Screen</div>
+                <div class="shortcut-item">
+                  <span class="shortcut-label">Turn Camera On / Off</span>
+                  <kbd class="keycap">V</kbd>
+                </div>
+                <div class="shortcut-item">
+                  <span class="shortcut-label">Toggle Screen Sharing</span>
+                  <kbd class="keycap">S</kbd>
+                </div>
+              </div>
+
+              <div class="shortcut-group">
+                <div class="shortcut-group-title">Studio &amp; Collaboration</div>
+                <div class="shortcut-item">
+                  <span class="shortcut-label">Toggle Workspace Drawer</span>
+                  <kbd class="keycap">W</kbd>
+                </div>
+                <div class="shortcut-item">
+                  <span class="shortcut-label">Toggle Session Chat</span>
+                  <kbd class="keycap">C</kbd>
+                </div>
+              </div>
+
+              <div class="shortcut-group">
+                <div class="shortcut-group-title">Navigation &amp; Helpers</div>
+                <div class="shortcut-item">
+                  <span class="shortcut-label">Keyboard Shortcuts Menu</span>
+                  <kbd class="keycap">?</kbd>
+                </div>
+                <div class="shortcut-item">
+                  <span class="shortcut-label">Close Modal / Cheatsheet</span>
+                  <kbd class="keycap keycap-wide">Esc</kbd>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -2457,17 +2545,17 @@
         <!-- BOTTOM STUDIO CONTROL DOCK -->
         <footer class="bottombar">
           <div class="bar-left">
-            <button id="toggle-mic" class="tool-btn active" type="button" title="Mute / Unmute Microphone">
+            <button id="toggle-mic" class="tool-btn active" type="button" title="Mute / Unmute Microphone (M)">
               <span class="tool-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
               </span>
             </button>
-            <button id="toggle-camera" class="tool-btn active" type="button" title="Turn Camera On / Off">
+            <button id="toggle-camera" class="tool-btn active" type="button" title="Turn Camera On / Off (V)">
               <span class="tool-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.934a.5.5 0 0 0-.777-.416L16 11"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>
               </span>
             </button>
-            <button id="toggle-screen" class="tool-btn" type="button" title="Share Screen">
+            <button id="toggle-screen" class="tool-btn" type="button" title="Share Screen (S)">
               <span class="tool-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
               </span>
@@ -2475,20 +2563,25 @@
           </div>
           <div class="bar-center">
             <div class="audio-mode-selector">
-              <button id="mode-talk-btn" class="mode-pill" type="button">Talk Mode</button>
-              <button id="mode-music-btn" class="mode-pill active" type="button">Music Mode</button>
+              <button id="mode-talk-btn" class="mode-pill" type="button" title="Talk Mode (T)">Talk Mode</button>
+              <button id="mode-music-btn" class="mode-pill active" type="button" title="Music Mode (T)">Music Mode</button>
             </div>
           </div>
           <div class="bar-right">
-            <button id="toggle-session-chat" class="tool-btn ghost" type="button" title="Session Chat">
+            <button id="toggle-session-chat" class="tool-btn ghost" type="button" title="Session Chat (C)">
               <span class="tool-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               </span>
               <span id="chat-unread-badge" class="chat-unread-badge hidden">0</span>
             </button>
-            <button id="toggle-session-workspace" class="tool-btn ghost hidden" type="button" title="Project Lyrics &amp; Notes Workspace">
+            <button id="toggle-session-workspace" class="tool-btn ghost hidden" type="button" title="Project Workspace (W)">
               <span class="tool-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+              </span>
+            </button>
+            <button id="call-shortcuts-btn" class="tool-btn ghost" type="button" title="Keyboard Shortcuts (?)">
+              <span class="tool-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>
               </span>
             </button>
             <button id="call-stats-btn" class="tool-btn ghost" type="button" title="Network &amp; Audio Diagnostics">
@@ -2508,6 +2601,14 @@
             </button>
           </div>
         </footer>
+
+        <!-- TALKBACK / PUSH-TO-TALK HUD -->
+        <div id="push-to-talk-hud" class="push-to-talk-hud hidden">
+          <span class="ptt-beacon"></span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+          <span>TALKBACK LIVE</span>
+        </div>
+
 
         <!-- IN-SESSION PROJECT WORKSPACE DRAWER / DOCKED STUDIO PANEL -->
         <!-- IN-SESSION PROJECT WORKSPACE DRAWER / DOCKED STUDIO PANEL -->
@@ -2532,17 +2633,6 @@
             </div>
           </div>
 
-          <!-- Drawer Track / Song Selector Bar -->
-          <div class="drawer-song-bar">
-            <span class="drawer-song-label">TRACK:</span>
-            <div class="drawer-song-select-wrap">
-              <select id="session-workspace-song-select" class="custom-select drawer-song-select" title="Switch Active Track"></select>
-            </div>
-            <button id="btn-session-new-song" type="button" class="btn-drawer-new-song" title="Add Track / Song to Project">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
-            </button>
-          </div>
-
           <!-- Studio Segmented Navigation Tabs (Matching Project View) -->
           <div class="drawer-tabs">
             <button id="drawer-tab-lyrics" type="button" class="drawer-tab-btn active" data-drawer-tab="lyrics">
@@ -2562,6 +2652,18 @@
               <span>Tasks</span>
             </button>
           </div>
+
+          <!-- Drawer Track / Song Selector Bar -->
+          <div id="session-drawer-song-bar" class="drawer-song-bar">
+            <span class="drawer-song-label">TRACK:</span>
+            <div class="drawer-song-select-wrap">
+              <select id="session-workspace-song-select" class="custom-select drawer-song-select" title="Switch Active Track"></select>
+            </div>
+            <button id="btn-session-new-song" type="button" class="btn-drawer-new-song" title="Add Track / Song to Project">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+            </button>
+          </div>
+
 
           <!-- Drawer Panel: Lyrics -->
           <div id="drawer-panel-lyrics" class="drawer-panel">
