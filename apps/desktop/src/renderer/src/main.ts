@@ -12901,6 +12901,8 @@ function applyMixerAudioRouting(): void {
     }
 
     // Apply to audio engine
+    const micFx = micCh?.fx || [];
+    audio.setVoiceMicFx(mic.id, micFx);
     void audio.setVoiceMicGain(mic.id, effectiveVol);
     void audio.setVoiceMicPan(mic.id, pan);
   });
@@ -12920,6 +12922,8 @@ function applyMixerAudioRouting(): void {
   const effectiveRemoteVoiceVol = remoteVoiceAudible && remoteVoiceCh ? remoteVoiceCh.volume : 0;
   const effectiveRemoteMusicVol = remoteMusicAudible && remoteMusicCh ? remoteMusicCh.volume : 0;
 
+  const musicFx = localMusicCh?.fx || [];
+  audio.setMusicFx(musicFx);
   audio.setEnabled('music', effectiveLocalMusicVol > 0);
   void audio.applyMusicGain(effectiveLocalMusicVol);
   void audio.applyMusicPan(localMusicPan);

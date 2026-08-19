@@ -36,6 +36,10 @@ type VoiceMicChannel = {
   rightGainNode?: GainNode;
   stereoMerger?: ChannelMergerNode;
   downmixGainNode?: GainNode;
+  eqHighpass?: BiquadFilterNode;
+  eqPeaking?: BiquadFilterNode;
+  compressorNode?: DynamicsCompressorNode;
+  lastConnectedFx?: string;
   analyserNode: AnalyserNode;  // Always-connected analyser for VU metering
   micDestination: MediaStreamAudioDestinationNode;
   preferences: AudioCapturePreferences;
@@ -53,6 +57,9 @@ export class LocalAudioSourceManager {
   private musicRightGainNode?: GainNode;
   private musicSplitter?: ChannelSplitterNode;
   private musicMerger?: ChannelMergerNode;
+  private musicEqPeaking?: BiquadFilterNode;
+  private musicCompressorNode?: DynamicsCompressorNode;
+  private lastConnectedMusicFx?: string;
   private rawTracks = new Map<string, MediaStreamTrack>();
   private voiceMics = new Map<number, VoiceMicChannel>();
   private voiceDestination?: MediaStreamAudioDestinationNode;
@@ -217,6 +224,9 @@ export class LocalAudioSourceManager {
       mic.isolatedTrack?.stop();
       try { mic.sourceNode?.disconnect(); } catch {}
       try { mic.gainNode?.disconnect(); } catch {}
+      try { mic.eqHighpass?.disconnect(); } catch {}
+      try { mic.eqPeaking?.disconnect(); } catch {}
+      try { mic.compressorNode?.disconnect(); } catch {}
       try { mic.pannerNode?.disconnect(); } catch {}
       try { mic.stereoSplitter?.disconnect(); } catch {}
       try { mic.leftGainNode?.disconnect(); } catch {}
@@ -253,6 +263,9 @@ export class LocalAudioSourceManager {
       prevMic.isolatedTrack?.stop();
       try { prevMic.sourceNode?.disconnect(); } catch {}
       try { prevMic.gainNode?.disconnect(); } catch {}
+      try { prevMic.eqHighpass?.disconnect(); } catch {}
+      try { prevMic.eqPeaking?.disconnect(); } catch {}
+      try { prevMic.compressorNode?.disconnect(); } catch {}
       try { prevMic.pannerNode?.disconnect(); } catch {}
       try { prevMic.stereoSplitter?.disconnect(); } catch {}
       try { prevMic.leftGainNode?.disconnect(); } catch {}
@@ -430,6 +443,7 @@ export class LocalAudioSourceManager {
       rightGainNode,
       stereoMerger,
       downmixGainNode,
+      lastConnectedFx: '',
       analyserNode,
       micDestination,
       preferences,
@@ -711,6 +725,8 @@ export class LocalAudioSourceManager {
     this.appAudioCleanup = () => {
       cleanupLoopback();
       try { musicGain.disconnect(); } catch {}
+      try { this.musicEqPeaking?.disconnect(); } catch {}
+      try { this.musicCompressorNode?.disconnect(); } catch {}
       try { musicSplitter.disconnect(); } catch {}
       try { musicLeftGain.disconnect(); } catch {}
       try { musicRightGain.disconnect(); } catch {}
@@ -721,6 +737,9 @@ export class LocalAudioSourceManager {
       this.musicRightGainNode = undefined;
       this.musicSplitter = undefined;
       this.musicMerger = undefined;
+      this.musicEqPeaking = undefined;
+      this.musicCompressorNode = undefined;
+      this.lastConnectedMusicFx = undefined;
       if (this.appAudioContext && this.appAudioContext.state !== 'closed') {
         void this.appAudioContext.close().catch(() => {});
         this.appAudioContext = undefined;
@@ -808,6 +827,8 @@ export class LocalAudioSourceManager {
     this.appAudioCleanup = () => {
       cleanupLoopback();
       try { musicGain.disconnect(); } catch {}
+      try { this.musicEqPeaking?.disconnect(); } catch {}
+      try { this.musicCompressorNode?.disconnect(); } catch {}
       try { musicSplitter.disconnect(); } catch {}
       try { musicLeftGain.disconnect(); } catch {}
       try { musicRightGain.disconnect(); } catch {}
@@ -818,6 +839,9 @@ export class LocalAudioSourceManager {
       this.musicRightGainNode = undefined;
       this.musicSplitter = undefined;
       this.musicMerger = undefined;
+      this.musicEqPeaking = undefined;
+      this.musicCompressorNode = undefined;
+      this.lastConnectedMusicFx = undefined;
       if (this.appAudioContext && this.appAudioContext.state !== 'closed') {
         void this.appAudioContext.close().catch(() => {});
         this.appAudioContext = undefined;
@@ -1108,6 +1132,130 @@ export class LocalAudioSourceManager {
     return false;
   }
 
+  setVoiceMicFx(micIndex: number, fxList: string[]): void {
+    const mic = this.voiceMics.get(micIndex);
+    const ctx = this.audioContext;
+    if (!mic || !ctx || ctx.state === 'closed') return;
+
+    const validFx = (fxList || []).filter((f) => Boolean(f) && (f === 'Chan EQ' || f === 'Compressor'));
+    const fxKey = validFx.join('|');
+    if (mic.lastConnectedFx === fxKey) return;
+
+    const now = ctx.currentTime;
+
+    // Disconnect gainNode and existing FX nodes
+    try { mic.gainNode.disconnect(); } catch {}
+    if (mic.eqHighpass) try { mic.eqHighpass.disconnect(); } catch {}
+    if (mic.eqPeaking) try { mic.eqPeaking.disconnect(); } catch {}
+    if (mic.compressorNode) try { mic.compressorNode.disconnect(); } catch {}
+
+    // VU Analyser stays connected to gainNode
+    try { mic.gainNode.connect(mic.analyserNode); } catch {}
+
+    let currentSource: AudioNode = mic.gainNode;
+
+    for (const fxName of validFx) {
+      if (fxName === 'Chan EQ') {
+        if (!mic.eqHighpass) {
+          mic.eqHighpass = ctx.createBiquadFilter();
+          mic.eqHighpass.type = 'highpass';
+        }
+        if (!mic.eqPeaking) {
+          mic.eqPeaking = ctx.createBiquadFilter();
+          mic.eqPeaking.type = 'peaking';
+        }
+        mic.eqHighpass.frequency.setValueAtTime(80, now);
+        mic.eqHighpass.Q.setValueAtTime(0.7, now);
+        mic.eqPeaking.frequency.setValueAtTime(3200, now);
+        mic.eqPeaking.Q.setValueAtTime(1.0, now);
+        mic.eqPeaking.gain.setValueAtTime(3.0, now);
+
+        currentSource.connect(mic.eqHighpass);
+        mic.eqHighpass.connect(mic.eqPeaking);
+        currentSource = mic.eqPeaking;
+      } else if (fxName === 'Compressor') {
+        if (!mic.compressorNode) {
+          mic.compressorNode = ctx.createDynamicsCompressor();
+        }
+        mic.compressorNode.threshold.setValueAtTime(-18.0, now);
+        mic.compressorNode.knee.setValueAtTime(6.0, now);
+        mic.compressorNode.ratio.setValueAtTime(4.0, now);
+        mic.compressorNode.attack.setValueAtTime(0.005, now);
+        mic.compressorNode.release.setValueAtTime(0.08, now);
+
+        currentSource.connect(mic.compressorNode);
+        currentSource = mic.compressorNode;
+      }
+    }
+
+    // Connect to Pan / Balance Stage
+    if (mic.isStereo && mic.stereoSplitter) {
+      currentSource.connect(mic.stereoSplitter);
+    } else if (mic.pannerNode) {
+      currentSource.connect(mic.pannerNode);
+    }
+
+    mic.lastConnectedFx = fxKey;
+  }
+
+  setMusicFx(fxList: string[]): void {
+    const ctx = this.appAudioContext;
+    const musicGain = this.gainNodes.get('music');
+    const musicSplitter = this.musicSplitter;
+    if (!ctx || ctx.state === 'closed' || !musicGain || !musicSplitter) return;
+
+    const validFx = (fxList || []).filter((f) => Boolean(f) && (f === 'Chan EQ' || f === 'Compressor'));
+    const fxKey = validFx.join('|');
+    if (this.lastConnectedMusicFx === fxKey) return;
+
+    const now = ctx.currentTime;
+
+    // Disconnect musicGain and existing FX nodes
+    try { musicGain.disconnect(); } catch {}
+    if (this.musicEqPeaking) try { this.musicEqPeaking.disconnect(); } catch {}
+    if (this.musicCompressorNode) try { this.musicCompressorNode.disconnect(); } catch {}
+
+    // Silent clock path on appAudioContext
+    const silentGain = ctx.createGain();
+    silentGain.gain.setValueAtTime(0.0, now);
+    try {
+      musicGain.connect(silentGain);
+      silentGain.connect(ctx.destination);
+    } catch {}
+
+    let currentSource: AudioNode = musicGain;
+
+    for (const fxName of validFx) {
+      if (fxName === 'Chan EQ') {
+        if (!this.musicEqPeaking) {
+          this.musicEqPeaking = ctx.createBiquadFilter();
+          this.musicEqPeaking.type = 'peaking';
+        }
+        this.musicEqPeaking.frequency.setValueAtTime(2400, now);
+        this.musicEqPeaking.Q.setValueAtTime(1.0, now);
+        this.musicEqPeaking.gain.setValueAtTime(2.5, now);
+
+        currentSource.connect(this.musicEqPeaking);
+        currentSource = this.musicEqPeaking;
+      } else if (fxName === 'Compressor') {
+        if (!this.musicCompressorNode) {
+          this.musicCompressorNode = ctx.createDynamicsCompressor();
+        }
+        this.musicCompressorNode.threshold.setValueAtTime(-12.0, now);
+        this.musicCompressorNode.knee.setValueAtTime(6.0, now);
+        this.musicCompressorNode.ratio.setValueAtTime(3.0, now);
+        this.musicCompressorNode.attack.setValueAtTime(0.01, now);
+        this.musicCompressorNode.release.setValueAtTime(0.1, now);
+
+        currentSource.connect(this.musicCompressorNode);
+        currentSource = this.musicCompressorNode;
+      }
+    }
+
+    currentSource.connect(musicSplitter);
+    this.lastConnectedMusicFx = fxKey;
+  }
+
   getVoiceMicsCount(): number {
     return this.voiceMics.size;
   }
@@ -1136,6 +1284,9 @@ export class LocalAudioSourceManager {
       mic.isolatedTrack?.stop();
       try { mic.sourceNode?.disconnect(); } catch {}
       try { mic.gainNode?.disconnect(); } catch {}
+      try { mic.eqHighpass?.disconnect(); } catch {}
+      try { mic.eqPeaking?.disconnect(); } catch {}
+      try { mic.compressorNode?.disconnect(); } catch {}
       try { mic.pannerNode?.disconnect(); } catch {}
       try { mic.stereoSplitter?.disconnect(); } catch {}
       try { mic.leftGainNode?.disconnect(); } catch {}
@@ -1150,6 +1301,11 @@ export class LocalAudioSourceManager {
     for (const source of this.sources.values()) source.track.stop();
     this.sources.clear();
     this.gainNodes.clear();
+    try { this.musicEqPeaking?.disconnect(); } catch {}
+    try { this.musicCompressorNode?.disconnect(); } catch {}
+    this.musicEqPeaking = undefined;
+    this.musicCompressorNode = undefined;
+    this.lastConnectedMusicFx = undefined;
     try { this.musicSplitter?.disconnect(); } catch {}
     try { this.musicLeftGainNode?.disconnect(); } catch {}
     try { this.musicRightGainNode?.disconnect(); } catch {}
