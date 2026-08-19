@@ -12564,6 +12564,12 @@ function startMixerVuAnimation(): void {
             if (avg > 1) {
               micDb = -60 + (avg / 255) * 60;
             }
+            // DEBUG: log every 60 frames
+            if (typeof (window as any).__vuDebugFrame === 'undefined') (window as any).__vuDebugFrame = 0;
+            (window as any).__vuDebugFrame++;
+            if ((window as any).__vuDebugFrame % 60 === 0) {
+              console.log(`[VU DEBUG] Mic ${numMicId}: analyser=${!!analyser} ctx=${analyser?.context?.state} avg=${avg.toFixed(2)} micDb=${micDb.toFixed(1)} activeLvl=${activeMicLevels.get(numMicId)?.toFixed(1)}`);
+            }
           } else {
             // FALLBACK: use activeMicLevels (LevelMeter path)
             const lvl = activeMicLevels.get(numMicId);
@@ -12571,6 +12577,11 @@ function startMixerVuAnimation(): void {
               micDb = lvl;
             } else if (numMicId === 1) {
               micDb = lastLocalVoiceDb;
+            }
+            if (typeof (window as any).__vuDebugFrame === 'undefined') (window as any).__vuDebugFrame = 0;
+            (window as any).__vuDebugFrame++;
+            if ((window as any).__vuDebugFrame % 60 === 0) {
+              console.log(`[VU DEBUG] Mic ${numMicId}: NO analyser! activeLvl=${activeMicLevels.get(numMicId)?.toFixed(1)} micDb=${micDb.toFixed(1)}`);
             }
           }
 
