@@ -22,6 +22,7 @@ type VoiceMicChannel = {
   isolatedTrack: MediaStreamTrack;
   sourceNode?: MediaStreamAudioSourceNode;
   gainNode: GainNode;
+  pannerNode: StereoPannerNode;
   analyserNode: AnalyserNode;  // Always-connected analyser for VU metering
   micDestination: MediaStreamAudioDestinationNode;
   preferences: AudioCapturePreferences;
@@ -35,6 +36,7 @@ export class LocalAudioSourceManager {
   private audioContext: AudioContext | undefined;
   private appAudioContext: AudioContext | undefined;
   private gainNodes = new Map<string, GainNode>();
+  private musicPannerNode?: StereoPannerNode;
   private rawTracks = new Map<string, MediaStreamTrack>();
   private voiceMics = new Map<number, VoiceMicChannel>();
   private voiceDestination?: MediaStreamAudioDestinationNode;
@@ -185,6 +187,7 @@ export class LocalAudioSourceManager {
       mic.isolatedTrack?.stop();
       try { mic.sourceNode?.disconnect(); } catch {}
       try { mic.gainNode?.disconnect(); } catch {}
+      try { mic.pannerNode?.disconnect(); } catch {}
       try { mic.micDestination?.disconnect(); } catch {}
       this.voiceMics.delete(micIndex);
       this.gainNodes.delete(`voice-${micIndex}`);
@@ -215,6 +218,7 @@ export class LocalAudioSourceManager {
       prevMic.isolatedTrack?.stop();
       try { prevMic.sourceNode?.disconnect(); } catch {}
       try { prevMic.gainNode?.disconnect(); } catch {}
+      try { prevMic.pannerNode?.disconnect(); } catch {}
       try { prevMic.micDestination?.disconnect(); } catch {}
     }
 
@@ -222,11 +226,18 @@ export class LocalAudioSourceManager {
     const gainVal = preferences.inputGain !== undefined ? preferences.inputGain : 1.0;
     gainNode.gain.setValueAtTime(gainVal, ctx.currentTime);
 
+    const pannerNode = ctx.createStereoPanner();
+    const panVal = preferences.pan !== undefined ? preferences.pan : 0.0;
+    pannerNode.pan.setValueAtTime(panVal, ctx.currentTime);
+
+    gainNode.connect(pannerNode);
+
     if (this.voiceDestination) {
-      gainNode.connect(this.voiceDestination);
+      pannerNode.connect(this.voiceDestination);
     }
 
     const micDestination = ctx.createMediaStreamDestination();
+    pannerNode.connect(micDestination);
 
     let stream: MediaStream;
     try {
@@ -246,7 +257,8 @@ export class LocalAudioSourceManager {
     const sourceNode = ctx.createMediaStreamSource(sourceStream);
 
     const route = preferences.channelRoute || 'all';
-    const outChannels = preferences.stereo !== false ? 2 : 1;
+    const isStereoRoute = preferences.stereo !== false && (route === '1-2' || route === '3-4' || route === '5-6' || route === '7-8' || (route === 'all' && (sourceNode.channelCount >= 2)));
+    const outChannels = isStereoRoute ? 2 : 1;
     const micMerger = ctx.createChannelMerger(outChannels);
 
     if (route !== 'all') {
@@ -255,61 +267,31 @@ export class LocalAudioSourceManager {
       catch { try { splitter = ctx.createChannelSplitter(8); } catch { splitter = ctx.createChannelSplitter(2); } }
       sourceNode.connect(splitter);
 
-      if (route === '1') {
+      if (route === '1-2') {
         splitter.connect(micMerger, 0, 0);
-        if (outChannels > 1) splitter.connect(micMerger, 0, 1);
-      } else if (route === '2') {
-        splitter.connect(micMerger, 1, 0);
-        if (outChannels > 1) splitter.connect(micMerger, 1, 1);
-      } else if (route === '3') {
-        splitter.connect(micMerger, 2, 0);
-        if (outChannels > 1) splitter.connect(micMerger, 2, 1);
-      } else if (route === '4') {
-        splitter.connect(micMerger, 3, 0);
-        if (outChannels > 1) splitter.connect(micMerger, 3, 1);
-      } else if (route === '5') {
-        splitter.connect(micMerger, 4, 0);
-        if (outChannels > 1) splitter.connect(micMerger, 4, 1);
-      } else if (route === '6') {
-        splitter.connect(micMerger, 5, 0);
-        if (outChannels > 1) splitter.connect(micMerger, 5, 1);
-      } else if (route === '7') {
-        splitter.connect(micMerger, 6, 0);
-        if (outChannels > 1) splitter.connect(micMerger, 6, 1);
-      } else if (route === '8') {
-        splitter.connect(micMerger, 7, 0);
-        if (outChannels > 1) splitter.connect(micMerger, 7, 1);
-      } else if (route === '1-2') {
-        splitter.connect(micMerger, 0, 0);
-        if (outChannels > 1) splitter.connect(micMerger, 1, 1);
-        else splitter.connect(micMerger, 1, 0);
+        splitter.connect(micMerger, 1, 1);
       } else if (route === '3-4') {
         splitter.connect(micMerger, 2, 0);
-        if (outChannels > 1) splitter.connect(micMerger, 3, 1);
-        else splitter.connect(micMerger, 3, 0);
+        splitter.connect(micMerger, 3, 1);
       } else if (route === '5-6') {
         splitter.connect(micMerger, 4, 0);
-        if (outChannels > 1) splitter.connect(micMerger, 5, 1);
-        else splitter.connect(micMerger, 5, 0);
+        splitter.connect(micMerger, 5, 1);
       } else if (route === '7-8') {
         splitter.connect(micMerger, 6, 0);
-        if (outChannels > 1) splitter.connect(micMerger, 7, 1);
-        else splitter.connect(micMerger, 7, 0);
+        splitter.connect(micMerger, 7, 1);
       } else {
+        let chIdx = 0;
         const parsed = parseInt(route, 10);
         if (!isNaN(parsed) && parsed >= 1 && parsed <= 32) {
-          splitter.connect(micMerger, parsed - 1, 0);
-          if (outChannels > 1) splitter.connect(micMerger, parsed - 1, 1);
-        } else {
-          sourceNode.connect(micMerger);
+          chIdx = parsed - 1;
         }
+        splitter.connect(micMerger, chIdx, 0);
       }
     } else {
       sourceNode.connect(micMerger);
     }
 
     micMerger.connect(gainNode);
-    gainNode.connect(micDestination);
 
     // Create a persistent AnalyserNode connected to gainNode for VU metering from ANY audio path
     const analyserNode = ctx.createAnalyser();
@@ -325,6 +307,7 @@ export class LocalAudioSourceManager {
       isolatedTrack,
       sourceNode,
       gainNode,
+      pannerNode,
       analyserNode,
       micDestination,
       preferences,
@@ -367,6 +350,26 @@ export class LocalAudioSourceManager {
         gainNode.gain.setValueAtTime(targetGain, this.audioContext.currentTime);
       } catch {
         gainNode.gain.value = targetGain;
+      }
+    }
+  }
+
+  async setVoiceMicPan(micIndex: number, pan: number): Promise<void> {
+    const clampedPan = Math.max(-1, Math.min(1, pan));
+    const mic = this.voiceMics.get(micIndex);
+    if (mic) {
+      mic.preferences.pan = clampedPan;
+    }
+    const pannerNode = mic?.pannerNode;
+    if (pannerNode && this.audioContext && this.audioContext.state !== 'closed') {
+      try {
+        if (this.audioContext.state === 'suspended') {
+          void this.audioContext.resume().catch(() => {});
+        }
+        pannerNode.pan.cancelScheduledValues(this.audioContext.currentTime);
+        pannerNode.pan.setValueAtTime(clampedPan, this.audioContext.currentTime);
+      } catch {
+        pannerNode.pan.value = clampedPan;
       }
     }
   }
@@ -534,8 +537,15 @@ export class LocalAudioSourceManager {
     const musicGain = appCtx.createGain();
     musicGain.gain.setValueAtTime(1.0, appCtx.currentTime);
 
-    musicGain.connect(destination);
+    const musicPanner = appCtx.createStereoPanner();
+    const panVal = preferences.pan !== undefined ? preferences.pan : 0.0;
+    musicPanner.pan.setValueAtTime(panVal, appCtx.currentTime);
+
+    musicGain.connect(musicPanner);
+    musicPanner.connect(destination);
+
     this.gainNodes.set('music', musicGain);
+    this.musicPannerNode = musicPanner;
 
     // Keep graph clock continuously running without local playback echo
     const silentGain = appCtx.createGain();
@@ -550,8 +560,10 @@ export class LocalAudioSourceManager {
     this.appAudioCleanup = () => {
       cleanupLoopback();
       try { musicGain.disconnect(); } catch {}
+      try { musicPanner.disconnect(); } catch {}
       try { silentGain.disconnect(); } catch {}
       this.gainNodes.delete('music');
+      this.musicPannerNode = undefined;
       if (this.appAudioContext && this.appAudioContext.state !== 'closed') {
         void this.appAudioContext.close().catch(() => {});
         this.appAudioContext = undefined;
@@ -606,8 +618,14 @@ export class LocalAudioSourceManager {
     const musicGain = appCtx.createGain();
     musicGain.gain.setValueAtTime(1.0, appCtx.currentTime);
 
-    musicGain.connect(destination);
+    const musicPanner = appCtx.createStereoPanner();
+    musicPanner.pan.setValueAtTime(0.0, appCtx.currentTime);
+
+    musicGain.connect(musicPanner);
+    musicPanner.connect(destination);
+
     this.gainNodes.set('music', musicGain);
+    this.musicPannerNode = musicPanner;
 
     // Keep graph clock continuously running without local playback echo
     const silentGain = appCtx.createGain();
@@ -620,8 +638,10 @@ export class LocalAudioSourceManager {
     this.appAudioCleanup = () => {
       cleanupLoopback();
       try { musicGain.disconnect(); } catch {}
+      try { musicPanner.disconnect(); } catch {}
       try { silentGain.disconnect(); } catch {}
       this.gainNodes.delete('music');
+      this.musicPannerNode = undefined;
       if (this.appAudioContext && this.appAudioContext.state !== 'closed') {
         void this.appAudioContext.close().catch(() => {});
         this.appAudioContext = undefined;
@@ -863,13 +883,14 @@ export class LocalAudioSourceManager {
   async applyMusicGain(value: number): Promise<boolean> {
     const targetGain = Math.max(0, value);
     const gainNode = this.gainNodes.get('music');
-    if (gainNode && this.audioContext && this.audioContext.state !== 'closed') {
+    const ctx = this.appAudioContext;
+    if (gainNode && ctx && ctx.state !== 'closed') {
       try {
-        if (this.audioContext.state === 'suspended') {
-          void this.audioContext.resume().catch(() => {});
+        if (ctx.state === 'suspended') {
+          void ctx.resume().catch(() => {});
         }
-        gainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
-        gainNode.gain.setValueAtTime(targetGain, this.audioContext.currentTime);
+        gainNode.gain.cancelScheduledValues(ctx.currentTime);
+        gainNode.gain.setValueAtTime(targetGain, ctx.currentTime);
       } catch {
         gainNode.gain.value = targetGain;
       }
@@ -884,6 +905,25 @@ export class LocalAudioSourceManager {
       }
     }
     return true;
+  }
+
+  async applyMusicPan(pan: number): Promise<boolean> {
+    const clampedPan = Math.max(-1, Math.min(1, pan));
+    const pannerNode = this.musicPannerNode;
+    const ctx = this.appAudioContext;
+    if (pannerNode && ctx && ctx.state !== 'closed') {
+      try {
+        if (ctx.state === 'suspended') {
+          void ctx.resume().catch(() => {});
+        }
+        pannerNode.pan.cancelScheduledValues(ctx.currentTime);
+        pannerNode.pan.setValueAtTime(clampedPan, ctx.currentTime);
+      } catch {
+        pannerNode.pan.value = clampedPan;
+      }
+      return true;
+    }
+    return false;
   }
 
   getVoiceMicsCount(): number {
@@ -914,6 +954,7 @@ export class LocalAudioSourceManager {
       mic.isolatedTrack?.stop();
       try { mic.sourceNode?.disconnect(); } catch {}
       try { mic.gainNode?.disconnect(); } catch {}
+      try { mic.pannerNode?.disconnect(); } catch {}
       try { mic.micDestination?.disconnect(); } catch {}
     }
     this.voiceMics.clear();
@@ -922,6 +963,8 @@ export class LocalAudioSourceManager {
     for (const source of this.sources.values()) source.track.stop();
     this.sources.clear();
     this.gainNodes.clear();
+    try { this.musicPannerNode?.disconnect(); } catch {}
+    this.musicPannerNode = undefined;
     this.senders.clear();
     if (this.audioContext && this.audioContext.state !== 'closed') {
       void this.audioContext.close().catch(() => {});

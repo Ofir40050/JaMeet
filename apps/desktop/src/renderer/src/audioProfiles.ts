@@ -13,6 +13,7 @@ export type AudioCapturePreferences = {
   stereo?: boolean;
   inputGain?: number;
   channelRoute?: string;
+  pan?: number;
 };
 
 export function audioConstraints(mode: AudioMode, deviceId?: string, preferences: AudioCapturePreferences = {}): MediaTrackConstraints {

@@ -12843,6 +12843,7 @@ function applyMixerAudioRouting(): void {
     const isMutedGlobally = muted;
     const baseVol = micCh ? micCh.volume : (mic.gain ?? 1);
     const effectiveVol = isAudible && !isMutedGlobally ? baseVol : 0;
+    const pan = micCh ? (typeof micCh.pan === 'number' && !isNaN(micCh.pan) ? micCh.pan : 0) : 0;
     if (effectiveVol > 0) anyLocalMicActive = true;
     
     if (micCh) {
@@ -12869,6 +12870,7 @@ function applyMixerAudioRouting(): void {
 
     // Apply to audio engine
     void audio.setVoiceMicGain(mic.id, effectiveVol);
+    void audio.setVoiceMicPan(mic.id, pan);
   });
 
   audio.setEnabled('voice', !muted && anyLocalMicActive);
@@ -12882,11 +12884,13 @@ function applyMixerAudioRouting(): void {
   const remoteMusicAudible = remoteMusicCh ? (!remoteMusicCh.muted && (!hasAnySolo || remoteMusicCh.soloed)) : true;
 
   const effectiveLocalMusicVol = localMusicAudible && localMusicCh ? localMusicCh.volume : 0;
+  const localMusicPan = localMusicCh ? (typeof localMusicCh.pan === 'number' && !isNaN(localMusicCh.pan) ? localMusicCh.pan : 0) : 0;
   const effectiveRemoteVoiceVol = remoteVoiceAudible && remoteVoiceCh ? remoteVoiceCh.volume : 0;
   const effectiveRemoteMusicVol = remoteMusicAudible && remoteMusicCh ? remoteMusicCh.volume : 0;
 
   audio.setEnabled('music', effectiveLocalMusicVol > 0);
   void audio.applyMusicGain(effectiveLocalMusicVol);
+  void audio.applyMusicPan(localMusicPan);
 
   // 2. Control Web Audio DSP Engine in real-time
   if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
