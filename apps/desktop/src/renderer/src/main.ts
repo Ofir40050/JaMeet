@@ -141,6 +141,7 @@ let currentActiveSpeaker: ParticipantTarget = 'remote';
 let remoteVoiceMeter: LevelMeter | undefined = undefined;
 let lastLocalVoiceDb = -60;
 let lastRemoteVoiceDb = -60;
+let lastLocalMusicDb = -60;
 let lastSpeakerSwitchTime = 0;
 const SPEAKER_SWITCH_HOLD_MS = 1200;
 
@@ -1240,6 +1241,7 @@ function renderVoiceLevel(micId: number, reading: LevelReading): void {
 }
 
 function renderMusicLevel(reading: LevelReading): void {
+  lastLocalMusicDb = reading.rmsDb;
   const musicActive = Boolean(audio.music?.enabled) && reading.rmsDb > -48;
   $('music-in-indicator')?.classList.toggle('active', musicActive);
   const width = `${Math.max(0, Math.min(100, ((reading.rmsDb + 60) / 60) * 100))}%`;
@@ -2358,6 +2360,16 @@ let remoteMusicSourceNode: MediaStreamAudioSourceNode | undefined;
 let remoteVoiceGain: GainNode | undefined;
 let remoteMusicGain: GainNode | undefined;
 let remoteMasterGain: GainNode | undefined;
+let remoteVoicePanner: StereoPannerNode | undefined;
+let remoteMusicPanner: StereoPannerNode | undefined;
+let remoteVoiceAnalyser: AnalyserNode | undefined;
+let remoteMusicAnalyser: AnalyserNode | undefined;
+let remoteMasterAnalyser: AnalyserNode | undefined;
+let remoteVoiceEqHighpass: BiquadFilterNode | undefined;
+let remoteVoiceEqPeaking: BiquadFilterNode | undefined;
+let remoteVoiceCompressor: DynamicsCompressorNode | undefined;
+let remoteMusicEqPeaking: BiquadFilterNode | undefined;
+let remoteMusicCompressor: DynamicsCompressorNode | undefined;
 let remoteLimiter: DynamicsCompressorNode | undefined;
 
 async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
@@ -2368,17 +2380,77 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
     remoteMasterGain = remoteAudioCtx.createGain();
     remoteLimiter = remoteAudioCtx.createDynamicsCompressor();
 
-    // Studio protective limiter (transparent ceiling at -0.5 dB)
+    // Stereo Panners
+    remoteVoicePanner = remoteAudioCtx.createStereoPanner();
+    remoteMusicPanner = remoteAudioCtx.createStereoPanner();
+
+    // Live Analysers for Real Level Metering
+    remoteVoiceAnalyser = remoteAudioCtx.createAnalyser();
+    remoteVoiceAnalyser.fftSize = 64;
+    remoteMusicAnalyser = remoteAudioCtx.createAnalyser();
+    remoteMusicAnalyser.fftSize = 64;
+    remoteMasterAnalyser = remoteAudioCtx.createAnalyser();
+    remoteMasterAnalyser.fftSize = 64;
+
+    // Real Channel FX: Voice EQ & Compressor
+    remoteVoiceEqHighpass = remoteAudioCtx.createBiquadFilter();
+    remoteVoiceEqHighpass.type = 'highpass';
+    remoteVoiceEqHighpass.frequency.setValueAtTime(80, remoteAudioCtx.currentTime); // 80Hz low cut
+    remoteVoiceEqHighpass.Q.setValueAtTime(0.7, remoteAudioCtx.currentTime);
+
+    remoteVoiceEqPeaking = remoteAudioCtx.createBiquadFilter();
+    remoteVoiceEqPeaking.type = 'peaking';
+    remoteVoiceEqPeaking.frequency.setValueAtTime(3200, remoteAudioCtx.currentTime); // 3.2kHz vocal presence
+    remoteVoiceEqPeaking.Q.setValueAtTime(1.0, remoteAudioCtx.currentTime);
+    remoteVoiceEqPeaking.gain.setValueAtTime(2.5, remoteAudioCtx.currentTime);
+
+    remoteVoiceCompressor = remoteAudioCtx.createDynamicsCompressor();
+    remoteVoiceCompressor.threshold.setValueAtTime(-16.0, remoteAudioCtx.currentTime);
+    remoteVoiceCompressor.knee.setValueAtTime(6.0, remoteAudioCtx.currentTime);
+    remoteVoiceCompressor.ratio.setValueAtTime(3.5, remoteAudioCtx.currentTime);
+    remoteVoiceCompressor.attack.setValueAtTime(0.005, remoteAudioCtx.currentTime);
+    remoteVoiceCompressor.release.setValueAtTime(0.08, remoteAudioCtx.currentTime);
+
+    // Real Channel FX: Music EQ & Compressor
+    remoteMusicEqPeaking = remoteAudioCtx.createBiquadFilter();
+    remoteMusicEqPeaking.type = 'peaking';
+    remoteMusicEqPeaking.frequency.setValueAtTime(2400, remoteAudioCtx.currentTime);
+    remoteMusicEqPeaking.gain.setValueAtTime(0, remoteAudioCtx.currentTime);
+
+    remoteMusicCompressor = remoteAudioCtx.createDynamicsCompressor();
+    remoteMusicCompressor.threshold.setValueAtTime(-12.0, remoteAudioCtx.currentTime);
+    remoteMusicCompressor.ratio.setValueAtTime(2.0, remoteAudioCtx.currentTime);
+
+    // Protective Master Limiter (transparent ceiling at -0.5 dB)
     remoteLimiter.threshold.setValueAtTime(-0.5, remoteAudioCtx.currentTime);
     remoteLimiter.knee.setValueAtTime(4.0, remoteAudioCtx.currentTime);
     remoteLimiter.ratio.setValueAtTime(20.0, remoteAudioCtx.currentTime);
     remoteLimiter.attack.setValueAtTime(0.003, remoteAudioCtx.currentTime);
     remoteLimiter.release.setValueAtTime(0.1, remoteAudioCtx.currentTime);
 
-    remoteVoiceGain.connect(remoteMasterGain);
-    remoteMusicGain.connect(remoteMasterGain);
-    remoteMasterGain.connect(remoteLimiter);
-    remoteLimiter.connect(remoteAudioCtx.destination);
+    // Audio Graph Routing:
+    // Voice: Gain -> EQ Highpass -> EQ Peaking -> Compressor -> Panner -> Analyser -> Master
+    remoteVoiceGain
+      .connect(remoteVoiceEqHighpass)
+      .connect(remoteVoiceEqPeaking)
+      .connect(remoteVoiceCompressor)
+      .connect(remoteVoicePanner)
+      .connect(remoteVoiceAnalyser)
+      .connect(remoteMasterGain);
+
+    // Music: Gain -> EQ Peaking -> Compressor -> Panner -> Analyser -> Master
+    remoteMusicGain
+      .connect(remoteMusicEqPeaking)
+      .connect(remoteMusicCompressor)
+      .connect(remoteMusicPanner)
+      .connect(remoteMusicAnalyser)
+      .connect(remoteMasterGain);
+
+    // Master: MasterGain -> Limiter -> MasterAnalyser -> Destination
+    remoteMasterGain
+      .connect(remoteLimiter)
+      .connect(remoteMasterAnalyser)
+      .connect(remoteAudioCtx.destination);
   }
   if (remoteAudioCtx.state === 'suspended') {
     await remoteAudioCtx.resume().catch(() => {});
@@ -3174,6 +3246,13 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'c' || e.key === 'C') {
       e.preventDefault();
       $('toggle-session-chat')?.click();
+      return;
+    }
+
+    // Toggle Studio Mixer: X
+    if (e.key === 'x' || e.key === 'X') {
+      e.preventDefault();
+      toggleStudioMixer();
       return;
     }
   }
@@ -12078,3 +12157,1108 @@ $<HTMLSelectElement>('session-workspace-song-select')?.addEventListener('change'
 // ========================================================
 initActivityHistory(() => activeProject ?? null, () => auth.getUser());
 initSessionChat({ getSessionCode: () => currentCode, signaling });
+
+// ========================================================
+// LOGIC PRO STYLE STUDIO MULTITRACK MIXER SUBSYSTEM
+// ========================================================
+interface StudioMixerChannel {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  volume: number; // 0 to 1.5 (1.0 = 0 dB)
+  pan: number; // -1 to 1 (0 = Center)
+  muted: boolean;
+  soloed: boolean;
+  fx: string[];
+  isMaster?: boolean;
+  section?: 'local' | 'remote';
+}
+
+const STUDIO_ICONS: Record<string, { label: string; svg: string }> = {
+  mic: {
+    label: 'Microphone / Vocal',
+    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="currentColor" stroke-width="2" fill="none"/><line x1="12" x2="12" y1="19" y2="22" stroke="currentColor" stroke-width="2"/></svg>`
+  },
+  waves: {
+    label: 'Audio Stream / Track',
+    svg: `<svg viewBox="0 0 24 24" width="22" height="22"><rect x="2" y="8" width="2.5" height="8" rx="1.2" fill="currentColor"></rect><rect x="6.5" y="5" width="2.5" height="14" rx="1.2" fill="currentColor"></rect><rect x="11" y="2" width="2.5" height="20" rx="1.2" fill="currentColor"></rect><rect x="15.5" y="4" width="2.5" height="16" rx="1.2" fill="currentColor"></rect><rect x="20" y="8" width="2.5" height="8" rx="1.2" fill="currentColor"></rect></svg>`
+  },
+  headphones: {
+    label: 'Headphones / Monitor',
+    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>`
+  },
+  speaker: {
+    label: 'Speaker / Monitor Out',
+    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" fill="none"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14" stroke="currentColor" stroke-width="2" fill="none"/></svg>`
+  },
+  guitar: {
+    label: 'Guitar / Bass',
+    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 5-3 3"/><path d="m14 10 2 2"/><path d="M15 15a4 4 0 1 1-5.66-5.66l5.66 5.66Z"/><circle cx="10" cy="14" r="1.5" fill="currentColor"/><path d="m18 2 4 4-2 2-4-4Z"/></svg>`
+  },
+  piano: {
+    label: 'Piano / Keys',
+    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 4v10"/><path d="M10 4v10"/><path d="M14 4v10"/><path d="M18 4v10"/><path d="M2 14h20"/></svg>`
+  },
+  drums: {
+    label: 'Drums / Beat',
+    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="8" rx="9" ry="4"/><path d="M3 8v8c0 2.2 4 4 9 4s9-1.8 9-4V8"/><path d="m6 6 6 5 6-5"/></svg>`
+  },
+  synth: {
+    label: 'Synth / Hardware',
+    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>`
+  },
+  screen: {
+    label: 'Screen / App Capture',
+    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>`
+  },
+  fx: {
+    label: 'Audio FX / Reverb',
+    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="m12 2 2.4 7.2L21.6 12l-7.2 2.4L12 21.6l-2.4-7.2L2.4 12l7.2-2.4Z"/></svg>`
+  },
+  crown: {
+    label: 'Master / Bus',
+    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="m2 4 4 12h12l4-12-6 5-4-7-4 7-6-5Z"/><rect x="4" y="18" width="16" height="2" rx="1"/></svg>`
+  },
+  radio: {
+    label: 'Broadcast Stream',
+    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>`
+  }
+};
+
+let studioMixerChannels: StudioMixerChannel[] = [
+  // --- LOCAL SENDS (כניסות שלך) ---
+  {
+    id: 'you-mic',
+    name: 'Mic 1',
+    icon: 'mic',
+    color: '#3b82f6',
+    volume: 1.0,
+    pan: 0,
+    muted: false,
+    soloed: false,
+    fx: [],
+    section: 'local'
+  },
+  {
+    id: 'you-mic-2',
+    name: 'Mic 2',
+    icon: 'mic',
+    color: '#60a5fa',
+    volume: 1.0,
+    pan: 0,
+    muted: false,
+    soloed: false,
+    fx: [],
+    section: 'local'
+  },
+  {
+    id: 'music-stream',
+    name: 'Music',
+    icon: 'waves',
+    color: '#a855f7',
+    volume: 1.0,
+    pan: 0,
+    muted: false,
+    soloed: false,
+    fx: [],
+    section: 'local'
+  },
+  // --- REMOTE MONITORING (מי שממול) ---
+  {
+    id: 'remote-voice',
+    name: 'Mic 1',
+    icon: 'headphones',
+    color: '#22c55e',
+    volume: 1.0,
+    pan: 0,
+    muted: false,
+    soloed: false,
+    fx: [],
+    section: 'remote'
+  },
+  {
+    id: 'remote-music',
+    name: 'Music',
+    icon: 'waves',
+    color: '#06b6d4',
+    volume: 1.0,
+    pan: 0,
+    muted: false,
+    soloed: false,
+    fx: [],
+    section: 'remote'
+  },
+  {
+    id: 'master-out',
+    name: 'Master',
+    icon: 'crown',
+    color: '#f59e0b',
+    volume: 1.0,
+    pan: 0,
+    muted: false,
+    soloed: false,
+    fx: [],
+    isMaster: true,
+    section: 'remote'
+  }
+];
+
+let studioMixerOpen = false;
+function faderTopPercentToDb(pct: number): number {
+  if (pct >= 98.5) return -Infinity;
+  if (pct <= 2.0) return 6.0;
+  if (pct <= 16.0) {
+    return 6.0 - ((pct - 2.0) / 14.0) * 6.0;
+  } else if (pct <= 32.0) {
+    return 0.0 - ((pct - 16.0) / 16.0) * 6.0;
+  } else if (pct <= 48.0) {
+    return -6.0 - ((pct - 32.0) / 16.0) * 6.0;
+  } else if (pct <= 74.0) {
+    return -12.0 - ((pct - 48.0) / 26.0) * 12.0;
+  } else if (pct <= 92.0) {
+    return -24.0 - ((pct - 74.0) / 18.0) * 16.0;
+  } else {
+    return -40.0 - ((pct - 92.0) / 6.5) * 25.0;
+  }
+}
+
+function dbToFaderTopPercent(db: number): number {
+  if (db === -Infinity || db <= -65) return 98.5;
+  if (db >= 6.0) return 2.0;
+  if (db >= 0.0) {
+    return 2.0 + ((6.0 - db) / 6.0) * 14.0;
+  } else if (db >= -6.0) {
+    return 16.0 + ((-db) / 6.0) * 16.0;
+  } else if (db >= -12.0) {
+    return 32.0 + ((-db - 6.0) / 6.0) * 16.0;
+  } else if (db >= -24.0) {
+    return 48.0 + ((-db - 12.0) / 12.0) * 26.0;
+  } else if (db >= -40.0) {
+    return 74.0 + ((-db - 24.0) / 16.0) * 18.0;
+  } else {
+    return 92.0 + ((-db - 40.0) / 25.0) * 6.5;
+  }
+}
+
+function dbToGain(db: number): number {
+  if (db === -Infinity || db <= -65) return 0;
+  return Math.pow(10, db / 20);
+}
+
+function formatDbText(db: number): string {
+  if (db === -Infinity || db <= -65) return '-∞';
+  if (Math.abs(db) < 0.05) return '0.0';
+  return db > 0 ? `+${db.toFixed(1)}` : `${db.toFixed(1)}`;
+}
+
+function volumeToDb(vol: number): string {
+  if (vol <= 0.0001) return '-∞';
+  const db = 20 * Math.log10(vol);
+  return formatDbText(db);
+}
+
+function getPanBackground(pan: number): string {
+  const panVal = Math.round(pan * 50); // -50 to +50
+  if (panVal === 0) return '#232326';
+  if (panVal > 0) {
+    const deg = (panVal / 50) * 140;
+    return `conic-gradient(from 0deg, #22c55e 0deg, #22c55e ${deg.toFixed(1)}deg, #232326 ${deg.toFixed(1)}deg, #232326 360deg)`;
+  } else {
+    const deg = (-panVal / 50) * 140;
+    const startDeg = 360 - deg;
+    return `conic-gradient(from 0deg, #232326 0deg, #232326 ${startDeg.toFixed(1)}deg, #22c55e ${startDeg.toFixed(1)}deg, #22c55e 360deg)`;
+  }
+}
+
+function panToReadout(pan: number): string {
+  const val = Math.round(pan * 50);
+  if (val === 0) return '0';
+  return val > 0 ? `+${val}` : `${val}`;
+}
+
+function panToLabel(pan: number): string {
+  const val = Math.round(pan * 50);
+  if (val === 0) return '0';
+  return val > 0 ? `+${val}` : `${val}`;
+}
+
+let activeFxTarget: { channelId: string; slotIndex: number } | null = null;
+let activeIconTarget: string | null = null;
+let mixerVuAnimationId: number | null = null;
+
+function toggleStudioMixer(forceOpen?: boolean): void {
+  const modal = $('session-studio-mixer-modal');
+  if (!modal) return;
+  studioMixerOpen = forceOpen !== undefined ? forceOpen : !studioMixerOpen;
+  modal.classList.toggle('hidden', !studioMixerOpen);
+  $('toggle-session-mixer')?.classList.toggle('active', studioMixerOpen);
+
+  if (studioMixerOpen) {
+    renderStudioMixer();
+    startMixerVuAnimation();
+  } else {
+    stopMixerVuAnimation();
+    $('mixer-fx-picker-popover')?.classList.add('hidden');
+    $('mixer-icon-picker-popover')?.classList.add('hidden');
+  }
+}
+
+const voiceDataArray = new Uint8Array(32);
+const musicDataArray = new Uint8Array(32);
+const masterDataArray = new Uint8Array(32);
+
+function getStereoPanGains(pan: number): { left: number; right: number } {
+  const clamped = Math.max(-1, Math.min(1, pan));
+  const left = clamped <= 0 ? 1.0 : Math.max(0, 1.0 - clamped);
+  const right = clamped >= 0 ? 1.0 : Math.max(0, 1.0 + clamped);
+  return { left, right };
+}
+
+function startMixerVuAnimation(): void {
+  if (mixerVuAnimationId) return;
+  const updateVu = () => {
+    if (!studioMixerOpen) {
+      mixerVuAnimationId = null;
+      return;
+    }
+    const hasAnySolo = studioMixerChannels.some((c) => c.soloed);
+
+    // 1. You (Mic) Channel Metering (from real local voice dB)
+    const micCh = studioMixerChannels.find((c) => c.id === 'you-mic');
+    if (micCh) {
+      const isAudible = !micCh.muted && (!hasAnySolo || micCh.soloed) && !muted;
+      const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${micCh.id}"]`);
+      if (stripEl) {
+        const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
+        const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
+        const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
+        if (vuLeft && vuRight) {
+          if (!isAudible || micCh.volume <= 0.001 || lastLocalVoiceDb <= -58) {
+            vuLeft.style.height = '0%';
+            vuRight.style.height = '0%';
+            if (peakEl) {
+              peakEl.textContent = '-∞';
+              peakEl.classList.remove('is-clipping');
+            }
+          } else {
+            const rawPct = Math.max(0, Math.min(100, ((lastLocalVoiceDb + 55) / 55) * 100 * micCh.volume));
+            const { left: panL, right: panR } = getStereoPanGains(micCh.pan);
+            vuLeft.style.height = `${(rawPct * panL).toFixed(1)}%`;
+            vuRight.style.height = `${(rawPct * panR).toFixed(1)}%`;
+            if (peakEl) {
+              const peakDb = lastLocalVoiceDb + (micCh.volume <= 0.0001 ? -100 : 20 * Math.log10(micCh.volume));
+              peakEl.textContent = formatDbText(peakDb);
+              peakEl.classList.toggle('is-clipping', peakDb >= -0.5);
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Musician (Remote Voice) Channel Metering (from real Web Audio Analyser)
+    const voiceCh = studioMixerChannels.find((c) => c.id === 'remote-voice');
+    if (voiceCh) {
+      const isAudible = !voiceCh.muted && (!hasAnySolo || voiceCh.soloed);
+      const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${voiceCh.id}"]`);
+      if (stripEl) {
+        const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
+        const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
+        const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
+        if (vuLeft && vuRight) {
+          if (!isAudible || voiceCh.volume <= 0.001 || !remoteVoiceAnalyser) {
+            vuLeft.style.height = '0%';
+            vuRight.style.height = '0%';
+            if (peakEl) {
+              peakEl.textContent = '-∞';
+              peakEl.classList.remove('is-clipping');
+            }
+          } else {
+            remoteVoiceAnalyser.getByteFrequencyData(voiceDataArray);
+            let sum = 0;
+            for (let i = 0; i < voiceDataArray.length; i++) sum += voiceDataArray[i];
+            const avg = sum / voiceDataArray.length;
+            const pct = Math.min(100, (avg / 200) * 100 * voiceCh.volume);
+            const { left: panL, right: panR } = getStereoPanGains(voiceCh.pan);
+            vuLeft.style.height = `${Math.min(100, pct * panL).toFixed(1)}%`;
+            vuRight.style.height = `${Math.min(100, pct * panR).toFixed(1)}%`;
+            if (peakEl) {
+              const db = -60 + (avg / 255) * 60 + (voiceCh.volume <= 0.0001 ? -100 : 20 * Math.log10(voiceCh.volume));
+              peakEl.textContent = formatDbText(db);
+              peakEl.classList.toggle('is-clipping', db >= -0.5);
+            }
+          }
+        }
+      }
+    }
+
+    // 3. DAW Music Channel Metering (from real Web Audio Music Analyser)
+    const musicCh = studioMixerChannels.find((c) => c.id === 'music-stream');
+    if (musicCh) {
+      const isAudible = !musicCh.muted && (!hasAnySolo || musicCh.soloed);
+      const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${musicCh.id}"]`);
+      if (stripEl) {
+        const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
+        const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
+        const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
+        if (vuLeft && vuRight) {
+          let remoteAvg = 0;
+          if (remoteMusicAnalyser) {
+            remoteMusicAnalyser.getByteFrequencyData(musicDataArray);
+            let sum = 0;
+            for (let i = 0; i < musicDataArray.length; i++) sum += musicDataArray[i];
+            remoteAvg = sum / musicDataArray.length;
+          }
+
+          const hasLocal = lastLocalMusicDb > -58;
+          const hasRemote = remoteAvg > 1;
+
+          if (!isAudible || musicCh.volume <= 0.001 || (!hasLocal && !hasRemote)) {
+            vuLeft.style.height = '0%';
+            vuRight.style.height = '0%';
+            if (peakEl) {
+              peakEl.textContent = '-∞';
+              peakEl.classList.remove('is-clipping');
+            }
+          } else {
+            let activeDb = -60;
+            if (hasLocal && hasRemote) {
+              const remoteDb = -60 + (remoteAvg / 255) * 60;
+              activeDb = Math.max(lastLocalMusicDb, remoteDb);
+            } else if (hasLocal) {
+              activeDb = lastLocalMusicDb;
+            } else {
+              activeDb = -60 + (remoteAvg / 255) * 60;
+            }
+
+            const rawPct = Math.max(0, Math.min(100, ((activeDb + 55) / 55) * 100 * musicCh.volume));
+            const { left: panL, right: panR } = getStereoPanGains(musicCh.pan);
+            vuLeft.style.height = `${Math.min(100, rawPct * panL).toFixed(1)}%`;
+            vuRight.style.height = `${Math.min(100, rawPct * panR).toFixed(1)}%`;
+
+            if (peakEl) {
+              const peakDb = activeDb + (musicCh.volume <= 0.0001 ? -100 : 20 * Math.log10(musicCh.volume));
+              peakEl.textContent = formatDbText(peakDb);
+              peakEl.classList.toggle('is-clipping', peakDb >= -0.5);
+            }
+          }
+        }
+      }
+    }
+
+    // 4. Master Output Metering (from real Master Analyser)
+    const masterCh = studioMixerChannels.find((c) => c.id === 'master-out');
+    if (masterCh) {
+      const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${masterCh.id}"]`);
+      if (stripEl) {
+        const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
+        const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
+        const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
+        if (vuLeft && vuRight) {
+          if (masterCh.muted || masterCh.volume <= 0.001 || !remoteMasterAnalyser) {
+            vuLeft.style.height = '0%';
+            vuRight.style.height = '0%';
+            if (peakEl) {
+              peakEl.textContent = '-∞';
+              peakEl.classList.remove('is-clipping');
+            }
+          } else {
+            remoteMasterAnalyser.getByteFrequencyData(masterDataArray);
+            let sum = 0;
+            for (let i = 0; i < masterDataArray.length; i++) sum += masterDataArray[i];
+            const avg = sum / masterDataArray.length;
+            const pct = Math.min(100, (avg / 200) * 100 * masterCh.volume);
+            vuLeft.style.height = `${pct.toFixed(1)}%`;
+            vuRight.style.height = `${pct.toFixed(1)}%`;
+            if (peakEl) {
+              const db = -60 + (avg / 255) * 60 + (masterCh.volume <= 0.0001 ? -100 : 20 * Math.log10(masterCh.volume));
+              peakEl.textContent = formatDbText(db);
+              peakEl.classList.toggle('is-clipping', db >= -0.5);
+            }
+          }
+        }
+      }
+    }
+
+    // 5. Aux & Other Channels
+    studioMixerChannels.filter((c) => c.id !== 'you-mic' && c.id !== 'remote-voice' && c.id !== 'music-stream' && c.id !== 'master-out').forEach((ch) => {
+      const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${ch.id}"]`);
+      if (stripEl) {
+        const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
+        const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
+        const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
+        if (vuLeft && vuRight) {
+          if (ch.muted || ch.volume <= 0.001) {
+            vuLeft.style.height = '0%';
+            vuRight.style.height = '0%';
+            if (peakEl) {
+              peakEl.textContent = '-∞';
+              peakEl.classList.remove('is-clipping');
+            }
+          } else {
+            let sum = 0;
+            for (let i = 0; i < musicDataArray.length; i++) sum += musicDataArray[i];
+            const pct = Math.min(100, ((sum / musicDataArray.length) / 220) * 100 * ch.volume);
+            const { left: panL, right: panR } = getStereoPanGains(ch.pan);
+            vuLeft.style.height = `${(pct * panL).toFixed(1)}%`;
+            vuRight.style.height = `${(pct * panR).toFixed(1)}%`;
+            if (peakEl) {
+              const db = -60 + (pct / 100) * 60;
+              peakEl.textContent = formatDbText(db);
+              peakEl.classList.toggle('is-clipping', db >= -0.5);
+            }
+          }
+        }
+      }
+    });
+
+    mixerVuAnimationId = requestAnimationFrame(updateVu);
+  };
+  mixerVuAnimationId = requestAnimationFrame(updateVu);
+}
+
+function stopMixerVuAnimation(): void {
+  if (mixerVuAnimationId) {
+    cancelAnimationFrame(mixerVuAnimationId);
+    mixerVuAnimationId = null;
+  }
+}
+
+function applyMixerAudioRouting(): void {
+  const hasAnySolo = studioMixerChannels.some((c) => c.soloed);
+  const masterCh = studioMixerChannels.find((c) => c.id === 'master-out') || { volume: 1.0, muted: false, pan: 0, fx: [] };
+  const masterVol = masterCh.muted ? 0 : masterCh.volume;
+
+  const mic1Ch = studioMixerChannels.find((c) => c.id === 'you-mic');
+  const mic2Ch = studioMixerChannels.find((c) => c.id === 'you-mic-2');
+  const localMusicCh = studioMixerChannels.find((c) => c.id === 'music-stream');
+
+  const remoteVoiceCh = studioMixerChannels.find((c) => c.id === 'remote-voice');
+  const remoteMusicCh = studioMixerChannels.find((c) => c.id === 'remote-music');
+
+  // Solo & Mute logic: If any track has Solo active, only Soloed tracks that are not Muted produce sound.
+  const mic1Audible = mic1Ch ? (!mic1Ch.muted && (!hasAnySolo || mic1Ch.soloed)) : true;
+  const mic2Audible = mic2Ch ? (!mic2Ch.muted && (!hasAnySolo || mic2Ch.soloed)) : true;
+  const localMusicAudible = localMusicCh ? (!localMusicCh.muted && (!hasAnySolo || localMusicCh.soloed)) : true;
+
+  const remoteVoiceAudible = remoteVoiceCh ? (!remoteVoiceCh.muted && (!hasAnySolo || remoteVoiceCh.soloed)) : true;
+  const remoteMusicAudible = remoteMusicCh ? (!remoteMusicCh.muted && (!hasAnySolo || remoteMusicCh.soloed)) : true;
+
+  const effectiveMic1Vol = mic1Audible && mic1Ch && !muted ? mic1Ch.volume : 0;
+  const effectiveMic2Vol = mic2Audible && mic2Ch ? mic2Ch.volume : 0;
+  const effectiveLocalMusicVol = localMusicAudible && localMusicCh ? localMusicCh.volume : 0;
+
+  const effectiveRemoteVoiceVol = remoteVoiceAudible && remoteVoiceCh ? remoteVoiceCh.volume : 0;
+  const effectiveRemoteMusicVol = remoteMusicAudible && remoteMusicCh ? remoteMusicCh.volume : 0;
+
+  // 1. Control local microphone & music input enabled states and gains in real-time
+  audio.setEnabled('voice', effectiveMic1Vol > 0 || effectiveMic2Vol > 0);
+  void audio.setInputGain(0, effectiveMic1Vol);
+  void audio.setInputGain(1, effectiveMic2Vol);
+
+  audio.setEnabled('music', effectiveLocalMusicVol > 0);
+  void audio.applyMusicGain(effectiveLocalMusicVol);
+
+  // 2. Control Web Audio DSP Engine in real-time
+  if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
+    const now = remoteAudioCtx.currentTime;
+
+    // Real Gain Routing (0 to 1.5x)
+    if (remoteVoiceGain) remoteVoiceGain.gain.setValueAtTime(effectiveRemoteVoiceVol, now);
+    if (remoteMusicGain) remoteMusicGain.gain.setValueAtTime(effectiveRemoteMusicVol, now);
+    if (remoteMasterGain) remoteMasterGain.gain.setValueAtTime(masterVol, now);
+
+    // Real Stereo Panning (-1.0 Left to +1.0 Right)
+    if (remoteVoicePanner && remoteVoiceCh) remoteVoicePanner.pan.setValueAtTime(remoteVoiceCh.pan, now);
+    if (remoteMusicPanner && remoteMusicCh) remoteMusicPanner.pan.setValueAtTime(remoteMusicCh.pan, now);
+
+    // Real Audio FX Processing: Voice Channel
+    if (remoteVoiceEqHighpass && remoteVoiceEqPeaking) {
+      if (remoteVoiceCh?.fx.includes('Chan EQ')) {
+        remoteVoiceEqHighpass.frequency.setValueAtTime(80, now);
+        remoteVoiceEqPeaking.gain.setValueAtTime(3.0, now);
+      } else {
+        remoteVoiceEqHighpass.frequency.setValueAtTime(10, now);
+        remoteVoiceEqPeaking.gain.setValueAtTime(0, now);
+      }
+    }
+    if (remoteVoiceCompressor) {
+      if (remoteVoiceCh?.fx.includes('Compressor')) {
+        remoteVoiceCompressor.ratio.setValueAtTime(4.0, now);
+        remoteVoiceCompressor.threshold.setValueAtTime(-18.0, now);
+      } else {
+        remoteVoiceCompressor.ratio.setValueAtTime(1.0, now);
+      }
+    }
+
+    // Real Audio FX Processing: Music Channel
+    if (remoteMusicEqPeaking) {
+      if (remoteMusicCh?.fx.includes('Chan EQ')) {
+        remoteMusicEqPeaking.gain.setValueAtTime(2.5, now);
+      } else {
+        remoteMusicEqPeaking.gain.setValueAtTime(0, now);
+      }
+    }
+    if (remoteMusicCompressor) {
+      if (remoteMusicCh?.fx.includes('Compressor')) {
+        remoteMusicCompressor.ratio.setValueAtTime(3.0, now);
+      } else {
+        remoteMusicCompressor.ratio.setValueAtTime(1.0, now);
+      }
+    }
+  }
+
+  const voiceAudio = document.getElementById('remote-voice-audio') as HTMLAudioElement | null;
+  const musicAudio = document.getElementById('remote-music-audio') as HTMLAudioElement | null;
+  if (voiceAudio) voiceAudio.volume = Math.min(1.0, masterVol * effectiveRemoteVoiceVol);
+  if (musicAudio) musicAudio.volume = Math.min(1.0, masterVol * effectiveRemoteMusicVol);
+}
+
+function renderStudioMixer(): void {
+  const rack = $('mixer-channels-rack');
+  if (!rack) return;
+  rack.innerHTML = '';
+
+  // 0. Left Parameters Ruler Column
+  const labelsCol = document.createElement('div');
+  labelsCol.className = 'mixer-labels-column';
+  labelsCol.innerHTML = `
+    <div class="mixer-label-item" style="height: 88px; margin-bottom: 12px;">Audio FX</div>
+    <div class="mixer-label-item" style="height: 30px; margin-bottom: 12px;">Icon</div>
+    <div class="mixer-label-item" style="height: 46px; margin-bottom: 12px;">Pan</div>
+    <div class="mixer-label-item" style="height: 20px; margin-bottom: 8px;">dB</div>
+    <div class="mixer-ruler-scale">
+      <div class="ruler-num" style="top: 2%">6</div>
+      <div class="ruler-num" style="top: 9%">3</div>
+      <div class="ruler-num num-0" style="top: 16%">0</div>
+      <div class="ruler-num" style="top: 24%">-3</div>
+      <div class="ruler-num" style="top: 32%">-6</div>
+      <div class="ruler-num" style="top: 48%">-12</div>
+      <div class="ruler-num" style="top: 62%">-18</div>
+      <div class="ruler-num" style="top: 74%">-24</div>
+      <div class="ruler-num" style="top: 81%">-30</div>
+      <div class="ruler-num" style="top: 92%">-40</div>
+      <div class="ruler-num" style="top: 99%">-∞</div>
+    </div>
+    <div class="mixer-label-item" style="height: 22px; margin-bottom: 8px;"></div>
+    <div class="mixer-label-item" style="height: 28px;"></div>
+  `;
+  rack.appendChild(labelsCol);
+
+  const hasAnySolo = studioMixerChannels.some((c) => c.soloed);
+  let renderedRemoteDivider = false;
+
+  studioMixerChannels.forEach((channel) => {
+    if (channel.section === 'remote' && !renderedRemoteDivider) {
+      renderedRemoteDivider = true;
+      const divider = document.createElement('div');
+      divider.className = 'mixer-section-divider';
+      divider.title = 'Remote Peer Monitor (מי שממול)';
+      divider.innerHTML = `
+        <div class="mixer-section-divider-line"></div>
+        <span class="mixer-section-tag">REMOTE</span>
+        <div class="mixer-section-divider-line"></div>
+      `;
+      rack.appendChild(divider);
+    }
+
+    const isDimmed = hasAnySolo && !channel.soloed;
+    const strip = document.createElement('div');
+    strip.className = `mixer-strip ${channel.isMaster ? 'is-master' : ''} ${channel.section === 'remote' ? 'is-remote' : ''} ${isDimmed ? 'is-dimmed' : ''}`;
+    strip.dataset.channelId = channel.id;
+
+    // 1. Audio FX Plugin Rack (Local channels) vs Invisible Spacer (Remote channels)
+    if (channel.section === 'remote') {
+      const topSpacer = document.createElement('div');
+      topSpacer.className = 'mixer-remote-spacer-top';
+      strip.appendChild(topSpacer);
+    } else {
+      const fxRack = document.createElement('div');
+      fxRack.className = 'mixer-fx-rack';
+      for (let i = 0; i < 4; i++) {
+        const activeFx = channel.fx[i];
+        const fxSlot = document.createElement('button');
+        fxSlot.type = 'button';
+        fxSlot.className = `mixer-cell-btn ${activeFx ? 'btn-fx-active' : 'btn-fx-empty'}`;
+        fxSlot.textContent = activeFx || '';
+        fxSlot.title = activeFx ? `Plugin: ${activeFx} (Click to change/remove)` : `Slot ${i + 1}: Add Audio FX Plugin`;
+        fxSlot.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openFxPopover(channel.id, i, fxSlot);
+        });
+        fxRack.appendChild(fxSlot);
+      }
+      strip.appendChild(fxRack);
+    }
+
+    // 2. Track Icon
+    const iconBtn = document.createElement('button');
+    iconBtn.type = 'button';
+    iconBtn.className = 'mixer-icon-btn';
+    iconBtn.style.background = channel.color;
+    iconBtn.title = 'Change Channel Icon & Color';
+    const iconKey = channel.icon || (channel.id === 'you-mic' ? 'mic' : channel.id === 'remote-voice' ? 'headphones' : channel.isMaster ? 'crown' : 'waves');
+    const iconData = STUDIO_ICONS[iconKey] || STUDIO_ICONS.waves;
+    iconBtn.innerHTML = iconData.svg;
+    iconBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openIconPopover(channel.id, iconBtn);
+    });
+    strip.appendChild(iconBtn);
+
+    // 3. Pan Knob (Local channels) vs Invisible Spacer (Remote channels)
+    if (channel.section === 'remote') {
+      const panSpacer = document.createElement('div');
+      panSpacer.className = 'mixer-remote-spacer-pan';
+      strip.appendChild(panSpacer);
+    } else {
+      const panWrap = document.createElement('div');
+      panWrap.className = 'mixer-pan-wrap';
+      panWrap.innerHTML = `
+        <div class="mixer-pan-outer-ring" style="background: ${getPanBackground(channel.pan)}" title="Pan / Balance (Drag up/down, double-click to center)">
+          <div class="mixer-pan-cap">
+            <div class="mixer-pan-cap-notch"></div>
+            <span class="mixer-pan-cap-text">${panToReadout(channel.pan)}</span>
+          </div>
+        </div>
+      `;
+      const panRing = panWrap.querySelector<HTMLElement>('.mixer-pan-outer-ring')!;
+      const panText = panWrap.querySelector<HTMLElement>('.mixer-pan-cap-text')!;
+      const panNotch = panWrap.querySelector<HTMLElement>('.mixer-pan-cap-notch')!;
+
+      const updatePanVisuals = (pan: number) => {
+        panRing.style.background = getPanBackground(pan);
+        panText.textContent = panToReadout(pan);
+        const deg = Math.round(pan * 140);
+        if (panNotch) {
+          panNotch.style.transform = `translate(-50%, -50%) rotate(${deg}deg) translateY(-15px)`;
+        }
+      };
+
+      updatePanVisuals(channel.pan);
+
+      panRing.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        panRing.setPointerCapture(e.pointerId);
+        const startClientY = e.clientY;
+        const startPan = channel.pan;
+
+        const onPanMove = (pe: PointerEvent) => {
+          const delta = (startClientY - pe.clientY) / 75;
+          channel.pan = Math.max(-1, Math.min(1, startPan + delta));
+          updatePanVisuals(channel.pan);
+          applyMixerAudioRouting();
+        };
+
+        const onPanUp = (pe: PointerEvent) => {
+          try { panRing.releasePointerCapture(pe.pointerId); } catch {}
+          panRing.removeEventListener('pointermove', onPanMove);
+          panRing.removeEventListener('pointerup', onPanUp);
+          panRing.removeEventListener('pointercancel', onPanUp);
+        };
+
+        panRing.addEventListener('pointermove', onPanMove);
+        panRing.addEventListener('pointerup', onPanUp);
+        panRing.addEventListener('pointercancel', onPanUp);
+      });
+
+      panRing.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        channel.pan = 0;
+        updatePanVisuals(0);
+        applyMixerAudioRouting();
+      });
+
+      panRing.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.04 : -0.04;
+        channel.pan = Math.max(-1, Math.min(1, channel.pan + delta));
+        updatePanVisuals(channel.pan);
+        applyMixerAudioRouting();
+      }, { passive: false });
+
+      strip.appendChild(panWrap);
+    }
+
+    // 4. Digital Readout Boxes (Fader dB + Peak dB)
+    const readoutRow = document.createElement('div');
+    readoutRow.className = 'mixer-readout-row';
+    const currentDb = channel.volume <= 0.0001 ? -Infinity : 20 * Math.log10(channel.volume);
+    readoutRow.innerHTML = `
+      <div class="mixer-fader-val" title="Double-click to reset to 0.0 dB">${formatDbText(currentDb)}</div>
+      <div class="mixer-peak-val" title="Peak Meter Level">-∞</div>
+    `;
+    const faderValEl = readoutRow.querySelector<HTMLElement>('.mixer-fader-val')!;
+    faderValEl.addEventListener('dblclick', () => {
+      channel.volume = 1.0;
+      renderStudioMixer();
+      applyMixerAudioRouting();
+    });
+    strip.appendChild(readoutRow);
+
+    // 5. Vertical Fader, Logic Pro Scale & Live Dual VU Meter
+    const faderArea = document.createElement('div');
+    faderArea.className = 'mixer-fader-area';
+    const topPct = dbToFaderTopPercent(currentDb);
+    faderArea.innerHTML = `
+      <div class="mixer-fader-column" data-channel-id="${channel.id}">
+        <div class="fader-graduations">
+          <div class="grad-line grad-0" style="top: 16%"></div>
+          <div class="grad-line" style="top: 24%"></div>
+          <div class="grad-line grad-major" style="top: 32%"></div>
+          <div class="grad-line" style="top: 40%"></div>
+          <div class="grad-line" style="top: 48%"></div>
+          <div class="grad-line grad-major" style="top: 55%"></div>
+          <div class="grad-line" style="top: 62%"></div>
+          <div class="grad-line" style="top: 68%"></div>
+          <div class="grad-line" style="top: 74%"></div>
+          <div class="grad-line" style="top: 81%"></div>
+          <div class="grad-line" style="top: 87%"></div>
+          <div class="grad-line" style="top: 92%"></div>
+          <div class="grad-line" style="top: 95%"></div>
+          <div class="grad-line" style="top: 97.5%"></div>
+          <div class="grad-line" style="top: 99%"></div>
+        </div>
+        <div class="logic-fader-groove">
+          <div class="logic-fader-groove-line"></div>
+          <div class="logic-fader-cap" style="top: ${topPct.toFixed(2)}%"></div>
+        </div>
+      </div>
+
+      <div class="mixer-scale-column">
+        <div class="scale-num num-0" style="top: 16%">0</div>
+        <div class="scale-num" style="top: 24%">3</div>
+        <div class="scale-num" style="top: 32%">6</div>
+        <div class="scale-num" style="top: 40%">9</div>
+        <div class="scale-num" style="top: 48%">12</div>
+        <div class="scale-num" style="top: 55%">15</div>
+        <div class="scale-num" style="top: 62%">18</div>
+        <div class="scale-num" style="top: 68%">21</div>
+        <div class="scale-num" style="top: 74%">24</div>
+        <div class="scale-num" style="top: 81%">30</div>
+        <div class="scale-num" style="top: 87%">35</div>
+        <div class="scale-num" style="top: 92%">40</div>
+        <div class="scale-num" style="top: 95%">45</div>
+        <div class="scale-num" style="top: 97.5%">50</div>
+        <div class="scale-num" style="top: 99%">60</div>
+      </div>
+
+      <div class="mixer-vu-meter">
+        <div class="vu-bar"><div class="vu-fill vu-fill-l"></div></div>
+        <div class="vu-bar"><div class="vu-fill vu-fill-r"></div></div>
+      </div>
+    `;
+
+    const faderColumn = faderArea.querySelector<HTMLElement>('.mixer-fader-column')!;
+    const faderCap = faderArea.querySelector<HTMLElement>('.logic-fader-cap')!;
+
+    const setFaderByTopPercent = (pct: number) => {
+      const clampedPct = Math.max(2.0, Math.min(98.5, pct));
+      const db = faderTopPercentToDb(clampedPct);
+      channel.volume = dbToGain(db);
+      faderCap.style.top = `${clampedPct.toFixed(2)}%`;
+      faderValEl.textContent = formatDbText(db);
+      applyMixerAudioRouting();
+    };
+
+    faderCap.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      faderCap.classList.add('is-dragging');
+      faderCap.setPointerCapture(e.pointerId);
+
+      const startClientY = e.clientY;
+      const startTopPct = parseFloat(faderCap.style.top) || 16;
+      const rect = faderColumn.getBoundingClientRect();
+      const trackHeight = rect.height || 180;
+
+      const onPointerMove = (pe: PointerEvent) => {
+        const deltaY = pe.clientY - startClientY;
+        const deltaPct = (deltaY / trackHeight) * 100;
+        setFaderByTopPercent(startTopPct + deltaPct);
+      };
+
+      const onPointerUp = (pe: PointerEvent) => {
+        faderCap.classList.remove('is-dragging');
+        try { faderCap.releasePointerCapture(pe.pointerId); } catch {}
+        faderCap.removeEventListener('pointermove', onPointerMove);
+        faderCap.removeEventListener('pointerup', onPointerUp);
+        faderCap.removeEventListener('pointercancel', onPointerUp);
+      };
+
+      faderCap.addEventListener('pointermove', onPointerMove);
+      faderCap.addEventListener('pointerup', onPointerUp);
+      faderCap.addEventListener('pointercancel', onPointerUp);
+    });
+
+    faderColumn.addEventListener('pointerdown', (e) => {
+      if (e.target === faderCap || faderCap.contains(e.target as Node)) return;
+      e.preventDefault();
+      faderColumn.setPointerCapture(e.pointerId);
+      faderCap.classList.add('is-dragging');
+
+      const rect = faderColumn.getBoundingClientRect();
+      const trackHeight = rect.height || 180;
+      const initialPct = ((e.clientY - rect.top) / trackHeight) * 100;
+      setFaderByTopPercent(initialPct);
+
+      const onTrackPointerMove = (pe: PointerEvent) => {
+        const movePct = ((pe.clientY - rect.top) / trackHeight) * 100;
+        setFaderByTopPercent(movePct);
+      };
+
+      const onTrackPointerUp = (pe: PointerEvent) => {
+        faderCap.classList.remove('is-dragging');
+        try { faderColumn.releasePointerCapture(pe.pointerId); } catch {}
+        faderColumn.removeEventListener('pointermove', onTrackPointerMove);
+        faderColumn.removeEventListener('pointerup', onTrackPointerUp);
+        faderColumn.removeEventListener('pointercancel', onTrackPointerUp);
+      };
+
+      faderColumn.addEventListener('pointermove', onTrackPointerMove);
+      faderColumn.addEventListener('pointerup', onTrackPointerUp);
+      faderColumn.addEventListener('pointercancel', onTrackPointerUp);
+    });
+
+    faderCap.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      channel.volume = 1.0;
+      faderCap.style.top = '16%';
+      faderValEl.textContent = '0.0';
+      applyMixerAudioRouting();
+    });
+
+    faderColumn.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      channel.volume = 1.0;
+      faderCap.style.top = '16%';
+      faderValEl.textContent = '0.0';
+      applyMixerAudioRouting();
+    });
+
+    faderColumn.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const curDb = channel.volume <= 0.0001 ? -60 : 20 * Math.log10(channel.volume);
+      const deltaDb = e.deltaY < 0 ? 0.3 : -0.3;
+      const newDb = Math.max(-65, Math.min(6.0, curDb + deltaDb));
+      channel.volume = dbToGain(newDb);
+      faderCap.style.top = `${dbToFaderTopPercent(newDb).toFixed(2)}%`;
+      faderValEl.textContent = formatDbText(newDb);
+      applyMixerAudioRouting();
+    }, { passive: false });
+
+    strip.appendChild(faderArea);
+
+    // 6. Mute & Solo DAW Buttons
+    const msGroup = document.createElement('div');
+    msGroup.className = 'mixer-ms-group';
+    msGroup.innerHTML = `
+      <button type="button" class="btn-mixer-ms btn-m ${channel.muted ? 'active' : ''}" title="Mute Track">M</button>
+      <button type="button" class="btn-mixer-ms btn-s ${channel.soloed ? 'active' : ''}" title="Solo Track">S</button>
+    `;
+    msGroup.querySelector('.btn-m')?.addEventListener('click', () => {
+      channel.muted = !channel.muted;
+      renderStudioMixer();
+      applyMixerAudioRouting();
+    });
+    msGroup.querySelector('.btn-s')?.addEventListener('click', () => {
+      channel.soloed = !channel.soloed;
+      renderStudioMixer();
+      applyMixerAudioRouting();
+    });
+    strip.appendChild(msGroup);
+
+    // 8. Bottom Solid Track Color Banner (With rename on double-click)
+    const bottomBanner = document.createElement('div');
+    bottomBanner.className = 'mixer-strip-bottom-banner';
+    bottomBanner.style.background = channel.color;
+    bottomBanner.textContent = channel.name;
+    bottomBanner.title = 'Double click to rename channel';
+    bottomBanner.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'mixer-track-name-input';
+      input.value = channel.name;
+      input.maxLength = 18;
+      
+      let isCommitted = false;
+      const commit = () => {
+        if (isCommitted) return;
+        isCommitted = true;
+        const val = input.value.trim();
+        if (val) {
+          channel.name = val;
+        }
+        renderStudioMixer();
+      };
+      const cancel = () => {
+        if (isCommitted) return;
+        isCommitted = true;
+        renderStudioMixer();
+      };
+
+      input.addEventListener('keydown', (ke) => {
+        if (ke.key === 'Enter') {
+          ke.preventDefault();
+          commit();
+        } else if (ke.key === 'Escape') {
+          ke.preventDefault();
+          cancel();
+        }
+      });
+      input.addEventListener('blur', commit);
+
+      bottomBanner.replaceWith(input);
+      input.focus();
+      input.select();
+    });
+    strip.appendChild(bottomBanner);
+
+    rack.appendChild(strip);
+  });
+}
+
+function openFxPopover(channelId: string, slotIndex: number, anchorEl: HTMLElement): void {
+  activeFxTarget = { channelId, slotIndex };
+  const popover = $('mixer-fx-picker-popover');
+  if (!popover) return;
+  const rect = anchorEl.getBoundingClientRect();
+  const top = rect.bottom + 6;
+  const left = Math.max(12, Math.min(window.innerWidth - 232, rect.left - 70));
+  popover.style.top = `${Math.min(window.innerHeight - 300, top)}px`;
+  popover.style.left = `${left}px`;
+  popover.classList.remove('hidden');
+  $('mixer-icon-picker-popover')?.classList.add('hidden');
+}
+
+function openIconPopover(channelId: string, anchorEl: HTMLElement): void {
+  activeIconTarget = channelId;
+  const popover = $('mixer-icon-picker-popover');
+  if (!popover) return;
+  const rect = anchorEl.getBoundingClientRect();
+  const top = rect.bottom + 6;
+  const left = Math.max(12, Math.min(window.innerWidth - 232, rect.left - 70));
+  popover.style.top = `${Math.min(window.innerHeight - 280, Math.max(10, top))}px`;
+  popover.style.left = `${left}px`;
+  popover.classList.remove('hidden');
+  $('mixer-fx-picker-popover')?.classList.add('hidden');
+}
+
+// Wire Popovers Event Delegation for 100% Reliable Clicks
+$('mixer-icon-picker-popover')?.addEventListener('click', (e) => {
+  const iconBtn = (e.target as HTMLElement)?.closest<HTMLButtonElement>('.icon-option');
+  if (iconBtn && activeIconTarget) {
+    const channel = studioMixerChannels.find((c) => c.id === activeIconTarget);
+    if (channel) {
+      channel.icon = iconBtn.dataset.icon || 'mic';
+      renderStudioMixer();
+    }
+    $('mixer-icon-picker-popover')?.classList.add('hidden');
+    activeIconTarget = null;
+    return;
+  }
+
+  const colorSwatch = (e.target as HTMLElement)?.closest<HTMLElement>('.mixer-color-swatch');
+  if (colorSwatch && activeIconTarget) {
+    const channel = studioMixerChannels.find((c) => c.id === activeIconTarget);
+    if (channel && colorSwatch.dataset.color) {
+      channel.color = colorSwatch.dataset.color;
+      renderStudioMixer();
+    }
+    $('mixer-icon-picker-popover')?.classList.add('hidden');
+    activeIconTarget = null;
+    return;
+  }
+});
+
+$('mixer-fx-picker-popover')?.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement)?.closest<HTMLButtonElement>('.fx-option');
+  if (!btn || !activeFxTarget) return;
+  const { channelId, slotIndex } = activeFxTarget;
+  const channel = studioMixerChannels.find((c) => c.id === channelId);
+  if (channel) {
+    const fx = btn.dataset.fx;
+    if (fx === 'remove') {
+      channel.fx.splice(slotIndex, 1);
+    } else if (fx) {
+      channel.fx[slotIndex] = fx;
+    }
+    renderStudioMixer();
+    applyMixerAudioRouting();
+  }
+  $('mixer-fx-picker-popover')?.classList.add('hidden');
+  activeFxTarget = null;
+});
+
+$('btn-close-fx-popover')?.addEventListener('click', () => {
+  $('mixer-fx-picker-popover')?.classList.add('hidden');
+  activeFxTarget = null;
+});
+
+$('btn-close-icon-popover')?.addEventListener('click', () => {
+  $('mixer-icon-picker-popover')?.classList.add('hidden');
+  activeIconTarget = null;
+});
+
+// Close popovers on click outside
+window.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement | null;
+  if (!target?.closest('#mixer-fx-picker-popover') && !target?.closest('.mixer-fx-slot')) {
+    $('mixer-fx-picker-popover')?.classList.add('hidden');
+    activeFxTarget = null;
+  }
+  if (!target?.closest('#mixer-icon-picker-popover') && !target?.closest('.mixer-icon-btn')) {
+    $('mixer-icon-picker-popover')?.classList.add('hidden');
+    activeIconTarget = null;
+  }
+});
+
+// Studio Mixer Controls & Shortcuts
+$('toggle-session-mixer')?.addEventListener('click', () => {
+  toggleStudioMixer();
+});
+
+$('btn-close-studio-mixer')?.addEventListener('click', () => {
+  toggleStudioMixer(false);
+});
+
+$('session-studio-mixer-modal')?.addEventListener('click', (e) => {
+  if (e.target === $('session-studio-mixer-modal')) {
+    toggleStudioMixer(false);
+  }
+});
+
+$('btn-mixer-add-track')?.addEventListener('click', () => {
+  const trackCount = studioMixerChannels.filter((c) => !c.isMaster).length + 1;
+  const newTrack: StudioMixerChannel = {
+    id: `track-${Date.now()}`,
+    name: `Track ${trackCount}`,
+    icon: 'guitar',
+    color: '#ec4899',
+    volume: 1.0,
+    pan: 0,
+    muted: false,
+    soloed: false,
+    fx: []
+  };
+  const masterIdx = studioMixerChannels.findIndex((c) => c.isMaster);
+  if (masterIdx !== -1) {
+    studioMixerChannels.splice(masterIdx, 0, newTrack);
+  } else {
+    studioMixerChannels.push(newTrack);
+  }
+  renderStudioMixer();
+});
+
+$('btn-mixer-reset-all')?.addEventListener('click', () => {
+  studioMixerChannels.forEach((c) => {
+    c.volume = 1.0;
+    c.pan = 0;
+    c.muted = false;
+    c.soloed = false;
+  });
+  renderStudioMixer();
+  applyMixerAudioRouting();
+});
+

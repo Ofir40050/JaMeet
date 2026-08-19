@@ -845,6 +845,32 @@ export class LocalAudioSourceManager {
     return true;
   }
 
+  async applyMusicGain(value: number): Promise<boolean> {
+    const targetGain = Math.max(0, value);
+    const gainNode = this.gainNodes.get('music');
+    if (gainNode && this.audioContext && this.audioContext.state !== 'closed') {
+      try {
+        if (this.audioContext.state === 'suspended') {
+          void this.audioContext.resume().catch(() => {});
+        }
+        gainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+        gainNode.gain.setValueAtTime(targetGain, this.audioContext.currentTime);
+      } catch {
+        gainNode.gain.value = targetGain;
+      }
+      return true;
+    }
+    const track = this.rawTracks.get('music') ?? this.music?.track;
+    if (track) {
+      const capabilities = track.getCapabilities() as MediaTrackCapabilities & { volume?: { min: number; max: number } };
+      if (capabilities.volume) {
+        await track.applyConstraints({ advanced: [{ volume: Math.min(capabilities.volume.max, Math.max(capabilities.volume.min, Math.min(1.0, value))) } as MediaTrackConstraintSet] });
+        return true;
+      }
+    }
+    return true;
+  }
+
   getVoiceMicsCount(): number {
     return this.voiceMics.size;
   }

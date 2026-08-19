@@ -2303,6 +2303,10 @@
               <div class="shortcut-group">
                 <div class="shortcut-group-title">Studio &amp; Collaboration</div>
                 <div class="shortcut-item">
+                  <span class="shortcut-label">Toggle Studio Mixer</span>
+                  <kbd class="keycap">X</kbd>
+                </div>
+                <div class="shortcut-item">
                   <span class="shortcut-label">Toggle Workspace Drawer</span>
                   <kbd class="keycap">W</kbd>
                 </div>
@@ -2515,33 +2519,6 @@
         <audio id="remote-voice-audio" autoplay></audio>
         <audio id="remote-music-audio" autoplay></audio>
 
-        <!-- REMOTE MONITOR MIXER BAR -->
-        <aside class="remote-audio-controls">
-          <div class="mixer-title">
-            <span class="mixer-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
-            </span>
-            <span>Remote Monitor Mixer</span>
-          </div>
-          <div class="mixer-sliders">
-            <label class="mixer-fader">
-              <span class="fader-name">Master</span>
-              <input id="remote-volume" type="range" min="0" max="1" step="0.05" value="1" class="custom-slider mini-slider" />
-              <output id="remote-volume-val" class="fader-val">100%</output>
-            </label>
-            <label class="mixer-fader">
-              <span class="fader-name">Voice</span>
-              <input id="voice-fader" type="range" min="0" max="1.5" step="0.05" value="1" class="custom-slider mini-slider" />
-              <output id="voice-fader-val" class="fader-val">100%</output>
-            </label>
-            <label class="mixer-fader">
-              <span class="fader-name">Music</span>
-              <input id="music-fader" type="range" min="0" max="1.5" step="0.05" value="1" class="custom-slider mini-slider" />
-              <output id="music-fader-val" class="fader-val">100%</output>
-            </label>
-          </div>
-        </aside>
-
         <!-- BOTTOM STUDIO CONTROL DOCK -->
         <footer class="bottombar">
           <div class="bar-left">
@@ -2573,6 +2550,11 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               </span>
               <span id="chat-unread-badge" class="chat-unread-badge hidden">0</span>
+            </button>
+            <button id="toggle-session-mixer" class="tool-btn ghost" type="button" title="Studio Mixer Console (X)">
+              <span class="tool-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
+              </span>
             </button>
             <button id="toggle-session-workspace" class="tool-btn ghost hidden" type="button" title="Project Workspace (W)">
               <span class="tool-icon">
@@ -2608,6 +2590,114 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
           <span>TALKBACK LIVE</span>
         </div>
+
+        <!-- STUDIO MULTITRACK MIXER MODAL (LOGIC PRO STYLE) -->
+        <div id="session-studio-mixer-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+          <div class="modal-card studio-mixer-modal-card">
+            <!-- Mixer Top Control Bar -->
+            <div class="studio-mixer-topbar">
+              <div class="mixer-brand-group">
+                <h3 class="mixer-main-title">Studio Console Mixer</h3>
+              </div>
+
+              <div class="mixer-topbar-actions">
+                <button id="btn-mixer-add-track" type="button" class="btn-mixer-action" title="Add Audio Track">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                  <span>Add Track</span>
+                </button>
+                <button id="btn-mixer-reset-all" type="button" class="btn-mixer-action ghost" title="Reset all levels to 0dB &amp; Center">
+                  <span>Reset Levels</span>
+                </button>
+                <button id="btn-close-studio-mixer" type="button" class="modal-close-btn" aria-label="Close Mixer">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Mixer Channel Strips Viewport -->
+            <div class="studio-mixer-viewport">
+              <div id="mixer-channels-rack" class="mixer-channels-rack">
+                <!-- Dynamically populated Logic Pro channel strips -->
+              </div>
+            </div>
+
+            <!-- FX INSERT POPUP -->
+            <div id="mixer-fx-picker-popover" class="mixer-popover hidden">
+              <div class="mixer-popover-header">
+                <span>Audio FX Plugins</span>
+                <button id="btn-close-fx-popover" type="button" class="popover-close-btn">&times;</button>
+              </div>
+              <div class="mixer-popover-list">
+                <button type="button" class="fx-option" data-fx="Chan EQ"><span class="fx-dot eq"></span> Channel EQ</button>
+                <button type="button" class="fx-option" data-fx="Compressor"><span class="fx-dot dyn"></span> Compressor</button>
+                <button type="button" class="fx-option" data-fx="Stereo Delay"><span class="fx-dot dly"></span> Stereo Delay</button>
+                <button type="button" class="fx-option" data-fx="Space Reverb"><span class="fx-dot rev"></span> Space Reverb</button>
+                <button type="button" class="fx-option" data-fx="Vocal Pitch"><span class="fx-dot ptch"></span> Vocal Pitch</button>
+                <button type="button" class="fx-option" data-fx="Saturation"><span class="fx-dot sat"></span> Saturation</button>
+                <button type="button" class="fx-option" data-fx="Chorus/Mod"><span class="fx-dot mod"></span> Chorus / Mod</button>
+                <button type="button" class="fx-option" data-fx="Limiter"><span class="fx-dot lim"></span> Brickwall Limiter</button>
+                <button type="button" class="fx-option remove-fx" data-fx="remove"><span class="fx-dot rmv"></span> (Clear Slot)</button>
+              </div>
+            </div>
+
+            <!-- ICON PICKER POPUP -->
+            <div id="mixer-icon-picker-popover" class="mixer-popover hidden">
+              <div class="mixer-popover-header">
+                <span>Channel Icon &amp; Color</span>
+                <button id="btn-close-icon-popover" type="button" class="popover-close-btn">&times;</button>
+              </div>
+              <div class="mixer-icon-grid">
+                <button type="button" class="icon-option" data-icon="mic" title="Microphone / Vocal">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="currentColor" stroke-width="2" fill="none"/><line x1="12" x2="12" y1="19" y2="22" stroke="currentColor" stroke-width="2"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="waves" title="Audio Stream">
+                  <svg viewBox="0 0 24 24" width="20" height="20"><rect x="2" y="8" width="2.5" height="8" rx="1.2" fill="currentColor"></rect><rect x="6.5" y="5" width="2.5" height="14" rx="1.2" fill="currentColor"></rect><rect x="11" y="2" width="2.5" height="20" rx="1.2" fill="currentColor"></rect><rect x="15.5" y="4" width="2.5" height="16" rx="1.2" fill="currentColor"></rect><rect x="20" y="8" width="2.5" height="8" rx="1.2" fill="currentColor"></rect></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="headphones" title="Headphones / Monitor">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="speaker" title="Speaker / Monitor Out">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" fill="none"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="guitar" title="Guitar / Bass">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 5-3 3"/><path d="m14 10 2 2"/><path d="M15 15a4 4 0 1 1-5.66-5.66l5.66 5.66Z"/><circle cx="10" cy="14" r="1.5" fill="currentColor"/><path d="m18 2 4 4-2 2-4-4Z"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="piano" title="Piano / Keys">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 4v10"/><path d="M10 4v10"/><path d="M14 4v10"/><path d="M18 4v10"/><path d="M2 14h20"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="drums" title="Drums / Percussion">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="8" rx="9" ry="4"/><path d="M3 8v8c0 2.2 4 4 9 4s9-1.8 9-4V8"/><path d="m6 6 6 5 6-5"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="synth" title="Synth / Hardware">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="screen" title="Screen / App Capture">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="fx" title="Audio FX / Reverb">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="m12 2 2.4 7.2L21.6 12l-7.2 2.4L12 21.6l-2.4-7.2L2.4 12l7.2-2.4Z"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="crown" title="Master / Bus">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="m2 4 4 12h12l4-12-6 5-4-7-4 7-6-5Z"/><rect x="4" y="18" width="16" height="2" rx="1"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="radio" title="Broadcast Stream">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>
+                </button>
+              </div>
+              <div class="mixer-color-row">
+                <span class="mixer-color-swatch" data-color="#3b82f6" style="background:#3b82f6;" title="Blue"></span>
+                <span class="mixer-color-swatch" data-color="#22c55e" style="background:#22c55e;" title="Green"></span>
+                <span class="mixer-color-swatch" data-color="#f59e0b" style="background:#f59e0b;" title="Amber"></span>
+                <span class="mixer-color-swatch" data-color="#ef4444" style="background:#ef4444;" title="Red"></span>
+                <span class="mixer-color-swatch" data-color="#a855f7" style="background:#a855f7;" title="Purple"></span>
+                <span class="mixer-color-swatch" data-color="#ec4899" style="background:#ec4899;" title="Pink"></span>
+                <span class="mixer-color-swatch" data-color="#06b6d4" style="background:#06b6d4;" title="Cyan"></span>
+                <span class="mixer-color-swatch" data-color="#64748b" style="background:#64748b;" title="Slate"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
 
 
         <!-- IN-SESSION PROJECT WORKSPACE DRAWER / DOCKED STUDIO PANEL -->
