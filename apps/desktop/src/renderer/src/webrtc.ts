@@ -99,12 +99,15 @@ export class WebRtcSession {
         return;
       }
       for (const existing of this.remoteStream.getVideoTracks()) {
+        existing.onended = null;
         this.remoteStream.removeTrack(existing);
       }
       this.remoteStream.addTrack(event.track);
       event.track.onended = () => {
-        this.remoteStream.removeTrack(event.track);
-        this.onRemoteStream(this.remoteStream.getTracks().length ? this.remoteStream : undefined);
+        if (this.remoteStream.getVideoTracks().includes(event.track)) {
+          this.remoteStream.removeTrack(event.track);
+          this.onRemoteStream(this.remoteStream.getTracks().length ? this.remoteStream : undefined);
+        }
       };
       this.onRemoteStream(this.remoteStream);
     };
@@ -326,6 +329,9 @@ export class WebRtcSession {
   resetPeer(): void {
     if (this.disconnectTimer) window.clearTimeout(this.disconnectTimer);
     this.disconnectTimer = undefined;
+    for (const track of this.remoteStream.getTracks()) {
+      track.onended = null;
+    }
     this.pc?.close();
     this.pc = undefined;
     for (const id of this.audioTransceivers.keys()) this.audio.attachSender(id, undefined);

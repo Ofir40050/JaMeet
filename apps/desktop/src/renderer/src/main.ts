@@ -2541,7 +2541,7 @@ function setRemoteAudio(id: string, purpose: 'voice' | 'music', track: MediaStre
     if (existing.track !== track) {
       try { existing.track.stop(); } catch {}
       const existingSource = remoteMusicSourceNodes.get(id);
-      if (existingSource) {
+      if (existingSource && existingSource.track === existing.track) {
         try { existingSource.sourceNode.disconnect(); } catch {}
         remoteMusicSourceNodes.delete(id);
       }
@@ -2549,14 +2549,17 @@ function setRemoteAudio(id: string, purpose: 'voice' | 'music', track: MediaStre
   }
   remoteAudioTracks.set(id, { purpose, track });
   track.onended = () => {
-    remoteAudioTracks.delete(id);
-    const existingSource = remoteMusicSourceNodes.get(id);
-    if (existingSource) {
-      try { existingSource.sourceNode.disconnect(); } catch {}
-      remoteMusicSourceNodes.delete(id);
+    const current = remoteAudioTracks.get(id);
+    if (current && current.track === track) {
+      remoteAudioTracks.delete(id);
+      const existingSource = remoteMusicSourceNodes.get(id);
+      if (existingSource && existingSource.track === track) {
+        try { existingSource.sourceNode.disconnect(); } catch {}
+        remoteMusicSourceNodes.delete(id);
+      }
+      if (!inCall) return;
+      void refreshRemoteAudio();
     }
-    if (!inCall) return;
-    void refreshRemoteAudio();
   };
   if (inCall) {
     void refreshRemoteAudio();
@@ -5210,8 +5213,16 @@ signaling.on('peer:ready', (payload: { media: MediaMetadata; identity?: Particip
 signaling.on('peer:disconnected', () => setCallStatus('Musician reconnecting…'));
 signaling.on('peer:left', () => {
   rtc.resetPeer();
+  for (const [, item] of remoteAudioTracks) {
+    item.track.onended = null;
+    try { item.track.stop(); } catch {}
+  }
   remoteAudioTracks.clear();
-  refreshRemoteAudio();
+  for (const [, entry] of remoteMusicSourceNodes) {
+    try { entry.sourceNode.disconnect(); } catch {}
+  }
+  remoteMusicSourceNodes.clear();
+  void refreshRemoteAudio();
   peerIdentity = null;
   peerParticipantId = null;
   updateParticipantIdentityUi();
