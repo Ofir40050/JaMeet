@@ -1954,11 +1954,11 @@ async function setOutputDevice(deviceId?: string): Promise<void> {
   prefs.audioOutputId = deviceId;
   savePreferences();
 
-  if (remoteAudioCtx && remoteAudioCtx.state !== 'closed' && typeof (remoteAudioCtx as any).setSinkId === 'function') {
-    try {
+  if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
+    if (typeof (remoteAudioCtx as any).setSinkId === 'function') {
       await (remoteAudioCtx as any).setSinkId(deviceId ?? '');
-    } catch (err) {
-      console.warn('Failed to setSinkId on remoteAudioCtx:', err);
+    } else if (deviceId) {
+      throw new Error('Audio output selection is not supported on this system.');
     }
   }
 
