@@ -2595,27 +2595,6 @@ function handleRemoteMedia(media: MediaMetadata): void {
   updateSessionStage();
 }
 
-function updateRemoteVolumes(): void {
-  const master = Number($<HTMLInputElement>('remote-volume')?.value ?? 1);
-  const voice = Number($<HTMLInputElement>('voice-fader')?.value ?? 1);
-  const music = Number($<HTMLInputElement>('music-fader')?.value ?? 1);
-
-  if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
-    const now = remoteAudioCtx.currentTime;
-    if (remoteVoiceGain) remoteVoiceGain.gain.setValueAtTime(remoteMuted ? 0 : voice, now);
-    if (remoteMusicGain) remoteMusicGain.gain.setValueAtTime(remoteMuted ? 0 : music, now);
-    if (remoteMasterGain) remoteMasterGain.gain.setValueAtTime(remoteMuted ? 0 : master, now);
-  }
-
-  const voiceAudio = document.getElementById('remote-voice-audio') as HTMLAudioElement | null;
-  const musicAudio = document.getElementById('remote-music-audio') as HTMLAudioElement | null;
-  if (voiceAudio) voiceAudio.volume = remoteMuted ? 0 : Math.min(1.0, master * voice);
-  if (musicAudio) musicAudio.volume = remoteMuted ? 0 : Math.min(1.0, master * music);
-
-  setText('remote-volume-val', `${Math.round(master * 100)}%`);
-  setText('voice-fader-val', `${Math.round(voice * 100)}%`);
-  setText('music-fader-val', `${Math.round(music * 100)}%`);
-}
 function setCallStatus(status: string): void { setText('call-status', status); }
 
 async function leaveSession(endedMessage?: string): Promise<void> {
@@ -3396,7 +3375,7 @@ $('call-output-volume')?.addEventListener('input', (event) => {
   savePreferences();
   const label = document.getElementById('call-output-volume-val');
   if (label) label.textContent = `${Math.round(val * 100)}%`;
-  updateRemoteVolumes();
+  applyMixerAudioRouting();
 });
 
 $('test-output-both')?.addEventListener('click', () => void testSpeakers('both').then(() => setMessage('device-dialog-status', 'Stereo test complete.')).catch((e) => setMessage('device-dialog-status', deviceError(e), true)));
@@ -3482,13 +3461,10 @@ for (const id of ['input-gain', 'call-input-gain']) {
     }
   });
 }
-for (const id of ['remote-volume', 'voice-fader', 'music-fader']) {
-  document.getElementById(id)?.addEventListener('input', updateRemoteVolumes);
-}
 $('remote-mute-button')?.addEventListener('click', () => {
   remoteMuted = !remoteMuted;
   setText('remote-mute-button', remoteMuted ? 'Unmute Remote' : 'Mute Remote');
-  updateRemoteVolumes();
+  applyMixerAudioRouting();
 });
 $('fullscreen-video-button')?.addEventListener('click', () => void fullscreenRemote(false));
 $('fullscreen-share-button')?.addEventListener('click', () => void fullscreenRemote(true));
@@ -12856,7 +12832,8 @@ function stopMixerVuAnimation(): void {
 function applyMixerAudioRouting(): void {
   const hasAnySolo = studioMixerChannels.some((c) => c.soloed);
   const masterCh = studioMixerChannels.find((c) => c.id === 'master-out') || { volume: 1.0, muted: false, pan: 0, fx: [] };
-  const masterVol = masterCh.muted ? 0 : masterCh.volume;
+  const monitorTrim = prefs.outputVolume !== undefined ? prefs.outputVolume : 1.0;
+  const masterVol = (remoteMuted || masterCh.muted) ? 0 : masterCh.volume * monitorTrim;
 
   // Dynamic Local Microphones Routing
   let anyLocalMicActive = false;
