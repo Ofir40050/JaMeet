@@ -1953,13 +1953,22 @@ async function showScreenPicker(): Promise<void> {
 async function setOutputDevice(deviceId?: string): Promise<void> {
   prefs.audioOutputId = deviceId;
   savePreferences();
+
+  if (remoteAudioCtx && remoteAudioCtx.state !== 'closed' && typeof (remoteAudioCtx as any).setSinkId === 'function') {
+    try {
+      await (remoteAudioCtx as any).setSinkId(deviceId ?? '');
+    } catch (err) {
+      console.warn('Failed to setSinkId on remoteAudioCtx:', err);
+    }
+  }
+
   const media = [$<HTMLAudioElement>('remote-voice-audio'), $<HTMLAudioElement>('remote-music-audio'), microphonePlayback].filter(Boolean) as HTMLMediaElement[];
   for (const element of media) {
     if (!element.setSinkId) {
-      if (deviceId) throw new Error('Audio output selection is not supported on this system.');
+      if (deviceId && !remoteAudioCtx) throw new Error('Audio output selection is not supported on this system.');
       continue;
     }
-    await element.setSinkId(deviceId ?? '');
+    await element.setSinkId(deviceId ?? '').catch(() => {});
   }
   updateHeadphoneWarning();
 }
@@ -2495,6 +2504,14 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
       .connect(remoteLimiter)
       .connect(remoteMasterAnalyser)
       .connect(remoteAudioCtx.destination);
+
+    if (prefs.audioOutputId && typeof (remoteAudioCtx as any).setSinkId === 'function') {
+      try {
+        await (remoteAudioCtx as any).setSinkId(prefs.audioOutputId);
+      } catch (err) {
+        console.warn('Failed to setSinkId on remoteAudioCtx:', err);
+      }
+    }
   }
   if (remoteAudioCtx.state === 'suspended') {
     await remoteAudioCtx.resume().catch(() => {});
@@ -2553,8 +2570,14 @@ async function refreshRemoteAudio(): Promise<void> {
 
   const voiceEl = $<HTMLAudioElement>('remote-voice-audio');
   const musicEl = $<HTMLAudioElement>('remote-music-audio');
-  if (voiceEl) voiceEl.srcObject = new MediaStream(voice);
-  if (musicEl) musicEl.srcObject = new MediaStream(music);
+  if (voiceEl) {
+    voiceEl.srcObject = null;
+    voiceEl.pause();
+  }
+  if (musicEl) {
+    musicEl.srcObject = null;
+    musicEl.pause();
+  }
 
   updateRemoteVolumes();
   void setOutputDevice(prefs.audioOutputId).catch((error) => setCallStatus(deviceError(error)));
