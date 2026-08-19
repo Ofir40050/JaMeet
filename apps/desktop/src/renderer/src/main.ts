@@ -12383,8 +12383,8 @@ function syncMixerChannelsWithVoiceInputs(): void {
   // Remote Section
   const remoteVoice = existingMap.get('remote-voice') || {
     id: 'remote-voice',
-    name: 'Mic 1',
-    icon: 'headphones',
+    name: 'Vocal',
+    icon: 'mic',
     color: DEFAULT_APP_BLUE,
     volume: 1.0,
     pan: 0,
@@ -12393,6 +12393,9 @@ function syncMixerChannelsWithVoiceInputs(): void {
     fx: [],
     section: 'remote'
   };
+  if (!existingMap.has('remote-voice') || remoteVoice.name === 'Mic 1') {
+    remoteVoice.name = 'Vocal';
+  }
   if (!existingMap.has('remote-voice') || remoteVoice.color === '#22c55e') {
     remoteVoice.color = DEFAULT_APP_BLUE;
   }
