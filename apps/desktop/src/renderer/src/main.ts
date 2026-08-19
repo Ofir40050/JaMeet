@@ -13334,8 +13334,8 @@ function renderStudioMixer(): void {
     strip.className = `mixer-strip ${channel.isMaster ? 'is-master' : ''} ${channel.section === 'remote' ? 'is-remote' : ''} ${isDimmed ? 'is-dimmed' : ''}`;
     strip.dataset.channelId = channel.id;
 
-    // 1. Audio FX Plugin Rack (Local channels) vs Invisible Spacer (Remote channels)
-    if (channel.section === 'remote') {
+    // 1. Audio FX Plugin Rack (All channels except Master) vs Invisible Spacer (Master)
+    if (channel.isMaster) {
       const topSpacer = document.createElement('div');
       topSpacer.className = 'mixer-remote-spacer-top';
       strip.appendChild(topSpacer);
@@ -13373,8 +13373,8 @@ function renderStudioMixer(): void {
     });
     strip.appendChild(iconBtn);
 
-    // 3. Pan Knob (Local channels) vs Invisible Spacer (Remote channels)
-    if (channel.section === 'remote') {
+    // 3. Pan Knob (All channels except Master) vs Invisible Spacer (Master)
+    if (channel.isMaster) {
       const panSpacer = document.createElement('div');
       panSpacer.className = 'mixer-remote-spacer-pan';
       strip.appendChild(panSpacer);
