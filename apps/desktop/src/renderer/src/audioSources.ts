@@ -218,7 +218,6 @@ export class LocalAudioSourceManager {
         sourceNode.buffer = audioBuffer;
         sourceNode.connect(mic.gainNode);
         sourceNode.connect(mic.analyserNode); // Also feed analyser for VU metering
-        sourceNode.connect(mic.micDestination);
 
         if (mic.nextPlayTime === undefined || mic.nextPlayTime < now || mic.nextPlayTime > now + 0.05) {
           mic.nextPlayTime = now;
