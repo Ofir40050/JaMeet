@@ -126,6 +126,7 @@ const remoteAudioTracks = new Map<string, { purpose: 'voice' | 'music'; track: M
 const audio = new LocalAudioSourceManager();
 const voiceMeters = new Map<number, LevelMeter>();
 const activeMicLevels = new Map<number, number>();
+const activeMicPeaks = new Map<number, number>();
 const musicMeter = new LevelMeter();
 const signaling = new SignalingClient(signalingUrl);
 const rtc = new WebRtcSession(signaling, audio, setRemoteStream, setRemoteAudio, handleRemoteMedia, (status) => setCallStatus(status));
@@ -758,6 +759,7 @@ async function syncAllVoiceMics(mode = prefs.mode): Promise<void> {
       if (m) await m.stop();
       voiceMeters.delete(id);
       activeMicLevels.delete(id);
+      activeMicPeaks.delete(id);
       await audio.removeVoiceMic(id);
     }
   }
@@ -1235,6 +1237,7 @@ function renderVoiceLevel(micId: number, reading: LevelReading): void {
     if (el) el.textContent = `${Math.round(reading.rmsDb)} dB`;
   }
   activeMicLevels.set(numId, reading.rmsDb);
+  activeMicPeaks.set(numId, reading.peakDb);
 
   let maxLocal = -60;
   for (const db of activeMicLevels.values()) {
@@ -1458,6 +1461,7 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
       if (m) await m.stop();
       voiceMeters.delete(micId);
       activeMicLevels.delete(micId);
+      activeMicPeaks.delete(micId);
       await audio.removeVoiceMic(micId);
       await syncAllVoiceMics();
       await enumerateAndPopulate();
@@ -2641,6 +2645,7 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   for (const m of voiceMeters.values()) await m.stop();
   voiceMeters.clear();
   activeMicLevels.clear();
+  activeMicPeaks.clear();
   audio.dispose();
   const sharing = screenTrack;
   screenTrack = undefined;
@@ -2903,6 +2908,7 @@ $('setup-cancel').addEventListener('click', async () => {
   for (const m of voiceMeters.values()) await m.stop();
   voiceMeters.clear();
   activeMicLevels.clear();
+  activeMicPeaks.clear();
   audio.dispose();
   videoTrack?.stop();
   videoTrack = undefined;
@@ -5200,6 +5206,7 @@ $('btn-leave-waiting')?.addEventListener('click', async () => {
   for (const m of voiceMeters.values()) await m.stop();
   voiceMeters.clear();
   activeMicLevels.clear();
+  activeMicPeaks.clear();
   audio.dispose();
   videoTrack?.stop();
   videoTrack = undefined;
@@ -12716,10 +12723,12 @@ function startMixerVuAnimation(): void {
         if (vuLeft && vuRight) {
           const numMicId = Number(mic.id);
           const lvl = activeMicLevels.get(numMicId);
-          const micDb = (typeof lvl === 'number' && !isNaN(lvl)) ? lvl : -60;
+          const micRmsDb = (typeof lvl === 'number' && !isNaN(lvl)) ? lvl : -60;
+          const peakLvl = activeMicPeaks.get(numMicId);
+          const micPeakDb = (typeof peakLvl === 'number' && !isNaN(peakLvl)) ? peakLvl : -60;
           const isAudible = !micCh.muted && (!hasLocalSolo || micCh.soloed);
 
-          if (!isAudible || micDb <= -58) {
+          if (!isAudible || micRmsDb <= -58) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
@@ -12727,13 +12736,18 @@ function startMixerVuAnimation(): void {
               peakEl.classList.remove('is-clipping');
             }
           } else {
-            const rawPct = Math.max(0, Math.min(100, ((micDb + 60) / 60) * 100));
+            const rawPct = Math.max(0, Math.min(100, ((micRmsDb + 60) / 60) * 100));
             const { left: panL, right: panR } = getStereoPanGains(Number(micCh.pan) || 0);
             vuLeft.style.height = `${(rawPct * panL).toFixed(1)}%`;
             vuRight.style.height = `${(rawPct * panR).toFixed(1)}%`;
             if (peakEl) {
-              peakEl.textContent = formatPeakDbText(micDb);
-              peakEl.classList.toggle('is-clipping', micDb >= -0.5);
+              if (micPeakDb <= -55) {
+                peakEl.textContent = '';
+                peakEl.classList.remove('is-clipping');
+              } else {
+                peakEl.textContent = formatPeakDbText(micPeakDb);
+                peakEl.classList.toggle('is-clipping', micPeakDb >= -0.5);
+              }
             }
           }
         }
