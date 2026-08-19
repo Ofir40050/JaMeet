@@ -143,6 +143,7 @@ let remoteVoiceMeter: LevelMeter | undefined = undefined;
 let lastLocalVoiceDb = -60;
 let lastRemoteVoiceDb = -60;
 let lastLocalMusicDb = -60;
+let lastLocalMusicPeakDb = -60;
 let lastSpeakerSwitchTime = 0;
 const SPEAKER_SWITCH_HOLD_MS = 1200;
 
@@ -898,6 +899,8 @@ async function replaceMusicInput(): Promise<void> {
   const type = prefs.musicSourceType;
   if (type === 'none') {
     await musicMeter.stop();
+    lastLocalMusicDb = -60;
+    lastLocalMusicPeakDb = -60;
     await audio.remove('music');
     $('music-in-indicator')?.classList.remove('active');
   } else if (type === 'app') {
@@ -918,6 +921,8 @@ async function replaceMusicInput(): Promise<void> {
       } catch (err) {
         logger.warn('audio_init_failure', 'Failed to acquire application audio output', { type: 'app', pid, appName: prefs.musicAppName }, err);
         await musicMeter.stop();
+        lastLocalMusicDb = -60;
+        lastLocalMusicPeakDb = -60;
         await audio.remove('music');
         for (const statusId of ['music-app-status', 'call-music-app-status']) {
           const el = document.getElementById(statusId);
@@ -926,6 +931,8 @@ async function replaceMusicInput(): Promise<void> {
       }
     } else {
       await musicMeter.stop();
+      lastLocalMusicDb = -60;
+      lastLocalMusicPeakDb = -60;
       await audio.remove('music');
     }
   } else if (type === 'system') {
@@ -940,6 +947,8 @@ async function replaceMusicInput(): Promise<void> {
     } catch (err) {
       logger.warn('audio_init_failure', 'Failed to acquire system computer audio', { type: 'system' }, err);
       await musicMeter.stop();
+      lastLocalMusicDb = -60;
+      lastLocalMusicPeakDb = -60;
       await audio.remove('music');
       $('music-in-indicator')?.classList.remove('active');
     }
@@ -965,6 +974,8 @@ async function replaceMusicInput(): Promise<void> {
     } catch (err) {
       logger.warn('audio_init_failure', 'Failed to acquire audio interface for music', { type: 'interface', targetUID }, err);
       await musicMeter.stop();
+      lastLocalMusicDb = -60;
+      lastLocalMusicPeakDb = -60;
       await audio.remove('music');
       $('music-in-indicator')?.classList.remove('active');
     }
@@ -1250,6 +1261,7 @@ function renderVoiceLevel(micId: number, reading: LevelReading): void {
 
 function renderMusicLevel(reading: LevelReading): void {
   lastLocalMusicDb = reading.rmsDb;
+  lastLocalMusicPeakDb = reading.peakDb;
   const musicActive = Boolean(audio.music?.enabled) && reading.rmsDb > -48;
   $('music-in-indicator')?.classList.toggle('active', musicActive);
   const width = `${Math.max(0, Math.min(100, ((reading.rmsDb + 60) / 60) * 100))}%`;
@@ -2677,6 +2689,8 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   }
   lastLocalVoiceDb = -60;
   lastRemoteVoiceDb = -60;
+  lastLocalMusicDb = -60;
+  lastLocalMusicPeakDb = -60;
   checkActiveSpeaker();
 
   $('remote-tile')?.classList.remove('is-speaking');
@@ -2913,6 +2927,8 @@ $('setup-cancel').addEventListener('click', async () => {
   videoTrack?.stop();
   videoTrack = undefined;
   await musicMeter.stop();
+  lastLocalMusicDb = -60;
+  lastLocalMusicPeakDb = -60;
   const returnProjectId = activeProjectId || sessionProjectId;
   if (returnProjectId && auth.getUser() && auth.getToken()) {
     void openProjectView(returnProjectId);
@@ -5211,6 +5227,8 @@ $('btn-leave-waiting')?.addEventListener('click', async () => {
   videoTrack?.stop();
   videoTrack = undefined;
   await musicMeter.stop();
+  lastLocalMusicDb = -60;
+  lastLocalMusicPeakDb = -60;
   const returnProjectId = activeProjectId || sessionProjectId;
   if (returnProjectId && auth.getUser() && auth.getToken()) {
     void openProjectView(returnProjectId);
@@ -12827,9 +12845,18 @@ function startMixerVuAnimation(): void {
             vuRight.style.height = `${Math.min(100, rawPct * panR).toFixed(1)}%`;
 
             if (peakEl) {
-              const peakDb = lastLocalMusicDb + (localMusicCh.volume <= 0.0001 ? -100 : 20 * Math.log10(localMusicCh.volume));
-              peakEl.textContent = formatPeakDbText(peakDb);
-              peakEl.classList.toggle('is-clipping', peakDb >= -0.5);
+              const faderDb = localMusicCh.volume <= 0.0001 ? -100 : 20 * Math.log10(localMusicCh.volume);
+              const effectivePeakDb = (typeof lastLocalMusicPeakDb === 'number' && !isNaN(lastLocalMusicPeakDb))
+                ? lastLocalMusicPeakDb + faderDb
+                : -60;
+
+              if (effectivePeakDb <= -55) {
+                peakEl.textContent = '';
+                peakEl.classList.remove('is-clipping');
+              } else {
+                peakEl.textContent = formatPeakDbText(effectivePeakDb);
+                peakEl.classList.toggle('is-clipping', effectivePeakDb >= -0.5);
+              }
             }
           }
         }
