@@ -2445,26 +2445,26 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
     remoteMasterAnalyser = remoteAudioCtx.createAnalyser();
     remoteMasterAnalyser.fftSize = 64;
 
-    // Real Channel FX: Voice EQ & Compressor
+    // Real Channel FX: Voice EQ & Compressor (Neutral defaults until Studio Mixer enables them)
     remoteVoiceEqHighpass = remoteAudioCtx.createBiquadFilter();
     remoteVoiceEqHighpass.type = 'highpass';
-    remoteVoiceEqHighpass.frequency.setValueAtTime(80, remoteAudioCtx.currentTime); // 80Hz low cut
+    remoteVoiceEqHighpass.frequency.setValueAtTime(10, remoteAudioCtx.currentTime); // 10Hz neutral low cut
     remoteVoiceEqHighpass.Q.setValueAtTime(0.7, remoteAudioCtx.currentTime);
 
     remoteVoiceEqPeaking = remoteAudioCtx.createBiquadFilter();
     remoteVoiceEqPeaking.type = 'peaking';
     remoteVoiceEqPeaking.frequency.setValueAtTime(3200, remoteAudioCtx.currentTime); // 3.2kHz vocal presence
     remoteVoiceEqPeaking.Q.setValueAtTime(1.0, remoteAudioCtx.currentTime);
-    remoteVoiceEqPeaking.gain.setValueAtTime(2.5, remoteAudioCtx.currentTime);
+    remoteVoiceEqPeaking.gain.setValueAtTime(0, remoteAudioCtx.currentTime);
 
     remoteVoiceCompressor = remoteAudioCtx.createDynamicsCompressor();
     remoteVoiceCompressor.threshold.setValueAtTime(-16.0, remoteAudioCtx.currentTime);
     remoteVoiceCompressor.knee.setValueAtTime(6.0, remoteAudioCtx.currentTime);
-    remoteVoiceCompressor.ratio.setValueAtTime(3.5, remoteAudioCtx.currentTime);
+    remoteVoiceCompressor.ratio.setValueAtTime(1.0, remoteAudioCtx.currentTime); // 1.0 ratio neutral (no compression)
     remoteVoiceCompressor.attack.setValueAtTime(0.005, remoteAudioCtx.currentTime);
     remoteVoiceCompressor.release.setValueAtTime(0.08, remoteAudioCtx.currentTime);
 
-    // Real Channel FX: Music EQ & Compressor
+    // Real Channel FX: Music EQ & Compressor (Neutral defaults until Studio Mixer enables them)
     remoteMusicEqPeaking = remoteAudioCtx.createBiquadFilter();
     remoteMusicEqPeaking.type = 'peaking';
     remoteMusicEqPeaking.frequency.setValueAtTime(2400, remoteAudioCtx.currentTime);
@@ -2472,7 +2472,7 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
 
     remoteMusicCompressor = remoteAudioCtx.createDynamicsCompressor();
     remoteMusicCompressor.threshold.setValueAtTime(-12.0, remoteAudioCtx.currentTime);
-    remoteMusicCompressor.ratio.setValueAtTime(2.0, remoteAudioCtx.currentTime);
+    remoteMusicCompressor.ratio.setValueAtTime(1.0, remoteAudioCtx.currentTime); // 1.0 ratio neutral (no compression)
 
     // Protective Master Limiter (transparent ceiling at -0.5 dB)
     remoteLimiter.threshold.setValueAtTime(-0.5, remoteAudioCtx.currentTime);
