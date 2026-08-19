@@ -1236,35 +1236,6 @@ function renderVoiceLevel(micId: number, reading: LevelReading): void {
   }
   activeMicLevels.set(numId, reading.rmsDb);
 
-  // Directly update Studio Console Mixer VU meter for this mic if mixer strip is open/rendered
-  const mixerChId = numId === 1 ? 'you-mic' : `you-mic-${numId}`;
-  const mixerStrip = document.querySelector(`.mixer-strip[data-channel-id="${mixerChId}"]`);
-  if (mixerStrip) {
-    const vuLeft = mixerStrip.querySelector<HTMLElement>('.vu-fill-l');
-    const vuRight = mixerStrip.querySelector<HTMLElement>('.vu-fill-r');
-    const peakEl = mixerStrip.querySelector<HTMLElement>('.mixer-peak-val');
-    const micCh = studioMixerChannels.find((c) => c.id === mixerChId || (numId === 1 && c.id === 'you-mic'));
-    const pan = Number(micCh?.pan) || 0;
-    const { left: panL, right: panR } = getStereoPanGains(pan);
-
-    if (reading.rmsDb <= -58) {
-      if (vuLeft) vuLeft.style.height = '0%';
-      if (vuRight) vuRight.style.height = '0%';
-      if (peakEl) {
-        peakEl.textContent = '';
-        peakEl.classList.remove('is-clipping');
-      }
-    } else {
-      const rawPct = Math.max(0, Math.min(100, ((reading.rmsDb + 60) / 60) * 100));
-      if (vuLeft) vuLeft.style.height = `${(rawPct * panL).toFixed(1)}%`;
-      if (vuRight) vuRight.style.height = `${(rawPct * panR).toFixed(1)}%`;
-      if (peakEl) {
-        peakEl.textContent = formatPeakDbText(reading.rmsDb);
-        peakEl.classList.toggle('is-clipping', reading.rmsDb >= -0.5);
-      }
-    }
-  }
-
   let maxLocal = -60;
   for (const db of activeMicLevels.values()) {
     if (db > maxLocal) maxLocal = db;
