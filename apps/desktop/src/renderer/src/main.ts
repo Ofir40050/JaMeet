@@ -126,7 +126,6 @@ const remoteAudioTracks = new Map<string, { purpose: 'voice' | 'music'; track: M
 const audio = new LocalAudioSourceManager();
 const voiceMeters = new Map<number, LevelMeter>();
 const activeMicLevels = new Map<number, number>();
-const mixerMicAnalysers = new Map<number, AnalyserNode>(); // Direct AnalyserNode per mic for Mixer VU
 const musicMeter = new LevelMeter();
 const signaling = new SignalingClient(signalingUrl);
 const rtc = new WebRtcSession(signaling, audio, setRemoteStream, setRemoteAudio, handleRemoteMedia, (status) => setCallStatus(status));
@@ -12551,45 +12550,17 @@ function startMixerVuAnimation(): void {
         const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
         if (vuLeft && vuRight) {
           const numMicId = Number(mic.id);
+          const lvl = activeMicLevels.get(numMicId);
+          const micDb = (typeof lvl === 'number' && !isNaN(lvl)) ? lvl : -60;
 
-          // PRIMARY: read directly from the AnalyserNode embedded in the mic's audio chain
-          const analyser = audio.getVoiceMicAnalyser(numMicId);
-          let micDb = -100;
-          if (analyser && analyser.context.state !== 'closed') {
-            const buf = new Uint8Array(analyser.frequencyBinCount);
-            analyser.getByteFrequencyData(buf);
-            let sum = 0;
-            for (let i = 0; i < buf.length; i++) sum += buf[i]!;
-            const avg = sum / buf.length;
-            if (avg > 1) {
-              micDb = -60 + (avg / 255) * 60;
-            }
-            // DEBUG: log every 60 frames
-            if (typeof (window as any).__vuDebugFrame === 'undefined') (window as any).__vuDebugFrame = 0;
-            (window as any).__vuDebugFrame++;
-            if ((window as any).__vuDebugFrame % 60 === 0) {
-              console.log(`[VU DEBUG] Mic ${numMicId}: analyser=${!!analyser} ctx=${analyser?.context?.state} avg=${avg.toFixed(2)} micDb=${micDb.toFixed(1)} activeLvl=${activeMicLevels.get(numMicId)?.toFixed(1)}`);
-            }
-          } else {
-            // FALLBACK: use activeMicLevels (LevelMeter path)
-            const lvl = activeMicLevels.get(numMicId);
-            if (typeof lvl === 'number' && !isNaN(lvl)) {
-              micDb = lvl;
-            } else if (numMicId === 1) {
-              micDb = lastLocalVoiceDb;
-            }
-            if (typeof (window as any).__vuDebugFrame === 'undefined') (window as any).__vuDebugFrame = 0;
-            (window as any).__vuDebugFrame++;
-            if ((window as any).__vuDebugFrame % 60 === 0) {
-              console.log(`[VU DEBUG] Mic ${numMicId}: NO analyser! activeLvl=${activeMicLevels.get(numMicId)?.toFixed(1)} micDb=${micDb.toFixed(1)}`);
-            }
-          }
-
-          // Pre-fader metering: always show signal bouncing
+          // Pre-fader metering: bounce VU meter in direct sync with Sound Check
           if (micDb <= -58) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
-            if (peakEl) { peakEl.textContent = ''; peakEl.classList.remove('is-clipping'); }
+            if (peakEl) {
+              peakEl.textContent = '';
+              peakEl.classList.remove('is-clipping');
+            }
           } else {
             const rawPct = Math.max(0, Math.min(100, ((micDb + 60) / 60) * 100));
             const { left: panL, right: panR } = getStereoPanGains(Number(micCh.pan) || 0);
@@ -12600,9 +12571,6 @@ function startMixerVuAnimation(): void {
               peakEl.classList.toggle('is-clipping', micDb >= -0.5);
             }
           }
-
-          // Update activeMicLevels so topbar/Sound Check meter stays in sync too
-          if (micDb > -100) activeMicLevels.set(numMicId, micDb);
         }
       }
     });
