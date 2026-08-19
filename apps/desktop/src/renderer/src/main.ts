@@ -12498,15 +12498,25 @@ function loadSavedStudioMixerConfig(): PersistentStudioMixerMap {
 function saveStudioMixerConfig(): void {
   try {
     const map = loadSavedStudioMixerConfig();
+    const MASTER_GOLD = '#f59e0b';
     for (const ch of studioMixerChannels) {
-      map[ch.id] = {
-        name: ch.name,
-        icon: ch.icon,
-        color: ch.color,
-        volume: typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0,
-        pan: typeof ch.pan === 'number' && !isNaN(ch.pan) ? ch.pan : 0,
-        fx: Array.isArray(ch.fx) ? [...ch.fx] : []
-      };
+      if (ch.id === 'master-out' || ch.isMaster) {
+        map[ch.id] = {
+          name: ch.name,
+          icon: ch.icon,
+          color: MASTER_GOLD,
+          volume: typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0
+        };
+      } else {
+        map[ch.id] = {
+          name: ch.name,
+          icon: ch.icon,
+          color: ch.color,
+          volume: typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0,
+          pan: typeof ch.pan === 'number' && !isNaN(ch.pan) ? ch.pan : 0,
+          fx: Array.isArray(ch.fx) ? [...ch.fx] : []
+        };
+      }
     }
     localStorage.setItem(STUDIO_MIXER_STORAGE_KEY, JSON.stringify(map));
   } catch (err) {
@@ -13699,6 +13709,11 @@ function openIconPopover(channelId: string, anchorEl: HTMLElement): void {
     `).join('');
   }
 
+  const colorRow = popover.querySelector<HTMLElement>('.mixer-color-row');
+  if (colorRow) {
+    colorRow.style.display = (channel?.isMaster || channel?.id === 'master-out') ? 'none' : 'flex';
+  }
+
   const rect = anchorEl.getBoundingClientRect();
   const top = rect.bottom + 6;
   const left = Math.max(12, Math.min(window.innerWidth - 232, rect.left - 70));
@@ -13731,7 +13746,7 @@ $('mixer-icon-picker-popover')?.addEventListener('click', (e) => {
   if (colorSwatch) {
     const selectedColor = colorSwatch.dataset.color || colorSwatch.getAttribute('data-color');
     const channel = studioMixerChannels.find((c) => c.id === activeIconTarget);
-    if (channel && selectedColor) {
+    if (channel && selectedColor && !channel.isMaster && channel.id !== 'master-out') {
       channel.color = selectedColor;
       saveStudioMixerConfig();
       renderStudioMixer();
