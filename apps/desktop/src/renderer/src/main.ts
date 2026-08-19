@@ -774,18 +774,6 @@ async function syncAllVoiceMics(mode = prefs.mode): Promise<void> {
       });
       const node = audio.getVoiceMicNode(mic.id);
       if (node) {
-        // Attach a direct AnalyserNode to this gainNode for Studio Mixer VU metering
-        try {
-          const ctx = (node as GainNode).context;
-          let analyser = mixerMicAnalysers.get(mic.id);
-          if (!analyser || analyser.context !== ctx || analyser.context.state === 'closed') {
-            analyser = ctx.createAnalyser();
-            analyser.fftSize = 256;
-            analyser.smoothingTimeConstant = 0.7;
-            node.connect(analyser);
-            mixerMicAnalysers.set(mic.id, analyser);
-          }
-        } catch {}
         const m = getOrCreateVoiceMeter(mic.id);
         await m.startFromNode(node, meterInterval(), (reading) => renderVoiceLevel(mic.id, reading));
       } else {
@@ -12564,8 +12552,8 @@ function startMixerVuAnimation(): void {
         if (vuLeft && vuRight) {
           const numMicId = Number(mic.id);
 
-          // PRIMARY: read directly from the AnalyserNode attached to gainNode
-          const analyser = mixerMicAnalysers.get(numMicId);
+          // PRIMARY: read directly from the AnalyserNode embedded in the mic's audio chain
+          const analyser = audio.getVoiceMicAnalyser(numMicId);
           let micDb = -100;
           if (analyser && analyser.context.state !== 'closed') {
             const buf = new Uint8Array(analyser.frequencyBinCount);

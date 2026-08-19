@@ -22,6 +22,7 @@ type VoiceMicChannel = {
   isolatedTrack: MediaStreamTrack;
   sourceNode?: MediaStreamAudioSourceNode;
   gainNode: GainNode;
+  analyserNode: AnalyserNode;  // Always-connected analyser for VU metering
   micDestination: MediaStreamAudioDestinationNode;
   preferences: AudioCapturePreferences;
   deviceId?: string;
@@ -75,6 +76,10 @@ export class LocalAudioSourceManager {
 
   getVoiceMicNode(micIndex: number): GainNode | undefined {
     return this.voiceMics.get(micIndex)?.gainNode;
+  }
+
+  getVoiceMicAnalyser(micIndex: number): AnalyserNode | undefined {
+    return this.voiceMics.get(micIndex)?.analyserNode;
   }
 
   getMusicNode(): AudioNode | undefined {
@@ -161,6 +166,7 @@ export class LocalAudioSourceManager {
         const sourceNode = ctx.createBufferSource();
         sourceNode.buffer = audioBuffer;
         sourceNode.connect(mic.gainNode);
+        sourceNode.connect(mic.analyserNode); // Also feed analyser for VU metering
         sourceNode.connect(mic.micDestination);
 
         if (mic.nextPlayTime === undefined || mic.nextPlayTime < now || mic.nextPlayTime > now + 0.05) {
@@ -304,6 +310,13 @@ export class LocalAudioSourceManager {
 
     micMerger.connect(gainNode);
     gainNode.connect(micDestination);
+
+    // Create a persistent AnalyserNode connected to gainNode for VU metering from ANY audio path
+    const analyserNode = ctx.createAnalyser();
+    analyserNode.fftSize = 256;
+    analyserNode.smoothingTimeConstant = 0.7;
+    gainNode.connect(analyserNode);
+
     const isolatedTrack = micDestination.stream.getAudioTracks()[0] || rawTrack;
     isolatedTrack.contentHint = mode === 'music' ? 'music' : 'speech';
 
@@ -312,6 +325,7 @@ export class LocalAudioSourceManager {
       isolatedTrack,
       sourceNode,
       gainNode,
+      analyserNode,
       micDestination,
       preferences,
       deviceId
