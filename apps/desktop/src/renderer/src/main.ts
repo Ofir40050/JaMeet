@@ -2416,9 +2416,12 @@ let remoteMusicGain: GainNode | undefined;
 let remoteMasterGain: GainNode | undefined;
 let remoteVoicePanner: StereoPannerNode | undefined;
 let remoteMusicPanner: StereoPannerNode | undefined;
-let remoteVoiceAnalyser: AnalyserNode | undefined;
-let remoteMusicAnalyser: AnalyserNode | undefined;
-let remoteMasterAnalyser: AnalyserNode | undefined;
+let remoteVoiceAnalyserL: AnalyserNode | undefined;
+let remoteVoiceAnalyserR: AnalyserNode | undefined;
+let remoteMusicAnalyserL: AnalyserNode | undefined;
+let remoteMusicAnalyserR: AnalyserNode | undefined;
+let remoteMasterAnalyserL: AnalyserNode | undefined;
+let remoteMasterAnalyserR: AnalyserNode | undefined;
 let remoteVoiceEqHighpass: BiquadFilterNode | undefined;
 let remoteVoiceEqPeaking: BiquadFilterNode | undefined;
 let remoteVoiceCompressor: DynamicsCompressorNode | undefined;
@@ -2442,13 +2445,24 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
     remoteVoicePanner = remoteAudioCtx.createStereoPanner();
     remoteMusicPanner = remoteAudioCtx.createStereoPanner();
 
-    // Live Analysers for Real Level Metering
-    remoteVoiceAnalyser = remoteAudioCtx.createAnalyser();
-    remoteVoiceAnalyser.fftSize = 64;
-    remoteMusicAnalyser = remoteAudioCtx.createAnalyser();
-    remoteMusicAnalyser.fftSize = 64;
-    remoteMasterAnalyser = remoteAudioCtx.createAnalyser();
-    remoteMasterAnalyser.fftSize = 64;
+    // Live Analysers for Real Level Metering (Stereo Measurement Taps)
+    const voiceMeterSplitter = remoteAudioCtx.createChannelSplitter(2);
+    remoteVoiceAnalyserL = remoteAudioCtx.createAnalyser();
+    remoteVoiceAnalyserL.fftSize = 256;
+    remoteVoiceAnalyserR = remoteAudioCtx.createAnalyser();
+    remoteVoiceAnalyserR.fftSize = 256;
+
+    const musicMeterSplitter = remoteAudioCtx.createChannelSplitter(2);
+    remoteMusicAnalyserL = remoteAudioCtx.createAnalyser();
+    remoteMusicAnalyserL.fftSize = 256;
+    remoteMusicAnalyserR = remoteAudioCtx.createAnalyser();
+    remoteMusicAnalyserR.fftSize = 256;
+
+    const masterMeterSplitter = remoteAudioCtx.createChannelSplitter(2);
+    remoteMasterAnalyserL = remoteAudioCtx.createAnalyser();
+    remoteMasterAnalyserL.fftSize = 256;
+    remoteMasterAnalyserR = remoteAudioCtx.createAnalyser();
+    remoteMasterAnalyserR.fftSize = 256;
 
     // Real Channel FX: Voice EQ & Compressor (Neutral defaults until Studio Mixer enables them)
     remoteVoiceEqHighpass = remoteAudioCtx.createBiquadFilter();
@@ -2487,15 +2501,27 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
     remoteLimiter.release.setValueAtTime(0.1, remoteAudioCtx.currentTime);
 
     // Audio Graph Static Routing:
-    // Panner -> Analyser -> Master
-    remoteVoicePanner.connect(remoteVoiceAnalyser).connect(remoteMasterGain);
-    remoteMusicPanner.connect(remoteMusicAnalyser).connect(remoteMasterGain);
+    // Panner -> Master
+    remoteVoicePanner.connect(remoteMasterGain);
+    remoteMusicPanner.connect(remoteMasterGain);
 
-    // Master: MasterGain -> Limiter -> MasterAnalyser -> Destination
+    // Measurement Taps (Measurement-only, not connected to output):
+    remoteVoicePanner.connect(voiceMeterSplitter);
+    voiceMeterSplitter.connect(remoteVoiceAnalyserL, 0);
+    voiceMeterSplitter.connect(remoteVoiceAnalyserR, 1);
+
+    remoteMusicPanner.connect(musicMeterSplitter);
+    musicMeterSplitter.connect(remoteMusicAnalyserL, 0);
+    musicMeterSplitter.connect(remoteMusicAnalyserR, 1);
+
+    // Master: MasterGain -> Limiter -> Destination
     remoteMasterGain
       .connect(remoteLimiter)
-      .connect(remoteMasterAnalyser)
       .connect(remoteAudioCtx.destination);
+
+    remoteLimiter.connect(masterMeterSplitter);
+    masterMeterSplitter.connect(remoteMasterAnalyserL, 0);
+    masterMeterSplitter.connect(remoteMasterAnalyserR, 1);
 
     if (prefs.audioOutputId && typeof (remoteAudioCtx as any).setSinkId === 'function') {
       try {
@@ -12561,9 +12587,31 @@ function toggleStudioMixer(forceOpen?: boolean): void {
   }
 }
 
-const voiceDataArray = new Uint8Array(32);
-const musicDataArray = new Uint8Array(32);
-const masterDataArray = new Uint8Array(32);
+const timeDomainBuffer = new Float32Array(256);
+
+function measureTimeDomainLevel(analyser: AnalyserNode | undefined): { rmsDb: number; peakDb: number } {
+  if (!analyser) return { rmsDb: -60, peakDb: -60 };
+  try {
+    analyser.getFloatTimeDomainData(timeDomainBuffer);
+  } catch {
+    return { rmsDb: -60, peakDb: -60 };
+  }
+
+  let sumSq = 0;
+  let peak = 0;
+  for (let i = 0; i < timeDomainBuffer.length; i++) {
+    const s = timeDomainBuffer[i];
+    const abs = Math.abs(s);
+    if (abs > peak) peak = abs;
+    sumSq += s * s;
+  }
+
+  const rms = Math.sqrt(sumSq / timeDomainBuffer.length);
+  const rmsDb = rms > 0.001 ? Math.max(-60, 20 * Math.log10(rms)) : -60;
+  const peakDb = peak > 0.001 ? Math.max(-60, 20 * Math.log10(peak)) : -60;
+
+  return { rmsDb, peakDb };
+}
 
 function getStereoPanGains(pan: number): { left: number; right: number } {
   const clamped = Math.max(-1, Math.min(1, pan));
@@ -12628,7 +12676,7 @@ function startMixerVuAnimation(): void {
       }
     });
 
-    // 2. Musician (Remote Voice) Channel Metering (from real Web Audio Analyser)
+    // 2. Musician (Remote Voice) Channel Metering (Real Time-Domain Amplitude)
     const voiceCh = studioMixerChannels.find((c) => c.id === 'remote-voice');
     if (voiceCh) {
       const isAudible = !voiceCh.muted && (!hasRemoteSolo || voiceCh.soloed);
@@ -12638,7 +12686,7 @@ function startMixerVuAnimation(): void {
         const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
         const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
         if (vuLeft && vuRight) {
-          if (!isAudible || voiceCh.volume <= 0.001 || !remoteVoiceAnalyser) {
+          if (!isAudible || !remoteVoiceAnalyserL || !remoteVoiceAnalyserR) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
@@ -12646,26 +12694,28 @@ function startMixerVuAnimation(): void {
               peakEl.classList.remove('is-clipping');
             }
           } else {
-            remoteVoiceAnalyser.getByteFrequencyData(voiceDataArray);
-            let sum = 0;
-            for (let i = 0; i < voiceDataArray.length; i++) sum += voiceDataArray[i];
-            const avg = sum / voiceDataArray.length;
-            if (avg <= 1) {
+            const leftMeas = measureTimeDomainLevel(remoteVoiceAnalyserL);
+            const rightMeas = measureTimeDomainLevel(remoteVoiceAnalyserR);
+            const maxRmsDb = Math.max(leftMeas.rmsDb, rightMeas.rmsDb);
+            const maxPeakDb = Math.max(leftMeas.peakDb, rightMeas.peakDb);
+
+            if (maxRmsDb <= -58) {
               vuLeft.style.height = '0%';
               vuRight.style.height = '0%';
-              if (peakEl) {
+            } else {
+              const pctL = Math.max(0, Math.min(100, ((leftMeas.rmsDb + 60) / 60) * 100));
+              const pctR = Math.max(0, Math.min(100, ((rightMeas.rmsDb + 60) / 60) * 100));
+              vuLeft.style.height = `${pctL.toFixed(1)}%`;
+              vuRight.style.height = `${pctR.toFixed(1)}%`;
+            }
+
+            if (peakEl) {
+              if (maxPeakDb <= -55) {
                 peakEl.textContent = '';
                 peakEl.classList.remove('is-clipping');
-              }
-            } else {
-              const pct = Math.min(100, (avg / 200) * 100 * voiceCh.volume);
-              const { left: panL, right: panR } = getStereoPanGains(voiceCh.pan);
-              vuLeft.style.height = `${Math.min(100, pct * panL).toFixed(1)}%`;
-              vuRight.style.height = `${Math.min(100, pct * panR).toFixed(1)}%`;
-              if (peakEl) {
-                const db = -60 + (avg / 255) * 60 + (voiceCh.volume <= 0.0001 ? -100 : 20 * Math.log10(voiceCh.volume));
-                peakEl.textContent = formatPeakDbText(db);
-                peakEl.classList.toggle('is-clipping', db >= -0.5);
+              } else {
+                peakEl.textContent = formatPeakDbText(maxPeakDb);
+                peakEl.classList.toggle('is-clipping', maxPeakDb >= -0.5);
               }
             }
           }
@@ -12708,7 +12758,7 @@ function startMixerVuAnimation(): void {
       }
     }
 
-    // 4. Remote Music Channel Metering (from real Web Audio Remote Music Analyser)
+    // 4. Remote Music Channel Metering (Real Time-Domain Amplitude)
     const remoteMusicCh = studioMixerChannels.find((c) => c.id === 'remote-music');
     if (remoteMusicCh) {
       const isAudible = !remoteMusicCh.muted && (!hasRemoteSolo || remoteMusicCh.soloed);
@@ -12718,7 +12768,7 @@ function startMixerVuAnimation(): void {
         const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
         const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
         if (vuLeft && vuRight) {
-          if (!isAudible || remoteMusicCh.volume <= 0.001 || !remoteMusicAnalyser) {
+          if (!isAudible || !remoteMusicAnalyserL || !remoteMusicAnalyserR) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
@@ -12726,26 +12776,28 @@ function startMixerVuAnimation(): void {
               peakEl.classList.remove('is-clipping');
             }
           } else {
-            remoteMusicAnalyser.getByteFrequencyData(musicDataArray);
-            let sum = 0;
-            for (let i = 0; i < musicDataArray.length; i++) sum += musicDataArray[i];
-            const avg = sum / musicDataArray.length;
-            if (avg <= 1) {
+            const leftMeas = measureTimeDomainLevel(remoteMusicAnalyserL);
+            const rightMeas = measureTimeDomainLevel(remoteMusicAnalyserR);
+            const maxRmsDb = Math.max(leftMeas.rmsDb, rightMeas.rmsDb);
+            const maxPeakDb = Math.max(leftMeas.peakDb, rightMeas.peakDb);
+
+            if (maxRmsDb <= -58) {
               vuLeft.style.height = '0%';
               vuRight.style.height = '0%';
-              if (peakEl) {
+            } else {
+              const pctL = Math.max(0, Math.min(100, ((leftMeas.rmsDb + 60) / 60) * 100));
+              const pctR = Math.max(0, Math.min(100, ((rightMeas.rmsDb + 60) / 60) * 100));
+              vuLeft.style.height = `${pctL.toFixed(1)}%`;
+              vuRight.style.height = `${pctR.toFixed(1)}%`;
+            }
+
+            if (peakEl) {
+              if (maxPeakDb <= -55) {
                 peakEl.textContent = '';
                 peakEl.classList.remove('is-clipping');
-              }
-            } else {
-              const pct = Math.min(100, (avg / 200) * 100 * remoteMusicCh.volume);
-              const { left: panL, right: panR } = getStereoPanGains(Number(remoteMusicCh.pan) || 0);
-              vuLeft.style.height = `${Math.min(100, pct * panL).toFixed(1)}%`;
-              vuRight.style.height = `${Math.min(100, pct * panR).toFixed(1)}%`;
-              if (peakEl) {
-                const db = -60 + (avg / 255) * 60 + (remoteMusicCh.volume <= 0.0001 ? -100 : 20 * Math.log10(remoteMusicCh.volume));
-                peakEl.textContent = formatPeakDbText(db);
-                peakEl.classList.toggle('is-clipping', db >= -0.5);
+              } else {
+                peakEl.textContent = formatPeakDbText(maxPeakDb);
+                peakEl.classList.toggle('is-clipping', maxPeakDb >= -0.5);
               }
             }
           }
@@ -12753,16 +12805,17 @@ function startMixerVuAnimation(): void {
       }
     }
 
-    // 5. Master Output Metering (from real Master Analyser)
+    // 5. Master Output Metering (Real Time-Domain Amplitude from Post-Limiter Analyser Taps)
     const masterCh = studioMixerChannels.find((c) => c.id === 'master-out');
     if (masterCh) {
+      const isAudible = !masterCh.muted && !remoteMuted;
       const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${masterCh.id}"]`);
       if (stripEl) {
         const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
         const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
         const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
         if (vuLeft && vuRight) {
-          if (masterCh.muted || masterCh.volume <= 0.001 || !remoteMasterAnalyser) {
+          if (!isAudible || !remoteMasterAnalyserL || !remoteMasterAnalyserR) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
@@ -12770,25 +12823,28 @@ function startMixerVuAnimation(): void {
               peakEl.classList.remove('is-clipping');
             }
           } else {
-            remoteMasterAnalyser.getByteFrequencyData(masterDataArray);
-            let sum = 0;
-            for (let i = 0; i < masterDataArray.length; i++) sum += masterDataArray[i];
-            const avg = sum / masterDataArray.length;
-            if (avg <= 1) {
+            const leftMeas = measureTimeDomainLevel(remoteMasterAnalyserL);
+            const rightMeas = measureTimeDomainLevel(remoteMasterAnalyserR);
+            const maxRmsDb = Math.max(leftMeas.rmsDb, rightMeas.rmsDb);
+            const maxPeakDb = Math.max(leftMeas.peakDb, rightMeas.peakDb);
+
+            if (maxRmsDb <= -58) {
               vuLeft.style.height = '0%';
               vuRight.style.height = '0%';
-              if (peakEl) {
+            } else {
+              const pctL = Math.max(0, Math.min(100, ((leftMeas.rmsDb + 60) / 60) * 100));
+              const pctR = Math.max(0, Math.min(100, ((rightMeas.rmsDb + 60) / 60) * 100));
+              vuLeft.style.height = `${pctL.toFixed(1)}%`;
+              vuRight.style.height = `${pctR.toFixed(1)}%`;
+            }
+
+            if (peakEl) {
+              if (maxPeakDb <= -55) {
                 peakEl.textContent = '';
                 peakEl.classList.remove('is-clipping');
-              }
-            } else {
-              const pct = Math.min(100, (avg / 200) * 100 * masterCh.volume);
-              vuLeft.style.height = `${pct.toFixed(1)}%`;
-              vuRight.style.height = `${pct.toFixed(1)}%`;
-              if (peakEl) {
-                const db = -60 + (avg / 255) * 60 + (masterCh.volume <= 0.0001 ? -100 : 20 * Math.log10(masterCh.volume));
-                peakEl.textContent = formatPeakDbText(db);
-                peakEl.classList.toggle('is-clipping', db >= -0.5);
+              } else {
+                peakEl.textContent = formatPeakDbText(maxPeakDb);
+                peakEl.classList.toggle('is-clipping', maxPeakDb >= -0.5);
               }
             }
           }
@@ -12806,38 +12862,11 @@ function startMixerVuAnimation(): void {
         const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
         const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
         if (vuLeft && vuRight) {
-          const isLocal = ch.section === 'local' || ch.id.startsWith('you-mic') || ch.id === 'music-stream';
-          const domainSolo = isLocal ? hasLocalSolo : hasRemoteSolo;
-          const isAudible = !ch.muted && (!domainSolo || ch.soloed);
-          if (!isAudible || ch.volume <= 0.001) {
-            vuLeft.style.height = '0%';
-            vuRight.style.height = '0%';
-            if (peakEl) {
-              peakEl.textContent = '';
-              peakEl.classList.remove('is-clipping');
-            }
-          } else {
-            let sum = 0;
-            for (let i = 0; i < musicDataArray.length; i++) sum += musicDataArray[i];
-            const avg = sum / musicDataArray.length;
-            if (avg <= 1) {
-              vuLeft.style.height = '0%';
-              vuRight.style.height = '0%';
-              if (peakEl) {
-                peakEl.textContent = '';
-                peakEl.classList.remove('is-clipping');
-              }
-            } else {
-              const pct = Math.min(100, (avg / 220) * 100 * ch.volume);
-              const { left: panL, right: panR } = getStereoPanGains(ch.pan);
-              vuLeft.style.height = `${(pct * panL).toFixed(1)}%`;
-              vuRight.style.height = `${(pct * panR).toFixed(1)}%`;
-              if (peakEl) {
-                const db = -60 + (pct / 100) * 60;
-                peakEl.textContent = formatPeakDbText(db);
-                peakEl.classList.toggle('is-clipping', db >= -0.5);
-              }
-            }
+          vuLeft.style.height = '0%';
+          vuRight.style.height = '0%';
+          if (peakEl) {
+            peakEl.textContent = '';
+            peakEl.classList.remove('is-clipping');
           }
         }
       }
