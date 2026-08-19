@@ -2540,15 +2540,58 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
 }
 
 function setRemoteAudio(id: string, purpose: 'voice' | 'music', track: MediaStreamTrack): void {
-  remoteAudioTracks.get(id)?.track.stop();
+  const existing = remoteAudioTracks.get(id);
+  if (existing) {
+    existing.track.onended = null;
+    existing.track.stop();
+  }
   remoteAudioTracks.set(id, { purpose, track });
-  track.onended = () => { remoteAudioTracks.delete(id); void refreshRemoteAudio(); };
-  void refreshRemoteAudio();
+  track.onended = () => {
+    remoteAudioTracks.delete(id);
+    if (!inCall) return;
+    void refreshRemoteAudio();
+  };
+  if (inCall) {
+    void refreshRemoteAudio();
+  }
 }
 
 async function refreshRemoteAudio(): Promise<void> {
   const voice = [...remoteAudioTracks.values()].filter((item) => item.purpose === 'voice').map((item) => item.track);
   const music = [...remoteAudioTracks.values()].filter((item) => item.purpose === 'music').map((item) => item.track);
+
+  if (voice.length === 0 && music.length === 0) {
+    stopRemoteVoiceBridge();
+    try { remoteVoiceSourceNode?.disconnect(); } catch {}
+    remoteVoiceSourceNode = undefined;
+    if (remoteVoiceMeter) {
+      void remoteVoiceMeter.stop();
+      remoteVoiceMeter = undefined;
+    }
+    lastRemoteVoiceDb = -60;
+    checkActiveSpeaker();
+
+    try { remoteMusicSourceNode?.disconnect(); } catch {}
+    remoteMusicSourceNode = undefined;
+
+    const voiceEl = $<HTMLAudioElement>('remote-voice-audio');
+    const musicEl = $<HTMLAudioElement>('remote-music-audio');
+    if (voiceEl) {
+      voiceEl.srcObject = null;
+      voiceEl.pause();
+    }
+    if (musicEl) {
+      musicEl.srcObject = null;
+      musicEl.pause();
+    }
+
+    if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
+      applyMixerAudioRouting();
+    }
+    return;
+  }
+
+  if (!inCall) return;
 
   const ctx = await getOrCreateRemoteAudioContext();
 
@@ -2636,26 +2679,73 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   videoTrack?.stop();
   videoTrack = undefined;
   await musicMeter.stop();
+
+  // Clear track listeners and stop remote audio tracks
+  for (const [, item] of remoteAudioTracks) {
+    item.track.onended = null;
+    try { item.track.stop(); } catch {}
+  }
+  remoteAudioTracks.clear();
+
+  // Stop remote voice bridge and disconnect remote source nodes
+  stopRemoteVoiceBridge();
+  try { remoteVoiceSourceNode?.disconnect(); } catch {}
+  remoteVoiceSourceNode = undefined;
+
+  try { remoteMusicSourceNode?.disconnect(); } catch {}
+  remoteMusicSourceNode = undefined;
+
   if (remoteVoiceMeter) {
     await remoteVoiceMeter.stop();
     remoteVoiceMeter = undefined;
   }
   lastLocalVoiceDb = -60;
   lastRemoteVoiceDb = -60;
+  checkActiveSpeaker();
+
   $('remote-tile')?.classList.remove('is-speaking');
   $('local-tile')?.classList.remove('is-speaking');
   closeSessionViewMenu();
   $('voice-in-indicator')?.classList.remove('active');
   $('music-in-indicator')?.classList.remove('active');
-  remoteAudioTracks.clear();
-  stopRemoteVoiceBridge();
-  void refreshRemoteAudio();
-  if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
-    void remoteAudioCtx.close().catch(() => {});
-    remoteAudioCtx = undefined;
-    lastConnectedVoiceFx = '__uninitialized__';
-    lastConnectedMusicFx = '__uninitialized__';
+
+  const voiceEl = $<HTMLAudioElement>('remote-voice-audio');
+  const musicEl = $<HTMLAudioElement>('remote-music-audio');
+  if (voiceEl) {
+    voiceEl.srcObject = null;
+    voiceEl.pause();
   }
+  if (musicEl) {
+    musicEl.srcObject = null;
+    musicEl.pause();
+  }
+
+  // Close and release remoteAudioCtx cleanly
+  if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
+    try {
+      await remoteAudioCtx.close();
+    } catch {}
+  }
+  remoteAudioCtx = undefined;
+  remoteVoiceGain = undefined;
+  remoteMusicGain = undefined;
+  remoteMasterGain = undefined;
+  remoteVoicePanner = undefined;
+  remoteMusicPanner = undefined;
+  remoteVoiceAnalyserL = undefined;
+  remoteVoiceAnalyserR = undefined;
+  remoteMusicAnalyserL = undefined;
+  remoteMusicAnalyserR = undefined;
+  remoteMasterAnalyserL = undefined;
+  remoteMasterAnalyserR = undefined;
+  remoteVoiceEqHighpass = undefined;
+  remoteVoiceEqPeaking = undefined;
+  remoteVoiceCompressor = undefined;
+  remoteMusicEqPeaking = undefined;
+  remoteMusicCompressor = undefined;
+  remoteLimiter = undefined;
+  lastConnectedVoiceFx = '__uninitialized__';
+  lastConnectedMusicFx = '__uninitialized__';
   remoteMedia = undefined;
   currentCode = '';
   const returnProjectId = sessionProjectId || activeProjectId;
