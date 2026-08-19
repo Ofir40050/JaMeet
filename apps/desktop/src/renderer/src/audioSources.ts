@@ -341,7 +341,11 @@ export class LocalAudioSourceManager {
       sampleRate: preferences.sampleRate || 48000
     };
 
-    const next: AudioSourceConfig = { id: 'voice', purpose: 'voice', deviceId, mode, enabled: true, track: blendedTrack, effective };
+    const previous = this.sources.get('voice');
+    const wasEnabled = previous?.enabled ?? true;
+    blendedTrack.enabled = wasEnabled;
+
+    const next: AudioSourceConfig = { id: 'voice', purpose: 'voice', deviceId, mode, enabled: wasEnabled, track: blendedTrack, effective };
     await this.senders.get('voice')?.replaceTrack(blendedTrack);
     this.sources.set('voice', next);
     return next;

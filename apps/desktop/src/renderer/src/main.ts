@@ -789,6 +789,7 @@ async function syncAllVoiceMics(mode = prefs.mode): Promise<void> {
   }
 
   syncMixerChannelsWithVoiceInputs();
+  applyMixerAudioRouting();
   renderAudioLimitations();
   updateLocalPreviews();
   updateCallMode();
@@ -1405,8 +1406,6 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
           if (otherSlider && otherSlider !== event.currentTarget) otherSlider.value = String(val);
           if (otherValLabel && otherValLabel !== valLabel) otherValLabel.textContent = `${Math.round(val * 100)}%`;
         }
-        void audio.setVoiceMicGain(mic.id, val);
-        
         // SYNC WITH STUDIO MIXER
         const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
         const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
@@ -1416,6 +1415,8 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
             renderStudioMixer();
           }
         }
+
+        applyMixerAudioRouting();
 
         const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
         if (desktopApi?.setSystemInputVolume && isPrimary) {
@@ -2991,7 +2992,7 @@ setInterval(syncMediaActiveState, 500);
 
 function toggleMute(): void {
   muted = !muted;
-  audio.setEnabled('voice', !muted);
+  applyMixerAudioRouting();
   const muteBtn = $('mute-button');
   if (muteBtn) muteBtn.textContent = muted ? 'Unmute' : 'Mute';
   const toggleMic = $('toggle-mic');
@@ -3441,8 +3442,17 @@ for (const id of ['input-gain', 'call-input-gain']) {
       if (el && el !== event.currentTarget) el.value = String(val);
     }
     savePreferences();
-    void audio.applyVoiceGain(val);
-    void audio.setVoiceMicGain(1, val);
+    
+    // SYNC WITH STUDIO MIXER
+    const micCh = studioMixerChannels.find((c) => c.id === 'you-mic');
+    if (micCh) {
+      micCh.volume = val;
+      if (studioMixerOpen) {
+        renderStudioMixer();
+      }
+    }
+    applyMixerAudioRouting();
+
     const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
     if (desktopApi?.setSystemInputVolume) {
       void desktopApi.setSystemInputVolume(Math.min(1.0, val));
@@ -12590,7 +12600,6 @@ function startMixerVuAnimation(): void {
       const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
       if (!micCh) return;
 
-      const isAudible = !micCh.muted && (!hasAnySolo || micCh.soloed) && (mic.id !== 1 || !muted);
       const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${micCh.id}"]`);
       if (stripEl) {
         const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
@@ -12836,8 +12845,9 @@ function applyMixerAudioRouting(): void {
     const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
     const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
     const isAudible = micCh ? (!micCh.muted && (!hasAnySolo || micCh.soloed)) : true;
-    const isMutedGlobally = mic.id === 1 ? muted : false;
-    const effectiveVol = isAudible && micCh && !isMutedGlobally ? micCh.volume : 0;
+    const isMutedGlobally = muted;
+    const baseVol = micCh ? micCh.volume : (mic.gain ?? 1);
+    const effectiveVol = isAudible && !isMutedGlobally ? baseVol : 0;
     if (effectiveVol > 0) anyLocalMicActive = true;
     
     if (micCh) {
@@ -12850,13 +12860,23 @@ function applyMixerAudioRouting(): void {
         if (slider) slider.value = String(micCh.volume);
         if (valLabel) valLabel.textContent = `${Math.round(micCh.volume * 100)}%`;
       }
+      if (mic.id === 1) {
+        for (const otherId of ['input-gain', 'call-input-gain']) {
+          const el = document.querySelector<HTMLInputElement>(`#${otherId}`);
+          if (el) el.value = String(micCh.volume);
+        }
+        for (const labelId of ['gain-value', 'call-gain-value']) {
+          const el = document.getElementById(labelId);
+          if (el) el.textContent = `${Math.round(micCh.volume * 100)}%`;
+        }
+      }
     }
 
     // Apply to audio engine
     void audio.setVoiceMicGain(mic.id, effectiveVol);
   });
 
-  audio.setEnabled('voice', anyLocalMicActive);
+  audio.setEnabled('voice', !muted && anyLocalMicActive);
 
   const localMusicCh = studioMixerChannels.find((c) => c.id === 'music-stream');
   const remoteVoiceCh = studioMixerChannels.find((c) => c.id === 'remote-voice');
