@@ -1951,9 +1951,6 @@ async function showScreenPicker(): Promise<void> {
 }
 
 async function setOutputDevice(deviceId?: string): Promise<void> {
-  prefs.audioOutputId = deviceId;
-  savePreferences();
-
   if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
     if (typeof (remoteAudioCtx as any).setSinkId === 'function') {
       await (remoteAudioCtx as any).setSinkId(deviceId ?? '');
@@ -1970,6 +1967,9 @@ async function setOutputDevice(deviceId?: string): Promise<void> {
     }
     await element.setSinkId(deviceId ?? '').catch(() => {});
   }
+
+  prefs.audioOutputId = deviceId;
+  savePreferences();
   updateHeadphoneWarning();
 }
 
