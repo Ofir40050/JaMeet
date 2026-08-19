@@ -12540,10 +12540,14 @@ function startMixerVuAnimation(): void {
         if (vuLeft && vuRight) {
           const numMicId = Number(mic.id);
           let micDb = activeMicLevels.get(numMicId);
-          if (micDb === undefined || isNaN(micDb)) {
+          if (typeof micDb !== 'number' || isNaN(micDb)) {
              micDb = (numMicId === 1 ? lastLocalVoiceDb : -100);
           }
-          if (!isAudible || micCh.volume <= 0.001 || micDb <= -55) {
+          
+          // Even if "inaudible", show meter for debugging, just use 0 multiplier if muted
+          const displayVolume = isAudible ? Math.max(0, Number(micCh.volume) || 0) : 0;
+          
+          if (micDb <= -58 && displayVolume === 0) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
@@ -12551,13 +12555,16 @@ function startMixerVuAnimation(): void {
               peakEl.classList.remove('is-clipping');
             }
           } else {
-            const safeVolume = Math.max(0, Number(micCh.volume) || 0);
-            const rawPct = Math.max(0, Math.min(100, ((micDb + 55) / 55) * 100 * safeVolume));
-            const { left: panL, right: panR } = getStereoPanGains(Number(micCh.pan) || 0);
+            // Map -60dB -> 0%, 0dB -> 100%
+            const rawPct = Math.max(0, Math.min(100, ((micDb + 60) / 60) * 100 * displayVolume));
+            const pan = Number(micCh.pan) || 0;
+            const { left: panL, right: panR } = getStereoPanGains(pan);
+            
             vuLeft.style.height = `${(rawPct * panL).toFixed(1)}%`;
             vuRight.style.height = `${(rawPct * panR).toFixed(1)}%`;
+            
             if (peakEl) {
-              const peakDb = micDb + (safeVolume <= 0.0001 ? -100 : 20 * Math.log10(safeVolume));
+              const peakDb = micDb + (displayVolume <= 0.0001 ? -100 : 20 * Math.log10(displayVolume));
               peakEl.textContent = formatPeakDbText(peakDb);
               peakEl.classList.toggle('is-clipping', peakDb >= -0.5);
             }
