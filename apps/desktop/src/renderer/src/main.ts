@@ -2712,6 +2712,7 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   remoteMusicAnalyserL = undefined;
   remoteMusicAnalyserR = undefined;
   remoteMasterAnalyserL = undefined;
+  remoteMasterAnalyserR = undefined;
   for (const node of remoteVoiceFxNodes) {
     try { node.disconnect(); } catch {}
   }
