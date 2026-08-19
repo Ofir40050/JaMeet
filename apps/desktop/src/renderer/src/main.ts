@@ -126,6 +126,7 @@ const remoteAudioTracks = new Map<string, { purpose: 'voice' | 'music'; track: M
 const audio = new LocalAudioSourceManager();
 const voiceMeters = new Map<number, LevelMeter>();
 const activeMicLevels = new Map<number, number>();
+const mixerMicAnalysers = new Map<number, AnalyserNode>(); // Direct AnalyserNode per mic for Mixer VU
 const musicMeter = new LevelMeter();
 const signaling = new SignalingClient(signalingUrl);
 const rtc = new WebRtcSession(signaling, audio, setRemoteStream, setRemoteAudio, handleRemoteMedia, (status) => setCallStatus(status));
@@ -773,6 +774,18 @@ async function syncAllVoiceMics(mode = prefs.mode): Promise<void> {
       });
       const node = audio.getVoiceMicNode(mic.id);
       if (node) {
+        // Attach a direct AnalyserNode to this gainNode for Studio Mixer VU metering
+        try {
+          const ctx = (node as GainNode).context;
+          let analyser = mixerMicAnalysers.get(mic.id);
+          if (!analyser || analyser.context !== ctx || analyser.context.state === 'closed') {
+            analyser = ctx.createAnalyser();
+            analyser.fftSize = 256;
+            analyser.smoothingTimeConstant = 0.7;
+            node.connect(analyser);
+            mixerMicAnalysers.set(mic.id, analyser);
+          }
+        } catch {}
         const m = getOrCreateVoiceMeter(mic.id);
         await m.startFromNode(node, meterInterval(), (reading) => renderVoiceLevel(mic.id, reading));
       } else {
@@ -12550,36 +12563,47 @@ function startMixerVuAnimation(): void {
         const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
         if (vuLeft && vuRight) {
           const numMicId = Number(mic.id);
-          let micDb = activeMicLevels.get(numMicId);
-          if (typeof micDb !== 'number' || isNaN(micDb)) {
-             micDb = (numMicId === 1 ? lastLocalVoiceDb : -100);
-          }
-          
-          // Even if "inaudible", show meter for debugging, just use 0 multiplier if muted
-          const displayVolume = isAudible ? Math.max(0, Number(micCh.volume) || 0) : 0;
-          
-          if (micDb <= -58 && displayVolume === 0) {
-            vuLeft.style.height = '0%';
-            vuRight.style.height = '0%';
-            if (peakEl) {
-              peakEl.textContent = '';
-              peakEl.classList.remove('is-clipping');
+
+          // PRIMARY: read directly from the AnalyserNode attached to gainNode
+          const analyser = mixerMicAnalysers.get(numMicId);
+          let micDb = -100;
+          if (analyser && analyser.context.state !== 'closed') {
+            const buf = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(buf);
+            let sum = 0;
+            for (let i = 0; i < buf.length; i++) sum += buf[i]!;
+            const avg = sum / buf.length;
+            if (avg > 1) {
+              micDb = -60 + (avg / 255) * 60;
             }
           } else {
-            // Map -60dB -> 0%, 0dB -> 100%
-            const rawPct = Math.max(0, Math.min(100, ((micDb + 60) / 60) * 100 * displayVolume));
-            const pan = Number(micCh.pan) || 0;
-            const { left: panL, right: panR } = getStereoPanGains(pan);
-            
-            vuLeft.style.height = `${(rawPct * panL).toFixed(1)}%`;
-            vuRight.style.height = `${(rawPct * panR).toFixed(1)}%`;
-            
-            if (peakEl) {
-              const peakDb = micDb + (displayVolume <= 0.0001 ? -100 : 20 * Math.log10(displayVolume));
-              peakEl.textContent = formatPeakDbText(peakDb);
-              peakEl.classList.toggle('is-clipping', peakDb >= -0.5);
+            // FALLBACK: use activeMicLevels (LevelMeter path)
+            const lvl = activeMicLevels.get(numMicId);
+            if (typeof lvl === 'number' && !isNaN(lvl)) {
+              micDb = lvl;
+            } else if (numMicId === 1) {
+              micDb = lastLocalVoiceDb;
             }
           }
+
+          // Pre-fader metering: always show signal bouncing
+          if (micDb <= -58) {
+            vuLeft.style.height = '0%';
+            vuRight.style.height = '0%';
+            if (peakEl) { peakEl.textContent = ''; peakEl.classList.remove('is-clipping'); }
+          } else {
+            const rawPct = Math.max(0, Math.min(100, ((micDb + 60) / 60) * 100));
+            const { left: panL, right: panR } = getStereoPanGains(Number(micCh.pan) || 0);
+            vuLeft.style.height = `${(rawPct * panL).toFixed(1)}%`;
+            vuRight.style.height = `${(rawPct * panR).toFixed(1)}%`;
+            if (peakEl) {
+              peakEl.textContent = formatPeakDbText(micDb);
+              peakEl.classList.toggle('is-clipping', micDb >= -0.5);
+            }
+          }
+
+          // Update activeMicLevels so topbar/Sound Check meter stays in sync too
+          if (micDb > -100) activeMicLevels.set(numMicId, micDb);
         }
       }
     });
