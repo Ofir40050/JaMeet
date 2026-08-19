@@ -2566,11 +2566,28 @@ function setRemoteAudio(id: string, purpose: 'voice' | 'music', track: MediaStre
   }
 }
 
-async function refreshRemoteAudio(): Promise<void> {
-  const voice = [...remoteAudioTracks.values()].filter((item) => item.purpose === 'voice').map((item) => item.track);
-  const musicEntries = [...remoteAudioTracks.entries()].filter(([, item]) => item.purpose === 'music');
+let remoteAudioRefreshSeq = 0;
 
-  if (voice.length === 0 && musicEntries.length === 0) {
+async function refreshRemoteAudio(): Promise<void> {
+  const seq = ++remoteAudioRefreshSeq;
+
+  if (!inCall) {
+    stopRemoteVoiceBridge();
+    try { remoteVoiceSourceNode?.disconnect(); } catch {}
+    remoteVoiceSourceNode = undefined;
+    if (remoteVoiceMeter) {
+      void remoteVoiceMeter.stop();
+      remoteVoiceMeter = undefined;
+    }
+    for (const [, entry] of remoteMusicSourceNodes) {
+      try { entry.sourceNode.disconnect(); } catch {}
+    }
+    remoteMusicSourceNodes.clear();
+    return;
+  }
+
+  const initialHasTracks = [...remoteAudioTracks.values()].some((item) => item.track.readyState !== 'ended');
+  if (!initialHasTracks) {
     stopRemoteVoiceBridge();
     try { remoteVoiceSourceNode?.disconnect(); } catch {}
     remoteVoiceSourceNode = undefined;
@@ -2603,24 +2620,36 @@ async function refreshRemoteAudio(): Promise<void> {
     return;
   }
 
-  if (!inCall) return;
-
   const ctx = await getOrCreateRemoteAudioContext();
 
-  if (voice.length > 0) {
-    const voiceStream = new MediaStream(voice);
-    try { remoteVoiceSourceNode?.disconnect(); } catch {}
-    remoteVoiceSourceNode = ctx.createMediaStreamSource(voiceStream);
-    if (remoteVoiceGain) remoteVoiceSourceNode.connect(remoteVoiceGain);
-    void startRemoteVoiceBridge(ctx, remoteVoiceSourceNode);
+  // If a newer refresh was triggered while awaiting the AudioContext, yield to the latest call
+  if (seq !== remoteAudioRefreshSeq || !inCall) return;
 
-    if (!remoteVoiceMeter) {
-      remoteVoiceMeter = new LevelMeter();
+  // Always query latest tracks state AFTER the async AudioContext operation completes
+  const latestVoiceTracks = [...remoteAudioTracks.values()]
+    .filter((item) => item.purpose === 'voice' && item.track.readyState !== 'ended')
+    .map((item) => item.track);
+  const latestMusicEntries = [...remoteAudioTracks.entries()]
+    .filter(([, item]) => item.purpose === 'music' && item.track.readyState !== 'ended');
+
+  // Reconcile Remote Voice
+  if (latestVoiceTracks.length > 0) {
+    const voiceTrack = latestVoiceTracks[0];
+    if (!remoteVoiceSourceNode || remoteVoiceSourceNode.mediaStream.getAudioTracks()[0] !== voiceTrack) {
+      try { remoteVoiceSourceNode?.disconnect(); } catch {}
+      const voiceStream = new MediaStream([voiceTrack]);
+      remoteVoiceSourceNode = ctx.createMediaStreamSource(voiceStream);
+      if (remoteVoiceGain) remoteVoiceSourceNode.connect(remoteVoiceGain);
+      void startRemoteVoiceBridge(ctx, remoteVoiceSourceNode);
+
+      if (!remoteVoiceMeter) {
+        remoteVoiceMeter = new LevelMeter();
+      }
+      void remoteVoiceMeter.startFromNode(remoteVoiceSourceNode, 66, (reading) => {
+        lastRemoteVoiceDb = (!remoteMuted) ? reading.rmsDb : -60;
+        checkActiveSpeaker();
+      });
     }
-    void remoteVoiceMeter.startFromNode(remoteVoiceSourceNode, 66, (reading) => {
-      lastRemoteVoiceDb = (!remoteMuted) ? reading.rmsDb : -60;
-      checkActiveSpeaker();
-    });
   } else {
     stopRemoteVoiceBridge();
     try { remoteVoiceSourceNode?.disconnect(); } catch {}
@@ -2633,10 +2662,11 @@ async function refreshRemoteAudio(): Promise<void> {
     checkActiveSpeaker();
   }
 
-  if (musicEntries.length > 0) {
-    // Clean up any existing sources that are no longer active or ended
+  // Reconcile Remote Music & Screen Audio sources
+  if (latestMusicEntries.length > 0) {
+    // Clean up any existing sources that are no longer active, ended, or replaced
     for (const [id, entry] of remoteMusicSourceNodes) {
-      const stillActive = musicEntries.some(([trackId, item]) => trackId === id && item.track === entry.track && item.track.readyState !== 'ended');
+      const stillActive = latestMusicEntries.some(([trackId, item]) => trackId === id && item.track === entry.track && item.track.readyState !== 'ended');
       if (!stillActive) {
         try { entry.sourceNode.disconnect(); } catch {}
         remoteMusicSourceNodes.delete(id);
@@ -2644,7 +2674,7 @@ async function refreshRemoteAudio(): Promise<void> {
     }
 
     // Create or connect source nodes for all active remote music tracks
-    for (const [id, item] of musicEntries) {
+    for (const [id, item] of latestMusicEntries) {
       if (item.track.readyState === 'ended') continue;
       const existing = remoteMusicSourceNodes.get(id);
       if (!existing || existing.track !== item.track) {
