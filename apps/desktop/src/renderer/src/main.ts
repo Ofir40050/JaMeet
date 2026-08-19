@@ -2406,14 +2406,22 @@ function setRemoteStream(stream?: MediaStream): void {
   if (stream) void setOutputDevice(prefs.audioOutputId).catch((error) => setCallStatus(deviceError(error)));
   updateSessionStage();
 }
+function getStereoBalanceGains(pan: number): { left: number; right: number } {
+  const clamped = Math.max(-1, Math.min(1, pan));
+  const left = clamped <= 0 ? 1.0 : Math.max(0, 1.0 - clamped);
+  const right = clamped >= 0 ? 1.0 : Math.max(0, 1.0 + clamped);
+  return { left, right };
+}
+
 let remoteAudioCtx: AudioContext | undefined;
-let remoteVoiceSourceNode: MediaStreamAudioSourceNode | undefined;
-let remoteMusicSourceNode: MediaStreamAudioSourceNode | undefined;
 let remoteVoiceGain: GainNode | undefined;
 let remoteMusicGain: GainNode | undefined;
 let remoteMasterGain: GainNode | undefined;
 let remoteVoicePanner: StereoPannerNode | undefined;
-let remoteMusicPanner: StereoPannerNode | undefined;
+let remoteMusicSplitter: ChannelSplitterNode | undefined;
+let remoteMusicLeftGain: GainNode | undefined;
+let remoteMusicRightGain: GainNode | undefined;
+let remoteMusicMerger: ChannelMergerNode | undefined;
 let remoteVoiceAnalyserL: AnalyserNode | undefined;
 let remoteVoiceAnalyserR: AnalyserNode | undefined;
 let remoteMusicAnalyserL: AnalyserNode | undefined;
@@ -2425,6 +2433,8 @@ let remoteMusicFxNodes: AudioNode[] = [];
 let remoteLimiter: DynamicsCompressorNode | undefined;
 let lastConnectedVoiceFx: string = '__uninitialized__';
 let lastConnectedMusicFx: string = '__uninitialized__';
+let remoteVoiceSourceNode: MediaStreamAudioSourceNode | undefined;
+let remoteMusicSourceNode: MediaStreamAudioSourceNode | undefined;
 
 async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
   if (!remoteAudioCtx || remoteAudioCtx.state === 'closed') {
@@ -2438,13 +2448,24 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
     remoteMasterGain = remoteAudioCtx.createGain();
     remoteLimiter = remoteAudioCtx.createDynamicsCompressor();
 
-    // Stereo Panners
+    // Panning & Balance Stages:
+    // Remote Voice: Constant Power Mono-to-Stereo Panner
     remoteVoicePanner = remoteAudioCtx.createStereoPanner();
-    remoteMusicPanner = remoteAudioCtx.createStereoPanner();
+
+    // Remote Music: True Stereo Balance (discrete L/R attenuation without crossfeed)
+    remoteMusicSplitter = remoteAudioCtx.createChannelSplitter(2);
+    remoteMusicLeftGain = remoteAudioCtx.createGain();
+    remoteMusicRightGain = remoteAudioCtx.createGain();
+    remoteMusicMerger = remoteAudioCtx.createChannelMerger(2);
+
+    remoteMusicSplitter.connect(remoteMusicLeftGain, 0, 0);
+    remoteMusicSplitter.connect(remoteMusicRightGain, 1, 0);
+    remoteMusicLeftGain.connect(remoteMusicMerger, 0, 0);
+    remoteMusicRightGain.connect(remoteMusicMerger, 0, 1);
 
     // Default bypass connections before mixer FX routing runs
     remoteVoiceGain.connect(remoteVoicePanner);
-    remoteMusicGain.connect(remoteMusicPanner);
+    remoteMusicGain.connect(remoteMusicSplitter);
 
     // Live Analysers for Real Level Metering (Stereo Measurement Taps)
     const voiceMeterSplitter = remoteAudioCtx.createChannelSplitter(2);
@@ -2453,7 +2474,6 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
     remoteVoiceAnalyserR = remoteAudioCtx.createAnalyser();
     remoteVoiceAnalyserR.fftSize = 256;
 
-    const musicMeterSplitter = remoteAudioCtx.createChannelSplitter(2);
     remoteMusicAnalyserL = remoteAudioCtx.createAnalyser();
     remoteMusicAnalyserL.fftSize = 256;
     remoteMusicAnalyserR = remoteAudioCtx.createAnalyser();
@@ -2473,18 +2493,17 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
     remoteLimiter.release.setValueAtTime(0.05, remoteAudioCtx.currentTime); // Fast release (50ms) to minimize pumping
 
     // Audio Graph Static Routing:
-    // Panner -> Master
+    // Panner / Balance -> Master
     remoteVoicePanner.connect(remoteMasterGain);
-    remoteMusicPanner.connect(remoteMasterGain);
+    remoteMusicMerger.connect(remoteMasterGain);
 
     // Measurement Taps (Measurement-only, not connected to output):
     remoteVoicePanner.connect(voiceMeterSplitter);
     voiceMeterSplitter.connect(remoteVoiceAnalyserL, 0);
     voiceMeterSplitter.connect(remoteVoiceAnalyserR, 1);
 
-    remoteMusicPanner.connect(musicMeterSplitter);
-    musicMeterSplitter.connect(remoteMusicAnalyserL, 0);
-    musicMeterSplitter.connect(remoteMusicAnalyserR, 1);
+    remoteMusicLeftGain.connect(remoteMusicAnalyserL);
+    remoteMusicRightGain.connect(remoteMusicAnalyserR);
 
     // Master: MasterGain -> Limiter -> Destination
     remoteMasterGain
@@ -2706,7 +2725,14 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   remoteMusicGain = undefined;
   remoteMasterGain = undefined;
   remoteVoicePanner = undefined;
-  remoteMusicPanner = undefined;
+  try { remoteMusicSplitter?.disconnect(); } catch {}
+  remoteMusicSplitter = undefined;
+  try { remoteMusicLeftGain?.disconnect(); } catch {}
+  remoteMusicLeftGain = undefined;
+  try { remoteMusicRightGain?.disconnect(); } catch {}
+  remoteMusicRightGain = undefined;
+  try { remoteMusicMerger?.disconnect(); } catch {}
+  remoteMusicMerger = undefined;
   remoteVoiceAnalyserL = undefined;
   remoteVoiceAnalyserR = undefined;
   remoteMusicAnalyserL = undefined;
@@ -13171,8 +13197,17 @@ function applyMixerAudioRouting(): void {
     if (remoteMasterGain) remoteMasterGain.gain.setValueAtTime(masterVol, now);
 
     // Real Stereo Panning (-1.0 Left to +1.0 Right)
-    if (remoteVoicePanner && remoteVoiceCh) remoteVoicePanner.pan.setValueAtTime(remoteVoiceCh.pan, now);
-    if (remoteMusicPanner && remoteMusicCh) remoteMusicPanner.pan.setValueAtTime(remoteMusicCh.pan, now);
+    // Real Stereo Panning (Mono Voice) & Stereo Balance (Stereo Music)
+    if (remoteVoicePanner && remoteVoiceCh) {
+      const voicePan = typeof remoteVoiceCh.pan === 'number' && !isNaN(remoteVoiceCh.pan) ? remoteVoiceCh.pan : 0;
+      remoteVoicePanner.pan.setValueAtTime(voicePan, now);
+    }
+    if (remoteMusicLeftGain && remoteMusicRightGain && remoteMusicCh) {
+      const musicPan = typeof remoteMusicCh.pan === 'number' && !isNaN(remoteMusicCh.pan) ? remoteMusicCh.pan : 0;
+      const { left, right } = getStereoBalanceGains(musicPan);
+      remoteMusicLeftGain.gain.setValueAtTime(left, now);
+      remoteMusicRightGain.gain.setValueAtTime(right, now);
+    }
 
     // Dynamic Channel FX Routing: Remote Voice (rebuild topology only when fx array changes)
     if (remoteVoiceGain && remoteVoicePanner) {
@@ -13222,7 +13257,7 @@ function applyMixerAudioRouting(): void {
     }
 
     // Dynamic Channel FX Routing: Remote Music (rebuild topology only when fx array changes)
-    if (remoteMusicGain && remoteMusicPanner) {
+    if (remoteMusicGain && remoteMusicSplitter) {
       const musicFx = (remoteMusicCh?.fx || []).filter((f) => Boolean(f) && (f === 'Chan EQ' || f === 'Compressor'));
       const musicFxKey = musicFx.join('|');
       if (musicFxKey !== lastConnectedMusicFx) {
@@ -13257,7 +13292,7 @@ function applyMixerAudioRouting(): void {
             remoteMusicFxNodes.push(compressorNode);
           }
         }
-        currentMusicSource.connect(remoteMusicPanner);
+        currentMusicSource.connect(remoteMusicSplitter);
         lastConnectedMusicFx = musicFxKey;
       }
     }
