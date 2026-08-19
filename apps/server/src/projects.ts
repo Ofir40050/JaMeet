@@ -86,6 +86,10 @@ export const PROJECT_LIMITS = {
   MAX_TASK_ASSIGNEE_ID_LENGTH: 100,
   MAX_TASK_ASSIGNEE_NAME_LENGTH: 150,
   MAX_TASK_DUE_DATE_LENGTH: 50,
+  MAX_TASK_SONG_ID_LENGTH: 100,
+  MAX_TASK_STAGE_LENGTH: 50,
+  MAX_TASK_SUBTASKS_COUNT: 50,
+  MAX_TASK_SUBTASK_TITLE_LENGTH: 200,
   MAX_WORKSPACE_PAYLOAD_BYTES: 16_777_216
 };
 
@@ -1000,6 +1004,34 @@ export class ProjectStore {
               `Task due date exceeds maximum length of ${PROJECT_LIMITS.MAX_TASK_DUE_DATE_LENGTH} characters.`
             );
           }
+          if (t.songId && t.songId.length > PROJECT_LIMITS.MAX_TASK_SONG_ID_LENGTH) {
+            throw new WorkspaceLimitError(
+              'tasks',
+              `Task song ID exceeds maximum length of ${PROJECT_LIMITS.MAX_TASK_SONG_ID_LENGTH} characters.`
+            );
+          }
+          if (t.stage && t.stage.length > PROJECT_LIMITS.MAX_TASK_STAGE_LENGTH) {
+            throw new WorkspaceLimitError(
+              'tasks',
+              `Task stage exceeds maximum length of ${PROJECT_LIMITS.MAX_TASK_STAGE_LENGTH} characters.`
+            );
+          }
+          if (t.subtasks && Array.isArray(t.subtasks)) {
+            if (t.subtasks.length > PROJECT_LIMITS.MAX_TASK_SUBTASKS_COUNT) {
+              throw new WorkspaceLimitError(
+                'tasks',
+                `Task subtasks limit exceeded (max ${PROJECT_LIMITS.MAX_TASK_SUBTASKS_COUNT} subtasks per task).`
+              );
+            }
+            for (const st of t.subtasks) {
+              if (st.title && st.title.length > PROJECT_LIMITS.MAX_TASK_SUBTASK_TITLE_LENGTH) {
+                throw new WorkspaceLimitError(
+                  'tasks',
+                  `Subtask title exceeds maximum length of ${PROJECT_LIMITS.MAX_TASK_SUBTASK_TITLE_LENGTH} characters.`
+                );
+              }
+            }
+          }
         }
       }
 
@@ -1302,7 +1334,7 @@ export class ProjectStore {
             projectId,
             user,
             'lyrics_doc_created',
-            `${user.displayName} created lyrics draft "${doc.title}"`,
+            `${user.displayName} created lyrics "${doc.title}"`,
             doc.title,
             undefined,
             false
@@ -1320,7 +1352,7 @@ export class ProjectStore {
                 projectId,
                 user,
                 'lyrics_doc_renamed',
-                `${user.displayName} renamed lyrics draft to "${doc.title}"`,
+                `${user.displayName} renamed lyrics to "${doc.title}"`,
                 doc.title,
                 undefined,
                 false
@@ -1372,7 +1404,7 @@ export class ProjectStore {
               projectId,
               user,
               'lyrics_doc_deleted',
-              `${user.displayName} deleted lyrics draft "${initialDoc.title}"`,
+              `${user.displayName} deleted lyrics "${initialDoc.title}"`,
               initialDoc.title,
               undefined,
               false
@@ -1567,6 +1599,9 @@ export class ProjectStore {
             oldT.status !== newT.status ||
             (oldT.assigneeId || undefined) !== (newT.assigneeId || undefined) ||
             (oldT.assigneeName || undefined) !== (newT.assigneeName || undefined) ||
+            (oldT.songId || undefined) !== (newT.songId || undefined) ||
+            (oldT.stage || undefined) !== (newT.stage || undefined) ||
+            JSON.stringify(oldT.subtasks || []) !== JSON.stringify(newT.subtasks || []) ||
             (oldT.note || undefined) !== (newT.note || undefined) ||
             (oldT.dueDate || undefined) !== (newT.dueDate || undefined) ||
             (oldT.completedAt || undefined) !== (newT.completedAt || undefined)
@@ -1821,6 +1856,41 @@ export class ProjectStore {
     });
   }
 
+  async updateCollaboratorRole(
+    projectId: string,
+    userId: string,
+    targetUserId: string,
+    role: ProjectCollaboratorRole
+  ): Promise<Project | null> {
+    return this.runProjectTransaction(projectId, async () => {
+      const project = this.getProject(projectId, userId);
+      if (!project) return null;
+
+      if (!this.isOwner(projectId, userId)) {
+        return null;
+      }
+
+      if ((role as string) === 'owner') {
+        return null;
+      }
+
+      const snapshot = JSON.parse(JSON.stringify(project)) as Project;
+      const target = project.collaborators.find((c) => c.userId === targetUserId);
+      if (!target) return null;
+
+      target.role = role;
+      project.updatedAt = Date.now();
+      this.projects.set(projectId, project);
+      try {
+        await this.persistProject(project);
+      } catch (err) {
+        this.projects.set(projectId, snapshot);
+        throw err;
+      }
+      return JSON.parse(JSON.stringify(project)) as Project;
+    });
+  }
+
   async removeCollaborator(projectId: string, userId: string, targetUserId: string): Promise<Project | null> {
     return this.runProjectTransaction(projectId, async () => {
       const project = this.getProject(projectId, userId);
@@ -1882,7 +1952,8 @@ export class ProjectStore {
           ...session,
           endedAt: session.endedAt ?? project.sessions[existingIndex]!.endedAt,
           durationSeconds: session.durationSeconds ?? project.sessions[existingIndex]!.durationSeconds,
-          collaborator: session.collaborator || project.sessions[existingIndex]!.collaborator
+          collaborator: session.collaborator || project.sessions[existingIndex]!.collaborator,
+          summary: session.summary || project.sessions[existingIndex]!.summary
         };
       } else {
         project.sessions.unshift(session);

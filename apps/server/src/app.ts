@@ -8,7 +8,7 @@ import {
   createMeetingSchema, joinMeetingSchema, mediaUpdateSchema, meetingActionSchema,
   signalCandidateSchema, signalDescriptionSchema, signalRenegotiateSchema, registerRequestSchema, loginRequestSchema,
   guestAuthRequestSchema, updateProfileRequestSchema, createProjectRequestSchema, updateProjectRequestSchema,
-  updateProjectWorkspaceRequestSchema, addCollaboratorRequestSchema, sendChatMessageSchema,
+  updateProjectWorkspaceRequestSchema, addCollaboratorRequestSchema, updateCollaboratorRoleRequestSchema, sendChatMessageSchema,
   admitParticipantSchema, lockMeetingSchema, removeParticipantSchema, createScheduledSessionSchema,
   updateScheduledSessionSchema, type MeetingAck, type MeetingErrorCode,
   type ParticipantIdentity, type MediaMetadata,
@@ -18,6 +18,7 @@ import {
   type SessionSummaryEvent, type ProjectActivityItem,
   crashReportSchema, type CrashReport, sanitizeLogData
 } from '@jameet/shared';
+
 import type { ServerConfig } from './config.js';
 import { RoomStore, type Room, type Participant } from './rooms.js';
 import { UserStore, authorizeSessionAccess, validateStoredUserSessionAccess } from './auth.js';
@@ -813,6 +814,41 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     }
   });
 
+  app.patch<{ Params: { id: string; userId: string } }>('/api/projects/:id/collaborators/:userId', async (request, reply) => {
+    const authHeader = request.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    const user = userStore.verifyToken(token);
+    if (!user) {
+      return reply.code(401).send({ ok: false, message: 'Unauthorized.' });
+    }
+    const project = projectStore.getProject(request.params.id, user.id);
+    if (!project) {
+      return reply.code(404).send({ ok: false, message: 'Project not found.' });
+    }
+    if (!projectStore.isOwner(request.params.id, user.id)) {
+      return reply.code(403).send({ ok: false, message: 'Only the project owner can change collaborator roles.' });
+    }
+    const parsed = updateCollaboratorRoleRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ ok: false, message: 'Invalid role provided.' });
+    }
+    try {
+      const updated = await projectStore.updateCollaboratorRole(request.params.id, user.id, request.params.userId, parsed.data.role);
+      if (!updated) {
+        return reply.code(403).send({ ok: false, message: 'Unauthorized to change collaborator role.' });
+      }
+      pruneStaleProjectSubscribers(request.params.id);
+      io.to(`project:${request.params.id}`).emit('project:workspace:changed', {
+        projectId: request.params.id,
+        project: updated
+      });
+      return reply.send({ ok: true, project: updated });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update collaborator role.';
+      return reply.code(500).send({ ok: false, message: msg });
+    }
+  });
+
   app.delete<{ Params: { id: string; userId: string } }>('/api/projects/:id/collaborators/:userId', async (request, reply) => {
     const authHeader = request.headers.authorization;
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
@@ -937,6 +973,56 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
     transports: ['websocket', 'polling']
   });
 
+  async function finalizeProjectSessionOnClose(room: Room) {
+    if (!room.projectId) return;
+    try {
+      const now = Date.now();
+      const durationSeconds = Math.max(1, Math.round((now - room.startedAt) / 1000));
+      const participantsList = Array.from(room.allJoinedParticipants.values());
+      const otherParticipant = participantsList.find((p) => p.displayName !== room.hostIdentity.displayName);
+      const project = room.hostIdentity.id ? projectStore.getProject(room.projectId, room.hostIdentity.id) : null;
+      const sessionSummary = {
+        id: `sum_${room.sessionId}`,
+        sessionId: room.sessionId,
+        code: room.code,
+        startedAt: room.startedAt,
+        endedAt: now,
+        durationSeconds,
+        role: 'host' as const,
+        participants: participantsList.map((p) => ({
+          id: p.id || '',
+          displayName: p.displayName,
+          username: p.username,
+          avatarColor: p.avatarColor,
+          isGuest: p.isGuest,
+          isHost: p.isHost,
+          role: p.isHost ? 'host' as const : 'collaborator' as const
+        })),
+        projectId: room.projectId,
+        projectName: project?.name,
+        events: room.events || [],
+        chatMessagesCount: room.chatMessagesCount || 0
+      };
+      await projectStore.recordProjectSession(room.projectId, {
+        id: `${room.hostIdentity.id}_${room.code}`,
+        code: room.code,
+        startedAt: room.startedAt,
+        endedAt: now,
+        durationSeconds,
+        role: 'host',
+        collaborator: otherParticipant ? {
+          displayName: otherParticipant.displayName,
+          username: otherParticipant.username,
+          isGuest: otherParticipant.isGuest,
+          avatarColor: otherParticipant.avatarColor
+        } : null,
+        summary: sessionSummary
+      }, null);
+    } catch (err) {
+      console.error('Failed to finalize project session on close:', err);
+    }
+  }
+
   function endRoomDueToAccessLoss(room: Room, reason: string) {
     ensureRoomProjectAccess(room);
     const project = room.projectId && room.hostIdentity.id
@@ -953,6 +1039,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
         projectId: room.projectId,
         projectName: project?.name
       });
+      void finalizeProjectSessionOnClose(room);
     } catch (err) {
       console.error('Failed to record session close when host lost access:', err);
     }
@@ -1348,7 +1435,16 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       if (!limiter.consume('session')) return ack(failure('BAD_REQUEST', 'Too many requests. Please slow down.'));
       const parsed = createMeetingSchema.safeParse(raw);
       if (!parsed.success) return ack(failure('BAD_REQUEST', 'Invalid session request'));
-      if (socketData.code) return ack(failure('BAD_REQUEST', 'Already in a session'));
+      if (socketData.code) {
+        try {
+          if (socketData.participantId) rooms.leave(socketData.code, socketData.participantId);
+          void socket.leave(socketData.code);
+        } catch { /* ignore */ }
+        delete socketData.code;
+        delete socketData.participantId;
+        delete socketData.identity;
+        delete socketData.isWaiting;
+      }
       
       const authResult = authorizeSessionAccess(userStore, parsed.data.authToken, config, true);
       if (!authResult.ok) {
@@ -1448,7 +1544,16 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
       if (!limiter.consume('session')) return ack(failure('BAD_REQUEST', 'Too many requests. Please slow down.'));
       const parsed = joinMeetingSchema.safeParse(raw);
       if (!parsed.success) return ack(failure('BAD_REQUEST', 'Invalid session code or participant'));
-      if (socketData.code) return ack(failure('BAD_REQUEST', 'Already in a session'));
+      if (socketData.code) {
+        try {
+          if (socketData.participantId) rooms.leave(socketData.code, socketData.participantId);
+          void socket.leave(socketData.code);
+        } catch { /* ignore */ }
+        delete socketData.code;
+        delete socketData.participantId;
+        delete socketData.identity;
+        delete socketData.isWaiting;
+      }
       
       const authResult = authorizeSessionAccess(userStore, parsed.data.authToken, config, false);
       if (!authResult.ok) {
@@ -2032,6 +2137,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
                 projectId: roomBefore.projectId,
                 projectName: project?.name
               });
+              void finalizeProjectSessionOnClose(roomBefore);
             } catch (err: unknown) {
               console.error('Failed to record session close on explicit leave:', err);
             }
@@ -2077,6 +2183,7 @@ export async function createApp(config: ServerConfig, customSocketLimits?: Parti
                   projectId: currentRoom.projectId,
                   projectName: project?.name
                 });
+                void finalizeProjectSessionOnClose(currentRoom);
               } catch (err: unknown) {
                 console.error('Failed to record session close on disconnect expiry:', err);
               }

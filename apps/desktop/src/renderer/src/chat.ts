@@ -5,6 +5,13 @@ let sessionChatOpen = false;
 let unreadChatCount = 0;
 let sessionChatMessages: SessionChatMessage[] = [];
 
+const TIME_GAP_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes threshold for grouping
+
+let lastSenderId: string | undefined;
+let lastIsOutgoing: boolean | undefined;
+let lastMessageTime = 0;
+let currentGroupEl: HTMLElement | null = null;
+
 export function formatChatTime(timestamp: number): string {
   const d = new Date(timestamp);
   const hours = d.getHours();
@@ -42,37 +49,71 @@ export function appendChatMessageToUi(msg: SessionChatMessage, isOutgoing: boole
   const empty = document.getElementById('chat-empty-state');
   if (empty) empty.style.display = 'none';
 
-  const msgEl = document.createElement('div');
-  msgEl.className = `chat-msg ${isOutgoing ? 'outgoing' : 'incoming'}`;
+  const time = msg.timestamp || Date.now();
+  const timeSinceLast = time - lastMessageTime;
+  const currentSenderKey = isOutgoing ? '__you__' : (msg.senderId || msg.senderName || 'musician');
+  const lastSenderKey = lastIsOutgoing === undefined ? null : (lastIsOutgoing ? '__you__' : lastSenderId);
+  const isSameSender = lastSenderKey === currentSenderKey;
+  const isConsecutive = isSameSender && timeSinceLast < TIME_GAP_THRESHOLD_MS && currentGroupEl !== null;
 
-  const metaEl = document.createElement('div');
-  metaEl.className = 'chat-msg-meta';
+  // Render centered timestamp divider if > 3 minutes elapsed since previous message or first message
+  if (timeSinceLast >= TIME_GAP_THRESHOLD_MS || lastMessageTime === 0) {
+    const divider = document.createElement('div');
+    divider.className = 'chat-time-divider';
+    const timeSpan = document.createElement('span');
+    timeSpan.textContent = formatChatTime(time);
+    divider.appendChild(timeSpan);
+    container.appendChild(divider);
+  }
 
-  const senderEl = document.createElement('span');
-  senderEl.className = 'chat-msg-sender';
-  senderEl.textContent = isOutgoing ? 'You' : (msg.senderName || 'Musician');
+  if (!isConsecutive || !currentGroupEl) {
+    currentGroupEl = document.createElement('div');
+    currentGroupEl.className = `chat-msg-group ${isOutgoing ? 'outgoing' : 'incoming'}`;
 
-  const timeEl = document.createElement('span');
-  timeEl.className = 'chat-msg-time';
-  timeEl.textContent = formatChatTime(msg.timestamp);
+    if (!isOutgoing && msg.senderName) {
+      const senderEl = document.createElement('div');
+      senderEl.className = 'chat-group-sender';
+      senderEl.textContent = msg.senderName;
+      currentGroupEl.appendChild(senderEl);
+    }
 
-  metaEl.appendChild(senderEl);
-  metaEl.appendChild(timeEl);
+    container.appendChild(currentGroupEl);
+  }
 
   const bubbleEl = document.createElement('div');
   bubbleEl.className = 'chat-msg-bubble';
   bubbleEl.textContent = msg.text;
+  bubbleEl.title = formatChatTime(time);
 
-  msgEl.appendChild(metaEl);
-  msgEl.appendChild(bubbleEl);
+  currentGroupEl.appendChild(bubbleEl);
 
-  container.appendChild(msgEl);
+  lastSenderId = isOutgoing ? '__you__' : (msg.senderId || msg.senderName || 'musician');
+  lastIsOutgoing = isOutgoing;
+  lastMessageTime = time;
+
   scrollChatToBottom();
+}
+
+let onChatOpenCallback: (() => void) | null = null;
+
+export function setOnChatOpenCallback(cb: () => void): void {
+  onChatOpenCallback = cb;
 }
 
 export function setSessionChatOpen(open: boolean): void {
   sessionChatOpen = open;
   if (typeof document !== 'undefined') {
+    if (open) {
+      // Close session workspace drawer if open so they never overlap
+      if (onChatOpenCallback) {
+        onChatOpenCallback();
+      } else {
+        const drawer = document.getElementById('session-workspace-drawer');
+        if (drawer) drawer.classList.add('hidden');
+        document.getElementById('toggle-session-workspace')?.classList.remove('active');
+        document.getElementById('call-view')?.classList.remove('has-drawer-open');
+      }
+    }
     document.getElementById('session-chat-panel')?.classList.toggle('hidden', !open);
     document.getElementById('toggle-session-chat')?.classList.toggle('active', open);
     document.getElementById('call-view')?.classList.toggle('has-chat-open', open);
@@ -105,6 +146,11 @@ export function resetChatUi(): void {
   sessionChatOpen = false;
   unreadChatCount = 0;
   sessionChatMessages = [];
+  lastSenderId = undefined;
+  lastIsOutgoing = undefined;
+  lastMessageTime = 0;
+  currentGroupEl = null;
+
   if (typeof document !== 'undefined') {
     document.getElementById('session-chat-panel')?.classList.add('hidden');
     document.getElementById('toggle-session-chat')?.classList.remove('active');

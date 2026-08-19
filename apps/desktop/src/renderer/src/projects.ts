@@ -130,13 +130,28 @@ export async function deleteProject(token: string, projectId: string): Promise<v
   await parseResponse<{ ok: boolean }>(res, 'Failed to delete project.');
 }
 
-export async function addCollaborator(token: string, projectId: string, usernameOrEmail: string, role = 'collaborator'): Promise<Project> {
+export async function addCollaborator(token: string, projectId: string, usernameOrEmail: string, role = 'editor'): Promise<Project> {
   const res = await fetch(`${getApiBase()}/api/projects/${projectId}/collaborators`, {
     method: 'POST',
     headers: authHeaders(token, true),
     body: JSON.stringify({ usernameOrEmail, role })
   });
   const data = await parseResponse<{ ok: boolean; project: Project }>(res, 'Failed to add collaborator.');
+  return data.project;
+}
+
+export async function updateCollaboratorRole(
+  token: string,
+  projectId: string,
+  userId: string,
+  role: string
+): Promise<Project> {
+  const res = await fetch(`${getApiBase()}/api/projects/${projectId}/collaborators/${userId}`, {
+    method: 'PATCH',
+    headers: authHeaders(token, true),
+    body: JSON.stringify({ role })
+  });
+  const data = await parseResponse<{ ok: boolean; project: Project }>(res, 'Failed to update member role.');
   return data.project;
 }
 

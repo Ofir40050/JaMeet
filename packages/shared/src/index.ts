@@ -194,7 +194,8 @@ export const projectSessionItemSchema = z.object({
     username: z.string().optional(),
     isGuest: z.boolean(),
     avatarColor: z.string().optional()
-  }).nullable()
+  }).nullable(),
+  summary: z.custom<FactualSessionSummary>().optional()
 });
 export type ProjectSessionItem = z.infer<typeof projectSessionItemSchema>;
 
@@ -285,12 +286,34 @@ export const projectTaskDueDateSchema = z
     );
   }, 'Invalid calendar date');
 
+export const projectTaskStageSchema = z.enum([
+  'writing',
+  'recording',
+  'arrangement',
+  'mix',
+  'mastering',
+  'revisions',
+  'general'
+]);
+export type ProjectTaskStage = z.infer<typeof projectTaskStageSchema>;
+
+export const projectTaskSubtaskSchema = z.object({
+  id: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+  done: z.boolean().default(false)
+});
+export type ProjectTaskSubtask = z.infer<typeof projectTaskSubtaskSchema>;
+
 export const projectTaskItemSchema = z.object({
   id: z.string().trim().min(1, 'Task ID is required'),
   title: z.string().trim().min(1, 'Task title is required'),
   status: projectTaskStatusSchema.default('todo'),
   assigneeId: z.string().optional(),
   assigneeName: z.string().optional(),
+  songId: z.string().optional(),
+  songTitle: z.string().optional(),
+  stage: projectTaskStageSchema.optional(),
+  subtasks: z.array(projectTaskSubtaskSchema).optional(),
   note: z.string().trim().optional(),
   dueDate: projectTaskDueDateSchema.optional(),
   createdAt: z.number().default(0),
@@ -312,6 +335,9 @@ export const projectSongItemSchema = z.object({
   id: z.string().trim().min(1, 'Song ID is required'),
   title: z.string().trim().min(1).default('Untitled Song'),
   order: z.number().default(0),
+  icon: z.string().optional(),
+  color: z.string().optional(),
+  archived: z.boolean().default(false).optional(),
   lyrics: projectWorkspaceLyricsSchema.default({
     revision: 1,
     activeDocumentId: 'doc-main',
@@ -490,9 +516,14 @@ export interface UpdateProjectWorkspaceResponse {
 
 export const addCollaboratorRequestSchema = z.object({
   usernameOrEmail: z.string().trim().min(1, 'Username or email is required'),
-  role: projectCollaboratorRoleSchema.default('collaborator')
+  role: projectCollaboratorRoleSchema.default('editor')
 });
 export type AddCollaboratorRequest = z.infer<typeof addCollaboratorRequestSchema>;
+
+export const updateCollaboratorRoleRequestSchema = z.object({
+  role: projectCollaboratorRoleSchema
+});
+export type UpdateCollaboratorRoleRequest = z.infer<typeof updateCollaboratorRoleRequestSchema>;
 
 export const createMeetingSchema = z.object({
   participantId: participantIdSchema,

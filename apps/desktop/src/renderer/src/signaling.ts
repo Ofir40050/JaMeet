@@ -174,8 +174,16 @@ export class SignalingClient {
       });
     });
   }
-  leave(): void { this.socket.emit('meeting:leave'); this.resume = undefined; }
-  disconnect(): void { this.resume = undefined; this.socket.disconnect(); }
+  leave(): void {
+    if (this.socket.connected) this.socket.emit('meeting:leave');
+    this.resume = undefined;
+  }
+  disconnect(): void {
+    // Clear resume BEFORE disconnecting so the 'connect' handler won't auto-rejoin
+    this.resume = undefined;
+    if (this.socket.connected) this.socket.emit('meeting:leave');
+    this.socket.disconnect();
+  }
 
   getSocket(): Socket {
     return this.socket;

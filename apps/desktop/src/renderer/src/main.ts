@@ -1,4 +1,4 @@
-import type { AudioMode, MediaMetadata, MeetingAck, PerformanceMode, VideoQuality, ParticipantIdentity, UserProfile, UpdateProfileRequest, Project, ProjectSessionItem, SessionHistoryItem, ProjectTaskItem, ProjectTaskStatus, ProjectActivityItem, ProjectActivityType, SessionChatMessage, WaitingParticipantItem, ScheduledSession } from '@jameet/shared';
+import type { AudioMode, MediaMetadata, MeetingAck, PerformanceMode, VideoQuality, ParticipantIdentity, UserProfile, UpdateProfileRequest, Project, ProjectSessionItem, SessionHistoryItem, ProjectTaskItem, ProjectTaskStatus, ProjectTaskStage, ProjectTaskSubtask, ProjectActivityItem, ProjectActivityType, SessionChatMessage, WaitingParticipantItem, ScheduledSession } from '@jameet/shared';
 import * as projectsApi from './projects';
 import {
   setScheduledApiBase,
@@ -20,7 +20,7 @@ import { icons } from './icons';
 import { presenter } from './presenter';
 import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor, findSectionCard, findTimelineBlocks, findTimelineBlock } from './htmlSecurity';
 import { initActivityHistory, renderProjectActivities } from './activity';
-import { initSessionChat, resetChatUi } from './chat';
+import { initSessionChat, resetChatUi, setSessionChatOpen, setOnChatOpenCallback } from './chat';
 import { startRemoteVoiceBridge, stopRemoteVoiceBridge } from './remoteVoiceBridge';
 import { logger } from './logger';
 import './style.css';
@@ -221,6 +221,10 @@ function savePreferences(): void {
 function showView(id: string): void {
   for (const view of views) $(view)?.classList.toggle('hidden', view !== id);
   updateLocalPreviews();
+  if (id === 'call-view') {
+    updateAuthUi(auth.getUser(), auth.getGuestName());
+    updateParticipantIdentityUi();
+  }
 }
 function setText(id: string, text: string): void {
   const node = $(id);
@@ -340,30 +344,36 @@ function updateSessionViewButton(): void {
   const btn = document.getElementById('session-view-btn');
   const iconEl = document.getElementById('session-view-btn-icon');
   const labelEl = document.getElementById('session-view-btn-label');
-  if (!btn || !iconEl || !labelEl) return;
+  if (!btn || !iconEl) return;
 
   if (isAnySharing) {
     if (currentScreenViewMode === 'side-by-side') {
-      iconEl.innerHTML = icons.sideBySide({ size: 13 });
-      labelEl.textContent = 'Side by Side';
+      iconEl.innerHTML = icons.sideBySide({ size: 18 });
+      if (labelEl) labelEl.textContent = 'Side by Side';
+      btn.title = 'Stage Layout: Side by Side View';
     } else if (currentScreenViewMode === 'screen-focus') {
-      iconEl.innerHTML = icons.maximize({ size: 13 });
-      labelEl.textContent = 'Screen Focus';
+      iconEl.innerHTML = icons.maximize({ size: 18 });
+      if (labelEl) labelEl.textContent = 'Screen Focus';
+      btn.title = 'Stage Layout: Screen Focus View';
     } else {
-      iconEl.innerHTML = icons.monitor({ size: 13 });
-      labelEl.textContent = 'Screen View';
+      iconEl.innerHTML = icons.monitor({ size: 18 });
+      if (labelEl) labelEl.textContent = 'Screen View';
+      btn.title = 'Stage Layout: Screen View';
     }
   } else {
     if (currentCameraViewMode === 'speaker') {
-      iconEl.innerHTML = icons.layoutSpeaker({ size: 13 });
-      labelEl.textContent = 'Speaker';
+      iconEl.innerHTML = icons.layoutSpeaker({ size: 18 });
+      if (labelEl) labelEl.textContent = 'Speaker';
+      btn.title = 'Stage Layout: Speaker View';
     } else if (currentCameraViewMode === 'focus') {
-      iconEl.innerHTML = icons.pin({ size: 13 });
+      iconEl.innerHTML = icons.pin({ size: 18 });
       const targetName = currentFocusTarget === 'remote' ? (peerIdentity?.displayName || 'Musician') : 'You';
-      labelEl.textContent = `Focus: ${targetName}`;
+      if (labelEl) labelEl.textContent = `Focus: ${targetName}`;
+      btn.title = `Stage Layout: Focus (${targetName})`;
     } else {
-      iconEl.innerHTML = icons.layoutGrid({ size: 13 });
-      labelEl.textContent = 'Gallery';
+      iconEl.innerHTML = icons.layoutGrid({ size: 18 });
+      if (labelEl) labelEl.textContent = 'Gallery';
+      btn.title = 'Stage Layout: Gallery View';
     }
   }
 }
@@ -736,6 +746,9 @@ async function replaceCamera(deviceId?: string): Promise<void> {
 }
 
 async function syncAllVoiceMics(mode = prefs.mode): Promise<void> {
+  prefs.mode = mode;
+  savePreferences();
+  setModeRadios(mode);
   const activeIds = new Set(prefs.voiceInputs.filter((v) => v.enabled).map((v) => v.id));
 
   for (const id of Array.from(voiceMeters.keys())) {
@@ -776,10 +789,10 @@ async function syncAllVoiceMics(mode = prefs.mode): Promise<void> {
 
   renderAudioLimitations();
   updateLocalPreviews();
+  updateCallMode();
   if (inCall) {
     signaling.updateMedia(currentCode, metadata());
     await rtc.audioChanged(mode);
-    updateCallMode();
   }
 }
 
@@ -1245,11 +1258,13 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
   const voiceMicsList = document.getElementById('voice-mics-list');
   const callVoiceMicsList = document.getElementById('call-voice-mics-list');
   const setupMetersList = document.getElementById('setup-meters-list');
+  const inCallMetersList = document.getElementById('in-call-meters-list');
   const topbarMicsBar = document.getElementById('call-topbar-mics-bar');
 
   if (voiceMicsList) voiceMicsList.replaceChildren();
   if (callVoiceMicsList) callVoiceMicsList.replaceChildren();
   if (setupMetersList) setupMetersList.replaceChildren();
+  if (inCallMetersList) inCallMetersList.replaceChildren();
   if (topbarMicsBar) topbarMicsBar.replaceChildren();
 
   const countBadge = document.getElementById('voice-count-badge');
@@ -1368,8 +1383,10 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
       container.appendChild(card);
     }
 
-    // 2. Setup Left Column Studio Meter Card
-    if (setupMetersList) {
+    // 2. Setup & In-Call Left Column Studio Meter Card
+    for (const metersList of [setupMetersList, inCallMetersList]) {
+      if (!metersList) continue;
+      const prefix = metersList === inCallMetersList ? 'call-' : 'setup-';
       const studioCard = document.createElement('div');
       studioCard.className = `studio-meter-card ${isPrimary ? '' : 'secondary-meter-card'}`;
       studioCard.innerHTML = `
@@ -1378,7 +1395,7 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
             <span class="meter-dot ${isPrimary ? '' : 'mic2-dot'}"></span>
             <span class="meter-title">VOICE INPUT ${mic.id}</span>
           </div>
-          <output id="setup-db-${mic.id}" class="db-readout">−60 dB</output>
+          <output id="${prefix}db-${mic.id}" class="db-readout">−60 dB</output>
         </div>
         <div class="meter-scale">
           <span>-60</span>
@@ -1389,11 +1406,11 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
           <span>0 dB</span>
         </div>
         <div class="meter">
-          <div id="setup-meter-${mic.id}" class="meter-fill"></div>
+          <div id="${prefix}meter-${mic.id}" class="meter-fill"></div>
           <i class="clip" title="Clipping (Peak over 0 dBFS)"></i>
         </div>
       `;
-      setupMetersList.appendChild(studioCard);
+      metersList.appendChild(studioCard);
     }
 
     // 3. Topbar Mini Meter Pill
@@ -1516,6 +1533,7 @@ async function enumerateAndPopulate(): Promise<void> {
   if (mirrorEl) mirrorEl.checked = prefs.mirrorCamera !== false;
   const audioOnlyEl = document.getElementById('audio-only-setup') as HTMLInputElement | null;
   if (audioOnlyEl) audioOnlyEl.checked = audioOnly;
+  setModeRadios(prefs.mode);
 }
 
 function fillSelects(ids: string[], devices: MediaDeviceInfo[], selected: string | undefined, fallback: string): void {
@@ -1609,8 +1627,11 @@ function renderAudioLimitations(): void {
   }
 }
 function setModeRadios(mode: AudioMode): void {
-  for (const radio of document.querySelectorAll<HTMLInputElement>(`input[name="setup-mode"][value="${mode}"], input[name="call-setup-mode"][value="${mode}"]`)) {
-    radio.checked = true;
+  for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="setup-mode"], input[name="call-setup-mode"]')) {
+    const isCur = radio.value === mode;
+    radio.checked = isCur;
+    const card = radio.closest<HTMLElement>('.mode-card');
+    card?.classList.toggle('active', isCur);
   }
 }
 function updateMusicWarning(): void {
@@ -1622,13 +1643,13 @@ let sessionTimerHandle: number | undefined;
 function startSessionTimer(): void {
   stopSessionTimer();
   sessionStartTime = Date.now();
+  setCallStatus('00:00');
   sessionTimerHandle = window.setInterval(() => {
     if (!inCall) return;
     const elapsedSec = Math.floor((Date.now() - sessionStartTime) / 1000);
     const m = Math.floor(elapsedSec / 60).toString().padStart(2, '0');
     const s = (elapsedSec % 60).toString().padStart(2, '0');
-    const peerStatus = remoteVideoStream || remoteAudioTracks.size > 0 ? 'Connected' : 'Waiting for Musician…';
-    setCallStatus(`${peerStatus} · ${m}:${s}`);
+    setCallStatus(`${m}:${s}`);
   }, 1000);
 }
 
@@ -1779,7 +1800,8 @@ function setScreenSharingUi(active: boolean): void {
   const toggleBtn = document.getElementById('toggle-screen');
   if (toggleBtn) {
     toggleBtn.classList.toggle('active', active);
-    toggleBtn.innerHTML = `<span class="tool-icon">${active ? icons.stopSquare({ size: 18 }) : icons.monitor({ size: 18 })}</span><span class="tool-text">${active ? 'Stop Sharing' : 'Share Screen'}</span>`;
+    toggleBtn.innerHTML = `<span class="tool-icon">${active ? icons.stopSquare({ size: 18 }) : icons.monitor({ size: 18 })}</span>`;
+    toggleBtn.title = active ? 'Stop Sharing Screen' : 'Share Screen';
   }
   const shareOverlay = document.getElementById('local-share-overlay');
   if (shareOverlay) {
@@ -2006,7 +2028,6 @@ async function initializeActiveCall(ack: MeetingAck): Promise<void> {
   updateLockUi();
   showView('call-view');
   startSessionTimer();
-  setCallStatus(ack.peerPresent ? 'Connected · 00:00' : 'Waiting for Musician…');
   if (pendingPeerMedia) { await rtc.peerReady(pendingPeerMedia); pendingPeerMedia = undefined; }
   else if (ack.peerPresent && ack.peerMedia) await rtc.peerReady(ack.peerMedia);
 }
@@ -2202,8 +2223,14 @@ function showSessionErrorModal(options: SessionErrorModalOptions): void {
   modal.classList.remove('hidden');
 }
 
+let isEnteringSession = false;
+
 async function enterSession(): Promise<void> {
+  if (isEnteringSession) return;
+  isEnteringSession = true;
+
   if (!pending || !audio.primary || (!audioOnly && !videoTrack)) {
+    isEnteringSession = false;
     showSessionErrorModal({
       title: 'Studio Setup Required',
       message: 'Your microphone and session audio devices must be ready before entering.',
@@ -2218,9 +2245,17 @@ async function enterSession(): Promise<void> {
     const token = auth.getToken() || undefined;
     const guestName = auth.getGuestName() || undefined;
     const waitingRoomEnabled = $<HTMLInputElement>('setup-waiting-room')?.checked ?? false;
-    const ack: MeetingAck = pending.type === 'create'
+    let ack: MeetingAck = pending.type === 'create'
       ? await signaling.create(participantId, metadata(), token, guestName, activeProjectId, waitingRoomEnabled)
       : await signaling.join(pending.code, participantId, metadata(), token, guestName);
+
+    if (!ack.ok && ack.message === 'Already in a session') {
+      signaling.leave();
+      ack = pending.type === 'create'
+        ? await signaling.create(participantId, metadata(), token, guestName, activeProjectId, waitingRoomEnabled)
+        : await signaling.join(pending.code, participantId, metadata(), token, guestName);
+    }
+
     if (!ack.ok) {
       if (ack.code === 'AUTH_REQUIRED') {
         showSessionErrorModal({
@@ -2285,6 +2320,9 @@ async function enterSession(): Promise<void> {
       }
       return;
     }
+
+    $('session-error-modal')?.classList.add('hidden');
+
     if (ack.waiting) {
       currentCode = ack.code;
       logger.setSessionContext(ack.code);
@@ -2299,7 +2337,10 @@ async function enterSession(): Promise<void> {
     await initializeActiveCall(ack);
   } catch (error) {
     showSessionErrorModal(parseSessionError(error));
-  } finally { setBusy(false); }
+  } finally {
+    isEnteringSession = false;
+    setBusy(false);
+  }
 }
 
 function setRemoteStream(stream?: MediaStream): void {
@@ -2482,6 +2523,7 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   peerParticipantId = null;
   sessionProjectId = undefined;
   $('session-workspace-drawer')?.classList.add('hidden');
+  $('in-call-audio-modal')?.classList.add('hidden');
   $('toggle-session-workspace')?.classList.remove('active');
   $('toggle-session-workspace')?.classList.add('hidden');
   $('waiting-room-banner')?.classList.add('hidden');
@@ -2583,7 +2625,8 @@ function updateCameraButtonState(): void {
   if (toggleCam) {
     toggleCam.classList.toggle('active', cameraEnabled);
     toggleCam.classList.toggle('muted', !cameraEnabled);
-    toggleCam.innerHTML = `<span class="tool-icon">${cameraEnabled ? icons.video({ size: 18 }) : icons.videoOff({ size: 18 })}</span><span class="tool-text">${cameraEnabled ? 'Stop Camera' : 'Start Camera'}</span>`;
+    toggleCam.innerHTML = `<span class="tool-icon">${cameraEnabled ? icons.video({ size: 18 }) : icons.videoOff({ size: 18 })}</span>`;
+    toggleCam.title = cameraEnabled ? 'Stop Camera' : 'Start Camera';
   }
 }
 
@@ -2614,13 +2657,12 @@ async function applyAdvancedAudioSettings(): Promise<void> {
 }
 
 function updateHeadphoneWarning(): void {
-  const outputs = $<HTMLSelectElement>('audio-output-select');
-  const label = outputs.selectedOptions[0]?.textContent?.toLowerCase() ?? '';
-  const headphones = /headphone|headset|airpods|buds|phones/.test(label);
-  const warning = prefs.mode === 'music';
-  $('music-warning').classList.toggle('hidden', !warning);
-  $('call-warning').classList.toggle('hidden', !warning);
-  if (warning) $('music-warning').innerHTML = `${headphones ? icons.headphones({ size: 16 }) : icons.alertTriangle({ size: 16 })} <span>${headphones ? 'Music Mode is unprocessed. Keep headphones connected to prevent feedback.' : 'Music Mode disables echo cancellation. The selected output may be speakers; headphones are recommended to prevent feedback.'}</span>`;
+  const el1 = document.getElementById('music-warning');
+  if (el1) el1.classList.add('hidden');
+  const el2 = document.getElementById('call-warning');
+  if (el2) el2.classList.add('hidden');
+  const el3 = document.getElementById('in-call-music-warning');
+  if (el3) el3.classList.add('hidden');
 }
 
 async function fullscreenRemote(requireShare: boolean): Promise<void> {
@@ -2682,13 +2724,44 @@ for (const id of ['setup-advanced-button', 'setup-advanced-action-button']) {
   });
 }
 $('enter-session').addEventListener('click', () => void enterSession());
-$('speaker-test').addEventListener('click', () => void testSpeakers().then(() => setMessage('setup-status', 'Speaker test complete.')).catch((error) => showSessionErrorModal(parseSessionError(error))));
-$('microphone-test').addEventListener('click', () => void testMicrophone().catch((error) => showSessionErrorModal(parseSessionError(error))));
+for (const id of ['speaker-test', 'in-call-speaker-test']) {
+  $(id)?.addEventListener('click', () => void testSpeakers().then(() => setMessage('setup-status', 'Speaker test complete.')).catch((error) => showSessionErrorModal(parseSessionError(error))));
+}
+for (const id of ['microphone-test', 'in-call-microphone-test']) {
+  $(id)?.addEventListener('click', () => void testMicrophone().catch((error) => showSessionErrorModal(parseSessionError(error))));
+}
+
+async function switchAudioMode(mode: AudioMode): Promise<void> {
+  prefs.mode = mode;
+  savePreferences();
+  setModeRadios(mode);
+  updateCallMode();
+  updateMusicWarning();
+  try {
+    await syncAllVoiceMics(mode);
+    setMessage(inCall ? 'device-dialog-status' : 'setup-status', `Audio Profile: ${mode === 'music' ? 'Music Mode' : 'Talk Mode'}`);
+  } catch (error) {
+    logger.warn('mode_change_error', 'Failed to switch audio mode', { mode }, error);
+    setModeRadios(prefs.mode);
+    showSessionErrorModal(parseSessionError(error));
+  }
+}
+
+for (const card of document.querySelectorAll<HTMLElement>('.mode-card')) {
+  card.addEventListener('click', () => {
+    const radio = card.querySelector<HTMLInputElement>('input[type="radio"]');
+    if (radio && radio.value) {
+      void switchAudioMode(radio.value as AudioMode);
+    }
+  });
+}
 
 for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="setup-mode"], input[name="call-setup-mode"]')) {
-  radio.addEventListener('change', () => void syncAllVoiceMics(radio.value as AudioMode)
-    .then(() => { updateMusicWarning(); setMessage('setup-status', ''); })
-    .catch((error) => { setModeRadios(prefs.mode); showSessionErrorModal(parseSessionError(error)); }));
+  radio.addEventListener('change', () => {
+    if (radio.checked) {
+      void switchAudioMode(radio.value as AudioMode);
+    }
+  });
 }
 bindSelect('camera-select', (value) => replaceCamera(value || undefined));
 bindSelect('call-camera-select', (value) => replaceCamera(value || undefined));
@@ -2810,7 +2883,8 @@ function toggleMute(): void {
   if (toggleMic) {
     toggleMic.classList.toggle('active', !muted);
     toggleMic.classList.toggle('muted', muted);
-    toggleMic.innerHTML = `<span class="tool-icon">${muted ? icons.micOff({ size: 18 }) : icons.mic({ size: 18 })}</span><span class="tool-text">${muted ? 'Unmute Mic' : 'Mute Mic'}</span>`;
+    toggleMic.innerHTML = `<span class="tool-icon">${muted ? icons.micOff({ size: 18 }) : icons.mic({ size: 18 })}</span>`;
+    toggleMic.title = muted ? 'Unmute Microphone' : 'Mute Microphone';
   }
   if (muted) $('voice-in-indicator')?.classList.remove('active');
   if (inCall) signaling.updateMedia(currentCode, metadata());
@@ -2829,28 +2903,45 @@ for (const id of ['toggle-screen', 'screen-button']) {
   }).catch((error) => setCallStatus(deviceError(error))));
 }
 
-$('mode-music-btn')?.addEventListener('click', () => {
-  if (prefs.mode !== 'music') {
-    void replaceAudioInput(prefs.audioInputId, 'music').catch((e) => setCallStatus(deviceError(e)));
-  }
-});
-$('mode-talk-btn')?.addEventListener('click', () => {
-  if (prefs.mode !== 'talk') {
-    void replaceAudioInput(prefs.audioInputId, 'talk').catch((e) => setCallStatus(deviceError(e)));
-  }
-});
+$('mode-music-btn')?.addEventListener('click', () => void switchAudioMode('music'));
+$('mode-talk-btn')?.addEventListener('click', () => void switchAudioMode('talk'));
 $('mode-button')?.addEventListener('click', () => {
   const next: AudioMode = prefs.mode === 'music' ? 'talk' : 'music';
-  void replaceAudioInput(prefs.audioInputId, next).catch((error) => setCallStatus(deviceError(error)));
+  void switchAudioMode(next);
 });
 
 $('audio-only-button')?.addEventListener('click', () => void setAudioOnly(!audioOnly).catch((error) => setCallStatus(deviceError(error))));
 $<HTMLInputElement>('audio-only-setup')?.addEventListener('change', (event) => void setAudioOnly((event.currentTarget as HTMLInputElement).checked).catch((error) => setMessage('setup-status', deviceError(error), true)));
 
+function openInCallAudioModal(): void {
+  setModeRadios(prefs.mode);
+  void enumerateAndPopulate();
+  updateMusicWarning();
+  $('in-call-audio-modal')?.classList.remove('hidden');
+}
+
+function closeInCallAudioModal(): void {
+  $('in-call-audio-modal')?.classList.add('hidden');
+}
+
+$('btn-close-in-call-audio')?.addEventListener('click', closeInCallAudioModal);
+$('btn-done-in-call-audio')?.addEventListener('click', closeInCallAudioModal);
+$('in-call-audio-modal')?.addEventListener('click', (e) => {
+  if (e.target === $('in-call-audio-modal')) closeInCallAudioModal();
+});
+$('in-call-advanced-settings-btn')?.addEventListener('click', () => {
+  closeInCallAudioModal();
+  openSettings('audio');
+});
+
 for (const id of ['open-settings', 'devices-button']) {
   $(id)?.addEventListener('click', () => {
     void enumerateAndPopulate();
-    openSettings('audio');
+    if (inCall || !$('call-view')?.classList.contains('hidden')) {
+      openInCallAudioModal();
+    } else {
+      openSettings('audio');
+    }
   });
 }
 
@@ -2863,22 +2954,25 @@ $('copy-invite')?.addEventListener('click', () => {
   if (!currentCode) return;
   const link = `jameet://join/${currentCode}`;
   const api = window.jameet || window.musiczoom;
-  void (api?.copyText ? api.copyText(link) : Promise.reject()).then(() => {
+  const setCopiedState = () => {
     const btn = $('copy-invite');
     if (btn) {
       const origHtml = btn.innerHTML;
-      btn.innerHTML = `${icons.check({ size: 13 })} <span>Copied!</span>`;
-      window.setTimeout(() => { btn.innerHTML = origHtml; }, 1800);
+      const origTitle = btn.title;
+      btn.innerHTML = icons.check({ size: 13 });
+      btn.title = 'Link copied to clipboard!';
+      window.setTimeout(() => {
+        btn.innerHTML = origHtml;
+        btn.title = origTitle;
+      }, 1800);
     }
-  }).catch(() => {
-    void navigator.clipboard?.writeText(link);
-    const btn = $('copy-invite');
-    if (btn) {
-      const origHtml = btn.innerHTML;
-      btn.innerHTML = `${icons.check({ size: 13 })} <span>Copied!</span>`;
-      window.setTimeout(() => { btn.innerHTML = origHtml; }, 1800);
-    }
-  });
+  };
+  void (api?.copyText ? api.copyText(link) : Promise.reject())
+    .then(setCopiedState)
+    .catch(() => {
+      void navigator.clipboard?.writeText(link);
+      setCopiedState();
+    });
 });
 
 // ========================================================
@@ -3241,12 +3335,31 @@ $('stats-dialog')?.addEventListener('click', (e) => {
 });
 
 function updateParticipantIdentityUi(): void {
+  const user = auth.getUser();
+  const guestName = auth.getGuestName();
+  const isLogged = !!auth.getUser();
+  const avatarBg = safeAvatarColor(user?.avatarColor, '#38bdf8');
+  const avatarUrl = user?.avatarUrl;
+
   const localLabel = myIdentity
     ? `${myIdentity.displayName}${myIdentity.isHost ? ' (Host)' : myIdentity.isGuest ? ' (Guest)' : ''}`
-    : 'You';
+    : user ? user.displayName : guestName ? `${guestName} (Guest)` : 'You';
   setText('local-user-name', localLabel);
+  setText('call-user-name', user ? user.displayName : guestName ? `${guestName} (Guest)` : 'Host');
+
   const localIconEl = $('local-user-icon');
   if (localIconEl) localIconEl.innerHTML = myIdentity?.isHost ? icons.crown({ size: 12 }) : icons.headphones({ size: 12 });
+
+  const callBadge = $('call-avatar-badge');
+  if (callBadge) {
+    if (isLogged && user) {
+      applyAvatarToElement(callBadge, user.displayName || user.username, avatarBg, avatarUrl);
+    } else if (guestName) {
+      applyAvatarToElement(callBadge, guestName, '#06b6d4');
+    } else {
+      callBadge.innerHTML = icons.user({ size: 14 });
+    }
+  }
 
   const remoteLabel = peerIdentity
     ? `${peerIdentity.displayName}${peerIdentity.username ? ` (@${peerIdentity.username})` : ''}${peerIdentity.isHost ? ' (Host)' : peerIdentity.isGuest ? ' (Guest)' : ''}`
@@ -3436,10 +3549,10 @@ function updateAuthUi(user: UserProfile | null, guestName: string): void {
   setText('call-user-name', user ? user.displayName : guestName ? `${guestName} (Guest)` : 'Host');
   const callBadge = $('call-avatar-badge');
   if (callBadge) {
-    if (myIdentity?.isHost) {
-      callBadge.innerHTML = icons.crown({ size: 14 });
-    } else if (isLogged && user?.displayName) {
-      applyAvatarToElement(callBadge, user.displayName, avatarBg, avatarUrl);
+    if (isLogged && user) {
+      applyAvatarToElement(callBadge, user.displayName || user.username, avatarBg, avatarUrl);
+    } else if (guestName) {
+      applyAvatarToElement(callBadge, guestName, '#06b6d4');
     } else {
       callBadge.innerHTML = icons.user({ size: 14 });
     }
@@ -5028,6 +5141,10 @@ function renderProjectView(): void {
 
   // Hero
   setText('project-title', p.name);
+  const myCollabEntry = p.collaborators?.find((c) => c.userId === user?.id);
+  const myRole = isOwner ? 'owner' : (myCollabEntry?.role || 'editor');
+  const isViewer = myRole === 'viewer';
+
   const roleBadge = $('project-role-badge');
   if (roleBadge) {
     if (p.archived) {
@@ -5036,8 +5153,11 @@ function renderProjectView(): void {
     } else if (isOwner) {
       roleBadge.innerHTML = `${icons.crown({ size: 14 })} <span>Owner</span>`;
       roleBadge.className = 'project-status-pill badge-owner';
+    } else if (isViewer) {
+      roleBadge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg> <span>View Only</span>`;
+      roleBadge.className = 'project-status-pill badge-viewer';
     } else {
-      roleBadge.innerHTML = `${icons.users({ size: 14 })} <span>Shared</span>`;
+      roleBadge.innerHTML = `${icons.users({ size: 14 })} <span>Editor</span>`;
       roleBadge.className = 'project-status-pill badge-collab';
     }
   }
@@ -5076,6 +5196,9 @@ function renderProjectView(): void {
 
   // Sessions
   renderProjectSessions();
+
+  // Enforce workspace edit/view permissions across UI
+  applyWorkspacePermissions();
 }
 
 function renderProjectCollaborators(): void {
@@ -5107,9 +5230,30 @@ function renderProjectCollaborators(): void {
     container.replaceChildren();
 
     for (const member of allMembers) {
-      const roleIcon = member.role === 'owner' ? icons.crown({ size: 12 }) : icons.users({ size: 12 });
-      const roleLabel = `${roleIcon} <span>${member.role === 'owner' ? 'Owner' : member.role.charAt(0).toUpperCase() + member.role.slice(1)}</span>`;
-      const roleClass = member.role === 'owner' ? 'role-owner' : 'role-collaborator';
+      const isMemberOwner = member.role === 'owner';
+      const isViewer = member.role === 'viewer';
+      const isEditor = member.role === 'editor' || member.role === 'collaborator';
+
+      let roleHtml = '';
+      if (isMemberOwner) {
+        roleHtml = `<span class="collab-role-badge role-owner">${icons.crown({ size: 12 })} <span>Owner</span></span>`;
+      } else if (isOwner) {
+        roleHtml = `
+          <div class="collab-role-select-wrap">
+            <select class="collab-role-dropdown" data-user-id="${escapeHtml(member.userId)}" aria-label="Permission Level">
+              <option value="editor" ${isEditor ? 'selected' : ''}>Editor (Can Edit)</option>
+              <option value="viewer" ${isViewer ? 'selected' : ''}>Viewer (View Only)</option>
+            </select>
+          </div>
+        `;
+      } else {
+        roleHtml = `
+          <span class="collab-role-badge ${isViewer ? 'role-viewer' : 'role-editor'}">
+            <span>${isViewer ? 'Viewer' : 'Editor'}</span>
+          </span>
+        `;
+      }
+
       const item = document.createElement('div');
       item.className = 'collab-item';
       item.innerHTML = `
@@ -5118,11 +5262,29 @@ function renderProjectCollaborators(): void {
           <div class="collab-name">${escapeHtml(member.displayName)}</div>
           <div class="collab-username">@${escapeHtml(member.username)}</div>
         </div>
-        <span class="collab-role-badge ${roleClass}">${roleLabel}</span>
-        ${isOwner && member.role !== 'owner' ? `<button class="collab-remove-btn" data-user-id="${escapeHtml(member.userId)}" title="Remove member">${icons.x({ size: 14 })}</button>` : ''}
+        ${roleHtml}
+        ${isOwner && !isMemberOwner ? `<button class="collab-remove-btn" data-user-id="${escapeHtml(member.userId)}" title="Remove member">${icons.x({ size: 14 })}</button>` : ''}
       `;
       const avatarEl = item.querySelector<HTMLElement>('.collab-avatar');
       applyAvatarToElement(avatarEl, member.displayName, member.avatarColor, member.avatarUrl);
+
+      const roleDropdown = item.querySelector<HTMLSelectElement>('.collab-role-dropdown');
+      if (roleDropdown) {
+        roleDropdown.addEventListener('change', async (e) => {
+          e.stopPropagation();
+          const targetRole = roleDropdown.value;
+          const token = auth.getToken();
+          if (!token || !activeProject) return;
+          try {
+            roleDropdown.disabled = true;
+            activeProject = await projectsApi.updateCollaboratorRole(token, activeProject.id, member.userId, targetRole);
+            renderProjectView();
+          } catch (err) {
+            alert(err instanceof Error ? err.message : 'Failed to update member permission.');
+            renderProjectCollaborators();
+          }
+        });
+      }
 
       const removeBtn = item.querySelector<HTMLButtonElement>('.collab-remove-btn');
       if (removeBtn) {
@@ -5139,6 +5301,20 @@ function renderProjectCollaborators(): void {
   buildItems(listFull);
 }
 
+let currentProjectSessionsSearch = '';
+let currentProjectSessionsFilter: 'all' | 'solo' | 'collab' = 'all';
+let activeSummarySession: ProjectSessionItem | null = null;
+
+function formatTotalStudioTime(totalSeconds: number): string {
+  if (!totalSeconds || totalSeconds < 60) return '< 1m';
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  if (h > 0) {
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${m}m`;
+}
+
 function renderProjectSessions(): void {
   if (!activeProject) return;
   const listOverview = $('project-sessions-list');
@@ -5147,6 +5323,15 @@ function renderProjectSessions(): void {
 
   const sessions = activeProject.sessions || [];
 
+  // 1. Calculate & Render Stats
+  const totalCount = sessions.length;
+  const totalSec = sessions.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
+  const lastActiveText = sessions.length > 0 ? projectsApi.formatRelativeTime(sessions[0].startedAt) : '—';
+
+  setText('project-stat-sessions-time', `${formatTotalStudioTime(totalSec)} studio time`);
+  setText('project-stat-sessions-last', `Last active: ${lastActiveText}`);
+
+  // 2. Render mini list in Overview tab (top 5)
   if (listOverview) {
     if (!sessions.length) {
       listOverview.replaceChildren();
@@ -5160,16 +5345,227 @@ function renderProjectSessions(): void {
     }
   }
 
+  // 3. Filter sessions for Full Sessions Tab
   if (listFull) {
-    if (!sessions.length) {
-      listFull.innerHTML = `<div class="projects-empty"><p>No session history in this project yet.</p></div>`;
+    let filtered = sessions;
+
+    // Filter by type
+    if (currentProjectSessionsFilter === 'solo') {
+      filtered = filtered.filter((s) => !s.collaborator);
+    } else if (currentProjectSessionsFilter === 'collab') {
+      filtered = filtered.filter((s) => Boolean(s.collaborator));
+    }
+
+    // Filter by search query
+    if (currentProjectSessionsSearch.trim()) {
+      const q = currentProjectSessionsSearch.trim().toLowerCase();
+      filtered = filtered.filter((s) => {
+        const codeMatch = s.code?.toLowerCase().includes(q);
+        const nameMatch = s.collaborator?.displayName?.toLowerCase().includes(q);
+        const userMatch = s.collaborator?.username?.toLowerCase().includes(q);
+        return codeMatch || nameMatch || userMatch;
+      });
+    }
+
+    // Update counter badge
+    setText('project-sessions-counter-badge', `${filtered.length}`);
+
+    if (!filtered.length) {
+      listFull.innerHTML = `
+        <div class="projects-empty" style="padding: 24px 0; text-align: center;">
+          <p style="margin: 0 0 4px; font-size: 12.5px; color: #cbd5e1; font-weight: 500;">
+            ${sessions.length === 0 ? 'No session history in this project yet.' : 'No sessions matching your filter.'}
+          </p>
+          <p style="margin: 0; font-size: 11px; color: #64748b;">
+            ${sessions.length === 0 ? 'Click Start Session to launch your first studio session.' : 'Try adjusting your search query or filter.'}
+          </p>
+        </div>
+      `;
     } else {
       listFull.replaceChildren();
-      for (const session of sessions) {
-        listFull.appendChild(createSessionItemEl(session));
+      for (const session of filtered) {
+        listFull.appendChild(createProjectSessionCard(session));
       }
     }
   }
+}
+
+function createProjectSessionCard(session: ProjectSessionItem): HTMLElement {
+  const card = document.createElement('div');
+  card.className = 'project-session-seamless-row';
+  const isCollab = Boolean(session.collaborator);
+  const collabText = isCollab ? `Session with ${session.collaborator!.displayName}` : 'Solo Studio Session';
+  const timeText = projectsApi.formatRelativeTime(session.startedAt);
+  const durationText = session.durationSeconds && session.durationSeconds > 0
+    ? projectsApi.formatSessionDuration(session.durationSeconds)
+    : '< 1m';
+
+  const avatarContent = isCollab
+    ? (session.collaborator!.displayName.charAt(0).toUpperCase())
+    : `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></svg>`;
+
+  card.innerHTML = `
+    <div class="session-card-left">
+      <div class="session-card-avatar ${isCollab ? 'is-collab' : ''}">
+        ${avatarContent}
+      </div>
+      <div class="session-card-details">
+        <div class="session-card-collab-row">
+          <span class="session-card-title">${escapeHtml(collabText)}</span>
+          <span class="session-card-role-badge">${session.role === 'host' ? 'Host' : 'Participant'}</span>
+        </div>
+        <div class="session-card-sub-row">
+          <button type="button" class="session-code-pill" title="Click to copy session code">
+            <span>${escapeHtml(session.code)}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+          </button>
+          <span class="meta-dot">·</span>
+          <span class="session-card-time" title="${new Date(session.startedAt).toLocaleString()}">${escapeHtml(timeText)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="session-card-right">
+      <span class="session-card-duration">
+        ${icons.clock({ size: 11 })}
+        <span>${escapeHtml(durationText)}</span>
+      </span>
+      <div class="session-card-actions">
+        <button type="button" class="session-card-btn btn-summary" title="View Session Summary & Activity">
+          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span>Summary</span>
+        </button>
+        <button type="button" class="session-card-btn btn-start" title="Launch Project Session">
+          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          <span>Start</span>
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Copy Code on Click
+  const codeBtn = card.querySelector<HTMLButtonElement>('.session-code-pill');
+  codeBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    void navigator.clipboard.writeText(session.code);
+    codeBtn.innerHTML = `<span>Copied!</span> <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`;
+    setTimeout(() => {
+      codeBtn.innerHTML = `<span>${escapeHtml(session.code)}</span> <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+    }, 1500);
+  });
+
+  // Summary Click
+  card.querySelector('.btn-summary')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openSessionSummaryModal(session);
+  });
+
+  // Start Click
+  card.querySelector('.btn-start')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!activeProject) return;
+    await flushAllWorkspacePendingSaves();
+    activeProjectId = activeProject.id;
+    await prepareStudio({ type: 'create' });
+  });
+
+  return card;
+}
+
+function openSessionSummaryModal(session: ProjectSessionItem): void {
+  activeSummarySession = session;
+  const modal = $('project-session-summary-modal');
+  if (!modal || !activeProject) return;
+
+  const isCollab = Boolean(session.collaborator);
+  const titleText = isCollab ? `Session with ${session.collaborator!.displayName}` : 'Solo Studio Session';
+  const durationText = session.durationSeconds && session.durationSeconds > 0
+    ? projectsApi.formatSessionDuration(session.durationSeconds)
+    : '< 1m';
+
+  setText('session-summary-title', titleText);
+  setText('session-summary-code', session.code);
+  setText('session-summary-time', new Date(session.startedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }));
+  setText('session-summary-duration', durationText);
+
+  // Participants list
+  const pList = $('session-summary-participants');
+  if (pList) {
+    pList.innerHTML = '';
+    const ownerName = activeProject.ownerDisplayName || activeProject.ownerUsername || 'Owner';
+    let text = `${ownerName} (Host)`;
+    if (isCollab && session.collaborator) {
+      text += `, ${session.collaborator.displayName}`;
+    }
+    const span = document.createElement('span');
+    span.className = 'modal-participants-text';
+    span.textContent = text;
+    pList.appendChild(span);
+  }
+
+  // Activities list - only items that were actually modified during this session
+  const actList = $('session-summary-activities');
+  if (actList) {
+    actList.innerHTML = '';
+    
+    // 1. Check for recorded factual session events
+    const summaryEvents = session.summary?.events || [];
+    
+    // 2. Fallback to project activities strictly within session timestamps (excluding session_completed meta events)
+    const sessionStart = session.startedAt;
+    const sessionEnd = session.endedAt || (session.startedAt + (session.durationSeconds || 1) * 1000);
+    
+    const fallbackActs = (activeProject.activities || []).filter((a) => {
+      const isWithinSession = a.createdAt >= sessionStart && a.createdAt <= sessionEnd + 1000;
+      const isWorkspaceChange = a.type !== 'session_completed' && a.type !== 'collaborator_added' && a.type !== 'collaborator_removed';
+      return isWithinSession && isWorkspaceChange;
+    });
+
+    const hasSummaryEvents = summaryEvents.length > 0;
+    const hasFallbackActs = fallbackActs.length > 0;
+
+    if (!hasSummaryEvents && !hasFallbackActs) {
+      actList.innerHTML = `<div class="modal-empty-act">No workspace changes or task edits occurred during this session.</div>`;
+    } else if (hasSummaryEvents) {
+      for (const ev of summaryEvents) {
+        const item = document.createElement('div');
+        item.className = 'modal-act-item';
+        let iconSvg = '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/>';
+        if (ev.category === 'task') {
+          iconSvg = '<path d="M12 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/>';
+        } else if (ev.category === 'lyrics') {
+          iconSvg = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>';
+        } else if (ev.category === 'note') {
+          iconSvg = '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>';
+        } else if (ev.category === 'structure') {
+          iconSvg = '<path d="M21 15V6"/><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/>';
+        }
+        item.innerHTML = `
+          <span class="modal-act-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon">${iconSvg}</svg>
+          </span>
+          <span class="modal-act-desc">${escapeHtml(ev.description)}</span>
+          <span class="modal-act-time">${projectsApi.formatRelativeTime(ev.timestamp)}</span>
+        `;
+        actList.appendChild(item);
+      }
+    } else {
+      for (const act of fallbackActs.slice(0, 15)) {
+        const item = document.createElement('div');
+        item.className = 'modal-act-item';
+        let desc = act.summary || act.title || 'Workspace updated';
+        item.innerHTML = `
+          <span class="modal-act-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+          </span>
+          <span class="modal-act-desc">${escapeHtml(desc)}</span>
+          <span class="modal-act-time">${projectsApi.formatRelativeTime(act.createdAt)}</span>
+        `;
+        actList.appendChild(item);
+      }
+    }
+  }
+
+  modal.classList.remove('hidden');
 }
 
 function createSessionItemEl(session: ProjectSessionItem): HTMLElement {
@@ -5325,6 +5721,53 @@ $('btn-project-start-session')?.addEventListener('click', async () => {
   await flushAllWorkspacePendingSaves();
   activeProjectId = activeProject.id;
   await prepareStudio({ type: 'create' });
+});
+
+$('btn-sessions-tab-start')?.addEventListener('click', async () => {
+  if (!activeProject) return;
+  await flushAllWorkspacePendingSaves();
+  activeProjectId = activeProject.id;
+  await prepareStudio({ type: 'create' });
+});
+
+$('project-sessions-search-input')?.addEventListener('input', (e) => {
+  currentProjectSessionsSearch = (e.target as HTMLInputElement).value;
+  renderProjectSessions();
+});
+
+document.querySelectorAll<HTMLButtonElement>('.sessions-filter-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    currentProjectSessionsFilter = (btn.dataset.filter as any) || 'all';
+    document.querySelectorAll('.sessions-filter-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    renderProjectSessions();
+  });
+});
+
+$('btn-close-session-summary')?.addEventListener('click', () => {
+  $('project-session-summary-modal')?.classList.add('hidden');
+});
+
+$('project-session-summary-modal')?.addEventListener('click', (e) => {
+  if (e.target === $('project-session-summary-modal')) {
+    $('project-session-summary-modal')?.classList.add('hidden');
+  }
+});
+
+$('btn-session-summary-copy')?.addEventListener('click', () => {
+  if (activeSummarySession) {
+    void navigator.clipboard.writeText(activeSummarySession.code);
+    const copyBtn = $('btn-session-summary-copy');
+    if (copyBtn) {
+      copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> <span>Copied!</span>';
+      setTimeout(() => {
+        copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg> <span>Copy Code</span>';
+      }, 1500);
+    }
+  }
+});
+
+$('btn-close-session-summary-footer')?.addEventListener('click', () => {
+  $('project-session-summary-modal')?.classList.add('hidden');
 });
 
 // Project Menu
@@ -5517,10 +5960,13 @@ $('btn-confirm-delete-project')?.addEventListener('click', async () => {
 
 // Add Collaborator
 const openAddCollabModal = () => {
-  $<HTMLInputElement>('add-collab-username').value = '';
+  const input = $<HTMLInputElement>('add-collab-username');
+  if (input) input.value = '';
+  const roleSelect = $<HTMLSelectElement>('add-collab-role');
+  if (roleSelect) roleSelect.value = 'editor';
   setText('add-collab-error', '');
   $('add-collab-modal')?.classList.remove('hidden');
-  $<HTMLInputElement>('add-collab-username')?.focus();
+  input?.focus();
 };
 $('btn-project-add-collab')?.addEventListener('click', openAddCollabModal);
 $('btn-project-add-collab-tab')?.addEventListener('click', openAddCollabModal);
@@ -5531,11 +5977,12 @@ $('btn-confirm-add-collab')?.addEventListener('click', async () => {
   if (!activeProject) return;
   const usernameOrEmail = $<HTMLInputElement>('add-collab-username')?.value.trim();
   if (!usernameOrEmail) { setText('add-collab-error', 'Please enter a username or email.'); return; }
+  const role = $<HTMLSelectElement>('add-collab-role')?.value || 'editor';
   const token = auth.getToken();
   if (!token) return;
   try {
     setText('add-collab-error', '');
-    activeProject = await projectsApi.addCollaborator(token, activeProject.id, usernameOrEmail);
+    activeProject = await projectsApi.addCollaborator(token, activeProject.id, usernameOrEmail, role);
     renderProjectView();
     $('add-collab-modal')?.classList.add('hidden');
   } catch (err) {
@@ -5543,8 +5990,123 @@ $('btn-confirm-add-collab')?.addEventListener('click', async () => {
   }
 });
 
+// Delete Song Modal Handlers
+let songPendingDeletion: ProjectSongItem | null = null;
+
+function openDeleteSongModal(song: ProjectSongItem): void {
+  if (!activeProject || !canUserEditProject()) return;
+  songPendingDeletion = song;
+
+  const sTitle = song.title || 'Untitled Song';
+  const targetPhrase = `delete ${sTitle}`;
+  setText('delete-song-name-confirm', sTitle);
+  setText('delete-song-phrase-target', targetPhrase);
+
+  const confirmInput = $<HTMLInputElement>('delete-song-confirm-input');
+  if (confirmInput) {
+    confirmInput.value = '';
+    confirmInput.placeholder = `Type "${targetPhrase}"`;
+    confirmInput.classList.remove('is-matched');
+  }
+
+  const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-song');
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/></svg>
+      <span>Delete Track</span>
+    `;
+  }
+
+  const errEl = $('delete-song-error');
+  if (errEl) {
+    errEl.textContent = '';
+    errEl.style.display = 'none';
+  }
+
+  $('delete-song-modal')?.classList.remove('hidden');
+  setTimeout(() => confirmInput?.focus(), 50);
+}
+
+$('delete-song-confirm-input')?.addEventListener('input', (e) => {
+  if (!songPendingDeletion) return;
+  const inputEl = e.target as HTMLInputElement;
+  const val = inputEl.value.trim().toLowerCase();
+  const sTitle = (songPendingDeletion.title || '').trim().toLowerCase();
+  const targetA = `delete ${sTitle}`;
+  const targetB = `delete - ${sTitle}`;
+  const targetC = `delete "${sTitle}"`;
+  const isMatch = val === targetA || val === targetB || val === targetC || val === 'delete' || val === sTitle;
+
+  inputEl.classList.toggle('is-matched', isMatch);
+  const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-song');
+  if (confirmBtn) {
+    confirmBtn.disabled = !isMatch;
+  }
+});
+
+$('delete-song-confirm-input')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-song');
+    if (confirmBtn && !confirmBtn.disabled) {
+      confirmBtn.click();
+    }
+  }
+});
+
+$('btn-close-delete-song')?.addEventListener('click', () => {
+  $('delete-song-modal')?.classList.add('hidden');
+  songPendingDeletion = null;
+});
+$('btn-cancel-delete-song')?.addEventListener('click', () => {
+  $('delete-song-modal')?.classList.add('hidden');
+  songPendingDeletion = null;
+});
+
+$('btn-confirm-delete-song')?.addEventListener('click', async () => {
+  if (!activeProject?.workspace || !songPendingDeletion || !canUserEditProject()) return;
+  const songToDelete = songPendingDeletion;
+  const ws = activeProject.workspace;
+  const songs = ws.songs || [];
+
+  const idx = songs.findIndex((s) => s.id === songToDelete.id);
+  if (idx !== -1) {
+    songs.splice(idx, 1);
+  }
+
+  // If no songs left, create a fresh initial song
+  if (songs.length === 0) {
+    const now = Date.now();
+    const initSong: ProjectSongItem = {
+      id: 'song-1',
+      title: 'Song 1',
+      order: 0,
+      lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now },
+      notes: { revision: 1, content: '• ', bpm: '120 BPM', key: 'C Major', updatedAt: now },
+      structure: { revision: 1, sections: [], updatedAt: now },
+      createdAt: now,
+      updatedAt: now
+    };
+    songs.push(initSong);
+  }
+
+  // If the deleted song was the active song, switch to another song
+  if (ws.activeSongId === songToDelete.id) {
+    const nextSong = songs[Math.max(0, idx - 1)] || songs[0];
+    switchActiveSong(nextSong.id);
+  }
+
+  $('delete-song-modal')?.classList.add('hidden');
+  songPendingDeletion = null;
+
+  renderProjectSongsSelector();
+  renderProjectOverviewSongsList();
+  applyWorkspacePermissions();
+  void saveSongsWorkspace();
+});
+
 // Close modals on overlay click
-for (const modalId of ['new-project-modal', 'rename-project-modal', 'add-collab-modal', 'delete-project-modal']) {
+for (const modalId of ['new-project-modal', 'rename-project-modal', 'add-collab-modal', 'delete-project-modal', 'delete-song-modal']) {
   const modal = $(modalId);
   modal?.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
 }
@@ -5576,6 +6138,176 @@ let lastSyncedLyrics = '';
 let lastSyncedNotes = '';
 let lastSyncedNotesBpm = '';
 let lastSyncedNotesKey = '';
+
+function canUserEditProject(): boolean {
+  if (!activeProject) return false;
+  const user = auth.getUser();
+  if (!user) return false;
+  if (activeProject.ownerId === user.id || (user.username && activeProject.ownerUsername && activeProject.ownerUsername.toLowerCase() === user.username.toLowerCase())) {
+    return true;
+  }
+  const collab = activeProject.collaborators?.find((c) => 
+    c.userId === user.id || 
+    (user.username && c.username && c.username.toLowerCase() === user.username.toLowerCase())
+  );
+  if (!collab) return false;
+  return collab.role === 'editor' || collab.role === 'collaborator' || (collab.role as string) === 'owner';
+}
+
+function applyWorkspacePermissions(): void {
+  const canEdit = canUserEditProject();
+  const user = auth.getUser();
+  const isOwner = user?.id === activeProject?.ownerId || (user?.username && activeProject?.ownerUsername && activeProject.ownerUsername.toLowerCase() === user.username.toLowerCase());
+
+  // 1. Lyrics editor & formatting toolbar
+  const projectLyricsEditor = $('project-lyrics-editor');
+  const sessionLyricsEditor = $('session-lyrics-editor');
+  if (projectLyricsEditor) {
+    projectLyricsEditor.setAttribute('contenteditable', canEdit ? 'true' : 'false');
+    projectLyricsEditor.classList.toggle('readonly-viewer', !canEdit);
+    projectLyricsEditor.style.cursor = canEdit ? 'text' : 'default';
+  }
+  if (sessionLyricsEditor) {
+    sessionLyricsEditor.setAttribute('contenteditable', canEdit ? 'true' : 'false');
+    sessionLyricsEditor.classList.toggle('readonly-viewer', !canEdit);
+    sessionLyricsEditor.style.cursor = canEdit ? 'text' : 'default';
+  }
+  const lyricsToolbar = $('lyrics-formatting-toolbar');
+  if (lyricsToolbar) {
+    lyricsToolbar.style.display = canEdit ? '' : 'none';
+  }
+  const btnNewDoc = $('btn-new-lyrics-doc');
+  if (btnNewDoc) {
+    btnNewDoc.style.display = canEdit ? '' : 'none';
+  }
+  const sectionHelperBar = document.querySelector<HTMLElement>('.lyrics-section-helpers-bar');
+  if (sectionHelperBar) {
+    sectionHelperBar.style.display = canEdit ? '' : 'none';
+  }
+
+  // 2. Notes & BPM / Key inputs
+  const projectNotes = $<HTMLTextAreaElement>('project-notes-input');
+  const sessionNotes = $<HTMLTextAreaElement>('session-notes-input');
+  if (projectNotes) {
+    projectNotes.readOnly = !canEdit;
+    projectNotes.style.cursor = canEdit ? 'text' : 'default';
+    projectNotes.placeholder = canEdit ? 'Add production notes, chords, mixing instructions, references…' : 'Notes (View Only)';
+  }
+  if (sessionNotes) {
+    sessionNotes.readOnly = !canEdit;
+    sessionNotes.style.cursor = canEdit ? 'text' : 'default';
+    sessionNotes.placeholder = canEdit ? 'Session notes…' : 'Notes (View Only)';
+  }
+
+  const projectBpm = $<HTMLInputElement>('project-notes-bpm');
+  const sessionBpm = $<HTMLInputElement>('session-notes-bpm');
+  if (projectBpm) {
+    projectBpm.readOnly = !canEdit;
+    projectBpm.disabled = !canEdit;
+    projectBpm.style.cursor = canEdit ? 'text' : 'default';
+  }
+  if (sessionBpm) {
+    sessionBpm.readOnly = !canEdit;
+    sessionBpm.disabled = !canEdit;
+    sessionBpm.style.cursor = canEdit ? 'text' : 'default';
+  }
+
+  const keyRoot = $<HTMLSelectElement>('project-notes-key-root');
+  const keyMode = $<HTMLSelectElement>('project-notes-key-mode');
+  if (keyRoot) keyRoot.disabled = !canEdit;
+  if (keyMode) keyMode.disabled = !canEdit;
+  const sKeyRoot = $<HTMLSelectElement>('session-notes-key-root');
+  const sKeyMode = $<HTMLSelectElement>('session-notes-key-mode');
+  if (sKeyRoot) sKeyRoot.disabled = !canEdit;
+  if (sKeyMode) sKeyMode.disabled = !canEdit;
+
+  // 3. Tasks inputs & actions
+  const taskInput = $<HTMLInputElement>('new-task-input');
+  const taskAddBtn = $<HTMLButtonElement>('btn-add-task');
+  const taskNewRow = document.querySelector<HTMLElement>('.reminders-new-task-row') || taskInput?.closest<HTMLElement>('.reminders-new-task-bar');
+  if (taskNewRow) {
+    taskNewRow.style.display = canEdit ? '' : 'none';
+  }
+  if (taskInput) {
+    taskInput.disabled = !canEdit;
+    taskInput.placeholder = canEdit ? 'Add a task or production reminder…' : 'View only mode';
+  }
+  if (taskAddBtn) taskAddBtn.disabled = !canEdit;
+
+  const sessionTaskInput = $<HTMLInputElement>('session-new-task-input');
+  const sessionTaskAddBtn = $<HTMLButtonElement>('session-btn-add-task');
+  const sessionTaskNewRow = sessionTaskInput?.closest<HTMLElement>('.session-tasks-creation-bar');
+  if (sessionTaskNewRow) {
+    sessionTaskNewRow.style.display = canEdit ? '' : 'none';
+  }
+  if (sessionTaskInput) {
+    sessionTaskInput.disabled = !canEdit;
+    sessionTaskInput.placeholder = canEdit ? 'Add a task…' : 'View only';
+  }
+  if (sessionTaskAddBtn) sessionTaskAddBtn.disabled = !canEdit;
+
+  // 4. Structure controls
+  const structureAddBtn = $<HTMLButtonElement>('btn-structure-add-section');
+  if (structureAddBtn) structureAddBtn.style.display = canEdit ? '' : 'none';
+  const structureActionsBar = document.querySelector<HTMLElement>('.structure-actions-bar');
+  if (structureActionsBar) structureActionsBar.style.display = canEdit ? '' : 'none';
+  const structureQuickAdd = document.querySelector<HTMLElement>('.structure-quick-add');
+  if (structureQuickAdd) structureQuickAdd.style.display = canEdit ? '' : 'none';
+  const structureTimeline = $('structure-timeline-ribbon');
+  if (structureTimeline) structureTimeline.classList.toggle('readonly-viewer', !canEdit);
+
+  // 5. Song creation and toolbar actions
+  for (const songBtnId of [
+    'btn-overview-new-song',
+    'btn-quick-new-song',
+    'btn-open-new-song-modal',
+    'btn-session-new-song',
+    'btn-song-studio-add-song',
+    'btn-song-studio-rename-song',
+    'btn-song-studio-delete-song'
+  ]) {
+    const el = $(songBtnId);
+    if (el) el.style.display = canEdit ? '' : 'none';
+  }
+
+  // 6. Collaborator add buttons (Only owner)
+  const addCollabHero = $('btn-project-add-collab');
+  if (addCollabHero) addCollabHero.style.display = isOwner ? '' : 'none';
+  const addCollabTab = $('btn-project-add-collab-tab');
+  if (addCollabTab) addCollabTab.style.display = isOwner ? '' : 'none';
+
+  // 7. Enforce read-only state on rendered list items
+  document.querySelectorAll<HTMLElement>('.structure-section-card, .drawer-section-card').forEach((card) => {
+    if (!canEdit) {
+      card.removeAttribute('draggable');
+      card.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select').forEach((el) => {
+        el.disabled = true;
+        if (el instanceof HTMLInputElement) el.readOnly = true;
+      });
+      card.querySelectorAll<HTMLElement>('.btn-dup, .btn-del, .drag-handle').forEach((el) => {
+        el.style.display = 'none';
+      });
+    }
+  });
+
+  document.querySelectorAll<HTMLElement>('.reminders-task-row, .drawer-task-card').forEach((row) => {
+    if (!canEdit) {
+      row.removeAttribute('draggable');
+      row.querySelectorAll<HTMLButtonElement>('.reminders-check-btn, .task-subtask-check').forEach((b) => {
+        b.disabled = true;
+        b.style.cursor = 'default';
+        b.title = 'View only mode';
+      });
+      row.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input, textarea, select').forEach((el) => {
+        el.disabled = true;
+        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) el.readOnly = true;
+      });
+      row.querySelectorAll<HTMLElement>('.btn-del, .task-subtasks-add-row, .task-subtask-del').forEach((el) => {
+        el.style.display = 'none';
+      });
+    }
+  });
+}
 
 /**
  * Applies text update to a textarea (e.g. Notes) while preserving active cursor position
@@ -6019,6 +6751,8 @@ function openSongStudio(songId?: string, targetTab: 'lyrics' | 'structure' | 'no
   if (targetTab === 'lyrics') {
     setTimeout(() => updateLyricsDocumentPagination(), 20);
   }
+
+  applyWorkspacePermissions();
 }
 
 function closeSongStudio(): void {
@@ -6037,6 +6771,7 @@ function closeSongStudio(): void {
     }
   });
 
+  applyWorkspacePermissions();
   renderProjectOverviewSongsList();
 }
 
@@ -6093,20 +6828,24 @@ function renderProjectOverviewSongsList(): void {
     const keyRaw = (song.notes?.key || activeProject.workspace?.notes?.key || '').trim();
     const keyClean = keyRaw || 'C Major';
 
+    const isArchived = Boolean(song.archived);
+    const archivedBadge = isArchived ? `<span class="song-meta-badge badge-archived" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3);">Archived</span>` : '';
+
     card.innerHTML = `
       <div class="overview-song-left">
         <span class="overview-song-num">${String(globalIdx + 1).padStart(2, '0')}</span>
         <div class="overview-song-details">
           <span class="overview-song-title" title="Double click to rename">${escapeHtml(song.title || `Song ${globalIdx + 1}`)}</span>
           <div class="overview-song-meta">
-            <span class="song-meta-badge highlight">${escapeHtml(bpmClean)}</span>
-            <span class="song-meta-badge highlight">${escapeHtml(keyClean)}</span>
+            ${archivedBadge}
+            <span class="song-meta-badge">${escapeHtml(bpmClean)}</span>
+            <span class="song-meta-badge">${escapeHtml(keyClean)}</span>
           </div>
         </div>
       </div>
       <div class="overview-song-right">
         <button type="button" class="btn-open-song-studio" title="Open Song Studio" aria-label="Open Song Studio">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </button>
       </div>
     `;
@@ -6114,6 +6853,7 @@ function renderProjectOverviewSongsList(): void {
     // Double-click inline rename
     const titleEl = card.querySelector('.overview-song-title') as HTMLElement;
     const startRename = () => {
+      if (!canUserEditProject()) return;
       if (titleEl.querySelector('input')) return;
       const currentTitle = song.title || `Song ${globalIdx + 1}`;
       const input = document.createElement('input');
@@ -6172,6 +6912,10 @@ function renderProjectOverviewSongsList(): void {
     card.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).tagName === 'INPUT') return;
       openSongStudio(song.id, 'lyrics');
+    });
+
+    card.addEventListener('contextmenu', (e) => {
+      showSongContextMenu(e, song);
     });
 
     listEl.appendChild(card);
@@ -6313,7 +7057,10 @@ function renderProjectSongsSelector(): void {
       });
       item.querySelector('.btn-del')?.addEventListener('click', (e) => {
         e.stopPropagation();
-        deleteSong(song.id);
+        openDeleteSongModal(song);
+      });
+      item.addEventListener('contextmenu', (e) => {
+        showSongContextMenu(e, song);
       });
       item.addEventListener('click', (e) => {
         if ((e.target as HTMLElement).closest('.btn-song-item-action') || (e.target as HTMLElement).tagName === 'INPUT') return;
@@ -6395,7 +7142,7 @@ function switchActiveSong(songId: string): void {
 }
 
 function createNewSong(title: string, autoOpenStudio: boolean = false): void {
-  if (!activeProject) return;
+  if (!activeProject || !canUserEditProject()) return;
   const ws = activeProject.workspace || { songs: [] };
   if (!ws.songs || !Array.isArray(ws.songs)) {
     ws.songs = [];
@@ -6570,218 +7317,14 @@ function getActiveLyricsDoc(): { id: string; title: string; content: string; upd
   return doc;
 }
 
-let lyricsFilterQuery = '';
-
 function renderLyricsDocTabs(): void {
   const activeDoc = getActiveLyricsDoc();
-  const activeSong = getActiveSong();
-  const ws = activeSong.lyrics;
-  const docs = ws.documents || [];
-  const activeId = ws.activeDocumentId || activeDoc.id;
-
-  // 1. Render Dedicated Lyrics Sidebar Document List
-  const sidebarList = $('lyrics-sidebar-doc-list');
-  if (sidebarList) {
-    sidebarList.innerHTML = '';
-    const filteredDocs = lyricsFilterQuery
-      ? docs.filter((d) => d && d.title.toLowerCase().includes(lyricsFilterQuery.toLowerCase()))
-      : docs;
-
-    if (filteredDocs.length === 0) {
-      const emptyEl = document.createElement('div');
-      emptyEl.className = 'sidebar-empty-hint';
-      emptyEl.style.cssText = 'padding: 16px 8px; text-align: center; color: #64748b; font-size: 11px;';
-      emptyEl.textContent = lyricsFilterQuery ? 'No drafts matching filter' : 'No drafts found';
-      sidebarList.appendChild(emptyEl);
-    } else {
-      filteredDocs.forEach((doc, idx) => {
-        if (!doc) return;
-        const isActive = doc.id === activeId;
-        const item = document.createElement('div');
-        item.className = `lyrics-sidebar-item ${isActive ? 'active' : ''}`;
-        item.dataset.docId = doc.id;
-        item.setAttribute('draggable', 'true');
-
-        const timeStr = doc.updatedAt ? projectsApi.formatRelativeTime(doc.updatedAt) : 'Draft';
-
-        item.innerHTML = `
-          <div class="sidebar-item-main">
-            <span class="sidebar-item-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
-            </span>
-            <div class="sidebar-item-info">
-              <div class="sidebar-item-title" title="Double-click to rename">${escapeHtml(doc.title || 'Untitled')}</div>
-              <div class="sidebar-item-sub">${timeStr}</div>
-            </div>
-          </div>
-          <div class="sidebar-item-actions">
-            <button type="button" class="btn-sidebar-item-action btn-rename" title="Rename"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
-            <button type="button" class="btn-sidebar-item-action btn-dup" title="Duplicate"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
-            ${docs.length > 1 ? `<button type="button" class="btn-sidebar-item-action btn-del" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>` : ''}
-          </div>
-        `;
-
-        const titleEl = item.querySelector('.sidebar-item-title') as HTMLElement;
-
-        const startInlineRename = () => {
-          if (titleEl.querySelector('input')) return;
-          const currentTitle = doc.title || 'Untitled';
-          const input = document.createElement('input');
-          input.type = 'text';
-          input.className = 'sidebar-item-rename-input';
-          input.value = currentTitle;
-          input.maxLength = 80;
-
-          const commitRename = () => {
-            const newTitle = input.value.trim();
-            if (newTitle && newTitle !== currentTitle) {
-              doc.title = newTitle;
-              if (activeDoc.id === doc.id) {
-                activeDoc.title = newTitle;
-              }
-              lyricsEditGen++;
-              setLyricsStatus('saving');
-              if (lyricsSaveTimeout) clearTimeout(lyricsSaveTimeout);
-              lyricsSaveTimeout = setTimeout(() => {
-                lyricsSaveTimeout = null;
-                void saveLyricsWorkspace(doc.content || '', doc.id, newTitle);
-              }, 300);
-            }
-            renderLyricsDocTabs();
-          };
-
-          input.addEventListener('keydown', (ke) => {
-            if (ke.key === 'Enter') {
-              ke.preventDefault();
-              input.blur();
-            } else if (ke.key === 'Escape') {
-              ke.preventDefault();
-              renderLyricsDocTabs();
-            }
-          });
-
-          input.addEventListener('click', (ce) => ce.stopPropagation());
-          input.addEventListener('dblclick', (de) => de.stopPropagation());
-
-          input.addEventListener('blur', () => {
-            commitRename();
-          });
-
-          titleEl.replaceChildren(input);
-          input.focus();
-          input.select();
-        };
-
-        item.addEventListener('dblclick', (e) => {
-          if ((e.target as HTMLElement).closest('.btn-sidebar-item-action')) return;
-          e.stopPropagation();
-          e.preventDefault();
-          startInlineRename();
-        });
-
-        item.querySelector('.btn-rename')?.addEventListener('click', (e) => {
-          e.stopPropagation();
-          startInlineRename();
-        });
-
-        item.addEventListener('click', (e) => {
-          if ((e.target as HTMLElement).closest('.btn-sidebar-item-action') || (e.target as HTMLElement).tagName === 'INPUT') return;
-          switchActiveLyricsDoc(doc.id);
-        });
-
-        // Native Drag & Drop for reordering
-        item.addEventListener('dragstart', (e) => {
-          if ((e.target as HTMLElement).tagName === 'INPUT') {
-            e.preventDefault();
-            return;
-          }
-          item.classList.add('dragging');
-          e.dataTransfer?.setData('text/plain', doc.id);
-          if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-        });
-
-        item.addEventListener('dragend', () => {
-          item.classList.remove('dragging');
-          sidebarList.querySelectorAll('.lyrics-sidebar-item').forEach((el) => el.classList.remove('drag-over'));
-        });
-
-        item.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-        });
-
-        item.addEventListener('dragenter', (e) => {
-          e.preventDefault();
-          item.classList.add('drag-over');
-        });
-
-        item.addEventListener('dragleave', () => {
-          item.classList.remove('drag-over');
-        });
-
-        item.addEventListener('drop', (e) => {
-          e.preventDefault();
-          item.classList.remove('drag-over');
-          const sourceId = e.dataTransfer?.getData('text/plain');
-          if (sourceId && sourceId !== doc.id) {
-            reorderLyricsDocs(sourceId, doc.id);
-          }
-        });
-
-        item.querySelector('.btn-dup')?.addEventListener('click', (e) => {
-          e.stopPropagation();
-          duplicateLyricsDoc(doc.id);
-        });
-
-        item.querySelector('.btn-del')?.addEventListener('click', (e) => {
-          e.stopPropagation();
-          deleteLyricsDoc(doc.id);
-        });
-
-        sidebarList.appendChild(item);
-      });
-    }
-  }
-
-  // Update total drafts count badge
-  setText('lyrics-sidebar-doc-count', `${docs.length} ${docs.length === 1 ? 'Document' : 'Documents'} in Project`);
-
-  // 2. Render In-Call Drawer Document Select
-  const drawerDocSelect = $<HTMLSelectElement>('session-lyrics-doc-select');
-  if (drawerDocSelect) {
-    drawerDocSelect.innerHTML = '';
-    docs.forEach((doc) => {
-      if (!doc) return;
-      const opt = document.createElement('option');
-      opt.value = doc.id;
-      opt.textContent = doc.title || 'Untitled';
-      opt.selected = doc.id === activeId;
-      drawerDocSelect.appendChild(opt);
-    });
-  }
-
-  // 3. Set current document title in sheet header input
+  
+  // Set current document title in sheet header input if present
   const titleInput = $<HTMLInputElement>('lyrics-current-doc-title');
   if (titleInput && document.activeElement !== titleInput) {
     titleInput.value = activeDoc.title || '';
   }
-}
-
-function reorderLyricsDocs(sourceId: string, targetId: string): void {
-  if (!activeProject?.workspace?.lyrics?.documents) return;
-  const docs = activeProject.workspace.lyrics.documents;
-  const fromIdx = docs.findIndex((d) => d && d.id === sourceId);
-  const toIdx = docs.findIndex((d) => d && d.id === targetId);
-  if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
-
-  const [moved] = docs.splice(fromIdx, 1);
-  docs.splice(toIdx, 0, moved);
-  renderLyricsDocTabs();
-
-  lyricsEditGen++;
-  setLyricsStatus('saving');
-  const activeDoc = getActiveLyricsDoc();
-  void saveLyricsWorkspace(activeDoc.content, activeDoc.id, activeDoc.title);
 }
 
 function duplicateLyricsDoc(docId: string): void {
@@ -6933,18 +7476,19 @@ function updateLyricsStatsFromHtml(html: string): void {
   const pageStr = `${pageCount} ${pageCount === 1 ? 'page' : 'pages'}`;
 
   setText('project-lyrics-stats', `${pageStr} · ${words} ${words === 1 ? 'word' : 'words'} · ${lines} ${lines === 1 ? 'line' : 'lines'}`);
+  setText('session-lyrics-stats-text', `${words} ${words === 1 ? 'Word' : 'Words'} · ${lines} ${lines === 1 ? 'Line' : 'Lines'}`);
   setText('lyrics-footer-char-count', `${chars} ${chars === 1 ? 'character' : 'characters'} · US Letter`);
   setText('lyrics-footer-read-time', singTimeStr);
 }
 
 function setLyricsStatus(status: 'saving' | 'saved' | 'unsaved'): void {
   currentLyricsStatus = status;
-  const badges = [$('project-lyrics-status'), $('session-workspace-status')];
+  const badges = [$('project-lyrics-status'), $('session-workspace-status'), $('session-workspace-status-badge')];
   const label = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save failed';
   badges.forEach((b) => {
     if (!b) return;
     b.className = `workspace-status-badge ${status}`;
-    b.innerHTML = `<span class="status-dot"></span> ${label}`;
+    b.innerHTML = `<span class="status-dot"></span> <span id="session-workspace-status-text">${label}</span>`;
   });
   if (status === 'saved') {
     setText('lyrics-footer-last-saved', `Saved to cloud at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
@@ -6955,12 +7499,12 @@ function setLyricsStatus(status: 'saving' | 'saved' | 'unsaved'): void {
 
 function setNotesStatus(status: 'saving' | 'saved' | 'unsaved'): void {
   currentNotesStatus = status;
-  const badges = [$('project-notes-status'), $('session-workspace-status')];
+  const badges = [$('project-notes-status'), $('session-workspace-status'), $('session-workspace-status-badge')];
   const label = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : 'Save failed';
   badges.forEach((b) => {
     if (!b) return;
     b.className = `workspace-status-badge ${status}`;
-    b.innerHTML = `<span class="status-dot"></span> ${label}`;
+    b.innerHTML = `<span class="status-dot"></span> <span id="session-workspace-status-text">${label}</span>`;
   });
 }
 
@@ -7138,10 +7682,13 @@ function syncWorkspaceInputsFromProject(force = false): void {
   if (force || (currentTasksStatus !== 'unsaved' && currentTasksStatus !== 'saving' && tasksSaveTimeout === null)) {
     setTasksStatus('saved');
   }
+
+  // Enforce read-only UI restrictions if user is viewer
+  applyWorkspacePermissions();
 }
 
 function handleLyricsEditorInput(source: 'project' | 'session'): void {
-  if (!activeProject) return;
+  if (!activeProject || !canUserEditProject()) return;
   const projectEditor = $('project-lyrics-editor');
   const sessionEditor = $('session-lyrics-editor');
   const sourceEl = source === 'project' ? projectEditor : sessionEditor;
@@ -7171,7 +7718,7 @@ function handleLyricsEditorInput(source: 'project' | 'session'): void {
 }
 
 async function saveLyricsWorkspace(content: string, documentId?: string, title?: string): Promise<void> {
-  if (!activeProject) return;
+  if (!activeProject || !canUserEditProject()) return;
   const token = auth.getToken();
   if (!token) {
     setLyricsStatus('unsaved');
@@ -7330,6 +7877,32 @@ $('select-doc-zoom')?.addEventListener('change', (e) => {
   }
 });
 
+$('select-session-doc-zoom')?.addEventListener('change', (e) => {
+  const zoomVal = parseInt((e.target as HTMLSelectElement).value, 10) || 100;
+  const scale = zoomVal / 100;
+  const canvas = document.querySelector<HTMLElement>('#session-lyrics-viewport .drawer-lyrics-document-canvas');
+  const wrapper = document.querySelector<HTMLElement>('#session-lyrics-viewport .drawer-lyrics-canvas-wrapper');
+  if (canvas && wrapper) {
+    if (scale === 1) {
+      canvas.style.transform = '';
+      wrapper.style.width = '';
+      wrapper.style.height = '';
+      wrapper.style.minWidth = '';
+      wrapper.style.minHeight = '';
+    } else {
+      canvas.style.transform = `scale(${scale})`;
+      const baseW = 816;
+      const baseH = canvas.offsetHeight || 1056;
+      const scaledW = Math.round(baseW * scale);
+      const scaledH = Math.round(baseH * scale);
+      wrapper.style.width = `${scaledW}px`;
+      wrapper.style.height = `${scaledH}px`;
+      wrapper.style.minWidth = `${scaledW}px`;
+      wrapper.style.minHeight = `${scaledH}px`;
+    }
+  }
+});
+
 $('select-doc-heading')?.addEventListener('change', (e) => {
   const val = (e.target as HTMLSelectElement).value;
   execDocFormat('formatBlock', `<${val}>`);
@@ -7347,6 +7920,20 @@ $('select-doc-font')?.addEventListener('change', (e) => {
     if (sessionEditor) sessionEditor.style.fontFamily = font;
   }
   updateLyricsDocumentPagination();
+});
+
+$('select-session-doc-font')?.addEventListener('change', (e) => {
+  const font = (e.target as HTMLSelectElement).value;
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+    execDocFormat('fontName', font);
+  } else {
+    const projectEditor = $('project-lyrics-editor');
+    if (projectEditor) projectEditor.style.fontFamily = font;
+    const sessionEditor = $('session-lyrics-editor');
+    if (sessionEditor) sessionEditor.style.fontFamily = font;
+  }
+  handleLyricsEditorInput('session');
 });
 
 $('select-doc-fontsize')?.addEventListener('change', (e) => {
@@ -7369,6 +7956,28 @@ $('select-doc-fontsize')?.addEventListener('change', (e) => {
     if (sessionEditor) sessionEditor.style.fontSize = size;
   }
   updateLyricsDocumentPagination();
+});
+
+$('select-session-doc-fontsize')?.addEventListener('change', (e) => {
+  const size = (e.target as HTMLSelectElement).value;
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+    const range = sel.getRangeAt(0);
+    const span = document.createElement('span');
+    span.style.fontSize = size;
+    span.appendChild(range.extractContents());
+    range.insertNode(span);
+    sel.removeAllRanges();
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    sel.addRange(newRange);
+  } else {
+    const projectEditor = $('project-lyrics-editor');
+    if (projectEditor) projectEditor.style.fontSize = size;
+    const sessionEditor = $('session-lyrics-editor');
+    if (sessionEditor) sessionEditor.style.fontSize = size;
+  }
+  handleLyricsEditorInput('session');
 });
 
 $('select-doc-spacing')?.addEventListener('change', (e) => {
@@ -7457,11 +8066,23 @@ function updateSessionDocFormattingState(): void {
     $('btn-session-doc-bold')?.classList.toggle('active', document.queryCommandState('bold'));
     $('btn-session-doc-italic')?.classList.toggle('active', document.queryCommandState('italic'));
     $('btn-session-doc-underline')?.classList.toggle('active', document.queryCommandState('underline'));
+    $('btn-session-doc-strike')?.classList.toggle('active', document.queryCommandState('strikethrough'));
+    $('btn-session-doc-align-left')?.classList.toggle('active', document.queryCommandState('justifyLeft'));
+    $('btn-session-doc-align-center')?.classList.toggle('active', document.queryCommandState('justifyCenter'));
+    $('btn-session-doc-align-right')?.classList.toggle('active', document.queryCommandState('justifyRight'));
   } catch {
     // ignore
   }
 }
 
+$('btn-session-doc-undo')?.addEventListener('click', () => {
+  execDocFormat('undo');
+  updateSessionDocFormattingState();
+});
+$('btn-session-doc-redo')?.addEventListener('click', () => {
+  execDocFormat('redo');
+  updateSessionDocFormattingState();
+});
 $('btn-session-doc-bold')?.addEventListener('click', () => {
   execDocFormat('bold');
   updateSessionDocFormattingState();
@@ -7472,6 +8093,32 @@ $('btn-session-doc-italic')?.addEventListener('click', () => {
 });
 $('btn-session-doc-underline')?.addEventListener('click', () => {
   execDocFormat('underline');
+  updateSessionDocFormattingState();
+});
+$('btn-session-doc-strike')?.addEventListener('click', () => {
+  execDocFormat('strikethrough');
+  updateSessionDocFormattingState();
+});
+$('btn-session-doc-align-left')?.addEventListener('click', () => {
+  execDocFormat('justifyLeft');
+  updateSessionDocFormattingState();
+});
+$('btn-session-doc-align-center')?.addEventListener('click', () => {
+  execDocFormat('justifyCenter');
+  updateSessionDocFormattingState();
+});
+$('btn-session-doc-align-right')?.addEventListener('click', () => {
+  execDocFormat('justifyRight');
+  updateSessionDocFormattingState();
+});
+$('select-session-doc-heading')?.addEventListener('change', (e) => {
+  const val = (e.target as HTMLSelectElement).value;
+  if (['h1', 'h2', 'h3', 'p'].includes(val)) {
+    execDocFormat('formatBlock', `<${val}>`);
+  } else if (['verse', 'chorus', 'bridge'].includes(val)) {
+    const label = val === 'verse' ? 'Verse' : val === 'chorus' ? 'Chorus' : 'Bridge';
+    insertSongSectionTag(label);
+  }
   updateSessionDocFormattingState();
 });
 
@@ -7555,81 +8202,6 @@ $('lyrics-current-doc-title')?.addEventListener('input', (e) => {
   }, 400);
 });
 
-// Lyrics Sidebar Toggle (3 lines / hamburger)
-$('btn-toggle-lyrics-sidebar')?.addEventListener('click', () => {
-  const sidebar = $('lyrics-workspace-sidebar');
-  const btn = $('btn-toggle-lyrics-sidebar');
-  if (!sidebar) return;
-  const isCollapsed = sidebar.classList.toggle('collapsed');
-  btn?.classList.toggle('active', !isCollapsed);
-  setTimeout(() => updateLyricsDocumentPagination(), 210);
-});
-
-$('btn-close-lyrics-sidebar')?.addEventListener('click', () => {
-  const sidebar = $('lyrics-workspace-sidebar');
-  const btn = $('btn-toggle-lyrics-sidebar');
-  if (!sidebar) return;
-  sidebar.classList.add('collapsed');
-  btn?.classList.remove('active');
-  setTimeout(() => updateLyricsDocumentPagination(), 210);
-});
-
-// New Document Creation Modal
-$('btn-new-lyrics-doc')?.addEventListener('click', () => {
-  setText('new-doc-error', '');
-  const titleInp = $<HTMLInputElement>('input-new-doc-title');
-  if (titleInp) titleInp.value = `Document ${(activeProject?.workspace?.lyrics?.documents?.length || 1) + 1}`;
-  $('new-lyrics-doc-modal')?.classList.remove('hidden');
-  titleInp?.focus();
-});
-
-$('btn-session-new-doc')?.addEventListener('click', () => {
-  setText('new-doc-error', '');
-  const titleInp = $<HTMLInputElement>('input-new-doc-title');
-  if (titleInp) titleInp.value = `Document ${(activeProject?.workspace?.lyrics?.documents?.length || 1) + 1}`;
-  $('new-lyrics-doc-modal')?.classList.remove('hidden');
-  titleInp?.focus();
-});
-
-$('btn-close-new-doc-modal')?.addEventListener('click', () => {
-  $('new-lyrics-doc-modal')?.classList.add('hidden');
-});
-
-$('btn-cancel-new-doc')?.addEventListener('click', () => {
-  $('new-lyrics-doc-modal')?.classList.add('hidden');
-});
-
-document.querySelectorAll<HTMLButtonElement>('.btn-doc-title-preset').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const title = btn.dataset.title;
-    const titleInp = $<HTMLInputElement>('input-new-doc-title');
-    if (title && titleInp) {
-      titleInp.value = title;
-      titleInp.focus();
-    }
-  });
-});
-
-$('btn-confirm-create-doc')?.addEventListener('click', () => {
-  const title = $<HTMLInputElement>('input-new-doc-title')?.value.trim() || 'Untitled Lyrics';
-  const newId = `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-
-  if (!activeProject?.workspace?.lyrics) return;
-  const curLyrics = activeProject.workspace.lyrics;
-  if (!curLyrics.documents) curLyrics.documents = [];
-
-  curLyrics.documents.push({
-    id: newId,
-    title,
-    content: '',
-    updatedAt: Date.now()
-  });
-  curLyrics.activeDocumentId = newId;
-
-  $('new-lyrics-doc-modal')?.classList.add('hidden');
-  switchActiveLyricsDoc(newId);
-});
-
 // Document Options Popover Menu
 $('btn-doc-options-menu')?.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -7705,7 +8277,7 @@ $('session-lyrics-editor')?.addEventListener('input', () => handleLyricsEditorIn
 
 // Notes Management
 function handleNotesInput(): void {
-  if (!activeProject) return;
+  if (!activeProject || !canUserEditProject()) return;
   if (!activeProject.workspace) {
     activeProject.workspace = {
       lyrics: {
@@ -7775,7 +8347,7 @@ function handleNotesInput(): void {
 }
 
 async function saveNotesWorkspace(content: string, bpm: string, key: string): Promise<void> {
-  if (!activeProject) return;
+  if (!activeProject || !canUserEditProject()) return;
   const token = auth.getToken();
   if (!token) {
     setNotesStatus('unsaved');
@@ -8230,8 +8802,24 @@ function renderStructureWorkspace(): void {
         `;
       }
 
+      const canEdit = canUserEditProject();
+      if (!canEdit) {
+        card.removeAttribute('draggable');
+        card.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select').forEach((el) => {
+          el.disabled = true;
+          if (el instanceof HTMLInputElement) el.readOnly = true;
+        });
+        card.querySelectorAll<HTMLElement>('.btn-dup, .btn-del, .drag-handle').forEach((el) => {
+          el.style.display = 'none';
+        });
+      }
+
       // Drag and Drop Event Listeners
       card.addEventListener('dragstart', (e) => {
+        if (!canUserEditProject()) {
+          e.preventDefault();
+          return;
+        }
         const target = e.target as HTMLElement;
         if (target.tagName === 'INPUT' || target.tagName === 'BUTTON' || target.tagName === 'SELECT' || target.closest('button, input, select')) {
           e.preventDefault();
@@ -8416,6 +9004,7 @@ function reorderStructureSectionToPosition(
 }
 
 function debounceSaveStructure(): void {
+  if (!canUserEditProject()) return;
   structureEditGen++;
   setStructureStatus('saving');
   if (structureSaveTimeout) clearTimeout(structureSaveTimeout);
@@ -8426,7 +9015,7 @@ function debounceSaveStructure(): void {
 }
 
 async function saveStructureWorkspace(): Promise<void> {
-  if (!activeProject) return;
+  if (!activeProject || !canUserEditProject()) return;
   const token = auth.getToken();
   if (!token) {
     setStructureStatus('unsaved');
@@ -8499,6 +9088,7 @@ async function saveStructureWorkspace(): Promise<void> {
 }
 
 function addStructureSection(type: string): void {
+  if (!canUserEditProject()) return;
   const sections = getStructureSections();
   const sameTypeCount = sections.filter((s) => s.type === type).length;
   const baseLabel = SECTION_TYPE_LABELS[type] || 'Section';
@@ -8530,6 +9120,7 @@ function addStructureSection(type: string): void {
 }
 
 function moveStructureSection(id: string, direction: 'up' | 'down'): void {
+  if (!canUserEditProject()) return;
   const sections = getStructureSections();
   const idx = sections.findIndex((s) => s.id === id);
   if (idx === -1) return;
@@ -8543,6 +9134,7 @@ function moveStructureSection(id: string, direction: 'up' | 'down'): void {
 }
 
 function duplicateStructureSection(id: string): void {
+  if (!canUserEditProject()) return;
   const sections = getStructureSections();
   const idx = sections.findIndex((s) => s.id === id);
   if (idx === -1) return;
@@ -8563,6 +9155,7 @@ function duplicateStructureSection(id: string): void {
 }
 
 function deleteStructureSection(id: string): void {
+  if (!canUserEditProject()) return;
   const sections = getStructureSections();
   const idx = sections.findIndex((s) => s.id === id);
   if (idx === -1) return;
@@ -8783,6 +9376,7 @@ signaling.on('project:workspace:synced', (data: { projectId: string; workspace: 
 
     if (!isEditingTask) {
       activeProject.workspace.tasks = {
+        revision: data.workspace.tasks.revision || 1,
         tasks: Array.isArray(data.workspace.tasks.tasks) ? data.workspace.tasks.tasks : [],
         updatedAt: data.workspace.tasks.updatedAt || Date.now()
       };
@@ -8811,8 +9405,8 @@ signaling.on('project:activity:new', (data: { projectId: string; activities: Pro
 
 // Initialize saved workspace width
 try {
-  const savedDrawerWidth = parseInt(localStorage.getItem('jameet-session-workspace-width') || localStorage.getItem('musiczoom-session-workspace-width') || '460', 10);
-  if (savedDrawerWidth && savedDrawerWidth >= 340 && savedDrawerWidth <= 780) {
+  const savedDrawerWidth = parseInt(localStorage.getItem('jameet-session-workspace-width') || localStorage.getItem('musiczoom-session-workspace-width') || '540', 10);
+  if (savedDrawerWidth && savedDrawerWidth >= 340 && savedDrawerWidth <= 1400) {
     document.documentElement.style.setProperty('--session-drawer-width', `${savedDrawerWidth}px`);
   }
 } catch {
@@ -8826,6 +9420,9 @@ function setSessionWorkspaceOpen(open: boolean): void {
   $('call-view')?.classList.toggle('has-drawer-open', open);
 
   if (open) {
+    // Close Session Chat if open so they never overlap
+    setSessionChatOpen(false);
+
     const titleEl = $('session-workspace-project-name');
     if (titleEl && activeProject) {
       titleEl.textContent = activeProject.name || 'Project Workspace';
@@ -8850,6 +9447,10 @@ $('btn-close-session-workspace')?.addEventListener('click', () => {
   setSessionWorkspaceOpen(false);
 });
 
+setOnChatOpenCallback(() => {
+  setSessionWorkspaceOpen(false);
+});
+
 // In-Session Drawer Tabs
 document.querySelectorAll<HTMLButtonElement>('.drawer-tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -8860,6 +9461,13 @@ document.querySelectorAll<HTMLButtonElement>('.drawer-tab-btn').forEach((btn) =>
     $('drawer-panel-structure')?.classList.toggle('hidden', tab !== 'structure');
     $('drawer-panel-notes')?.classList.toggle('hidden', tab !== 'notes');
     $('drawer-panel-tasks')?.classList.toggle('hidden', tab !== 'tasks');
+    if (tab === 'tasks') {
+      renderTasksWorkspace();
+    } else if (tab === 'structure') {
+      renderStructureWorkspace();
+    } else if (tab === 'lyrics') {
+      updateLyricsDocumentPagination();
+    }
     try {
       localStorage.setItem('jameet-session-workspace-tab', tab);
     } catch {
@@ -8886,8 +9494,8 @@ $('session-workspace-resize-handle')?.addEventListener('mousedown', (e) => {
 window.addEventListener('mousemove', (e) => {
   if (!isResizingDrawer) return;
   const deltaX = resizeStartX - e.clientX; // Dragging left increases width
-  const maxW = Math.min(window.innerWidth * 0.5, 720);
-  const newWidth = Math.max(320, Math.min(maxW, resizeStartWidth + deltaX));
+  const maxW = Math.max(900, Math.min(window.innerWidth - 60, 1400));
+  const newWidth = Math.max(340, Math.min(maxW, resizeStartWidth + deltaX));
   document.documentElement.style.setProperty('--session-drawer-width', `${Math.round(newWidth)}px`);
 });
 
@@ -8913,7 +9521,101 @@ window.addEventListener('mouseup', () => {
 // ========================================================
 let tasksSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 let currentTaskFilter: 'all' | 'todo' | 'in_progress' | 'done' = 'all';
+let currentTasksViewMode: 'list' | 'board' = 'list';
+let currentTasksSongFilter: string = 'all';
+let currentTasksStageFilter: string = 'all';
+let currentTasksGrouping: 'song' | 'stage' | 'status' | 'none' = 'song';
+let currentTasksSearchQuery: string = '';
+let showCompletedTasks: boolean = true;
+const tasksCollapsedGroups: Set<string> = new Set();
 let draggedTaskId: string | null = null;
+let currentSelectedTaskId: string | null = null;
+
+const SONG_ICONS: Record<string, { label: string; svg: string }> = {
+  music: {
+    label: 'Music',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>'
+  },
+  mic: {
+    label: 'Vocals',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>'
+  },
+  piano: {
+    label: 'Keys',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 4v8"/><path d="M10 4v8"/><path d="M14 4v8"/><path d="M18 4v8"/></svg>'
+  },
+  guitar: {
+    label: 'Guitar',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m19 5-3 3"/><path d="m2 22 5.5-1.5L19 9a2.5 2.5 0 0 0-3.5-3.5L4 16.5Z"/><circle cx="14" cy="10" r="1"/></svg>'
+  },
+  drums: {
+    label: 'Drums',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><ellipse cx="12" cy="8" rx="8" ry="4"/><path d="M4 8v8c0 2.2 3.6 4 8 4s8-1.8 8-4V8"/><path d="m7 12 5 5 5-5"/></svg>'
+  },
+  headphones: {
+    label: 'Audio',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></svg>'
+  },
+  disc: {
+    label: 'Vinyl',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>'
+  },
+  bolt: {
+    label: 'Idea',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
+  },
+  folder: {
+    label: 'Album',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>'
+  },
+  tag: {
+    label: 'Tag',
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><circle cx="7" cy="7" r=".5" fill="currentColor"/></svg>'
+  }
+};
+
+const SONG_COLORS = [
+  { name: 'Rose', hex: '#f43f5e' },
+  { name: 'Orange', hex: '#f97316' },
+  { name: 'Amber', hex: '#f59e0b' },
+  { name: 'Emerald', hex: '#10b981' },
+  { name: 'Cyan', hex: '#06b6d4' },
+  { name: 'Blue', hex: '#3b82f6' },
+  { name: 'Purple', hex: '#8b5cf6' },
+  { name: 'Pink', hex: '#ec4899' },
+  { name: 'Slate', hex: '#94a3b8' }
+];
+
+const STAGE_CONFIG: Record<ProjectTaskStage, { label: string; iconSvg: string }> = {
+  writing: {
+    label: 'Writing',
+    iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>'
+  },
+  recording: {
+    label: 'Recording',
+    iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>'
+  },
+  arrangement: {
+    label: 'Arrangement',
+    iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 4v8"/><path d="M10 4v8"/><path d="M14 4v8"/><path d="M18 4v8"/></svg>'
+  },
+  mix: {
+    label: 'Mix',
+    iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>'
+  },
+  mastering: {
+    label: 'Mastering',
+    iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>'
+  },
+  revisions: {
+    label: 'Revisions',
+    iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>'
+  },
+  general: {
+    label: 'General',
+    iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><circle cx="7" cy="7" r=".5" fill="currentColor"/></svg>'
+  }
+};
 
 function getProjectTasks(): ProjectTaskItem[] {
   if (!activeProject) return [];
@@ -9012,6 +9714,14 @@ async function saveTasksWorkspace(): Promise<void> {
     status: t.status || 'todo',
     assigneeId: t.assigneeId || undefined,
     assigneeName: t.assigneeName || undefined,
+    songId: t.songId || undefined,
+    songTitle: t.songTitle || undefined,
+    stage: t.stage || undefined,
+    subtasks: Array.isArray(t.subtasks) && t.subtasks.length > 0 ? t.subtasks.map((st) => ({
+      id: st.id,
+      title: st.title.trim(),
+      done: Boolean(st.done)
+    })) : undefined,
     note: t.note && t.note.trim() ? t.note.trim() : undefined,
     dueDate: t.dueDate || undefined,
     createdAt: t.createdAt || Date.now(),
@@ -9035,6 +9745,11 @@ async function saveTasksWorkspace(): Promise<void> {
         console.warn('HTTP workspace update fallback failed for tasks:', httpErr);
       }
     }
+    // If the server responded with a newer revision, always record it to prevent 409 conflict loops
+    if (res?.ok && res.workspace?.tasks?.revision && activeProject?.workspace?.tasks) {
+      activeProject.workspace.tasks.revision = res.workspace.tasks.revision;
+    }
+
     const isLatest = (activeProject?.id === targetProjectId) &&
       (targetContextGen === currentWorkspaceContextGen) &&
       (targetSaveGen === tasksSaveGen) &&
@@ -9045,8 +9760,13 @@ async function saveTasksWorkspace(): Promise<void> {
       applyAuthoritativeWorkspaceUpdate('tasks', res.workspace);
       setTasksStatus('saved');
     } else if (res?.conflict || res?.code === 'WORKSPACE_CONFLICT') {
-      // Confirmed WORKSPACE_CONFLICT: preserve local edits exactly, keep unsaved, do not overwrite local content
-      setTasksStatus('unsaved');
+      if (res.workspace?.tasks?.revision && activeProject?.workspace?.tasks) {
+        activeProject.workspace.tasks.revision = res.workspace.tasks.revision;
+      } else if (res.currentRevision && activeProject?.workspace?.tasks) {
+        activeProject.workspace.tasks.revision = res.currentRevision;
+      }
+      setTasksStatus('saving');
+      debounceSaveTasks();
     } else {
       setTasksStatus('unsaved');
     }
@@ -9077,9 +9797,577 @@ function formatShortDate(d: string): string {
   return d;
 }
 
+function addSubtask(taskId: string, title: string): void {
+  if (!canUserEditProject()) return;
+  const trimmed = title.trim();
+  if (!trimmed) return;
+  const tasks = getProjectTasks();
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task) return;
+  if (!Array.isArray(task.subtasks)) task.subtasks = [];
+  task.subtasks.push({
+    id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    title: trimmed,
+    done: false
+  });
+  task.updatedAt = Date.now();
+  currentSelectedTaskId = taskId;
+  renderTasksWorkspace();
+  debounceSaveTasks();
+
+  // Immediately keep focus on Add Subtask input so user can type the next subtask right away!
+  setTimeout(() => {
+    const taskRow = document.querySelector(`.reminders-task-row[data-task-id="${taskId}"]`);
+    const addInput = taskRow?.querySelector<HTMLInputElement>('.task-subtask-add-input');
+    if (addInput) {
+      addInput.focus();
+    }
+  }, 10);
+}
+
+function toggleSubtask(taskId: string, subtaskId: string): void {
+  if (!canUserEditProject()) return;
+  const tasks = getProjectTasks();
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task || !Array.isArray(task.subtasks)) return;
+  const sub = task.subtasks.find((s) => s.id === subtaskId);
+  if (!sub) return;
+  sub.done = !sub.done;
+  task.updatedAt = Date.now();
+  renderTasksWorkspace();
+  debounceSaveTasks();
+}
+
+function deleteSubtask(taskId: string, subtaskId: string): void {
+  if (!canUserEditProject()) return;
+  const tasks = getProjectTasks();
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task || !Array.isArray(task.subtasks)) return;
+  task.subtasks = task.subtasks.filter((s) => s.id !== subtaskId);
+  task.updatedAt = Date.now();
+  renderTasksWorkspace();
+  debounceSaveTasks();
+}
+
+function updateTaskStage(id: string, stage: ProjectTaskStage | undefined): void {
+  if (!canUserEditProject()) return;
+  const tasks = getProjectTasks();
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  task.stage = stage;
+  task.updatedAt = Date.now();
+  renderTasksWorkspace();
+  debounceSaveTasks();
+}
+
+function updateTaskSong(id: string, songId: string | undefined, songTitle: string | undefined): void {
+  const tasks = getProjectTasks();
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  task.songId = songId;
+  task.songTitle = songTitle;
+  task.updatedAt = Date.now();
+  renderTasksWorkspace();
+  debounceSaveTasks();
+}
+
+function updateTaskAssignee(id: string, assigneeId: string | undefined, assigneeName: string | undefined): void {
+  const tasks = getProjectTasks();
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  task.assigneeId = assigneeId;
+  task.assigneeName = assigneeName;
+  task.updatedAt = Date.now();
+  currentSelectedTaskId = id;
+  renderTasksWorkspace();
+  debounceSaveTasks();
+}
+
+function duplicateTask(taskId: string): void {
+  const tasks = getProjectTasks();
+  const index = tasks.findIndex((t) => t.id === taskId);
+  if (index === -1) return;
+  const original = tasks[index];
+  const now = Date.now();
+  const copy: ProjectTaskItem = {
+    ...original,
+    id: `task_${now}_${Math.random().toString(36).substring(2, 7)}`,
+    title: `${original.title} (Copy)`,
+    createdAt: now,
+    updatedAt: now,
+    subtasks: Array.isArray(original.subtasks)
+      ? original.subtasks.map((st) => ({
+          id: `sub_${now}_${Math.random().toString(36).substring(2, 6)}`,
+          title: st.title,
+          done: st.done
+        }))
+      : []
+  };
+  tasks.splice(index + 1, 0, copy);
+  renderTasksWorkspace();
+  debounceSaveTasks();
+}
+
+function showSongContextMenu(e: MouseEvent, song: ProjectSongItem): void {
+  e.preventDefault();
+  e.stopPropagation();
+
+  document.querySelectorAll('.task-context-menu, .song-context-menu').forEach((m) => m.remove());
+
+  const canEdit = canUserEditProject();
+  const menu = document.createElement('div');
+  menu.className = 'task-context-menu song-context-menu';
+
+  const isArchived = Boolean(song.archived);
+
+  menu.innerHTML = `
+    <div class="task-context-item" data-action="open-studio">
+      <div class="task-context-item-left">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+        <span>Open in Song Studio</span>
+      </div>
+    </div>
+    ${canEdit ? `
+      <div class="task-context-item" data-action="rename">
+        <div class="task-context-item-left">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+          <span>Rename Track</span>
+        </div>
+      </div>
+      <div class="task-context-item" data-action="archive">
+        <div class="task-context-item-left">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
+          <span>${isArchived ? 'Unarchive Track' : 'Archive Track'}</span>
+        </div>
+      </div>
+      <div class="task-context-divider"></div>
+      <div class="task-context-item danger" data-action="delete">
+        <div class="task-context-item-left">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/></svg>
+          <span>Delete Track</span>
+        </div>
+      </div>
+    ` : ''}
+  `;
+
+  document.body.appendChild(menu);
+
+  const menuWidth = 190;
+  const menuHeight = menu.offsetHeight || 140;
+  let x = e.clientX;
+  let y = e.clientY;
+
+  if (x + menuWidth > window.innerWidth - 10) x = window.innerWidth - menuWidth - 10;
+  if (y + menuHeight > window.innerHeight - 10) y = window.innerHeight - menuHeight - 10;
+
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+
+  menu.querySelectorAll<HTMLElement>('.task-context-item').forEach((item) => {
+    item.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      menu.remove();
+      const action = item.dataset.action;
+      if (action === 'open-studio') {
+        switchActiveSong(song.id);
+        openSongStudio(song.id, 'lyrics');
+      } else if (action === 'rename') {
+        const songCard = document.querySelector(`.overview-song-card[data-song-id="${song.id}"]`);
+        const titleEl = songCard?.querySelector('.overview-song-title') as HTMLElement;
+        if (titleEl) {
+          titleEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        }
+      } else if (action === 'archive') {
+        song.archived = !song.archived;
+        renderProjectSongsSelector();
+        renderProjectOverviewSongsList();
+        void saveSongsWorkspace();
+      } else if (action === 'delete') {
+        openDeleteSongModal(song);
+      }
+    });
+  });
+
+  const closeHandler = () => {
+    menu.remove();
+    document.removeEventListener('click', closeHandler);
+    document.removeEventListener('contextmenu', closeHandler);
+  };
+  setTimeout(() => {
+    document.addEventListener('click', closeHandler);
+    document.addEventListener('contextmenu', closeHandler);
+  }, 0);
+}
+
+function showTaskContextMenu(e: MouseEvent, task: ProjectTaskItem): void {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!canUserEditProject()) return;
+
+  document.querySelectorAll('.task-context-menu').forEach((m) => m.remove());
+
+  const menu = document.createElement('div');
+  menu.className = 'task-context-menu';
+
+  const isDone = task.status === 'done';
+
+  menu.innerHTML = `
+    <div class="task-context-item" data-action="toggle-status">
+      <div class="task-context-item-left">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>${isDone ? 'Mark as To Do' : 'Mark as Done'}</span>
+      </div>
+    </div>
+    <div class="task-context-item" data-action="duplicate">
+      <div class="task-context-item-left">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+        <span>Duplicate Task</span>
+      </div>
+    </div>
+    <div class="task-context-item" data-action="copy">
+      <div class="task-context-item-left">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/></svg>
+        <span>Copy Title</span>
+      </div>
+    </div>
+    <div class="task-context-divider"></div>
+    <div class="task-context-item" data-action="add-subtask">
+      <div class="task-context-item-left">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+        <span>Add Subtask</span>
+      </div>
+    </div>
+    <div class="task-context-item" data-action="add-note">
+      <div class="task-context-item-left">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        <span>${task.note && task.note.trim() ? 'Edit Note' : 'Add Note'}</span>
+      </div>
+    </div>
+    <div class="task-context-divider"></div>
+    <div class="task-context-item" data-action="due-today">
+      <div class="task-context-item-left">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+        <span>Due Today</span>
+      </div>
+    </div>
+    <div class="task-context-item" data-action="due-tomorrow">
+      <div class="task-context-item-left">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+        <span>Due Tomorrow</span>
+      </div>
+    </div>
+    ${task.dueDate ? `
+      <div class="task-context-item" data-action="clear-due">
+        <div class="task-context-item-left">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
+          <span>Remove Due Date</span>
+        </div>
+      </div>
+    ` : ''}
+    <div class="task-context-divider"></div>
+    <div class="task-context-item danger" data-action="delete">
+      <div class="task-context-item-left">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        <span>Delete Task</span>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(menu);
+
+  const menuWidth = 180;
+  const menuHeight = menu.offsetHeight || 260;
+  let posX = e.clientX;
+  let posY = e.clientY;
+
+  if (posX + menuWidth > window.innerWidth - 10) {
+    posX = window.innerWidth - menuWidth - 10;
+  }
+  if (posY + menuHeight > window.innerHeight - 10) {
+    posY = window.innerHeight - menuHeight - 10;
+  }
+
+  menu.style.left = `${posX}px`;
+  menu.style.top = `${posY}px`;
+
+  menu.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const item = (ev.target as HTMLElement).closest<HTMLElement>('.task-context-item');
+    if (!item) return;
+    const action = item.dataset.action;
+    menu.remove();
+
+    if (action === 'toggle-status') {
+      quickToggleTask(task.id);
+    } else if (action === 'duplicate') {
+      duplicateTask(task.id);
+    } else if (action === 'copy') {
+      navigator.clipboard.writeText(task.title || '').catch(() => {});
+    } else if (action === 'add-subtask') {
+      addSubtask(task.id, 'New subtask');
+    } else if (action === 'add-note') {
+      if (!task.note) task.note = 'Note...';
+      task.updatedAt = Date.now();
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    } else if (action === 'due-today') {
+      const today = new Date().toISOString().split('T')[0];
+      task.dueDate = today;
+      task.updatedAt = Date.now();
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    } else if (action === 'due-tomorrow') {
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      task.dueDate = tomorrow;
+      task.updatedAt = Date.now();
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    } else if (action === 'clear-due') {
+      task.dueDate = undefined;
+      task.updatedAt = Date.now();
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    } else if (action === 'delete') {
+      deleteTask(task.id);
+    }
+  });
+
+  const closeHandler = (docEv: MouseEvent) => {
+    if (!menu.contains(docEv.target as Node)) {
+      menu.remove();
+      document.removeEventListener('click', closeHandler);
+      document.removeEventListener('contextmenu', closeHandler);
+    }
+  };
+  setTimeout(() => {
+    document.addEventListener('click', closeHandler);
+    document.addEventListener('contextmenu', closeHandler);
+  }, 0);
+}
+
+function openTaskInspector(task: ProjectTaskItem, anchorEl: HTMLElement): void {
+  document.querySelectorAll('.reminders-inspector-popover').forEach((p) => p.remove());
+  document.querySelectorAll('.task-context-menu').forEach((m) => m.remove());
+
+  const popover = document.createElement('div');
+  popover.className = 'reminders-inspector-popover';
+
+  const songs = activeProject?.workspace?.songs || [];
+  const hasDate = Boolean(task.dueDate);
+  const stageKey = task.stage || 'general';
+
+  const songOptionsHtml = `
+    <option value="">No Track</option>
+    ${songs
+      .map(
+        (s) => `
+      <option value="${s.id}|${escapeHtml(s.title)}" ${s.id === task.songId ? 'selected' : ''}>${escapeHtml(s.title)}</option>
+    `
+      )
+      .join('')}
+  `;
+
+  popover.innerHTML = `
+    <!-- Header: Title & Notes -->
+    <div class="inspector-card">
+      <input type="text" class="inspector-title-input" value="${escapeHtml(task.title)}" placeholder="Task title" maxlength="150" />
+      <textarea class="inspector-notes-textarea" placeholder="Notes" rows="2">${escapeHtml(task.note || '')}</textarea>
+    </div>
+
+    <!-- Date & Time -->
+    <div class="inspector-section-title">Date & Time</div>
+    <div class="inspector-card">
+      <div class="inspector-row">
+        <div class="inspector-row-left">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+          <span>Date</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input type="date" class="inspector-date-input ${hasDate ? '' : 'hidden'}" value="${escapeHtml(task.dueDate || '')}" />
+          <label class="inspector-switch">
+            <input type="checkbox" class="inspector-date-toggle" ${hasDate ? 'checked' : ''} />
+            <span class="inspector-slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="inspector-row">
+        <div class="inspector-row-left">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
+          <span>Priority</span>
+        </div>
+        <select class="inspector-select inspector-priority-select">
+          <option value="none" ${task.priority === 'none' || !task.priority ? 'selected' : ''}>None</option>
+          <option value="low" ${task.priority === 'low' ? 'selected' : ''}>Low</option>
+          <option value="medium" ${task.priority === 'medium' ? 'selected' : ''}>Medium</option>
+          <option value="high" ${task.priority === 'high' ? 'selected' : ''}>High</option>
+          <option value="urgent" ${task.priority === 'urgent' ? 'selected' : ''}>Urgent</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Organization -->
+    <div class="inspector-section-title">Organization</div>
+    <div class="inspector-card">
+      <div class="inspector-row">
+        <div class="inspector-row-left">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          <span>Track</span>
+        </div>
+        <select class="inspector-select inspector-song-select">
+          ${songOptionsHtml}
+        </select>
+      </div>
+      <div class="inspector-row">
+        <div class="inspector-row-left">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+          <span>Stage</span>
+        </div>
+        <select class="inspector-select inspector-stage-select">
+          <option value="general" ${stageKey === 'general' ? 'selected' : ''}>General</option>
+          <option value="writing" ${stageKey === 'writing' ? 'selected' : ''}>Writing</option>
+          <option value="recording" ${stageKey === 'recording' ? 'selected' : ''}>Recording</option>
+          <option value="arrangement" ${stageKey === 'arrangement' ? 'selected' : ''}>Arrangement</option>
+          <option value="mix" ${stageKey === 'mix' ? 'selected' : ''}>Mix</option>
+          <option value="mastering" ${stageKey === 'mastering' ? 'selected' : ''}>Mastering</option>
+          <option value="revisions" ${stageKey === 'revisions' ? 'selected' : ''}>Revisions</option>
+        </select>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(popover);
+
+  const canEdit = canUserEditProject();
+  if (!canEdit) {
+    popover.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input, textarea, select').forEach((el) => {
+      el.disabled = true;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        el.readOnly = true;
+      }
+    });
+    const slider = popover.querySelector<HTMLElement>('.inspector-slider');
+    if (slider) slider.style.pointerEvents = 'none';
+  }
+
+  const rect = anchorEl.getBoundingClientRect();
+  const popoverWidth = 320;
+  const popoverHeight = popover.offsetHeight || 380;
+  let posX = rect.right + 10;
+  let posY = rect.top - 20;
+
+  if (posX + popoverWidth > window.innerWidth - 16) {
+    posX = rect.left - popoverWidth - 10;
+  }
+  if (posX < 10) posX = 10;
+
+  if (posY + popoverHeight > window.innerHeight - 16) {
+    posY = window.innerHeight - popoverHeight - 16;
+  }
+  if (posY < 10) posY = 10;
+
+  popover.style.left = `${posX}px`;
+  popover.style.top = `${posY}px`;
+
+  if (canEdit) {
+    const titleInput = popover.querySelector<HTMLInputElement>('.inspector-title-input');
+    titleInput?.addEventListener('input', () => {
+      if (!canUserEditProject()) return;
+      task.title = titleInput.value;
+      task.updatedAt = Date.now();
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    });
+
+    const notesTextarea = popover.querySelector<HTMLTextAreaElement>('.inspector-notes-textarea');
+    notesTextarea?.addEventListener('input', () => {
+      if (!canUserEditProject()) return;
+      task.note = notesTextarea.value;
+      task.updatedAt = Date.now();
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    });
+
+    const dateToggle = popover.querySelector<HTMLInputElement>('.inspector-date-toggle');
+    const dateInput = popover.querySelector<HTMLInputElement>('.inspector-date-input');
+
+    dateToggle?.addEventListener('change', () => {
+      if (!canUserEditProject()) return;
+      if (dateToggle.checked) {
+        dateInput?.classList.remove('hidden');
+        const today = new Date().toISOString().split('T')[0];
+        task.dueDate = dateInput?.value || today;
+        if (dateInput) dateInput.value = task.dueDate;
+      } else {
+        dateInput?.classList.add('hidden');
+        task.dueDate = undefined;
+      }
+      task.updatedAt = Date.now();
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    });
+
+    dateInput?.addEventListener('change', () => {
+      if (!canUserEditProject()) return;
+      task.dueDate = dateInput.value || undefined;
+      task.updatedAt = Date.now();
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    });
+
+    const prioritySelect = popover.querySelector<HTMLSelectElement>('.inspector-priority-select');
+    prioritySelect?.addEventListener('change', () => {
+      if (!canUserEditProject()) return;
+      task.priority = prioritySelect.value as any;
+      task.updatedAt = Date.now();
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    });
+
+    const songSelect = popover.querySelector<HTMLSelectElement>('.inspector-song-select');
+    songSelect?.addEventListener('change', () => {
+      if (!canUserEditProject()) return;
+      const val = songSelect.value;
+      if (!val) {
+        task.songId = undefined;
+        task.songTitle = undefined;
+      } else {
+        const [sId, sTitle] = val.split('|');
+        task.songId = sId;
+        task.songTitle = sTitle;
+      }
+      task.updatedAt = Date.now();
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    });
+
+    const stageSelect = popover.querySelector<HTMLSelectElement>('.inspector-stage-select');
+    stageSelect?.addEventListener('change', () => {
+      if (!canUserEditProject()) return;
+      const val = stageSelect.value as ProjectTaskStage;
+      task.stage = val === 'general' ? undefined : val;
+      task.updatedAt = Date.now();
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    });
+  }
+
+  popover.addEventListener('click', (ev) => ev.stopPropagation());
+
+  const closeHandler = (docEv: MouseEvent) => {
+    if (!popover.contains(docEv.target as Node) && !anchorEl.contains(docEv.target as Node)) {
+      popover.remove();
+      document.removeEventListener('click', closeHandler);
+    }
+  };
+  setTimeout(() => {
+    document.addEventListener('click', closeHandler);
+  }, 0);
+}
+
 function renderTasksWorkspace(): void {
   if (!activeProject) return;
   const tasks = getProjectTasks();
+  const songs = activeProject.workspace?.songs || [];
 
   const totalCount = tasks.length;
   const doneCount = tasks.filter((t) => t.status === 'done').length;
@@ -9087,21 +10375,27 @@ function renderTasksWorkspace(): void {
   const todoCount = tasks.filter((t) => t.status === 'todo').length;
   const remainingCount = totalCount - doneCount;
 
-  // 1. Update metric counters
-  setText('task-count-all', totalCount.toString());
-  setText('task-count-todo', todoCount.toString());
-  setText('task-count-in_progress', inProgressCount.toString());
-  setText('task-count-done', doneCount.toString());
-
-  setText('tasks-summary-remaining', `${remainingCount} Remaining`);
-  setText('tasks-summary-completed', `${doneCount} Done`);
+  // 1. Update Apple Reminders Hero Title & Stats
+  setText('tasks-hero-counter', remainingCount.toString());
+  setText('session-tasks-hero-counter', remainingCount.toString());
+  setText('tasks-completed-summary', `${doneCount} Completed`);
+  setText('session-tasks-completed-summary', `${doneCount} Completed`);
   setText('tab-tasks-count', remainingCount.toString());
   setText('session-tasks-summary', `${remainingCount} Remaining · ${doneCount} Done`);
+
+  const toggleDoneBtn = $('btn-tasks-toggle-completed');
+  if (toggleDoneBtn) {
+    toggleDoneBtn.textContent = showCompletedTasks ? 'Hide' : 'Show';
+  }
+  const sessionToggleDoneBtn = $('session-btn-tasks-toggle-completed');
+  if (sessionToggleDoneBtn) {
+    sessionToggleDoneBtn.textContent = showCompletedTasks ? 'Hide' : 'Show';
+  }
 
   // 2. Populate assignee selector on creation bar
   const createAssigneeSelect = $<HTMLSelectElement>('task-new-assignee');
   const sessionAssigneeSelect = $<HTMLSelectElement>('session-task-new-assignee');
-  let opts = '<option value="">👤 Unassigned</option>';
+  let opts = '<option value="">Unassigned</option>';
   if (activeProject.ownerId) {
     const ownerName = activeProject.ownerDisplayName || activeProject.ownerUsername || 'Owner';
     opts += `<option value="${activeProject.ownerId}|${escapeHtml(ownerName)}">${escapeHtml(ownerName)} (Owner)</option>`;
@@ -9125,188 +10419,415 @@ function renderTasksWorkspace(): void {
     if (currentSessionVal) sessionAssigneeSelect.value = currentSessionVal;
   }
 
-  // 3. Filter tasks
+  // 3. Populate song selector on creation bar
+  const createSongSelect = $<HTMLSelectElement>('task-new-song');
+  const sessionSongSelect = $<HTMLSelectElement>('session-task-new-song');
+  let songOpts = '<option value="">All Tracks</option>';
+  songs.forEach((s, i) => {
+    songOpts += `<option value="${s.id}">${escapeHtml(s.title || `Song ${i + 1}`)}</option>`;
+  });
+  if (createSongSelect) {
+    const curSongVal = createSongSelect.value;
+    createSongSelect.innerHTML = songOpts;
+    if (curSongVal && songs.some((s) => s.id === curSongVal)) createSongSelect.value = curSongVal;
+  }
+  if (sessionSongSelect) {
+    const curSongVal = sessionSongSelect.value;
+    sessionSongSelect.innerHTML = songOpts;
+    if (curSongVal && songs.some((s) => s.id === curSongVal)) sessionSongSelect.value = curSongVal;
+  }
+
+  // 4. Update track filter dropdown on header bar
+  const filterSongSelect = $<HTMLSelectElement>('tasks-filter-song');
+  const sessionFilterSongSelect = $<HTMLSelectElement>('session-tasks-filter-song');
+  let filterSongOpts = '<option value="all">All Tracks</option>';
+  songs.forEach((s, i) => {
+    filterSongOpts += `<option value="${s.id}" ${currentTasksSongFilter === s.id ? 'selected' : ''}>${escapeHtml(s.title || `Song ${i + 1}`)}</option>`;
+  });
+  if (filterSongSelect) filterSongSelect.innerHTML = filterSongOpts;
+  if (sessionFilterSongSelect) sessionFilterSongSelect.innerHTML = filterSongOpts;
+
+  // 5. Update stage & group by filter dropdowns
+  const filterStageSelect = $<HTMLSelectElement>('tasks-filter-stage');
+  const sessionFilterStageSelect = $<HTMLSelectElement>('session-tasks-filter-stage');
+  if (filterStageSelect) filterStageSelect.value = currentTasksStageFilter;
+  if (sessionFilterStageSelect) sessionFilterStageSelect.value = currentTasksStageFilter;
+
+  const groupBySelect = $<HTMLSelectElement>('tasks-group-by');
+  const sessionGroupBySelect = $<HTMLSelectElement>('session-tasks-group-by');
+  if (groupBySelect) groupBySelect.value = currentTasksGrouping;
+  if (sessionGroupBySelect) sessionGroupBySelect.value = currentTasksGrouping;
+
+  // 6. Update view switcher buttons
+  const btnList = $('btn-tasks-view-list');
+  const btnBoard = $('btn-tasks-view-board');
+  if (btnList && btnBoard) {
+    btnList.classList.toggle('active', currentTasksViewMode === 'list');
+    btnBoard.classList.toggle('active', currentTasksViewMode === 'board');
+  }
+  const sessionBtnList = $('session-btn-tasks-view-list');
+  const sessionBtnBoard = $('session-btn-tasks-view-board');
+  if (sessionBtnList && sessionBtnBoard) {
+    sessionBtnList.classList.toggle('active', currentTasksViewMode === 'list');
+    sessionBtnBoard.classList.toggle('active', currentTasksViewMode === 'board');
+  }
+
+  // 7. Filter tasks
   const filteredTasks = tasks.filter((t) => {
-    if (currentTaskFilter === 'all') return true;
-    return t.status === currentTaskFilter;
+    if (!showCompletedTasks && t.status === 'done') return false;
+    if (currentTaskFilter !== 'all' && t.status !== currentTaskFilter) return false;
+    if (currentTasksSongFilter !== 'all' && t.songId !== currentTasksSongFilter) return false;
+    if (currentTasksStageFilter !== 'all' && (t.stage || 'general') !== currentTasksStageFilter) return false;
+    if (currentTasksSearchQuery) {
+      const q = currentTasksSearchQuery.toLowerCase();
+      const titleMatch = t.title.toLowerCase().includes(q);
+      const noteMatch = t.note?.toLowerCase().includes(q);
+      const assigneeMatch = t.assigneeName?.toLowerCase().includes(q);
+      const songMatch = t.songTitle?.toLowerCase().includes(q);
+      if (!titleMatch && !noteMatch && !assigneeMatch && !songMatch) return false;
+    }
+    return true;
   });
 
-  const listEl = $('project-tasks-list');
+  const listContainer = $('project-tasks-list');
+  const boardContainer = $('project-tasks-board');
   const emptyEl = $('project-tasks-empty');
-  const sessionListEl = $('session-tasks-list');
+  const sessionListContainer = $('session-tasks-list');
+  const sessionBoardContainer = $('session-tasks-board');
+  const sessionEmptyEl = $('session-tasks-empty');
 
   if (emptyEl) {
     emptyEl.classList.toggle('hidden', filteredTasks.length > 0);
   }
+  if (sessionEmptyEl) {
+    sessionEmptyEl.classList.toggle('hidden', filteredTasks.length > 0);
+  }
 
-  const renderCards = (container: HTMLElement | null, isDrawer = false) => {
-    if (!container) return;
-    container.innerHTML = '';
+  if (listContainer && boardContainer) {
+    listContainer.classList.toggle('hidden', currentTasksViewMode !== 'list');
+    boardContainer.classList.toggle('hidden', currentTasksViewMode !== 'board');
+  }
+  if (sessionListContainer && sessionBoardContainer) {
+    sessionListContainer.classList.toggle('hidden', currentTasksViewMode !== 'list');
+    sessionBoardContainer.classList.toggle('hidden', currentTasksViewMode !== 'board');
+  }
 
-    const tasksToRender = isDrawer ? tasks : filteredTasks;
-
-    tasksToRender.forEach((task) => {
-      const card = document.createElement('div');
-      card.className = isDrawer ? `drawer-task-card status-${task.status}` : `task-card status-${task.status}`;
-      card.dataset.taskId = task.id;
-
-      if (!isDrawer) {
-        card.setAttribute('draggable', 'true');
+  // 8. Build Assignee Options String for Card selects
+  let assigneeOptions = '<option value="">Unassigned</option>';
+  if (activeProject.ownerId) {
+    const ownerName = activeProject.ownerDisplayName || activeProject.ownerUsername || 'Owner';
+    assigneeOptions += `<option value="${activeProject.ownerId}|${escapeHtml(ownerName)}">${escapeHtml(ownerName)} (Owner)</option>`;
+  }
+  if (Array.isArray(activeProject.collaborators)) {
+    for (const c of activeProject.collaborators) {
+      if (c.userId !== activeProject.ownerId) {
+        const cName = c.displayName || c.username || 'Collaborator';
+        assigneeOptions += `<option value="${c.userId}|${escapeHtml(cName)}">${escapeHtml(cName)}</option>`;
       }
+    }
+  }
 
-      // Quick toggle icon
-      let toggleIcon = '';
-      if (task.status === 'done') {
-        toggleIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-      } else if (task.status === 'in_progress') {
-        toggleIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>`;
-      }
+  // 9. Build Song Options String for Card selects
+  let songSelectOptions = '<option value="">No Track</option>';
+  songs.forEach((s, i) => {
+    songSelectOptions += `<option value="${s.id}|${escapeHtml(s.title || `Song ${i + 1}`)}">${escapeHtml(s.title || `Song ${i + 1}`)}</option>`;
+  });
 
-      // Build assignee options
-      let assigneeOptions = '<option value="">Unassigned</option>';
-      if (activeProject.ownerId) {
-        const ownerName = activeProject.ownerDisplayName || activeProject.ownerUsername || 'Owner';
-        const isOwnerSelected = task.assigneeId === activeProject.ownerId;
-        assigneeOptions += `<option value="${activeProject.ownerId}|${escapeHtml(ownerName)}" ${isOwnerSelected ? 'selected' : ''}>${escapeHtml(ownerName)} (Owner)</option>`;
+  // 10. Helper: Render an Apple Reminders Task Row
+  const renderListCard = (task: ProjectTaskItem): HTMLElement => {
+    const isSelected = currentSelectedTaskId === task.id;
+    const row = document.createElement('div');
+    row.className = `reminders-task-row status-${task.status}${isSelected ? ' is-selected' : ''}`;
+    row.dataset.taskId = task.id;
+    row.setAttribute('draggable', 'true');
+
+    let toggleIcon = '';
+    if (task.status === 'done') {
+      toggleIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    }
+
+    // Unified Assignee Dropdown Pill
+    let assigneeOpts = '<option value="">Unassigned</option>';
+    if (activeProject?.ownerId) {
+      const ownerName = activeProject.ownerDisplayName || activeProject.ownerUsername || 'Owner';
+      const isOwnerSelected = task.assigneeId === activeProject.ownerId;
+      assigneeOpts += `<option value="${activeProject.ownerId}|${escapeHtml(ownerName)}" ${isOwnerSelected ? 'selected' : ''}>${escapeHtml(ownerName)}</option>`;
+    }
+    if (Array.isArray(activeProject?.collaborators)) {
+      for (const c of activeProject.collaborators) {
+        if (c.userId !== activeProject.ownerId) {
+          const cName = c.displayName || c.username || 'Collaborator';
+          const isCollabSelected = task.assigneeId === c.userId;
+          assigneeOpts += `<option value="${c.userId}|${escapeHtml(cName)}" ${isCollabSelected ? 'selected' : ''}>${escapeHtml(cName)}</option>`;
+        }
       }
-      if (Array.isArray(activeProject.collaborators)) {
-        for (const c of activeProject.collaborators) {
-          if (c.userId !== activeProject.ownerId) {
-            const cName = c.displayName || c.username || 'Collaborator';
-            const isSelected = task.assigneeId === c.userId;
-            assigneeOptions += `<option value="${c.userId}|${escapeHtml(cName)}" ${isSelected ? 'selected' : ''}>${escapeHtml(cName)}</option>`;
+    }
+    const assigneeHtml = `
+      <select class="task-action-pill task-assignee-select" title="Assignee">
+        ${assigneeOpts}
+      </select>
+    `;
+
+    // Unified Due Date Pill
+    const dueHtml = `
+      <input type="date" class="task-action-pill task-due-input" value="${escapeHtml(task.dueDate || '')}" title="Due Date" />
+    `;
+
+    // Unified Stage Dropdown Pill
+    const stageKey = task.stage || 'general';
+    const stageBadgeHtml = `
+      <select class="task-action-pill task-stage-select" title="Stage">
+        <option value="general" ${stageKey === 'general' ? 'selected' : ''}>Stage: General</option>
+        <option value="writing" ${stageKey === 'writing' ? 'selected' : ''}>Stage: Writing</option>
+        <option value="recording" ${stageKey === 'recording' ? 'selected' : ''}>Stage: Recording</option>
+        <option value="arrangement" ${stageKey === 'arrangement' ? 'selected' : ''}>Stage: Arrangement</option>
+        <option value="mix" ${stageKey === 'mix' ? 'selected' : ''}>Stage: Mix</option>
+        <option value="mastering" ${stageKey === 'mastering' ? 'selected' : ''}>Stage: Mastering</option>
+        <option value="revisions" ${stageKey === 'revisions' ? 'selected' : ''}>Stage: Revisions</option>
+      </select>
+    `;
+
+    // Unified Track Dropdown Pill
+    let songPillHtml = '';
+    if (songs.length > 0) {
+      let sOpts = `<option value="">Track: None</option>`;
+      songs.forEach((s, i) => {
+        const isSongSelected = task.songId === s.id;
+        sOpts += `<option value="${s.id}|${escapeHtml(s.title || `Song ${i + 1}`)}" ${isSongSelected ? 'selected' : ''}>${escapeHtml(s.title || `Song ${i + 1}`)}</option>`;
+      });
+      songPillHtml = `
+        <select class="task-action-pill task-song-select" title="Linked Track">
+          ${sOpts}
+        </select>
+      `;
+    }
+
+    // Subtasks checklist HTML
+    const subtasks = Array.isArray(task.subtasks) ? task.subtasks : [];
+    const doneSubs = subtasks.filter((s) => s.done).length;
+
+    row.innerHTML = `
+      <div class="reminders-task-main">
+        <button type="button" class="reminders-check-btn" title="${task.status === 'done' ? 'Reopen task' : 'Mark as Done'}">
+          ${toggleIcon}
+        </button>
+        <input type="text" class="reminders-task-title-input" value="${escapeHtml(task.title)}" placeholder="Task" maxlength="150" />
+        <div class="reminders-task-right">
+          ${task.dueDate ? `<span class="task-meta-badge due-badge">${escapeHtml(formatShortDate(task.dueDate))}</span>` : ''}
+          <button type="button" class="reminders-info-btn" title="Task Details">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="task-subtasks-block">
+        ${subtasks.length > 0 ? `
+          <div class="task-subtasks-list">
+            ${subtasks.map((st) => `
+              <div class="task-subtask-item ${st.done ? 'done' : ''}" data-subtask-id="${st.id}">
+                <button type="button" class="task-subtask-check ${st.done ? 'done' : ''}" title="${st.done ? 'Mark undone' : 'Mark done'}">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+                <input type="text" class="task-subtask-text-input" value="${escapeHtml(st.title)}" maxlength="120" />
+                <button type="button" class="task-subtask-del" title="Delete subtask">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+        <div class="task-subtasks-add-row">
+          <span class="subtask-add-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          </span>
+          <input type="text" class="task-subtask-add-input" placeholder="Add subtask..." maxlength="120" />
+          ${subtasks.length > 0 ? `
+            <span class="task-subtasks-counter-pill"><svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polyline points="20 6 9 17 4 12"/></svg><span>${doneSubs}/${subtasks.length}</span></span>
+          ` : ''}
+        </div>
+      </div>
+
+      <div class="reminders-task-details">
+        <div class="task-note-inner">
+          <textarea class="task-note-textarea" placeholder="Notes" rows="1">${escapeHtml(task.note || '')}</textarea>
+        </div>
+        <div class="reminders-task-meta-actions">
+          ${stageBadgeHtml}
+          ${songPillHtml}
+          ${assigneeHtml}
+          ${dueHtml}
+        </div>
+      </div>
+    `;
+
+    // Wiring Row Events
+    row.querySelector('.reminders-check-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      quickToggleTask(task.id);
+    });
+
+    // Stage Change
+    row.querySelector<HTMLSelectElement>('.task-stage-select')?.addEventListener('change', (e) => {
+      const val = (e.target as HTMLSelectElement).value as ProjectTaskStage;
+      task.stage = val === 'general' ? undefined : val;
+      task.updatedAt = Date.now();
+      debounceSaveTasks();
+      if (currentTasksGrouping === 'stage') {
+        currentSelectedTaskId = task.id;
+        renderTasksWorkspace();
+      }
+    });
+
+    // Track Change
+    row.querySelector<HTMLSelectElement>('.task-song-select')?.addEventListener('change', (e) => {
+      const val = (e.target as HTMLSelectElement).value;
+      if (!val) {
+        task.songId = undefined;
+        task.songTitle = undefined;
+      } else {
+        const [sId, sTitle] = val.split('|');
+        task.songId = sId;
+        task.songTitle = sTitle;
+      }
+      task.updatedAt = Date.now();
+      debounceSaveTasks();
+      if (currentTasksGrouping === 'song') {
+        currentSelectedTaskId = task.id;
+        renderTasksWorkspace();
+      }
+    });
+
+    // Assignee Change
+    row.querySelector<HTMLSelectElement>('.task-assignee-select')?.addEventListener('change', (e) => {
+      const val = (e.target as HTMLSelectElement).value;
+      if (!val) {
+        task.assigneeId = undefined;
+        task.assigneeName = undefined;
+      } else {
+        const [aId, aName] = val.split('|');
+        task.assigneeId = aId;
+        task.assigneeName = aName;
+      }
+      task.updatedAt = Date.now();
+      debounceSaveTasks();
+    });
+
+    // Due Date Change
+    row.querySelector<HTMLInputElement>('.task-due-input')?.addEventListener('change', (e) => {
+      task.dueDate = (e.target as HTMLInputElement).value || undefined;
+      task.updatedAt = Date.now();
+      const rightArea = row.querySelector('.reminders-task-right');
+      if (rightArea) {
+        let badge = rightArea.querySelector('.due-badge');
+        if (task.dueDate) {
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'task-meta-badge due-badge';
+            rightArea.insertBefore(badge, rightArea.querySelector('.reminders-info-btn'));
+          }
+          badge.textContent = formatShortDate(task.dueDate);
+        } else if (badge) {
+          badge.remove();
+        }
+      }
+      debounceSaveTasks();
+    });
+
+    const titleInput = row.querySelector<HTMLInputElement>('.reminders-task-title-input');
+    titleInput?.addEventListener('focus', () => {
+      currentSelectedTaskId = task.id;
+    });
+    titleInput?.addEventListener('input', (e) => {
+      task.title = (e.target as HTMLInputElement).value;
+      task.updatedAt = Date.now();
+      debounceSaveTasks();
+    });
+    titleInput?.addEventListener('blur', () => {
+      task.title = titleInput.value.trim() || 'Untitled Task';
+      task.updatedAt = Date.now();
+      if (tasksSaveTimeout) {
+        clearTimeout(tasksSaveTimeout);
+        tasksSaveTimeout = null;
+      }
+      void saveTasksWorkspace();
+    });
+
+    // Subtask events
+    row.querySelectorAll<HTMLElement>('.task-subtask-item').forEach((stItem) => {
+      const sId = stItem.dataset.subtaskId;
+      if (!sId) return;
+      stItem.querySelector('.task-subtask-check')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        currentSelectedTaskId = task.id;
+        toggleSubtask(task.id, sId);
+      });
+      stItem.querySelector('.task-subtask-del')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        currentSelectedTaskId = task.id;
+        deleteSubtask(task.id, sId);
+      });
+
+      const subInput = stItem.querySelector<HTMLInputElement>('.task-subtask-text-input');
+      subInput?.addEventListener('focus', () => {
+        currentSelectedTaskId = task.id;
+      });
+      subInput?.addEventListener('input', (e) => {
+        const sub = task.subtasks?.find((s) => s.id === sId);
+        if (sub) {
+          sub.title = (e.target as HTMLInputElement).value;
+          task.updatedAt = Date.now();
+          debounceSaveTasks();
+        }
+      });
+      subInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const addInput = row.querySelector<HTMLInputElement>('.task-subtask-add-input');
+          if (addInput) {
+            addInput.focus();
           }
         }
-      }
+      });
+    });
 
-      if (isDrawer) {
-        const assigneeInitial = task.assigneeName ? task.assigneeName.charAt(0).toUpperCase() : '';
-        const assigneeDisplay = task.assigneeId
-          ? `<span class="drawer-task-avatar">${escapeHtml(assigneeInitial)}</span><span class="drawer-task-assignee-name">${escapeHtml(task.assigneeName || 'Assigned')}</span>`
-          : `<span class="drawer-task-avatar unassigned"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span><span class="drawer-task-assignee-name unassigned">Unassigned</span>`;
-
-        card.innerHTML = `
-          <button type="button" class="task-quick-toggle drawer-task-toggle" title="${task.status === 'done' ? 'Reopen task' : 'Mark as Done'}">
-            ${toggleIcon}
-          </button>
-          <input type="text" class="drawer-task-title" value="${escapeHtml(task.title)}" placeholder="Task title…" />
-          <div class="drawer-task-assignee-wrap" title="Change assignee">
-            ${assigneeDisplay}
-            <select class="drawer-task-assignee" title="Assignee">
-              ${assigneeOptions}
-            </select>
-          </div>
-          <button type="button" class="btn-card-action btn-del" title="Delete Task">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-          </button>
-        `;
-      } else {
-        // Build progressive disclosure metadata elements
-        // 1. Assignee display
-        let assigneeHtml = '';
-        if (task.assigneeId) {
-          const initial = (task.assigneeName || 'U').charAt(0).toUpperCase();
-          assigneeHtml = `
-            <div class="task-meta-wrap meta-assignee-wrap">
-              <button type="button" class="task-meta-badge assignee-badge btn-trigger-assignee" title="Change Assignee">
-                <span class="task-meta-avatar">${initial}</span>
-                <span>${escapeHtml(task.assigneeName || 'Collaborator')}</span>
-              </button>
-              <select class="task-card-inline-select task-assignee-select hidden" title="Select Assignee">
-                ${assigneeOptions}
-              </select>
-            </div>
-          `;
-        } else {
-          assigneeHtml = `
-            <div class="task-meta-wrap meta-assignee-wrap">
-              <button type="button" class="btn-meta-ghost btn-trigger-assignee" title="Assign collaborator">
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
-                <span>Assign</span>
-              </button>
-              <select class="task-card-inline-select task-assignee-select hidden" title="Select Assignee">
-                ${assigneeOptions}
-              </select>
-            </div>
-          `;
+    const subtaskAddInput = row.querySelector<HTMLInputElement>('.task-subtask-add-input');
+    subtaskAddInput?.addEventListener('focus', () => {
+      currentSelectedTaskId = task.id;
+    });
+    subtaskAddInput?.addEventListener('keydown', (ke) => {
+      if (ke.key === 'Enter') {
+        ke.preventDefault();
+        const text = subtaskAddInput.value.trim();
+        if (text) {
+          currentSelectedTaskId = task.id;
+          addSubtask(task.id, text);
+          subtaskAddInput.value = '';
         }
-
-        // 2. Due Date display
-        let dueHtml = '';
-        if (task.dueDate) {
-          dueHtml = `
-            <div class="task-meta-wrap meta-due-wrap">
-              <button type="button" class="task-meta-badge due-badge btn-trigger-due" title="Change Due Date">
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-                <span>${escapeHtml(formatShortDate(task.dueDate))}</span>
-              </button>
-              <input type="date" class="task-card-inline-date task-due-input hidden" value="${escapeHtml(task.dueDate)}" />
-            </div>
-          `;
-        } else {
-          dueHtml = `
-            <div class="task-meta-wrap meta-due-wrap">
-              <button type="button" class="btn-meta-ghost btn-trigger-due" title="Set Due Date">
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-                <span>Due</span>
-              </button>
-              <input type="date" class="task-card-inline-date task-due-input hidden" />
-            </div>
-          `;
-        }
-
-        card.innerHTML = `
-          <div class="task-main-row">
-            <div class="drag-handle" title="Drag to reorder">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
-            </div>
-            <button type="button" class="task-quick-toggle" title="${task.status === 'done' ? 'Reopen task' : 'Mark as Done'}">
-              ${toggleIcon}
-            </button>
-            <select class="task-status-select status-${task.status}" title="Task Status">
-              <option value="todo" ${task.status === 'todo' ? 'selected' : ''}>To Do</option>
-              <option value="in_progress" ${task.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
-              <option value="done" ${task.status === 'done' ? 'selected' : ''}>Done</option>
-            </select>
-            <input type="text" class="task-title-input" value="${escapeHtml(task.title)}" placeholder="Task title…" maxlength="150" />
-            <div class="task-metadata-row">
-              ${assigneeHtml}
-              ${dueHtml}
-              <button type="button" class="btn-card-action btn-del" title="Delete Task">
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-              </button>
-            </div>
-          </div>
-          <div class="task-note-block">
-            <div class="task-note-inner">
-              <textarea class="task-note-textarea" placeholder="Add note or details…" rows="1">${escapeHtml(task.note || '')}</textarea>
-            </div>
-          </div>
-        `;
       }
+    });
 
-      // Quick toggle action
-      card.querySelector('.task-quick-toggle')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        quickToggleTask(task.id);
+    // Note textarea
+    const noteTextarea = row.querySelector<HTMLTextAreaElement>('.task-note-textarea');
+    if (noteTextarea) {
+      const resizeNote = () => {
+        noteTextarea.style.height = 'auto';
+        noteTextarea.style.height = `${Math.max(20, noteTextarea.scrollHeight)}px`;
+      };
+      setTimeout(resizeNote, 0);
+
+      noteTextarea.addEventListener('focus', () => {
+        currentSelectedTaskId = task.id;
       });
 
-      // Explicit Status select
-      const statusSelect = card.querySelector<HTMLSelectElement>('.task-status-select');
-      statusSelect?.addEventListener('change', (e) => {
-        const newStatus = (e.target as HTMLSelectElement).value as ProjectTaskStatus;
-        updateTaskStatus(task.id, newStatus);
-      });
-
-      // Title input
-      const titleInput = card.querySelector<HTMLInputElement>(isDrawer ? '.drawer-task-title' : '.task-title-input');
-      titleInput?.addEventListener('input', (e) => {
-        task.title = (e.target as HTMLInputElement).value;
+      noteTextarea.addEventListener('input', () => {
+        resizeNote();
+        task.note = noteTextarea.value;
         task.updatedAt = Date.now();
         debounceSaveTasks();
       });
-      titleInput?.addEventListener('blur', () => {
-        task.title = titleInput.value.trim() || 'Untitled Task';
+
+      noteTextarea.addEventListener('blur', () => {
+        task.note = noteTextarea.value.trim() || undefined;
         task.updatedAt = Date.now();
         if (tasksSaveTimeout) {
           clearTimeout(tasksSaveTimeout);
@@ -9314,159 +10835,581 @@ function renderTasksWorkspace(): void {
         }
         void saveTasksWorkspace();
       });
+    }
 
-      // Always-open auto-expanding Note textarea
-      const noteTextarea = card.querySelector<HTMLTextAreaElement>('.task-note-textarea');
-      if (noteTextarea) {
-        const resizeNote = () => {
-          noteTextarea.style.height = 'auto';
-          noteTextarea.style.height = `${Math.max(22, noteTextarea.scrollHeight)}px`;
-        };
-        setTimeout(resizeNote, 0);
-
-        noteTextarea.addEventListener('input', () => {
-          resizeNote();
-          task.note = noteTextarea.value;
-          task.updatedAt = Date.now();
-          debounceSaveTasks();
+    // Expand on Click / Selection
+    row.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.reminders-check-btn, .reminders-info-btn, .task-subtask-check, .task-subtask-del')) {
+        currentSelectedTaskId = task.id;
+        document.querySelectorAll('.reminders-task-row.is-selected').forEach((r) => {
+          if (r !== row) r.classList.remove('is-selected');
         });
+        row.classList.add('is-selected');
+      }
+    });
 
-        noteTextarea.addEventListener('blur', () => {
-          task.note = noteTextarea.value.trim() || undefined;
-          task.updatedAt = Date.now();
-          if (tasksSaveTimeout) {
-            clearTimeout(tasksSaveTimeout);
-            tasksSaveTimeout = null;
-          }
-          void saveTasksWorkspace();
-        });
+    // Info Button (Apple Reminders Inspector)
+    const infoBtn = row.querySelector<HTMLButtonElement>('.reminders-info-btn');
+    infoBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTaskInspector(task, infoBtn);
+    });
+
+    // Right-Click Context Menu
+    row.addEventListener('contextmenu', (e) => {
+      showTaskContextMenu(e, task);
+    });
+
+    // Drag and Drop
+    row.addEventListener('dragstart', (e) => {
+      draggedTaskId = task.id;
+      row.classList.add('dragging');
+      if (e.dataTransfer) {
+        e.dataTransfer.setData('text/plain', task.id);
+        e.dataTransfer.effectAllowed = 'move';
+      }
+    });
+
+    row.addEventListener('dragend', () => {
+      draggedTaskId = null;
+      row.classList.remove('dragging');
+      document.querySelectorAll('.reminders-task-row').forEach((r) => r.classList.remove('drag-over-top', 'drag-over-bottom'));
+      document.querySelectorAll('.reminders-group-section').forEach((s) => s.classList.remove('drag-over'));
+    });
+
+    row.addEventListener('dragover', (e) => {
+      if (!draggedTaskId || draggedTaskId === task.id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+
+      const rect = row.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (e.clientY < midY) {
+        row.classList.add('drag-over-top');
+        row.classList.remove('drag-over-bottom');
+      } else {
+        row.classList.add('drag-over-bottom');
+        row.classList.remove('drag-over-top');
+      }
+    });
+
+    row.addEventListener('dragleave', () => {
+      row.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+
+    row.addEventListener('drop', (e) => {
+      if (!draggedTaskId || draggedTaskId === task.id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      row.classList.remove('drag-over-top', 'drag-over-bottom');
+
+      const allTasks = getProjectTasks();
+      const draggedIndex = allTasks.findIndex((t) => t.id === draggedTaskId);
+      const targetIndex = allTasks.findIndex((t) => t.id === task.id);
+      if (draggedIndex === -1 || targetIndex === -1) return;
+
+      const [draggedItem] = allTasks.splice(draggedIndex, 1);
+
+      // Inherit target properties
+      if (currentTasksGrouping === 'song') {
+        draggedItem.songId = task.songId;
+        draggedItem.songTitle = task.songTitle;
+      } else if (currentTasksGrouping === 'stage') {
+        draggedItem.stage = task.stage;
+      } else if (currentTasksGrouping === 'status') {
+        draggedItem.status = task.status;
       }
 
-      // Progressive disclosure: Assignee
-      const triggerAssignee = card.querySelector<HTMLButtonElement>('.btn-trigger-assignee');
-      const assigneeSelect = card.querySelector<HTMLSelectElement>(isDrawer ? '.drawer-task-assignee' : '.task-assignee-select');
-      if (triggerAssignee && assigneeSelect) {
-        triggerAssignee.addEventListener('click', (e) => {
-          e.stopPropagation();
-          triggerAssignee.classList.add('hidden');
-          assigneeSelect.classList.remove('hidden');
-          assigneeSelect.focus();
-        });
-        assigneeSelect.addEventListener('change', (e) => {
-          const val = (e.target as HTMLSelectElement).value;
-          if (!val) {
-            task.assigneeId = undefined;
-            task.assigneeName = undefined;
-          } else {
-            const [aId, aName] = val.split('|');
-            task.assigneeId = aId;
-            task.assigneeName = aName;
-          }
-          task.updatedAt = Date.now();
-          debounceSaveTasks();
-          renderTasksWorkspace();
-        });
-        assigneeSelect.addEventListener('blur', () => {
-          renderTasksWorkspace();
-        });
-      } else if (isDrawer && assigneeSelect) {
-        assigneeSelect.addEventListener('change', (e) => {
-          const val = (e.target as HTMLSelectElement).value;
-          if (!val) {
-            task.assigneeId = undefined;
-            task.assigneeName = undefined;
-          } else {
-            const [aId, aName] = val.split('|');
-            task.assigneeId = aId;
-            task.assigneeName = aName;
-          }
-          task.updatedAt = Date.now();
-          debounceSaveTasks();
-          renderTasksWorkspace();
-        });
-      }
+      const rect = row.getBoundingClientRect();
+      const insertAfter = e.clientY >= rect.top + rect.height / 2;
+      const newTargetIndex = allTasks.findIndex((t) => t.id === task.id);
+      const insertIndex = insertAfter ? newTargetIndex + 1 : newTargetIndex;
+      allTasks.splice(insertIndex, 0, draggedItem);
 
-      // Progressive disclosure: Due Date
-      const triggerDue = card.querySelector<HTMLButtonElement>('.btn-trigger-due');
-      const dueInput = card.querySelector<HTMLInputElement>('.task-due-input');
-      if (triggerDue && dueInput) {
-        triggerDue.addEventListener('click', (e) => {
-          e.stopPropagation();
-          triggerDue.classList.add('hidden');
-          dueInput.classList.remove('hidden');
-          dueInput.focus();
-        });
-        dueInput.addEventListener('change', () => {
-          task.dueDate = dueInput.value || undefined;
-          task.updatedAt = Date.now();
-          debounceSaveTasks();
-          renderTasksWorkspace();
-        });
-        dueInput.addEventListener('blur', () => {
-          renderTasksWorkspace();
-        });
-      }
+      draggedItem.updatedAt = Date.now();
+      currentSelectedTaskId = draggedItem.id;
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    });
 
-      // Delete action
-      card.querySelector('.btn-del')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        deleteTask(task.id);
+    const canEdit = canUserEditProject();
+    if (!canEdit) {
+      row.removeAttribute('draggable');
+      const checkBtn = row.querySelector<HTMLButtonElement>('.reminders-check-btn');
+      if (checkBtn) {
+        checkBtn.disabled = true;
+        checkBtn.style.cursor = 'default';
+        checkBtn.title = 'View only mode';
+      }
+      row.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input, textarea, select').forEach((el) => {
+        el.disabled = true;
+        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) el.readOnly = true;
       });
+      row.querySelectorAll<HTMLElement>('.btn-del, .task-subtasks-add-row, .task-subtask-del').forEach((el) => {
+        el.style.display = 'none';
+      });
+      row.querySelectorAll<HTMLButtonElement>('.task-subtask-check').forEach((el) => {
+        el.disabled = true;
+      });
+    }
 
-      // Drag and Drop (Desktop list)
-      if (!isDrawer) {
-        card.addEventListener('dragstart', (e) => {
-          draggedTaskId = task.id;
-          card.classList.add('dragging');
-          if (e.dataTransfer) {
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', task.id);
-          }
-        });
+    return row;
+  };
 
-        card.addEventListener('dragend', () => {
-          draggedTaskId = null;
-          card.classList.remove('dragging');
-          document.querySelectorAll('.task-card').forEach((c) => {
-            c.classList.remove('drop-target-above', 'drop-target-below');
+  // 11. Helper: Render Group Section
+  const renderGroupSection = (group: {
+    id: string;
+    title: string;
+    iconKey?: string;
+    colorHex?: string;
+    iconSvg?: string;
+    tasks: ProjectTaskItem[];
+    songRef?: ProjectSongItem;
+    defaultSongId?: string;
+    defaultStage?: ProjectTaskStage;
+  }): HTMLElement => {
+    const section = document.createElement('div');
+    section.className = `reminders-group-section ${tasksCollapsedGroups.has(group.id) ? 'collapsed' : ''}`;
+    section.dataset.groupId = group.id;
+
+    const iconKey = group.songRef?.icon || group.iconKey || 'music';
+    const colorHex = group.songRef?.color || group.colorHex || '#f43f5e';
+    const iconSvg = SONG_ICONS[iconKey]?.svg || group.iconSvg || SONG_ICONS.music.svg;
+
+    const header = document.createElement('div');
+    header.className = 'reminders-group-header';
+    header.innerHTML = `
+      <div class="reminders-group-title-wrap">
+        <span class="reminders-group-icon" style="color: ${colorHex};">
+          ${iconSvg}
+        </span>
+        <h3 class="reminders-group-title">${escapeHtml(group.title)}</h3>
+        <span class="reminders-group-count">${group.tasks.length}</span>
+      </div>
+      <div class="reminders-group-actions-right">
+        <span class="reminders-group-chevron">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </span>
+      </div>
+    `;
+
+    // Icon button click: open Customizer Popover
+    const iconBtn = header.querySelector<HTMLButtonElement>('.reminders-group-icon-btn');
+    if (iconBtn && group.songRef) {
+      iconBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.song-customizer-popover').forEach((p) => p.remove());
+
+        const popover = document.createElement('div');
+        popover.className = 'song-customizer-popover';
+        popover.innerHTML = `
+          <div class="song-customizer-section-title">Track Icon</div>
+          <div class="song-customizer-icons-grid">
+            ${Object.entries(SONG_ICONS)
+              .map(
+                ([k, ic]) => `
+              <button type="button" class="song-customizer-icon-item ${k === iconKey ? 'active' : ''}" data-icon-key="${k}" title="${escapeHtml(ic.label)}">
+                ${ic.svg}
+              </button>
+            `
+              )
+              .join('')}
+          </div>
+          <div class="song-customizer-section-title" style="margin-top: 4px;">Track Color</div>
+          <div class="song-customizer-colors-grid">
+            ${SONG_COLORS.map(
+              (c) => `
+              <button type="button" class="song-customizer-color-dot ${c.hex === colorHex ? 'active' : ''}" data-color-hex="${c.hex}" title="${escapeHtml(c.name)}" style="background: ${c.hex};">
+              </button>
+            `
+            ).join('')}
+          </div>
+        `;
+
+        popover.addEventListener('click', (pe) => pe.stopPropagation());
+
+        popover.querySelectorAll<HTMLButtonElement>('.song-customizer-icon-item').forEach((iBtn) => {
+          iBtn.addEventListener('click', () => {
+            const chosenKey = iBtn.dataset.iconKey;
+            if (chosenKey && group.songRef) {
+              group.songRef.icon = chosenKey;
+              group.songRef.updatedAt = Date.now();
+              void saveSongsWorkspace();
+              renderTasksWorkspace();
+              renderProjectSongsSelector();
+            }
           });
         });
 
-        card.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          if (!draggedTaskId || draggedTaskId === task.id) return;
-          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-          const rect = card.getBoundingClientRect();
-          const midY = rect.top + rect.height / 2;
-          const isAbove = e.clientY < midY;
-          card.classList.toggle('drop-target-above', isAbove);
-          card.classList.toggle('drop-target-below', !isAbove);
+        popover.querySelectorAll<HTMLButtonElement>('.song-customizer-color-dot').forEach((cBtn) => {
+          cBtn.addEventListener('click', () => {
+            const chosenHex = cBtn.dataset.colorHex;
+            if (chosenHex && group.songRef) {
+              group.songRef.color = chosenHex;
+              group.songRef.updatedAt = Date.now();
+              void saveSongsWorkspace();
+              renderTasksWorkspace();
+              renderProjectSongsSelector();
+            }
+          });
         });
 
-        card.addEventListener('dragleave', () => {
-          card.classList.remove('drop-target-above', 'drop-target-below');
-        });
+        section.appendChild(popover);
 
-        card.addEventListener('drop', (e) => {
-          e.preventDefault();
-          const sourceId = draggedTaskId || e.dataTransfer?.getData('text/plain');
-          card.classList.remove('drop-target-above', 'drop-target-below');
-          if (!sourceId || sourceId === task.id) return;
-          const rect = card.getBoundingClientRect();
-          const midY = rect.top + rect.height / 2;
-          const isAbove = e.clientY < midY;
-          reorderTaskToPosition(sourceId, task.id, isAbove ? 'before' : 'after');
-        });
+        const closeHandler = (docEv: MouseEvent) => {
+          if (!popover.contains(docEv.target as Node) && docEv.target !== iconBtn) {
+            popover.remove();
+            document.removeEventListener('click', closeHandler);
+          }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 0);
+      });
+    }
+
+    header.addEventListener('click', () => {
+      if (tasksCollapsedGroups.has(group.id)) {
+        tasksCollapsedGroups.delete(group.id);
+        section.classList.remove('collapsed');
+      } else {
+        tasksCollapsedGroups.add(group.id);
+        section.classList.add('collapsed');
+      }
+    });
+
+    const itemsContainer = document.createElement('div');
+    itemsContainer.className = 'reminders-group-items';
+    group.tasks.forEach((t) => itemsContainer.appendChild(renderListCard(t)));
+
+    // Inline Quick Add Row at bottom of section
+    const quickAddRow = document.createElement('div');
+    quickAddRow.className = 'reminders-quick-add-row';
+    quickAddRow.innerHTML = `
+      <span class="reminders-dashed-circle"></span>
+      <input type="text" class="reminders-quick-add-input" placeholder="" maxlength="150" />
+    `;
+
+    const quickInput = quickAddRow.querySelector<HTMLInputElement>('.reminders-quick-add-input');
+    quickInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const val = quickInput.value.trim();
+        if (val) {
+          let songTitle: string | undefined;
+          if (group.defaultSongId && activeProject?.workspace?.songs) {
+            const s = activeProject.workspace.songs.find((x) => x.id === group.defaultSongId);
+            songTitle = s?.title;
+          }
+          createTask(val, undefined, undefined, undefined, undefined, group.defaultSongId, songTitle, group.defaultStage);
+          quickInput.value = '';
+        }
+      }
+    });
+
+    // Section-level Drag & Drop Target
+    section.addEventListener('dragover', (e) => {
+      if (!draggedTaskId) return;
+      e.preventDefault();
+      section.classList.add('drag-over');
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    });
+
+    section.addEventListener('dragleave', (e) => {
+      if (!section.contains(e.relatedTarget as Node)) {
+        section.classList.remove('drag-over');
+      }
+    });
+
+    section.addEventListener('drop', (e) => {
+      if (!draggedTaskId) return;
+      e.preventDefault();
+      section.classList.remove('drag-over');
+
+      const allTasks = getProjectTasks();
+      const draggedTask = allTasks.find((t) => t.id === draggedTaskId);
+      if (!draggedTask) return;
+
+      if (group.defaultSongId !== undefined) {
+        if (group.defaultSongId === '') {
+          draggedTask.songId = undefined;
+          draggedTask.songTitle = undefined;
+        } else {
+          draggedTask.songId = group.defaultSongId;
+          const s = activeProject?.workspace?.songs?.find((x) => x.id === group.defaultSongId);
+          draggedTask.songTitle = s?.title;
+        }
       }
 
-      container.appendChild(card);
+      if (group.defaultStage !== undefined) {
+        draggedTask.stage = group.defaultStage === 'general' ? undefined : group.defaultStage;
+      }
+
+      draggedTask.updatedAt = Date.now();
+      currentSelectedTaskId = draggedTask.id;
+      renderTasksWorkspace();
+      debounceSaveTasks();
+    });
+
+    section.appendChild(header);
+    section.appendChild(itemsContainer);
+    section.appendChild(quickAddRow);
+    return section;
+  };
+
+  // 12. Helper: Render Kanban Board
+  const renderBoard = () => {
+    const renderBoardCard = (task: ProjectTaskItem): HTMLElement => {
+      const card = document.createElement('div');
+      card.className = `board-task-card status-${task.status}`;
+      card.dataset.taskId = task.id;
+      card.setAttribute('draggable', 'true');
+
+      const stageKey = task.stage || 'general';
+      const stageCfg = STAGE_CONFIG[stageKey] || STAGE_CONFIG.general;
+      const stageBadgeHtml = `<span class="task-stage-badge stage-${stageKey}">${stageCfg.iconSvg}<span>${escapeHtml(stageCfg.label)}</span></span>`;
+
+      const linkedSong = songs.find((s) => s.id === task.songId);
+      const songPillHtml = linkedSong
+        ? `<span class="task-track-badge"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span>${escapeHtml(linkedSong.title || 'Song')}</span></span>`
+        : '';
+
+      const subtasks = Array.isArray(task.subtasks) ? task.subtasks : [];
+      let subtasksPillHtml = '';
+      if (subtasks.length > 0) {
+        const doneSubs = subtasks.filter((s) => s.done).length;
+        subtasksPillHtml = `<span class="task-subtasks-counter-pill"><svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polyline points="20 6 9 17 4 12"/></svg><span>${doneSubs}/${subtasks.length}</span></span>`;
+      }
+
+      const assigneeInitial = task.assigneeName ? task.assigneeName.charAt(0).toUpperCase() : '';
+      const assigneeHtml = task.assigneeName
+        ? `<span class="board-card-assignee"><span class="task-meta-avatar">${escapeHtml(assigneeInitial)}</span><span>${escapeHtml(task.assigneeName)}</span></span>`
+        : `<span class="board-card-assignee unassigned"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg><span>Unassigned</span></span>`;
+
+      const dueHtml = task.dueDate
+        ? `<span class="board-card-due" title="Due date"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg><span>${escapeHtml(formatShortDate(task.dueDate))}</span></span>`
+        : '';
+
+      card.innerHTML = `
+        <div class="board-card-top-row">
+          <span class="board-card-title">${escapeHtml(task.title)}</span>
+        </div>
+        <div class="board-card-meta-row">
+          ${stageBadgeHtml}
+          ${songPillHtml}
+          ${assigneeHtml}
+          ${dueHtml}
+          ${subtasksPillHtml}
+        </div>
+      `;
+
+      card.addEventListener('dragstart', (e) => {
+        draggedTaskId = task.id;
+        card.classList.add('dragging');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', task.id);
+        }
+      });
+
+      card.addEventListener('dragend', () => {
+        draggedTaskId = null;
+        card.classList.remove('dragging');
+        document.querySelectorAll('.board-column').forEach((col) => col.classList.remove('drag-over'));
+      });
+
+      // Right-click Context Menu
+      card.addEventListener('contextmenu', (e) => {
+        showTaskContextMenu(e, task);
+      });
+
+      return card;
+    };
+
+    const populateBoardInto = (
+      todoEl: HTMLElement | null,
+      inProgEl: HTMLElement | null,
+      doneEl: HTMLElement | null,
+      todoCountId: string,
+      inProgCountId: string,
+      doneCountId: string
+    ) => {
+      if (!todoEl || !inProgEl || !doneEl) return;
+      todoEl.innerHTML = '';
+      inProgEl.innerHTML = '';
+      doneEl.innerHTML = '';
+
+      const boardTasks = filteredTasks;
+      const todoTasks = boardTasks.filter((t) => t.status === 'todo');
+      const inProgTasks = boardTasks.filter((t) => t.status === 'in_progress');
+      const doneTasks = boardTasks.filter((t) => t.status === 'done');
+
+      setText(todoCountId, todoTasks.length.toString());
+      setText(inProgCountId, inProgTasks.length.toString());
+      setText(doneCountId, doneTasks.length.toString());
+
+      todoTasks.forEach((t) => todoEl.appendChild(renderBoardCard(t)));
+      inProgTasks.forEach((t) => inProgEl.appendChild(renderBoardCard(t)));
+      doneTasks.forEach((t) => doneEl.appendChild(renderBoardCard(t)));
+    };
+
+    populateBoardInto(
+      $('board-cards-todo'),
+      $('board-cards-in_progress'),
+      $('board-cards-done'),
+      'board-count-todo',
+      'board-count-in_progress',
+      'board-count-done'
+    );
+
+    populateBoardInto(
+      $('session-board-cards-todo'),
+      $('session-board-cards-in_progress'),
+      $('session-board-cards-done'),
+      'session-board-count-todo',
+      'session-board-count-in_progress',
+      'session-board-count-done'
+    );
+
+    document.querySelectorAll<HTMLElement>('.board-column').forEach((col) => {
+      const status = col.dataset.status as ProjectTaskStatus;
+      if (!status) return;
+
+      col.ondragover = (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        col.classList.add('drag-over');
+      };
+
+      col.ondragleave = () => {
+        col.classList.remove('drag-over');
+      };
+
+      col.ondrop = (e) => {
+        e.preventDefault();
+        col.classList.remove('drag-over');
+        const taskId = draggedTaskId || e.dataTransfer?.getData('text/plain');
+        if (taskId) {
+          updateTaskStatus(taskId, status);
+        }
+      };
     });
   };
 
-  renderCards(listEl, false);
-  renderCards(sessionListEl, true);
+  // 13. Render Grouped Sections or Flat List into Target Containers
+  const renderTasksIntoList = (container: HTMLElement) => {
+    container.innerHTML = '';
 
-  // 4. Render Overview Tasks Preview Card
+    if (currentTasksGrouping === 'song') {
+      // Group by track
+      const defaultTrackPalette = ['#f43f5e', '#f59e0b', '#10b981', '#06b6d4', '#8b5cf6', '#ec4899', '#f97316'];
+      const trackGroups: { id: string; title: string; iconKey?: string; colorHex?: string; iconSvg?: string; tasks: ProjectTaskItem[]; songRef?: ProjectSongItem; defaultSongId?: string }[] = [];
+
+      songs.forEach((s, idx) => {
+        const sTasks = filteredTasks.filter((t) => t.songId === s.id);
+        const color = s.color || defaultTrackPalette[idx % defaultTrackPalette.length];
+        const iconKey = s.icon || 'music';
+        trackGroups.push({
+          id: `song_${s.id}`,
+          title: s.title || `Song ${idx + 1}`,
+          songRef: s,
+          iconKey,
+          colorHex: color,
+          iconSvg: SONG_ICONS[iconKey]?.svg || SONG_ICONS.music.svg,
+          tasks: sTasks,
+          defaultSongId: s.id
+        });
+      });
+
+      const unassignedTasks = filteredTasks.filter((t) => !t.songId || !songs.some((s) => s.id === t.songId));
+      trackGroups.push({
+        id: 'song_general',
+        title: 'General Tasks',
+        iconKey: 'tag',
+        colorHex: '#94a3b8',
+        iconSvg: SONG_ICONS.tag.svg,
+        tasks: unassignedTasks,
+        defaultSongId: ''
+      });
+
+      trackGroups.forEach((grp) => {
+        container.appendChild(renderGroupSection(grp));
+      });
+    } else if (currentTasksGrouping === 'stage') {
+      const stageKeys: ProjectTaskStage[] = ['writing', 'recording', 'arrangement', 'mix', 'mastering', 'revisions', 'general'];
+      const stageColors: Record<ProjectTaskStage, string> = {
+        writing: '#8b5cf6',
+        recording: '#f43f5e',
+        arrangement: '#06b6d4',
+        mix: '#f59e0b',
+        mastering: '#10b981',
+        revisions: '#ec4899',
+        general: '#94a3b8'
+      };
+      stageKeys.forEach((stg) => {
+        const stgTasks = filteredTasks.filter((t) => (t.stage || 'general') === stg);
+        const cfg = STAGE_CONFIG[stg] || STAGE_CONFIG.general;
+        container.appendChild(
+          renderGroupSection({
+            id: `stage_${stg}`,
+            title: cfg.label,
+            colorHex: stageColors[stg] || '#94a3b8',
+            iconSvg: cfg.iconSvg,
+            tasks: stgTasks,
+            defaultStage: stg === 'general' ? undefined : stg
+          })
+        );
+      });
+    } else if (currentTasksGrouping === 'status') {
+      const statusGroups: { id: string; title: string; status: ProjectTaskStatus; colorHex: string; iconSvg: string }[] = [
+        {
+          id: 'status_todo',
+          title: 'To Do',
+          status: 'todo',
+          colorHex: '#94a3b8',
+          iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>'
+        },
+        {
+          id: 'status_in_progress',
+          title: 'In Progress',
+          status: 'in_progress',
+          colorHex: '#f59e0b',
+          iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>'
+        },
+        {
+          id: 'status_done',
+          title: 'Done',
+          status: 'done',
+          colorHex: '#10b981',
+          iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'
+        }
+      ];
+      statusGroups.forEach((grp) => {
+        const sTasks = filteredTasks.filter((t) => t.status === grp.status);
+        container.appendChild(
+          renderGroupSection({
+            id: grp.id,
+            title: grp.title,
+            colorHex: grp.colorHex,
+            iconSvg: grp.iconSvg,
+            tasks: sTasks
+          })
+        );
+      });
+    } else {
+      // Flat list
+      filteredTasks.forEach((t) => container.appendChild(renderListCard(t)));
+    }
+  };
+
+  if (listContainer) renderTasksIntoList(listContainer);
+  if (sessionListContainer) renderTasksIntoList(sessionListContainer);
+
+  if (boardContainer || sessionBoardContainer) {
+    renderBoard();
+  }
+
+  // 14. Render Overview Tasks Preview Card
   const overviewListEl = $('overview-tasks-list');
   if (overviewListEl) {
     overviewListEl.innerHTML = '';
@@ -9486,14 +11429,14 @@ function renderTasksWorkspace(): void {
         const assigneeBadge = task.assigneeName ? `<span class="overview-task-assignee">${escapeHtml(task.assigneeName)}</span>` : '';
         const dueBadge = task.dueDate ? `<span class="overview-task-due">Due ${escapeHtml(task.dueDate)}</span>` : '';
         item.innerHTML = `
-          <button type="button" class="task-quick-toggle" title="Mark as Done">
-            ${task.status === 'in_progress' ? '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>' : ''}
+          <button type="button" class="reminders-check-btn" title="Mark as Done">
+            ${task.status === 'done' ? '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
           </button>
           <span class="overview-task-title">${escapeHtml(task.title)}</span>
           ${assigneeBadge}
           ${dueBadge}
         `;
-        item.querySelector('.task-quick-toggle')?.addEventListener('click', (e) => {
+        item.querySelector('.reminders-check-btn')?.addEventListener('click', (e) => {
           e.stopPropagation();
           quickToggleTask(task.id);
         });
@@ -9508,8 +11451,12 @@ function createTask(
   assigneeId?: string,
   assigneeName?: string,
   dueDate?: string,
-  note?: string
+  note?: string,
+  songId?: string,
+  songTitle?: string,
+  stage?: ProjectTaskStage
 ): void {
+  if (!canUserEditProject()) return;
   const trimmed = title.trim();
   if (!trimmed) return;
   const tasks = getProjectTasks();
@@ -9520,6 +11467,10 @@ function createTask(
     status: 'todo',
     assigneeId: assigneeId || undefined,
     assigneeName: assigneeName || undefined,
+    songId: songId || undefined,
+    songTitle: songTitle || undefined,
+    stage: stage || undefined,
+    subtasks: [],
     dueDate: dueDate || undefined,
     note: note || undefined,
     createdAt: now,
@@ -9531,6 +11482,7 @@ function createTask(
 }
 
 function quickToggleTask(id: string): void {
+  if (!canUserEditProject()) return;
   const tasks = getProjectTasks();
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
@@ -9548,6 +11500,7 @@ function quickToggleTask(id: string): void {
 }
 
 function updateTaskStatus(id: string, status: ProjectTaskStatus): void {
+  if (!canUserEditProject()) return;
   const tasks = getProjectTasks();
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
@@ -9564,6 +11517,7 @@ function updateTaskStatus(id: string, status: ProjectTaskStatus): void {
 }
 
 function deleteTask(id: string): void {
+  if (!canUserEditProject()) return;
   const tasks = getProjectTasks();
   const idx = tasks.findIndex((t) => t.id === id);
   if (idx === -1) return;
@@ -9572,29 +11526,63 @@ function deleteTask(id: string): void {
   debounceSaveTasks();
 }
 
-function reorderTaskToPosition(
-  sourceId: string,
-  targetId: string,
-  position: 'before' | 'after'
-): void {
-  const tasks = getProjectTasks();
-  const sourceIdx = tasks.findIndex((t) => t.id === sourceId);
-  const targetIdx = tasks.findIndex((t) => t.id === targetId);
-  if (sourceIdx === -1 || targetIdx === -1 || sourceIdx === targetIdx) return;
-
-  const [moved] = tasks.splice(sourceIdx, 1);
-  const newTargetIdx = tasks.findIndex((t) => t.id === targetId);
-  const insertIndex = position === 'before' ? newTargetIdx : newTargetIdx + 1;
-  tasks.splice(insertIndex, 0, moved);
-
+// 15. Event Listeners for Apple Reminders Tasks Workspace
+// Search Input Live Filter
+$('tasks-search-input')?.addEventListener('input', (e) => {
+  currentTasksSearchQuery = (e.target as HTMLInputElement).value.trim();
+  const sessionSearch = $<HTMLInputElement>('session-tasks-search-input');
+  if (sessionSearch && sessionSearch.value !== currentTasksSearchQuery) sessionSearch.value = currentTasksSearchQuery;
   renderTasksWorkspace();
-  debounceSaveTasks();
-}
+});
 
-// Create Task Form Submit
+$('session-tasks-search-input')?.addEventListener('input', (e) => {
+  currentTasksSearchQuery = (e.target as HTMLInputElement).value.trim();
+  const mainSearch = $<HTMLInputElement>('tasks-search-input');
+  if (mainSearch && mainSearch.value !== currentTasksSearchQuery) mainSearch.value = currentTasksSearchQuery;
+  renderTasksWorkspace();
+});
+
+// Group By Select
+$('tasks-group-by')?.addEventListener('change', (e) => {
+  currentTasksGrouping = ((e.target as HTMLSelectElement).value as any) || 'song';
+  renderTasksWorkspace();
+});
+
+$('session-tasks-group-by')?.addEventListener('change', (e) => {
+  currentTasksGrouping = ((e.target as HTMLSelectElement).value as any) || 'song';
+  renderTasksWorkspace();
+});
+
+// Toggle Show/Hide Completed
+$('btn-tasks-toggle-completed')?.addEventListener('click', () => {
+  showCompletedTasks = !showCompletedTasks;
+  renderTasksWorkspace();
+});
+
+$('session-btn-tasks-toggle-completed')?.addEventListener('click', () => {
+  showCompletedTasks = !showCompletedTasks;
+  renderTasksWorkspace();
+});
+
+// Click on empty window background to collapse open task
+document.addEventListener('pointerdown', (e) => {
+  const target = e.target as HTMLElement;
+  if (!target) return;
+  if (target.closest('.reminders-task-row, .reminders-inspector-popover, .task-context-menu, .song-customizer-popover, select, option, .task-action-pill')) {
+    return;
+  }
+  if (currentSelectedTaskId !== null) {
+    currentSelectedTaskId = null;
+    document.querySelectorAll('.reminders-task-row.is-selected').forEach((r) => r.classList.remove('is-selected'));
+  }
+});
+
+// Create Task Form Submit (Main Workspace)
 $('form-create-task')?.addEventListener('submit', (e) => {
   e.preventDefault();
   const titleInput = $<HTMLInputElement>('task-new-title');
+  const songSelect = $<HTMLSelectElement>('task-new-song');
+  const stageSelect = $<HTMLSelectElement>('task-new-stage');
   const assigneeSelect = $<HTMLSelectElement>('task-new-assignee');
   const dateInput = $<HTMLInputElement>('task-new-duedate');
   if (!titleInput) return;
@@ -9610,67 +11598,99 @@ $('form-create-task')?.addEventListener('submit', (e) => {
     aName = parts[1];
   }
 
+  const songId = songSelect?.value || undefined;
+  let songTitle: string | undefined;
+  if (songId && activeProject?.workspace?.songs) {
+    const matched = activeProject.workspace.songs.find((s) => s.id === songId);
+    songTitle = matched?.title;
+  }
+
+  const stageVal = stageSelect?.value as ProjectTaskStage | 'general';
+  const stage = stageVal && stageVal !== 'general' ? stageVal : undefined;
   const dueDate = dateInput?.value || undefined;
-  createTask(title, aId, aName, dueDate);
+
+  createTask(title, aId, aName, dueDate, undefined, songId, songTitle, stage);
   titleInput.value = '';
   titleInput.focus();
 });
 
-// Quick Music Suggestion Chips
-document.querySelectorAll<HTMLButtonElement>('.task-suggestion-chip:not(.btn-more-ideas), .more-idea-item').forEach((chip) => {
-  chip.addEventListener('click', () => {
-    const title = chip.dataset.taskTitle;
-    if (title) {
-      createTask(title);
-    }
-    $('more-ideas-menu')?.classList.add('hidden');
-  });
-});
-
-// More Ideas Dropdown Toggle
-$('btn-more-ideas-toggle')?.addEventListener('click', (e) => {
-  e.stopPropagation();
-  $('more-ideas-menu')?.classList.toggle('hidden');
-});
-
-document.addEventListener('click', (e) => {
-  if (!$('more-ideas-menu')?.contains(e.target as Node) && e.target !== $('btn-more-ideas-toggle')) {
-    $('more-ideas-menu')?.classList.add('hidden');
-  }
-});
-
-// Status Filter Buttons
-document.querySelectorAll<HTMLButtonElement>('.task-filter-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const filter = btn.dataset.filter as 'all' | 'todo' | 'in_progress' | 'done';
-    if (!filter) return;
-    currentTaskFilter = filter;
-    document.querySelectorAll<HTMLButtonElement>('.task-filter-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    renderTasksWorkspace();
-  });
-});
-
-// In-Session Drawer Create Task Form
+// Create Task Form Submit (In-Session Drawer)
 $('session-form-create-task')?.addEventListener('submit', (e) => {
   e.preventDefault();
   const titleInput = $<HTMLInputElement>('session-task-new-title');
+  const songSelect = $<HTMLSelectElement>('session-task-new-song');
+  const stageSelect = $<HTMLSelectElement>('session-task-new-stage');
   const assigneeSelect = $<HTMLSelectElement>('session-task-new-assignee');
+  const dateInput = $<HTMLInputElement>('session-task-new-duedate');
   if (!titleInput) return;
+
   const title = titleInput.value.trim();
   if (!title) return;
 
   let aId: string | undefined;
   let aName: string | undefined;
-  if (assigneeSelect?.value) {
+  if (assigneeSelect && assigneeSelect.value) {
     const parts = assigneeSelect.value.split('|');
     aId = parts[0];
     aName = parts[1];
   }
 
-  createTask(title, aId, aName);
+  const songId = songSelect?.value || undefined;
+  let songTitle: string | undefined;
+  if (songId && activeProject?.workspace?.songs) {
+    const matched = activeProject.workspace.songs.find((s) => s.id === songId);
+    songTitle = matched?.title;
+  }
+
+  const stageVal = stageSelect?.value as ProjectTaskStage | 'general';
+  const stage = stageVal && stageVal !== 'general' ? stageVal : undefined;
+  const dueDate = dateInput?.value || undefined;
+
+  createTask(title, aId, aName, dueDate, undefined, songId, songTitle, stage);
   titleInput.value = '';
-  if (assigneeSelect) assigneeSelect.value = '';
   titleInput.focus();
+});
+
+// View Switcher Handlers
+$('btn-tasks-view-list')?.addEventListener('click', () => {
+  currentTasksViewMode = 'list';
+  renderTasksWorkspace();
+});
+
+$('session-btn-tasks-view-list')?.addEventListener('click', () => {
+  currentTasksViewMode = 'list';
+  renderTasksWorkspace();
+});
+
+$('btn-tasks-view-board')?.addEventListener('click', () => {
+  currentTasksViewMode = 'board';
+  renderTasksWorkspace();
+});
+
+$('session-btn-tasks-view-board')?.addEventListener('click', () => {
+  currentTasksViewMode = 'board';
+  renderTasksWorkspace();
+});
+
+// Filter Dropdown Handlers
+$('tasks-filter-song')?.addEventListener('change', (e) => {
+  currentTasksSongFilter = (e.target as HTMLSelectElement).value || 'all';
+  renderTasksWorkspace();
+});
+
+$('session-tasks-filter-song')?.addEventListener('change', (e) => {
+  currentTasksSongFilter = (e.target as HTMLSelectElement).value || 'all';
+  renderTasksWorkspace();
+});
+
+$('tasks-filter-stage')?.addEventListener('change', (e) => {
+  currentTasksStageFilter = (e.target as HTMLSelectElement).value || 'all';
+  renderTasksWorkspace();
+});
+
+$('session-tasks-filter-stage')?.addEventListener('change', (e) => {
+  currentTasksStageFilter = (e.target as HTMLSelectElement).value || 'all';
+  renderTasksWorkspace();
 });
 
 // View All Tasks from Overview
@@ -9695,6 +11715,7 @@ document.addEventListener('click', (e) => {
 });
 
 const quickCreateNextSong = () => {
+  if (!canUserEditProject()) return;
   const songs = activeProject?.workspace?.songs || [];
   const nextNum = songs.length + 1;
   currentSongsOverviewPage = Math.ceil(nextNum / SONGS_PER_PAGE);
@@ -9703,6 +11724,7 @@ const quickCreateNextSong = () => {
 };
 
 const openNewSongModal = () => {
+  if (!canUserEditProject()) return;
   quickCreateNextSong();
 };
 
@@ -9730,21 +11752,25 @@ $('btn-songs-next-page')?.addEventListener('click', (e) => {
 
 $('btn-quick-new-song')?.addEventListener('click', (e) => {
   e.stopPropagation();
+  if (!canUserEditProject()) return;
   quickCreateNextSong();
 });
 
 $('btn-open-new-song-modal')?.addEventListener('click', (e) => {
   e.stopPropagation();
+  if (!canUserEditProject()) return;
   quickCreateNextSong();
 });
 
 $('btn-overview-new-song')?.addEventListener('click', (e) => {
   e.stopPropagation();
+  if (!canUserEditProject()) return;
   quickCreateNextSong();
 });
 
 $('btn-session-new-song')?.addEventListener('click', (e) => {
   e.stopPropagation();
+  if (!canUserEditProject()) return;
   quickCreateNextSong();
 });
 
@@ -9756,6 +11782,7 @@ $('btn-back-to-project-overview')?.addEventListener('click', () => {
 $('song-studio-active-title')?.parentElement?.addEventListener('dblclick', (e) => {
   e.stopPropagation();
   e.preventDefault();
+  if (!canUserEditProject()) return;
   const titleEl = $('song-studio-active-title');
   if (!titleEl || titleEl.querySelector('input')) return;
   const activeSong = getActiveSong();
@@ -9810,6 +11837,7 @@ document.querySelectorAll<HTMLButtonElement>('.song-studio-tab-btn').forEach((bt
     if (targetSongTab === 'lyrics') {
       setTimeout(() => updateLyricsDocumentPagination(), 20);
     }
+    applyWorkspacePermissions();
   });
 });
 
