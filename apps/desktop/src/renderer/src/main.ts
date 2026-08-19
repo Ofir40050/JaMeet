@@ -1391,7 +1391,7 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
           <span class="sub-field-label">Mic ${mic.id} Level (Gain):</span>
           <output id="${isCall ? 'call-' : ''}gain-val-${mic.id}" class="badge-value">${Math.round((mic.gain ?? 1) * 100)}%</output>
         </div>
-        <input id="${isCall ? 'call-' : ''}gain-${mic.id}" type="range" min="0" max="1.5" step="0.05" value="${mic.gain ?? 1}" class="custom-slider mini-slider" />
+        <input id="${isCall ? 'call-' : ''}gain-${mic.id}" type="range" min="0" max="2" step="0.01" value="${mic.gain ?? 1}" class="custom-slider mini-slider" />
       `;
       const slider = gainRow.querySelector<HTMLInputElement>(`#${isCall ? 'call-' : ''}gain-${mic.id}`);
       const valLabel = gainRow.querySelector<HTMLElement>(`#${isCall ? 'call-' : ''}gain-val-${mic.id}`);
