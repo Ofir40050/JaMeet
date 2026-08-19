@@ -55,6 +55,8 @@ export class LocalAudioSourceManager {
   private musicRightGainNode?: GainNode;
   private musicSplitter?: ChannelSplitterNode;
   private musicMerger?: ChannelMergerNode;
+  private musicMeterAnalyserL?: AnalyserNode;
+  private musicMeterAnalyserR?: AnalyserNode;
   private musicSilentGain?: GainNode;
   private musicFxNodes: AudioNode[] = [];
   private lastConnectedMusicFx?: string;
@@ -107,6 +109,10 @@ export class LocalAudioSourceManager {
 
   getMusicNode(): AudioNode | undefined {
     return this.gainNodes.get('music');
+  }
+
+  getMusicAnalysers(): { left?: AnalyserNode; right?: AnalyserNode } {
+    return { left: this.musicMeterAnalyserL, right: this.musicMeterAnalyserR };
   }
 
   async acquireVoice(deviceId: string | undefined, mode: AudioMode, preferences: AudioCapturePreferences = {}): Promise<AudioSourceConfig> {
@@ -707,11 +713,21 @@ export class LocalAudioSourceManager {
     musicRightGain.connect(musicMerger, 0, 1);
     musicMerger.connect(destination);
 
+    // Measurement taps for Studio Mixer (post-gain, post-FX, post-balance)
+    const musicMeterAnalyserL = appCtx.createAnalyser();
+    musicMeterAnalyserL.fftSize = 256;
+    const musicMeterAnalyserR = appCtx.createAnalyser();
+    musicMeterAnalyserR.fftSize = 256;
+    musicLeftGain.connect(musicMeterAnalyserL);
+    musicRightGain.connect(musicMeterAnalyserR);
+
     this.gainNodes.set('music', musicGain);
     this.musicLeftGainNode = musicLeftGain;
     this.musicRightGainNode = musicRightGain;
     this.musicSplitter = musicSplitter;
     this.musicMerger = musicMerger;
+    this.musicMeterAnalyserL = musicMeterAnalyserL;
+    this.musicMeterAnalyserR = musicMeterAnalyserR;
 
     // Keep graph clock continuously running without local playback echo
     const silentGain = appCtx.createGain();
@@ -735,12 +751,16 @@ export class LocalAudioSourceManager {
       try { musicLeftGain.disconnect(); } catch {}
       try { musicRightGain.disconnect(); } catch {}
       try { musicMerger.disconnect(); } catch {}
+      try { musicMeterAnalyserL.disconnect(); } catch {}
+      try { musicMeterAnalyserR.disconnect(); } catch {}
       try { silentGain.disconnect(); } catch {}
       this.gainNodes.delete('music');
       this.musicLeftGainNode = undefined;
       this.musicRightGainNode = undefined;
       this.musicSplitter = undefined;
       this.musicMerger = undefined;
+      this.musicMeterAnalyserL = undefined;
+      this.musicMeterAnalyserR = undefined;
       this.musicSilentGain = undefined;
       this.lastConnectedMusicFx = undefined;
       if (this.appAudioContext && this.appAudioContext.state !== 'closed') {
@@ -813,11 +833,21 @@ export class LocalAudioSourceManager {
     musicRightGain.connect(musicMerger, 0, 1);
     musicMerger.connect(destination);
 
+    // Measurement taps for Studio Mixer (post-gain, post-FX, post-balance)
+    const musicMeterAnalyserL = appCtx.createAnalyser();
+    musicMeterAnalyserL.fftSize = 256;
+    const musicMeterAnalyserR = appCtx.createAnalyser();
+    musicMeterAnalyserR.fftSize = 256;
+    musicLeftGain.connect(musicMeterAnalyserL);
+    musicRightGain.connect(musicMeterAnalyserR);
+
     this.gainNodes.set('music', musicGain);
     this.musicLeftGainNode = musicLeftGain;
     this.musicRightGainNode = musicRightGain;
     this.musicSplitter = musicSplitter;
     this.musicMerger = musicMerger;
+    this.musicMeterAnalyserL = musicMeterAnalyserL;
+    this.musicMeterAnalyserR = musicMeterAnalyserR;
 
     // Keep graph clock continuously running without local playback echo
     const silentGain = appCtx.createGain();
@@ -839,12 +869,16 @@ export class LocalAudioSourceManager {
       try { musicLeftGain.disconnect(); } catch {}
       try { musicRightGain.disconnect(); } catch {}
       try { musicMerger.disconnect(); } catch {}
+      try { musicMeterAnalyserL.disconnect(); } catch {}
+      try { musicMeterAnalyserR.disconnect(); } catch {}
       try { silentGain.disconnect(); } catch {}
       this.gainNodes.delete('music');
       this.musicLeftGainNode = undefined;
       this.musicRightGainNode = undefined;
       this.musicSplitter = undefined;
       this.musicMerger = undefined;
+      this.musicMeterAnalyserL = undefined;
+      this.musicMeterAnalyserR = undefined;
       this.musicSilentGain = undefined;
       this.lastConnectedMusicFx = undefined;
       if (this.appAudioContext && this.appAudioContext.state !== 'closed') {
@@ -1313,10 +1347,14 @@ export class LocalAudioSourceManager {
     try { this.musicLeftGainNode?.disconnect(); } catch {}
     try { this.musicRightGainNode?.disconnect(); } catch {}
     try { this.musicMerger?.disconnect(); } catch {}
+    try { this.musicMeterAnalyserL?.disconnect(); } catch {}
+    try { this.musicMeterAnalyserR?.disconnect(); } catch {}
     this.musicSplitter = undefined;
     this.musicLeftGainNode = undefined;
     this.musicRightGainNode = undefined;
     this.musicMerger = undefined;
+    this.musicMeterAnalyserL = undefined;
+    this.musicMeterAnalyserR = undefined;
     this.senders.clear();
     if (this.audioContext && this.audioContext.state !== 'closed') {
       void this.audioContext.close().catch(() => {});

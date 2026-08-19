@@ -12829,9 +12829,9 @@ function startMixerVuAnimation(): void {
         const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
         const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
         if (vuLeft && vuRight) {
-          const hasLocal = typeof lastLocalMusicDb === 'number' && !isNaN(lastLocalMusicDb) && lastLocalMusicDb > -58;
+          const { left: musicAnalyserL, right: musicAnalyserR } = audio.getMusicAnalysers();
 
-          if (!isAudible || localMusicCh.volume <= 0.001 || !hasLocal) {
+          if (!isAudible || !musicAnalyserL || !musicAnalyserR) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
@@ -12839,23 +12839,28 @@ function startMixerVuAnimation(): void {
               peakEl.classList.remove('is-clipping');
             }
           } else {
-            const rawPct = Math.max(0, Math.min(100, ((lastLocalMusicDb + 55) / 55) * 100 * localMusicCh.volume));
-            const { left: panL, right: panR } = getStereoPanGains(Number(localMusicCh.pan) || 0);
-            vuLeft.style.height = `${Math.min(100, rawPct * panL).toFixed(1)}%`;
-            vuRight.style.height = `${Math.min(100, rawPct * panR).toFixed(1)}%`;
+            const leftMeas = measureTimeDomainLevel(musicAnalyserL);
+            const rightMeas = measureTimeDomainLevel(musicAnalyserR);
+            const maxRmsDb = Math.max(leftMeas.rmsDb, rightMeas.rmsDb);
+            const maxPeakDb = Math.max(leftMeas.peakDb, rightMeas.peakDb);
+
+            if (maxRmsDb <= -58) {
+              vuLeft.style.height = '0%';
+              vuRight.style.height = '0%';
+            } else {
+              const pctL = Math.max(0, Math.min(100, ((leftMeas.rmsDb + 60) / 60) * 100));
+              const pctR = Math.max(0, Math.min(100, ((rightMeas.rmsDb + 60) / 60) * 100));
+              vuLeft.style.height = `${pctL.toFixed(1)}%`;
+              vuRight.style.height = `${pctR.toFixed(1)}%`;
+            }
 
             if (peakEl) {
-              const faderDb = localMusicCh.volume <= 0.0001 ? -100 : 20 * Math.log10(localMusicCh.volume);
-              const effectivePeakDb = (typeof lastLocalMusicPeakDb === 'number' && !isNaN(lastLocalMusicPeakDb))
-                ? lastLocalMusicPeakDb + faderDb
-                : -60;
-
-              if (effectivePeakDb <= -55) {
+              if (maxPeakDb <= -55) {
                 peakEl.textContent = '';
                 peakEl.classList.remove('is-clipping');
               } else {
-                peakEl.textContent = formatPeakDbText(effectivePeakDb);
-                peakEl.classList.toggle('is-clipping', effectivePeakDb >= -0.5);
+                peakEl.textContent = formatPeakDbText(maxPeakDb);
+                peakEl.classList.toggle('is-clipping', maxPeakDb >= -0.5);
               }
             }
           }
