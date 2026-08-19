@@ -2035,6 +2035,10 @@ async function initializeActiveCall(ack: MeetingAck): Promise<void> {
   updateLocalPreviews();
   updateParticipantIdentityUi();
 
+  // Reset Remote Mute state for fresh session
+  remoteMuted = false;
+  setText('remote-mute-button', 'Mute Remote');
+
   // Reset Studio Mixer Mute & Solo for fresh session
   studioMixerChannels.forEach((ch) => {
     ch.muted = false;
@@ -2794,6 +2798,10 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   lastConnectedMusicFx = '__uninitialized__';
   remoteMedia = undefined;
   currentCode = '';
+
+  // Reset Remote Mute state
+  remoteMuted = false;
+  setText('remote-mute-button', 'Mute Remote');
 
   // Reset Studio Mixer Mute & Solo
   studioMixerChannels.forEach((ch) => {
