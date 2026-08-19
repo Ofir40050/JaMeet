@@ -2481,23 +2481,10 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
     remoteLimiter.attack.setValueAtTime(0.003, remoteAudioCtx.currentTime);
     remoteLimiter.release.setValueAtTime(0.1, remoteAudioCtx.currentTime);
 
-    // Audio Graph Routing:
-    // Voice: Gain -> EQ Highpass -> EQ Peaking -> Compressor -> Panner -> Analyser -> Master
-    remoteVoiceGain
-      .connect(remoteVoiceEqHighpass)
-      .connect(remoteVoiceEqPeaking)
-      .connect(remoteVoiceCompressor)
-      .connect(remoteVoicePanner)
-      .connect(remoteVoiceAnalyser)
-      .connect(remoteMasterGain);
-
-    // Music: Gain -> EQ Peaking -> Compressor -> Panner -> Analyser -> Master
-    remoteMusicGain
-      .connect(remoteMusicEqPeaking)
-      .connect(remoteMusicCompressor)
-      .connect(remoteMusicPanner)
-      .connect(remoteMusicAnalyser)
-      .connect(remoteMasterGain);
+    // Audio Graph Static Routing:
+    // Panner -> Analyser -> Master
+    remoteVoicePanner.connect(remoteVoiceAnalyser).connect(remoteMasterGain);
+    remoteMusicPanner.connect(remoteMusicAnalyser).connect(remoteMasterGain);
 
     // Master: MasterGain -> Limiter -> MasterAnalyser -> Destination
     remoteMasterGain
@@ -2512,6 +2499,8 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
         console.warn('Failed to setSinkId on remoteAudioCtx:', err);
       }
     }
+
+    applyMixerAudioRouting();
   }
   if (remoteAudioCtx.state === 'suspended') {
     await remoteAudioCtx.resume().catch(() => {});
@@ -12906,39 +12895,52 @@ function applyMixerAudioRouting(): void {
     if (remoteVoicePanner && remoteVoiceCh) remoteVoicePanner.pan.setValueAtTime(remoteVoiceCh.pan, now);
     if (remoteMusicPanner && remoteMusicCh) remoteMusicPanner.pan.setValueAtTime(remoteMusicCh.pan, now);
 
-    // Real Audio FX Processing: Voice Channel
-    if (remoteVoiceEqHighpass && remoteVoiceEqPeaking) {
-      if (remoteVoiceCh?.fx.includes('Chan EQ')) {
-        remoteVoiceEqHighpass.frequency.setValueAtTime(80, now);
-        remoteVoiceEqPeaking.gain.setValueAtTime(3.0, now);
-      } else {
-        remoteVoiceEqHighpass.frequency.setValueAtTime(10, now);
-        remoteVoiceEqPeaking.gain.setValueAtTime(0, now);
+    // Dynamic Channel FX Routing: Remote Voice (Gain -> Selected Plugins in order -> Panner)
+    if (remoteVoiceGain && remoteVoicePanner) {
+      try { remoteVoiceGain.disconnect(); } catch {}
+      if (remoteVoiceEqHighpass) try { remoteVoiceEqHighpass.disconnect(); } catch {}
+      if (remoteVoiceEqPeaking) try { remoteVoiceEqPeaking.disconnect(); } catch {}
+      if (remoteVoiceCompressor) try { remoteVoiceCompressor.disconnect(); } catch {}
+
+      let currentVoiceSource: AudioNode = remoteVoiceGain;
+      const voiceFx = remoteVoiceCh?.fx || [];
+      for (const fxName of voiceFx) {
+        if (fxName === 'Chan EQ' && remoteVoiceEqHighpass && remoteVoiceEqPeaking) {
+          remoteVoiceEqHighpass.frequency.setValueAtTime(80, now);
+          remoteVoiceEqPeaking.gain.setValueAtTime(3.0, now);
+          currentVoiceSource.connect(remoteVoiceEqHighpass);
+          remoteVoiceEqHighpass.connect(remoteVoiceEqPeaking);
+          currentVoiceSource = remoteVoiceEqPeaking;
+        } else if (fxName === 'Compressor' && remoteVoiceCompressor) {
+          remoteVoiceCompressor.ratio.setValueAtTime(4.0, now);
+          remoteVoiceCompressor.threshold.setValueAtTime(-18.0, now);
+          currentVoiceSource.connect(remoteVoiceCompressor);
+          currentVoiceSource = remoteVoiceCompressor;
+        }
       }
-    }
-    if (remoteVoiceCompressor) {
-      if (remoteVoiceCh?.fx.includes('Compressor')) {
-        remoteVoiceCompressor.ratio.setValueAtTime(4.0, now);
-        remoteVoiceCompressor.threshold.setValueAtTime(-18.0, now);
-      } else {
-        remoteVoiceCompressor.ratio.setValueAtTime(1.0, now);
-      }
+      currentVoiceSource.connect(remoteVoicePanner);
     }
 
-    // Real Audio FX Processing: Music Channel
-    if (remoteMusicEqPeaking) {
-      if (remoteMusicCh?.fx.includes('Chan EQ')) {
-        remoteMusicEqPeaking.gain.setValueAtTime(2.5, now);
-      } else {
-        remoteMusicEqPeaking.gain.setValueAtTime(0, now);
+    // Dynamic Channel FX Routing: Remote Music (Gain -> Selected Plugins in order -> Panner)
+    if (remoteMusicGain && remoteMusicPanner) {
+      try { remoteMusicGain.disconnect(); } catch {}
+      if (remoteMusicEqPeaking) try { remoteMusicEqPeaking.disconnect(); } catch {}
+      if (remoteMusicCompressor) try { remoteMusicCompressor.disconnect(); } catch {}
+
+      let currentMusicSource: AudioNode = remoteMusicGain;
+      const musicFx = remoteMusicCh?.fx || [];
+      for (const fxName of musicFx) {
+        if (fxName === 'Chan EQ' && remoteMusicEqPeaking) {
+          remoteMusicEqPeaking.gain.setValueAtTime(2.5, now);
+          currentMusicSource.connect(remoteMusicEqPeaking);
+          currentMusicSource = remoteMusicEqPeaking;
+        } else if (fxName === 'Compressor' && remoteMusicCompressor) {
+          remoteMusicCompressor.ratio.setValueAtTime(3.0, now);
+          currentMusicSource.connect(remoteMusicCompressor);
+          currentMusicSource = remoteMusicCompressor;
+        }
       }
-    }
-    if (remoteMusicCompressor) {
-      if (remoteMusicCh?.fx.includes('Compressor')) {
-        remoteMusicCompressor.ratio.setValueAtTime(3.0, now);
-      } else {
-        remoteMusicCompressor.ratio.setValueAtTime(1.0, now);
-      }
+      currentMusicSource.connect(remoteMusicPanner);
     }
   }
 
