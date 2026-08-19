@@ -2579,7 +2579,7 @@ async function refreshRemoteAudio(): Promise<void> {
     musicEl.pause();
   }
 
-  updateRemoteVolumes();
+  applyMixerAudioRouting();
   void setOutputDevice(prefs.audioOutputId).catch((error) => setCallStatus(deviceError(error)));
 }
 
