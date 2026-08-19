@@ -35,10 +35,13 @@ type VoiceMicChannel = {
   leftGainNode?: GainNode;
   rightGainNode?: GainNode;
   stereoMerger?: ChannelMergerNode;
+  meterSplitter?: ChannelSplitterNode;
+  meterAnalyserL?: AnalyserNode;
+  meterAnalyserR?: AnalyserNode;
   downmixGainNode?: GainNode;
   fxNodes: AudioNode[];
   lastConnectedFx?: string;
-  analyserNode: AnalyserNode;  // Always-connected analyser for VU metering
+  analyserNode: AnalyserNode;  // Always-connected analyser for Sound Check / active speaker
   micDestination: MediaStreamAudioDestinationNode;
   preferences: AudioCapturePreferences;
   deviceId?: string;
@@ -105,6 +108,11 @@ export class LocalAudioSourceManager {
 
   getVoiceMicAnalyser(micIndex: number): AnalyserNode | undefined {
     return this.voiceMics.get(micIndex)?.analyserNode;
+  }
+
+  getVoiceMicAnalysers(micIndex: number): { left?: AnalyserNode; right?: AnalyserNode } {
+    const mic = this.voiceMics.get(micIndex);
+    return { left: mic?.meterAnalyserL, right: mic?.meterAnalyserR };
   }
 
   getMusicNode(): AudioNode | undefined {
@@ -237,6 +245,9 @@ export class LocalAudioSourceManager {
       try { mic.leftGainNode?.disconnect(); } catch {}
       try { mic.rightGainNode?.disconnect(); } catch {}
       try { mic.stereoMerger?.disconnect(); } catch {}
+      try { mic.meterSplitter?.disconnect(); } catch {}
+      try { mic.meterAnalyserL?.disconnect(); } catch {}
+      try { mic.meterAnalyserR?.disconnect(); } catch {}
       try { mic.downmixGainNode?.disconnect(); } catch {}
       try { mic.micDestination?.disconnect(); } catch {}
       this.voiceMics.delete(micIndex);
@@ -277,6 +288,9 @@ export class LocalAudioSourceManager {
       try { prevMic.leftGainNode?.disconnect(); } catch {}
       try { prevMic.rightGainNode?.disconnect(); } catch {}
       try { prevMic.stereoMerger?.disconnect(); } catch {}
+      try { prevMic.meterSplitter?.disconnect(); } catch {}
+      try { prevMic.meterAnalyserL?.disconnect(); } catch {}
+      try { prevMic.meterAnalyserR?.disconnect(); } catch {}
       try { prevMic.downmixGainNode?.disconnect(); } catch {}
       try { prevMic.micDestination?.disconnect(); } catch {}
     }
@@ -391,6 +405,9 @@ export class LocalAudioSourceManager {
     let leftGainNode: GainNode | undefined;
     let rightGainNode: GainNode | undefined;
     let stereoMerger: ChannelMergerNode | undefined;
+    let meterSplitter: ChannelSplitterNode | undefined;
+    let meterAnalyserL: AnalyserNode | undefined;
+    let meterAnalyserR: AnalyserNode | undefined;
 
     const panVal = preferences.pan !== undefined ? preferences.pan : 0.0;
 
@@ -415,6 +432,14 @@ export class LocalAudioSourceManager {
         stereoMerger.connect(this.voiceDestination);
       }
       stereoMerger.connect(micDestination);
+
+      // Studio Mixer Measurement Taps (post-Gain, post-FX, post-Balance)
+      meterAnalyserL = ctx.createAnalyser();
+      meterAnalyserL.fftSize = 256;
+      meterAnalyserR = ctx.createAnalyser();
+      meterAnalyserR.fftSize = 256;
+      leftGainNode.connect(meterAnalyserL);
+      rightGainNode.connect(meterAnalyserR);
     } else {
       // Mono hardware route: True Constant Power Mono-to-Stereo Panning
       pannerNode = ctx.createStereoPanner();
@@ -426,6 +451,16 @@ export class LocalAudioSourceManager {
         pannerNode.connect(this.voiceDestination);
       }
       pannerNode.connect(micDestination);
+
+      // Studio Mixer Measurement Taps (post-Gain, post-FX, post-Panner)
+      meterSplitter = ctx.createChannelSplitter(2);
+      meterAnalyserL = ctx.createAnalyser();
+      meterAnalyserL.fftSize = 256;
+      meterAnalyserR = ctx.createAnalyser();
+      meterAnalyserR.fftSize = 256;
+      pannerNode.connect(meterSplitter);
+      meterSplitter.connect(meterAnalyserL, 0);
+      meterSplitter.connect(meterAnalyserR, 1);
     }
 
     // Create a persistent AnalyserNode connected to gainNode for VU metering from ANY audio path
@@ -448,6 +483,9 @@ export class LocalAudioSourceManager {
       leftGainNode,
       rightGainNode,
       stereoMerger,
+      meterSplitter,
+      meterAnalyserL,
+      meterAnalyserR,
       downmixGainNode,
       fxNodes: [],
       lastConnectedFx: '',
@@ -1327,6 +1365,9 @@ export class LocalAudioSourceManager {
       try { mic.leftGainNode?.disconnect(); } catch {}
       try { mic.rightGainNode?.disconnect(); } catch {}
       try { mic.stereoMerger?.disconnect(); } catch {}
+      try { mic.meterSplitter?.disconnect(); } catch {}
+      try { mic.meterAnalyserL?.disconnect(); } catch {}
+      try { mic.meterAnalyserR?.disconnect(); } catch {}
       try { mic.downmixGainNode?.disconnect(); } catch {}
       try { mic.micDestination?.disconnect(); } catch {}
     }

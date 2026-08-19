@@ -12740,13 +12740,10 @@ function startMixerVuAnimation(): void {
         const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
         if (vuLeft && vuRight) {
           const numMicId = Number(mic.id);
-          const lvl = activeMicLevels.get(numMicId);
-          const micRmsDb = (typeof lvl === 'number' && !isNaN(lvl)) ? lvl : -60;
-          const peakLvl = activeMicPeaks.get(numMicId);
-          const micPeakDb = (typeof peakLvl === 'number' && !isNaN(peakLvl)) ? peakLvl : -60;
           const isAudible = !micCh.muted && (!hasLocalSolo || micCh.soloed);
+          const { left: micAnalyserL, right: micAnalyserR } = audio.getVoiceMicAnalysers(numMicId);
 
-          if (!isAudible || micRmsDb <= -58) {
+          if (!isAudible || !micAnalyserL || !micAnalyserR) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
@@ -12754,17 +12751,28 @@ function startMixerVuAnimation(): void {
               peakEl.classList.remove('is-clipping');
             }
           } else {
-            const rawPct = Math.max(0, Math.min(100, ((micRmsDb + 60) / 60) * 100));
-            const { left: panL, right: panR } = getStereoPanGains(Number(micCh.pan) || 0);
-            vuLeft.style.height = `${(rawPct * panL).toFixed(1)}%`;
-            vuRight.style.height = `${(rawPct * panR).toFixed(1)}%`;
+            const leftMeas = measureTimeDomainLevel(micAnalyserL);
+            const rightMeas = measureTimeDomainLevel(micAnalyserR);
+            const maxRmsDb = Math.max(leftMeas.rmsDb, rightMeas.rmsDb);
+            const maxPeakDb = Math.max(leftMeas.peakDb, rightMeas.peakDb);
+
+            if (maxRmsDb <= -58) {
+              vuLeft.style.height = '0%';
+              vuRight.style.height = '0%';
+            } else {
+              const pctL = Math.max(0, Math.min(100, ((leftMeas.rmsDb + 60) / 60) * 100));
+              const pctR = Math.max(0, Math.min(100, ((rightMeas.rmsDb + 60) / 60) * 100));
+              vuLeft.style.height = `${pctL.toFixed(1)}%`;
+              vuRight.style.height = `${pctR.toFixed(1)}%`;
+            }
+
             if (peakEl) {
-              if (micPeakDb <= -55) {
+              if (maxPeakDb <= -55) {
                 peakEl.textContent = '';
                 peakEl.classList.remove('is-clipping');
               } else {
-                peakEl.textContent = formatPeakDbText(micPeakDb);
-                peakEl.classList.toggle('is-clipping', micPeakDb >= -0.5);
+                peakEl.textContent = formatPeakDbText(maxPeakDb);
+                peakEl.classList.toggle('is-clipping', maxPeakDb >= -0.5);
               }
             }
           }
