@@ -15867,13 +15867,22 @@ input[type="text"].task-subtask-add-input,
    LOGIC PRO STYLE STUDIO MULTITRACK MIXER CONSOLE (BOTTOM DOCKED 75vh DRAWER)
    ======================================================== */
 #session-studio-mixer-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 5000 !important;
+  display: flex !important;
   align-items: flex-end !important;
   justify-content: stretch !important;
   padding: 0 !important;
-  background: transparent !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  pointer-events: none;
+  background: rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(2px) !important;
+  -webkit-backdrop-filter: blur(2px) !important;
+  pointer-events: auto !important;
+}
+
+#session-studio-mixer-modal.hidden {
+  display: none !important;
+  pointer-events: none !important;
 }
 
 .studio-mixer-modal-card {
@@ -16233,31 +16242,33 @@ input[type="text"].task-subtask-add-input,
   background: #444448;
 }
 
-/* Track Icon Badge (Centered) */
+/* Logic Pro Track Icon (Clean Instrument & Vocal Silhouettes) */
 .mixer-icon-btn {
-  width: 38px;
-  height: 30px;
+  width: 48px;
+  height: 34px;
   margin: 0 auto 12px;
-  border-radius: 5px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  border: 1px solid rgba(0, 0, 0, 0.4);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  color: #18181b;
+  border: none;
+  background: transparent;
+  padding: 0;
+  box-sizing: border-box;
+  transition: transform 0.15s ease, filter 0.15s ease, background 0.15s ease;
 }
 
 .mixer-icon-btn:hover {
-  filter: brightness(1.12);
-  transform: scale(1.04);
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(1.12);
+  filter: drop-shadow(0 2px 8px currentColor);
 }
 
 .mixer-icon-btn svg {
-  width: 22px;
-  height: 22px;
-  fill: currentColor;
-  opacity: 0.88;
+  max-width: 32px;
+  max-height: 32px;
+  display: block;
 }
 
 /* Authentic Logic Pro Pan Knob */
@@ -16720,36 +16731,37 @@ input[type="text"].task-subtask-add-input,
 }
 
 .icon-option {
-  width: 42px;
-  height: 38px;
+  width: 46px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #2a2a2e;
-  border: 1px solid #3a3a40;
+  background: #252528;
+  border: 1px solid #38383e;
   border-radius: 6px;
-  color: #94a3b8;
+  color: #38bdf8;
   cursor: pointer;
   transition: all 0.12s ease;
+  padding: 0;
 }
 
 .icon-option:hover {
-  background: #3e3e46;
-  color: #ffffff;
+  background: #323238;
   border-color: #52525c;
-  transform: scale(1.06);
+  transform: scale(1.08);
+  filter: drop-shadow(0 2px 6px currentColor);
 }
 
 .icon-option.active {
-  background: #1e3a5f;
-  border-color: #3b82f6;
-  color: #60a5fa;
+  background: #1e293b;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1.5px #38bdf8;
 }
 
 .icon-option svg {
-  width: 20px;
-  height: 20px;
-  fill: currentColor;
+  max-width: 30px;
+  max-height: 30px;
+  display: block;
 }
 
 .mixer-color-row {

@@ -788,6 +788,7 @@ async function syncAllVoiceMics(mode = prefs.mode): Promise<void> {
     }
   }
 
+  syncMixerChannelsWithVoiceInputs();
   renderAudioLimitations();
   updateLocalPreviews();
   updateCallMode();
@@ -12177,82 +12178,150 @@ interface StudioMixerChannel {
 
 const STUDIO_ICONS: Record<string, { label: string; svg: string }> = {
   mic: {
-    label: 'Microphone / Vocal',
-    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="currentColor" stroke-width="2" fill="none"/><line x1="12" x2="12" y1="19" y2="22" stroke="currentColor" stroke-width="2"/></svg>`
+    label: 'Studio Condenser Mic',
+    svg: `<svg viewBox="0 0 24 36" width="20" height="32" fill="none">
+      <path d="M7 14V8a5 5 0 0 1 10 0v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+      <line x1="7" y1="14" x2="17" y2="14" stroke="currentColor" stroke-width="2.2"/>
+      <path d="M7 14h10v12a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2V14Z" fill="currentColor"/>
+      <path d="M10 28h4v3a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-3Z" fill="currentColor"/>
+    </svg>`
+  },
+  guitar: {
+    label: 'Acoustic / Electric Guitar',
+    svg: `<svg viewBox="0 0 36 36" width="30" height="30" fill="currentColor">
+      <rect x="24" y="3" width="2.5" height="3.5" rx="0.8"/>
+      <path d="M24.5 6.5l-8 8 1.8 1.8 8-8z"/>
+      <path d="M16 15.5c-1-.5-2.2-.4-3.2.3-1.8 1.2-2.8 1.4-4.2.8-1.5-.7-3.2 0-3.9 1.5-.8 1.7-.3 3.6 1.2 4.6l.8.5c-.8 1.5-.5 3.4.8 4.6 1.4 1.3 3.5 1.5 5 .5l.5-.3c1.1 1.4 3 1.8 4.6 1 1.6-.8 2.3-2.6 1.5-4.2-.5-1.3-.2-2.3.8-3.9.7-.9.9-2.2.3-3.2l-4.2-2.2Z"/>
+      <circle cx="12" cy="21.5" r="1.6" fill="#464649"/>
+    </svg>`
   },
   waves: {
-    label: 'Audio Stream / Track',
-    svg: `<svg viewBox="0 0 24 24" width="22" height="22"><rect x="2" y="8" width="2.5" height="8" rx="1.2" fill="currentColor"></rect><rect x="6.5" y="5" width="2.5" height="14" rx="1.2" fill="currentColor"></rect><rect x="11" y="2" width="2.5" height="20" rx="1.2" fill="currentColor"></rect><rect x="15.5" y="4" width="2.5" height="16" rx="1.2" fill="currentColor"></rect><rect x="20" y="8" width="2.5" height="8" rx="1.2" fill="currentColor"></rect></svg>`
+    label: 'Waveform Track',
+    svg: `<svg viewBox="0 0 32 32" width="28" height="28" fill="currentColor">
+      <rect x="3" y="10" width="3.6" height="12" rx="1.8"/>
+      <rect x="9" y="6" width="3.6" height="20" rx="1.8"/>
+      <rect x="15" y="2" width="3.6" height="28" rx="1.8"/>
+      <rect x="21" y="6" width="3.6" height="20" rx="1.8"/>
+      <rect x="27" y="10" width="3.6" height="12" rx="1.8"/>
+    </svg>`
+  },
+  fader: {
+    label: 'Track Channel Fader',
+    svg: `<svg viewBox="0 0 32 32" width="28" height="28">
+      <circle cx="16" cy="16" r="14" fill="currentColor"/>
+      <line x1="16" x2="16" y1="7" y2="25" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+      <rect x="11.5" y="12" width="9" height="7" rx="1.8" fill="#ffffff"/>
+      <line x1="12" x2="20" y1="15.5" x2="20" stroke="currentColor" stroke-width="1.5"/>
+    </svg>`
   },
   headphones: {
     label: 'Headphones / Monitor',
-    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>`
+    svg: `<svg viewBox="0 0 30 30" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 17v-4a11 11 0 0 1 22 0v4"/>
+      <rect x="2" y="15" width="5.5" height="10" rx="2.5" fill="currentColor"/>
+      <rect x="22.5" y="15" width="5.5" height="10" rx="2.5" fill="currentColor"/>
+    </svg>`
   },
   speaker: {
     label: 'Speaker / Monitor Out',
-    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" fill="none"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14" stroke="currentColor" stroke-width="2" fill="none"/></svg>`
-  },
-  guitar: {
-    label: 'Guitar / Bass',
-    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 5-3 3"/><path d="m14 10 2 2"/><path d="M15 15a4 4 0 1 1-5.66-5.66l5.66 5.66Z"/><circle cx="10" cy="14" r="1.5" fill="currentColor"/><path d="m18 2 4 4-2 2-4-4Z"/></svg>`
+    svg: `<svg viewBox="0 0 30 30" width="28" height="28" fill="currentColor">
+      <path d="M13 5L6.5 10H2v10h4.5L13 25V5z"/>
+      <path d="M18 10a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M22 6a12.5 12.5 0 0 1 0 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    </svg>`
   },
   piano: {
     label: 'Piano / Keys',
-    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 4v10"/><path d="M10 4v10"/><path d="M14 4v10"/><path d="M18 4v10"/><path d="M2 14h20"/></svg>`
+    svg: `<svg viewBox="0 0 30 26" width="30" height="26" fill="currentColor">
+      <rect x="2" y="3" width="26" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
+      <path d="M2 13h26" stroke="currentColor" stroke-width="1.8"/>
+      <rect x="6.5" y="4" width="3.2" height="8" rx="0.8" fill="currentColor"/>
+      <rect x="11.5" y="4" width="3.2" height="8" rx="0.8" fill="currentColor"/>
+      <rect x="18.5" y="4" width="3.2" height="8" rx="0.8" fill="currentColor"/>
+      <rect x="23.5" y="4" width="3.2" height="8" rx="0.8" fill="currentColor"/>
+    </svg>`
   },
   drums: {
     label: 'Drums / Beat',
-    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="8" rx="9" ry="4"/><path d="M3 8v8c0 2.2 4 4 9 4s9-1.8 9-4V8"/><path d="m6 6 6 5 6-5"/></svg>`
+    svg: `<svg viewBox="0 0 30 30" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <ellipse cx="15" cy="9" rx="11" ry="5" fill="currentColor" fill-opacity="0.25"/>
+      <path d="M4 9v11c0 2.8 5 5 11 5s11-2.2 11-5V9"/>
+      <line x1="8" y1="12" x2="8" y2="23"/>
+      <line x1="15" y1="14" x2="15" y2="25"/>
+      <line x1="22" y1="12" x2="22" y2="23"/>
+    </svg>`
   },
   synth: {
     label: 'Synth / Hardware',
-    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>`
+    svg: `<svg viewBox="0 0 30 30" width="28" height="28" fill="currentColor">
+      <rect x="3" y="4" width="24" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="8" y1="8" x2="8" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <line x1="15" y1="8" x2="15" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <line x1="22" y1="8" x2="22" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <rect x="5.5" y="11" width="5" height="3" rx="1.2" fill="currentColor"/>
+      <rect x="12.5" y="16" width="5" height="3" rx="1.2" fill="currentColor"/>
+      <rect x="19.5" y="9" width="5" height="3" rx="1.2" fill="currentColor"/>
+    </svg>`
   },
   screen: {
     label: 'Screen / App Capture',
-    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>`
-  },
-  fx: {
-    label: 'Audio FX / Reverb',
-    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="m12 2 2.4 7.2L21.6 12l-7.2 2.4L12 21.6l-2.4-7.2L2.4 12l7.2-2.4Z"/></svg>`
+    svg: `<svg viewBox="0 0 30 30" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="24" height="17" rx="3" fill="currentColor" fill-opacity="0.25"/>
+      <line x1="10" y1="26" x2="20" y2="26"/>
+      <line x1="15" y1="21" x2="15" y2="26"/>
+    </svg>`
   },
   crown: {
     label: 'Master / Bus',
-    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="m2 4 4 12h12l4-12-6 5-4-7-4 7-6-5Z"/><rect x="4" y="18" width="16" height="2" rx="1"/></svg>`
+    svg: `<svg viewBox="0 0 30 30" width="28" height="28" fill="currentColor">
+      <path d="M3 7l5 13h14l5-13-7 5.5-5-8.5-5 8.5L3 7z"/>
+      <rect x="5" y="22" width="20" height="3" rx="1.5"/>
+    </svg>`
   },
   radio: {
     label: 'Broadcast Stream',
-    svg: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>`
+    svg: `<svg viewBox="0 0 30 30" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+      <circle cx="15" cy="15" r="3" fill="currentColor"/>
+      <path d="M20.3 9.7a7.5 7.5 0 0 1 0 10.6m-10.6 0a7.5 7.5 0 0 1 0-10.6"/>
+      <path d="M24.5 5.5a13.5 13.5 0 0 1 0 19m-19 0a13.5 13.5 0 0 1 0-19"/>
+    </svg>`
   }
 };
 
-let studioMixerChannels: StudioMixerChannel[] = [
-  // --- LOCAL SENDS (כניסות שלך) ---
-  {
-    id: 'you-mic',
-    name: 'Mic 1',
-    icon: 'mic',
-    color: '#3b82f6',
-    volume: 1.0,
-    pan: 0,
-    muted: false,
-    soloed: false,
-    fx: [],
-    section: 'local'
-  },
-  {
-    id: 'you-mic-2',
-    name: 'Mic 2',
-    icon: 'mic',
-    color: '#60a5fa',
-    volume: 1.0,
-    pan: 0,
-    muted: false,
-    soloed: false,
-    fx: [],
-    section: 'local'
-  },
-  {
+let studioMixerOpen = false;
+let studioMixerChannels: StudioMixerChannel[] = [];
+
+function syncMixerChannelsWithVoiceInputs(): void {
+  const enabledMics = (prefs.voiceInputs && prefs.voiceInputs.length > 0)
+    ? prefs.voiceInputs.filter((v) => v.enabled)
+    : [{ id: 1, name: 'Microphone 1', enabled: true, gain: 1, channelRoute: '1' }];
+
+  // Preserve existing channel settings (volume, pan, fx, icon, color, custom names)
+  const existingMap = new Map<string, StudioMixerChannel>();
+  studioMixerChannels.forEach((ch) => existingMap.set(ch.id, ch));
+
+  const newLocalMicChannels: StudioMixerChannel[] = enabledMics.map((mic, idx) => {
+    const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
+    const existing = existingMap.get(chId) || (mic.id === 1 ? existingMap.get('you-mic-1') : undefined);
+    const defaultColors = ['#3b82f6', '#60a5fa', '#38bdf8', '#818cf8', '#a78bfa', '#c084fc'];
+    const defaultColor = defaultColors[idx % defaultColors.length] || '#3b82f6';
+
+    return {
+      id: chId,
+      name: existing?.name || (mic.id === 1 ? 'Mic 1' : `Mic ${mic.id}`),
+      icon: existing?.icon || 'mic',
+      color: existing?.color || defaultColor,
+      volume: existing?.volume ?? (mic.gain ?? 1.0),
+      pan: existing?.pan ?? 0,
+      muted: existing?.muted ?? false,
+      soloed: existing?.soloed ?? false,
+      fx: existing?.fx ?? [],
+      section: 'local'
+    };
+  });
+
+  // Local music stream
+  const existingMusic = existingMap.get('music-stream') || {
     id: 'music-stream',
     name: 'Music',
     icon: 'waves',
@@ -12263,9 +12332,10 @@ let studioMixerChannels: StudioMixerChannel[] = [
     soloed: false,
     fx: [],
     section: 'local'
-  },
-  // --- REMOTE MONITORING (מי שממול) ---
-  {
+  };
+
+  // Remote Section
+  const remoteVoice = existingMap.get('remote-voice') || {
     id: 'remote-voice',
     name: 'Mic 1',
     icon: 'headphones',
@@ -12276,8 +12346,9 @@ let studioMixerChannels: StudioMixerChannel[] = [
     soloed: false,
     fx: [],
     section: 'remote'
-  },
-  {
+  };
+
+  const remoteMusic = existingMap.get('remote-music') || {
     id: 'remote-music',
     name: 'Music',
     icon: 'waves',
@@ -12288,8 +12359,9 @@ let studioMixerChannels: StudioMixerChannel[] = [
     soloed: false,
     fx: [],
     section: 'remote'
-  },
-  {
+  };
+
+  const masterOut = existingMap.get('master-out') || {
     id: 'master-out',
     name: 'Master',
     icon: 'crown',
@@ -12301,10 +12373,23 @@ let studioMixerChannels: StudioMixerChannel[] = [
     fx: [],
     isMaster: true,
     section: 'remote'
-  }
-];
+  };
 
-let studioMixerOpen = false;
+  studioMixerChannels = [
+    ...newLocalMicChannels,
+    existingMusic,
+    remoteVoice,
+    remoteMusic,
+    masterOut
+  ];
+
+  if (studioMixerOpen) {
+    renderStudioMixer();
+    applyMixerAudioRouting();
+  }
+}
+
+syncMixerChannelsWithVoiceInputs();
 function faderTopPercentToDb(pct: number): number {
   if (pct >= 98.5) return -Infinity;
   if (pct <= 2.0) return 6.0;
@@ -12352,6 +12437,12 @@ function formatDbText(db: number): string {
   return db > 0 ? `+${db.toFixed(1)}` : `${db.toFixed(1)}`;
 }
 
+function formatPeakDbText(db: number): string {
+  if (db === -Infinity || db <= -55) return '';
+  if (Math.abs(db) < 0.05) return '0.0';
+  return db > 0 ? `+${db.toFixed(1)}` : `${db.toFixed(1)}`;
+}
+
 function volumeToDb(vol: number): string {
   if (vol <= 0.0001) return '-∞';
   const db = 20 * Math.log10(vol);
@@ -12395,8 +12486,13 @@ function toggleStudioMixer(forceOpen?: boolean): void {
   $('toggle-session-mixer')?.classList.toggle('active', studioMixerOpen);
 
   if (studioMixerOpen) {
-    renderStudioMixer();
-    startMixerVuAnimation();
+    try {
+      syncMixerChannelsWithVoiceInputs();
+      renderStudioMixer();
+      startMixerVuAnimation();
+    } catch (err) {
+      console.error('Failed to render studio mixer:', err);
+    }
   } else {
     stopMixerVuAnimation();
     $('mixer-fx-picker-popover')?.classList.add('hidden');
@@ -12424,37 +12520,45 @@ function startMixerVuAnimation(): void {
     }
     const hasAnySolo = studioMixerChannels.some((c) => c.soloed);
 
-    // 1. You (Mic) Channel Metering (from real local voice dB)
-    const micCh = studioMixerChannels.find((c) => c.id === 'you-mic');
-    if (micCh) {
-      const isAudible = !micCh.muted && (!hasAnySolo || micCh.soloed) && !muted;
+    // 1. Dynamic Local Microphone Channels Metering
+    const activeMics = (prefs.voiceInputs && prefs.voiceInputs.length > 0)
+      ? prefs.voiceInputs.filter((v) => v.enabled)
+      : [{ id: 1, name: 'Mic 1', enabled: true, gain: 1, channelRoute: '1' }];
+
+    activeMics.forEach((mic) => {
+      const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
+      const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
+      if (!micCh) return;
+
+      const isAudible = !micCh.muted && (!hasAnySolo || micCh.soloed) && (mic.id !== 1 || !muted);
       const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${micCh.id}"]`);
       if (stripEl) {
         const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
         const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
         const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
         if (vuLeft && vuRight) {
-          if (!isAudible || micCh.volume <= 0.001 || lastLocalVoiceDb <= -58) {
+          const micDb = activeMicLevels.get(mic.id) ?? (mic.id === 1 ? lastLocalVoiceDb : -100);
+          if (!isAudible || micCh.volume <= 0.001 || micDb <= -55) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
-              peakEl.textContent = '-∞';
+              peakEl.textContent = '';
               peakEl.classList.remove('is-clipping');
             }
           } else {
-            const rawPct = Math.max(0, Math.min(100, ((lastLocalVoiceDb + 55) / 55) * 100 * micCh.volume));
+            const rawPct = Math.max(0, Math.min(100, ((micDb + 55) / 55) * 100 * micCh.volume));
             const { left: panL, right: panR } = getStereoPanGains(micCh.pan);
             vuLeft.style.height = `${(rawPct * panL).toFixed(1)}%`;
             vuRight.style.height = `${(rawPct * panR).toFixed(1)}%`;
             if (peakEl) {
-              const peakDb = lastLocalVoiceDb + (micCh.volume <= 0.0001 ? -100 : 20 * Math.log10(micCh.volume));
-              peakEl.textContent = formatDbText(peakDb);
+              const peakDb = micDb + (micCh.volume <= 0.0001 ? -100 : 20 * Math.log10(micCh.volume));
+              peakEl.textContent = formatPeakDbText(peakDb);
               peakEl.classList.toggle('is-clipping', peakDb >= -0.5);
             }
           }
         }
       }
-    }
+    });
 
     // 2. Musician (Remote Voice) Channel Metering (from real Web Audio Analyser)
     const voiceCh = studioMixerChannels.find((c) => c.id === 'remote-voice');
@@ -12470,7 +12574,7 @@ function startMixerVuAnimation(): void {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
-              peakEl.textContent = '-∞';
+              peakEl.textContent = '';
               peakEl.classList.remove('is-clipping');
             }
           } else {
@@ -12478,14 +12582,23 @@ function startMixerVuAnimation(): void {
             let sum = 0;
             for (let i = 0; i < voiceDataArray.length; i++) sum += voiceDataArray[i];
             const avg = sum / voiceDataArray.length;
-            const pct = Math.min(100, (avg / 200) * 100 * voiceCh.volume);
-            const { left: panL, right: panR } = getStereoPanGains(voiceCh.pan);
-            vuLeft.style.height = `${Math.min(100, pct * panL).toFixed(1)}%`;
-            vuRight.style.height = `${Math.min(100, pct * panR).toFixed(1)}%`;
-            if (peakEl) {
-              const db = -60 + (avg / 255) * 60 + (voiceCh.volume <= 0.0001 ? -100 : 20 * Math.log10(voiceCh.volume));
-              peakEl.textContent = formatDbText(db);
-              peakEl.classList.toggle('is-clipping', db >= -0.5);
+            if (avg <= 1) {
+              vuLeft.style.height = '0%';
+              vuRight.style.height = '0%';
+              if (peakEl) {
+                peakEl.textContent = '';
+                peakEl.classList.remove('is-clipping');
+              }
+            } else {
+              const pct = Math.min(100, (avg / 200) * 100 * voiceCh.volume);
+              const { left: panL, right: panR } = getStereoPanGains(voiceCh.pan);
+              vuLeft.style.height = `${Math.min(100, pct * panL).toFixed(1)}%`;
+              vuRight.style.height = `${Math.min(100, pct * panR).toFixed(1)}%`;
+              if (peakEl) {
+                const db = -60 + (avg / 255) * 60 + (voiceCh.volume <= 0.0001 ? -100 : 20 * Math.log10(voiceCh.volume));
+                peakEl.textContent = formatPeakDbText(db);
+                peakEl.classList.toggle('is-clipping', db >= -0.5);
+              }
             }
           }
         }
@@ -12510,14 +12623,14 @@ function startMixerVuAnimation(): void {
             remoteAvg = sum / musicDataArray.length;
           }
 
-          const hasLocal = lastLocalMusicDb > -58;
+          const hasLocal = lastLocalMusicDb > -55;
           const hasRemote = remoteAvg > 1;
 
           if (!isAudible || musicCh.volume <= 0.001 || (!hasLocal && !hasRemote)) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
-              peakEl.textContent = '-∞';
+              peakEl.textContent = '';
               peakEl.classList.remove('is-clipping');
             }
           } else {
@@ -12538,7 +12651,7 @@ function startMixerVuAnimation(): void {
 
             if (peakEl) {
               const peakDb = activeDb + (musicCh.volume <= 0.0001 ? -100 : 20 * Math.log10(musicCh.volume));
-              peakEl.textContent = formatDbText(peakDb);
+              peakEl.textContent = formatPeakDbText(peakDb);
               peakEl.classList.toggle('is-clipping', peakDb >= -0.5);
             }
           }
@@ -12559,7 +12672,7 @@ function startMixerVuAnimation(): void {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
-              peakEl.textContent = '-∞';
+              peakEl.textContent = '';
               peakEl.classList.remove('is-clipping');
             }
           } else {
@@ -12567,13 +12680,22 @@ function startMixerVuAnimation(): void {
             let sum = 0;
             for (let i = 0; i < masterDataArray.length; i++) sum += masterDataArray[i];
             const avg = sum / masterDataArray.length;
-            const pct = Math.min(100, (avg / 200) * 100 * masterCh.volume);
-            vuLeft.style.height = `${pct.toFixed(1)}%`;
-            vuRight.style.height = `${pct.toFixed(1)}%`;
-            if (peakEl) {
-              const db = -60 + (avg / 255) * 60 + (masterCh.volume <= 0.0001 ? -100 : 20 * Math.log10(masterCh.volume));
-              peakEl.textContent = formatDbText(db);
-              peakEl.classList.toggle('is-clipping', db >= -0.5);
+            if (avg <= 1) {
+              vuLeft.style.height = '0%';
+              vuRight.style.height = '0%';
+              if (peakEl) {
+                peakEl.textContent = '';
+                peakEl.classList.remove('is-clipping');
+              }
+            } else {
+              const pct = Math.min(100, (avg / 200) * 100 * masterCh.volume);
+              vuLeft.style.height = `${pct.toFixed(1)}%`;
+              vuRight.style.height = `${pct.toFixed(1)}%`;
+              if (peakEl) {
+                const db = -60 + (avg / 255) * 60 + (masterCh.volume <= 0.0001 ? -100 : 20 * Math.log10(masterCh.volume));
+                peakEl.textContent = formatPeakDbText(db);
+                peakEl.classList.toggle('is-clipping', db >= -0.5);
+              }
             }
           }
         }
@@ -12592,20 +12714,30 @@ function startMixerVuAnimation(): void {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
-              peakEl.textContent = '-∞';
+              peakEl.textContent = '';
               peakEl.classList.remove('is-clipping');
             }
           } else {
             let sum = 0;
             for (let i = 0; i < musicDataArray.length; i++) sum += musicDataArray[i];
-            const pct = Math.min(100, ((sum / musicDataArray.length) / 220) * 100 * ch.volume);
-            const { left: panL, right: panR } = getStereoPanGains(ch.pan);
-            vuLeft.style.height = `${(pct * panL).toFixed(1)}%`;
-            vuRight.style.height = `${(pct * panR).toFixed(1)}%`;
-            if (peakEl) {
-              const db = -60 + (pct / 100) * 60;
-              peakEl.textContent = formatDbText(db);
-              peakEl.classList.toggle('is-clipping', db >= -0.5);
+            const avg = sum / musicDataArray.length;
+            if (avg <= 1) {
+              vuLeft.style.height = '0%';
+              vuRight.style.height = '0%';
+              if (peakEl) {
+                peakEl.textContent = '';
+                peakEl.classList.remove('is-clipping');
+              }
+            } else {
+              const pct = Math.min(100, (avg / 220) * 100 * ch.volume);
+              const { left: panL, right: panR } = getStereoPanGains(ch.pan);
+              vuLeft.style.height = `${(pct * panL).toFixed(1)}%`;
+              vuRight.style.height = `${(pct * panR).toFixed(1)}%`;
+              if (peakEl) {
+                const db = -60 + (pct / 100) * 60;
+                peakEl.textContent = formatPeakDbText(db);
+                peakEl.classList.toggle('is-clipping', db >= -0.5);
+              }
             }
           }
         }
@@ -12629,32 +12761,37 @@ function applyMixerAudioRouting(): void {
   const masterCh = studioMixerChannels.find((c) => c.id === 'master-out') || { volume: 1.0, muted: false, pan: 0, fx: [] };
   const masterVol = masterCh.muted ? 0 : masterCh.volume;
 
-  const mic1Ch = studioMixerChannels.find((c) => c.id === 'you-mic');
-  const mic2Ch = studioMixerChannels.find((c) => c.id === 'you-mic-2');
-  const localMusicCh = studioMixerChannels.find((c) => c.id === 'music-stream');
+  // Dynamic Local Microphones Routing
+  let anyLocalMicActive = false;
+  const activeMics = (prefs.voiceInputs && prefs.voiceInputs.length > 0)
+    ? prefs.voiceInputs.filter((v) => v.enabled)
+    : [{ id: 1, name: 'Mic 1', enabled: true, gain: 1, channelRoute: '1' }];
 
+  activeMics.forEach((mic) => {
+    const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
+    const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
+    const isAudible = micCh ? (!micCh.muted && (!hasAnySolo || micCh.soloed)) : true;
+    const isMutedGlobally = mic.id === 1 ? muted : false;
+    const effectiveVol = isAudible && micCh && !isMutedGlobally ? micCh.volume : 0;
+    if (effectiveVol > 0) anyLocalMicActive = true;
+
+    // Apply to audio engine
+    void audio.setVoiceMicGain(mic.id, effectiveVol);
+  });
+
+  audio.setEnabled('voice', anyLocalMicActive);
+
+  const localMusicCh = studioMixerChannels.find((c) => c.id === 'music-stream');
   const remoteVoiceCh = studioMixerChannels.find((c) => c.id === 'remote-voice');
   const remoteMusicCh = studioMixerChannels.find((c) => c.id === 'remote-music');
 
-  // Solo & Mute logic: If any track has Solo active, only Soloed tracks that are not Muted produce sound.
-  const mic1Audible = mic1Ch ? (!mic1Ch.muted && (!hasAnySolo || mic1Ch.soloed)) : true;
-  const mic2Audible = mic2Ch ? (!mic2Ch.muted && (!hasAnySolo || mic2Ch.soloed)) : true;
   const localMusicAudible = localMusicCh ? (!localMusicCh.muted && (!hasAnySolo || localMusicCh.soloed)) : true;
-
   const remoteVoiceAudible = remoteVoiceCh ? (!remoteVoiceCh.muted && (!hasAnySolo || remoteVoiceCh.soloed)) : true;
   const remoteMusicAudible = remoteMusicCh ? (!remoteMusicCh.muted && (!hasAnySolo || remoteMusicCh.soloed)) : true;
 
-  const effectiveMic1Vol = mic1Audible && mic1Ch && !muted ? mic1Ch.volume : 0;
-  const effectiveMic2Vol = mic2Audible && mic2Ch ? mic2Ch.volume : 0;
   const effectiveLocalMusicVol = localMusicAudible && localMusicCh ? localMusicCh.volume : 0;
-
   const effectiveRemoteVoiceVol = remoteVoiceAudible && remoteVoiceCh ? remoteVoiceCh.volume : 0;
   const effectiveRemoteMusicVol = remoteMusicAudible && remoteMusicCh ? remoteMusicCh.volume : 0;
-
-  // 1. Control local microphone & music input enabled states and gains in real-time
-  audio.setEnabled('voice', effectiveMic1Vol > 0 || effectiveMic2Vol > 0);
-  void audio.setInputGain(0, effectiveMic1Vol);
-  void audio.setInputGain(1, effectiveMic2Vol);
 
   audio.setEnabled('music', effectiveLocalMusicVol > 0);
   void audio.applyMusicGain(effectiveLocalMusicVol);
@@ -12749,6 +12886,15 @@ function renderStudioMixer(): void {
   let renderedRemoteDivider = false;
 
   studioMixerChannels.forEach((channel) => {
+    channel.volume = typeof channel.volume === 'number' && !isNaN(channel.volume) ? channel.volume : 1.0;
+    channel.pan = typeof channel.pan === 'number' && !isNaN(channel.pan) ? channel.pan : 0;
+    channel.muted = Boolean(channel.muted);
+    channel.soloed = Boolean(channel.soloed);
+    channel.fx = Array.isArray(channel.fx) ? channel.fx : [];
+    channel.color = channel.color || '#3b82f6';
+    channel.icon = channel.icon || 'mic';
+    channel.name = channel.name || 'Track';
+
     if (channel.section === 'remote' && !renderedRemoteDivider) {
       renderedRemoteDivider = true;
       const divider = document.createElement('div');
@@ -12776,7 +12922,7 @@ function renderStudioMixer(): void {
       const fxRack = document.createElement('div');
       fxRack.className = 'mixer-fx-rack';
       for (let i = 0; i < 4; i++) {
-        const activeFx = channel.fx[i];
+        const activeFx = channel.fx[i] || '';
         const fxSlot = document.createElement('button');
         fxSlot.type = 'button';
         fxSlot.className = `mixer-cell-btn ${activeFx ? 'btn-fx-active' : 'btn-fx-empty'}`;
@@ -12791,11 +12937,11 @@ function renderStudioMixer(): void {
       strip.appendChild(fxRack);
     }
 
-    // 2. Track Icon
+    // 2. Track Icon (Logic Pro Instrument & Vocal Silhouettes)
     const iconBtn = document.createElement('button');
     iconBtn.type = 'button';
     iconBtn.className = 'mixer-icon-btn';
-    iconBtn.style.background = channel.color;
+    iconBtn.style.color = channel.color;
     iconBtn.title = 'Change Channel Icon & Color';
     const iconKey = channel.icon || (channel.id === 'you-mic' ? 'mic' : channel.id === 'remote-voice' ? 'headphones' : channel.isMaster ? 'crown' : 'waves');
     const iconData = STUDIO_ICONS[iconKey] || STUDIO_ICONS.waves;
@@ -12886,7 +13032,7 @@ function renderStudioMixer(): void {
     const currentDb = channel.volume <= 0.0001 ? -Infinity : 20 * Math.log10(channel.volume);
     readoutRow.innerHTML = `
       <div class="mixer-fader-val" title="Double-click to reset to 0.0 dB">${formatDbText(currentDb)}</div>
-      <div class="mixer-peak-val" title="Peak Meter Level">-∞</div>
+      <div class="mixer-peak-val" title="Peak Meter Level"></div>
     `;
     const faderValEl = readoutRow.querySelector<HTMLElement>('.mixer-fader-val')!;
     faderValEl.addEventListener('dblclick', () => {
@@ -13136,6 +13282,17 @@ function openIconPopover(channelId: string, anchorEl: HTMLElement): void {
   activeIconTarget = channelId;
   const popover = $('mixer-icon-picker-popover');
   if (!popover) return;
+
+  const channel = studioMixerChannels.find((c) => c.id === channelId);
+  const grid = popover.querySelector('.mixer-icon-grid');
+  if (grid) {
+    grid.innerHTML = Object.entries(STUDIO_ICONS).map(([key, data]) => `
+      <button type="button" class="icon-option ${channel?.icon === key ? 'active' : ''}" data-icon="${key}" title="${data.label}" style="color: ${channel?.color || '#38bdf8'}">
+        ${data.svg}
+      </button>
+    `).join('');
+  }
+
   const rect = anchorEl.getBoundingClientRect();
   const top = rect.bottom + 6;
   const left = Math.max(12, Math.min(window.innerWidth - 232, rect.left - 70));
@@ -13147,11 +13304,15 @@ function openIconPopover(channelId: string, anchorEl: HTMLElement): void {
 
 // Wire Popovers Event Delegation for 100% Reliable Clicks
 $('mixer-icon-picker-popover')?.addEventListener('click', (e) => {
-  const iconBtn = (e.target as HTMLElement)?.closest<HTMLButtonElement>('.icon-option');
-  if (iconBtn && activeIconTarget) {
+  const target = e.target as HTMLElement | null;
+  if (!target || !activeIconTarget) return;
+
+  const iconBtn = target.closest<HTMLButtonElement>('.icon-option');
+  if (iconBtn) {
+    const selectedIcon = iconBtn.dataset.icon || iconBtn.getAttribute('data-icon');
     const channel = studioMixerChannels.find((c) => c.id === activeIconTarget);
-    if (channel) {
-      channel.icon = iconBtn.dataset.icon || 'mic';
+    if (channel && selectedIcon) {
+      channel.icon = selectedIcon;
       renderStudioMixer();
     }
     $('mixer-icon-picker-popover')?.classList.add('hidden');
@@ -13159,11 +13320,12 @@ $('mixer-icon-picker-popover')?.addEventListener('click', (e) => {
     return;
   }
 
-  const colorSwatch = (e.target as HTMLElement)?.closest<HTMLElement>('.mixer-color-swatch');
-  if (colorSwatch && activeIconTarget) {
+  const colorSwatch = target.closest<HTMLElement>('.mixer-color-swatch');
+  if (colorSwatch) {
+    const selectedColor = colorSwatch.dataset.color || colorSwatch.getAttribute('data-color');
     const channel = studioMixerChannels.find((c) => c.id === activeIconTarget);
-    if (channel && colorSwatch.dataset.color) {
-      channel.color = colorSwatch.dataset.color;
+    if (channel && selectedColor) {
+      channel.color = selectedColor;
       renderStudioMixer();
     }
     $('mixer-icon-picker-popover')?.classList.add('hidden');
@@ -13229,36 +13391,4 @@ $('session-studio-mixer-modal')?.addEventListener('click', (e) => {
   }
 });
 
-$('btn-mixer-add-track')?.addEventListener('click', () => {
-  const trackCount = studioMixerChannels.filter((c) => !c.isMaster).length + 1;
-  const newTrack: StudioMixerChannel = {
-    id: `track-${Date.now()}`,
-    name: `Track ${trackCount}`,
-    icon: 'guitar',
-    color: '#ec4899',
-    volume: 1.0,
-    pan: 0,
-    muted: false,
-    soloed: false,
-    fx: []
-  };
-  const masterIdx = studioMixerChannels.findIndex((c) => c.isMaster);
-  if (masterIdx !== -1) {
-    studioMixerChannels.splice(masterIdx, 0, newTrack);
-  } else {
-    studioMixerChannels.push(newTrack);
-  }
-  renderStudioMixer();
-});
-
-$('btn-mixer-reset-all')?.addEventListener('click', () => {
-  studioMixerChannels.forEach((c) => {
-    c.volume = 1.0;
-    c.pan = 0;
-    c.muted = false;
-    c.soloed = false;
-  });
-  renderStudioMixer();
-  applyMixerAudioRouting();
-});
 

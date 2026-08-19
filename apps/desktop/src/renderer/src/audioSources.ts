@@ -37,7 +37,7 @@ export class LocalAudioSourceManager {
   private rawTracks = new Map<string, MediaStreamTrack>();
   private voiceMics = new Map<number, VoiceMicChannel>();
   private voiceDestination?: MediaStreamAudioDestinationNode;
-  private voiceMerger?: ChannelMergerNode;
+
   private appAudioCleanup?: () => void;
   private hardwareAudioCleanup?: () => void;
 
@@ -59,7 +59,7 @@ export class LocalAudioSourceManager {
     if (!this.audioContext || this.audioContext.state === 'closed') {
       this.audioContext = new AudioContext({ sampleRate: 48000 });
       this.voiceDestination = undefined;
-      this.voiceMerger = undefined;
+
       this.voiceMics.clear();
       this.gainNodes.clear();
     }
@@ -198,11 +198,8 @@ export class LocalAudioSourceManager {
   async acquireVoiceMic(micIndex: number, deviceId: string | undefined, mode: AudioMode, preferences: AudioCapturePreferences): Promise<AudioSourceConfig> {
     const ctx = await this.getOrCreateAudioContext();
 
-    if (!this.voiceDestination || !this.voiceMerger || this.voiceDestination.context !== ctx || this.voiceMerger.context !== ctx) {
+    if (!this.voiceDestination || this.voiceDestination.context !== ctx) {
       this.voiceDestination = ctx.createMediaStreamDestination();
-      const isStereo = preferences.stereo !== false;
-      this.voiceMerger = ctx.createChannelMerger(isStereo ? 2 : 1);
-      this.voiceMerger.connect(this.voiceDestination);
     }
 
     // Stop previous mic if existing
@@ -219,8 +216,8 @@ export class LocalAudioSourceManager {
     const gainVal = preferences.inputGain !== undefined ? preferences.inputGain : 1.0;
     gainNode.gain.setValueAtTime(gainVal, ctx.currentTime);
 
-    if (this.voiceMerger) {
-      gainNode.connect(this.voiceMerger);
+    if (this.voiceDestination) {
+      gainNode.connect(this.voiceDestination);
     }
 
     const micDestination = ctx.createMediaStreamDestination();
