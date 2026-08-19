@@ -1398,6 +1398,7 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
         const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
         if (micCh) {
           micCh.volume = val;
+          saveStudioMixerConfig();
           if (studioMixerOpen) {
             renderStudioMixer();
           }
@@ -2033,6 +2034,16 @@ async function initializeActiveCall(ack: MeetingAck): Promise<void> {
   updateCameraButtonState();
   updateLocalPreviews();
   updateParticipantIdentityUi();
+
+  // Reset Studio Mixer Mute & Solo for fresh session
+  studioMixerChannels.forEach((ch) => {
+    ch.muted = false;
+    ch.soloed = false;
+  });
+  if (studioMixerOpen) {
+    renderStudioMixer();
+  }
+  applyMixerAudioRouting();
 
   // In-Session Workspace Integration
   if (ack.projectId) {
@@ -2738,6 +2749,15 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   lastConnectedMusicFx = '__uninitialized__';
   remoteMedia = undefined;
   currentCode = '';
+
+  // Reset Studio Mixer Mute & Solo
+  studioMixerChannels.forEach((ch) => {
+    ch.muted = false;
+    ch.soloed = false;
+  });
+  if (studioMixerOpen) {
+    renderStudioMixer();
+  }
   const returnProjectId = sessionProjectId || activeProjectId;
   peerIdentity = null;
   peerParticipantId = null;
@@ -3554,6 +3574,7 @@ for (const id of ['input-gain', 'call-input-gain']) {
     const micCh = studioMixerChannels.find((c) => c.id === 'you-mic');
     if (micCh) {
       micCh.volume = val;
+      saveStudioMixerConfig();
       if (studioMixerOpen) {
         renderStudioMixer();
       }
@@ -12447,15 +12468,62 @@ const STUDIO_ICONS: Record<string, { label: string; svg: string }> = {
   }
 };
 
+interface PersistentStudioMixerChannel {
+  name?: string;
+  icon?: string;
+  color?: string;
+  volume?: number;
+  pan?: number;
+  fx?: string[];
+}
+
+type PersistentStudioMixerMap = Record<string, PersistentStudioMixerChannel>;
+
+const STUDIO_MIXER_STORAGE_KEY = 'jameet-studio-mixer-config';
+
+function loadSavedStudioMixerConfig(): PersistentStudioMixerMap {
+  try {
+    const raw = localStorage.getItem(STUDIO_MIXER_STORAGE_KEY) ?? localStorage.getItem('musiczoom-studio-mixer-config');
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as PersistentStudioMixerMap;
+    }
+  } catch (err) {
+    logger.warn('mixer_storage', 'Failed to load persistent studio mixer configuration', {}, err);
+  }
+  return {};
+}
+
+function saveStudioMixerConfig(): void {
+  try {
+    const map = loadSavedStudioMixerConfig();
+    for (const ch of studioMixerChannels) {
+      map[ch.id] = {
+        name: ch.name,
+        icon: ch.icon,
+        color: ch.color,
+        volume: typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0,
+        pan: typeof ch.pan === 'number' && !isNaN(ch.pan) ? ch.pan : 0,
+        fx: Array.isArray(ch.fx) ? [...ch.fx] : []
+      };
+    }
+    localStorage.setItem(STUDIO_MIXER_STORAGE_KEY, JSON.stringify(map));
+  } catch (err) {
+    logger.warn('mixer_storage', 'Failed to save persistent studio mixer configuration', {}, err);
+  }
+}
+
 let studioMixerOpen = false;
 let studioMixerChannels: StudioMixerChannel[] = [];
 
 function syncMixerChannelsWithVoiceInputs(): void {
+  const savedMap = loadSavedStudioMixerConfig();
   const enabledMics = (prefs.voiceInputs && prefs.voiceInputs.length > 0)
     ? prefs.voiceInputs.filter((v) => v.enabled)
     : [{ id: 1, name: 'Microphone 1', enabled: true, gain: 1, channelRoute: '1' }];
 
-  // Preserve existing channel settings (volume, pan, fx, icon, color, custom names)
+  // Preserve existing in-memory channel settings (during active session runtime)
   const existingMap = new Map<string, StudioMixerChannel>();
   studioMixerChannels.forEach((ch) => existingMap.set(ch.id, ch));
 
@@ -12465,98 +12533,113 @@ function syncMixerChannelsWithVoiceInputs(): void {
   const newLocalMicChannels: StudioMixerChannel[] = enabledMics.map((mic) => {
     const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
     const existing = existingMap.get(chId) || (mic.id === 1 ? existingMap.get('you-mic-1') : undefined);
+    const saved = savedMap[chId] || (mic.id === 1 ? savedMap['you-mic-1'] : undefined);
+
+    const defaultName = mic.id === 1 ? 'Mic 1' : `Mic ${mic.id}`;
+    const name = existing?.name ?? saved?.name ?? defaultName;
+    const icon = existing?.icon ?? saved?.icon ?? 'mic';
+    const rawColor = existing?.color ?? saved?.color ?? DEFAULT_APP_BLUE;
+    const color = rawColor === MASTER_GOLD ? DEFAULT_APP_BLUE : rawColor;
+    const volume = existing?.volume ?? saved?.volume ?? (mic.gain ?? 1.0);
+    const pan = existing?.pan ?? saved?.pan ?? 0;
+    const fx = existing?.fx ?? (saved?.fx ? [...saved.fx] : []);
 
     return {
       id: chId,
-      name: existing?.name || (mic.id === 1 ? 'Mic 1' : `Mic ${mic.id}`),
-      icon: existing?.icon || 'mic',
-      color: existing?.color === '#f59e0b' ? DEFAULT_APP_BLUE : (existing?.color || DEFAULT_APP_BLUE),
-      volume: existing?.volume ?? (mic.gain ?? 1.0),
-      pan: existing?.pan ?? 0,
+      name,
+      icon,
+      color,
+      volume,
+      pan,
       muted: existing?.muted ?? false,
       soloed: existing?.soloed ?? false,
-      fx: existing?.fx ?? [],
+      fx,
       section: 'local'
     };
   });
 
   // Local music stream
-  const existingMusic = existingMap.get('music-stream') || {
+  const existingMusic = existingMap.get('music-stream');
+  const savedMusic = savedMap['music-stream'];
+  const musicCh: StudioMixerChannel = {
     id: 'music-stream',
-    name: 'Music',
-    icon: 'waves',
-    color: DEFAULT_APP_BLUE,
-    volume: 1.0,
-    pan: 0,
-    muted: false,
-    soloed: false,
-    fx: [],
+    name: existingMusic?.name ?? savedMusic?.name ?? 'Music',
+    icon: existingMusic?.icon ?? savedMusic?.icon ?? 'waves',
+    color: (existingMusic?.color ?? savedMusic?.color) === '#a855f7' ? DEFAULT_APP_BLUE : (existingMusic?.color ?? savedMusic?.color ?? DEFAULT_APP_BLUE),
+    volume: existingMusic?.volume ?? savedMusic?.volume ?? 1.0,
+    pan: existingMusic?.pan ?? savedMusic?.pan ?? 0,
+    muted: existingMusic?.muted ?? false,
+    soloed: existingMusic?.soloed ?? false,
+    fx: existingMusic?.fx ?? (savedMusic?.fx ? [...savedMusic.fx] : []),
     section: 'local'
   };
-  if (!existingMap.has('music-stream') || existingMusic.color === '#a855f7') {
-    existingMusic.color = DEFAULT_APP_BLUE;
-  }
 
   // Remote Section
-  const remoteVoice = existingMap.get('remote-voice') || {
+  const existingRemoteVoice = existingMap.get('remote-voice');
+  const savedRemoteVoice = savedMap['remote-voice'];
+  let remoteVoiceName = existingRemoteVoice?.name ?? savedRemoteVoice?.name ?? 'Vocal';
+  if (remoteVoiceName === 'Mic 1') remoteVoiceName = 'Vocal';
+  const remoteVoiceColor = (existingRemoteVoice?.color ?? savedRemoteVoice?.color) === '#22c55e'
+    ? DEFAULT_APP_BLUE
+    : (existingRemoteVoice?.color ?? savedRemoteVoice?.color ?? DEFAULT_APP_BLUE);
+
+  const remoteVoiceCh: StudioMixerChannel = {
     id: 'remote-voice',
-    name: 'Vocal',
-    icon: 'mic',
-    color: DEFAULT_APP_BLUE,
-    volume: 1.0,
-    pan: 0,
-    muted: false,
-    soloed: false,
-    fx: [],
+    name: remoteVoiceName,
+    icon: existingRemoteVoice?.icon ?? savedRemoteVoice?.icon ?? 'mic',
+    color: remoteVoiceColor,
+    volume: existingRemoteVoice?.volume ?? savedRemoteVoice?.volume ?? 1.0,
+    pan: existingRemoteVoice?.pan ?? savedRemoteVoice?.pan ?? 0,
+    muted: existingRemoteVoice?.muted ?? false,
+    soloed: existingRemoteVoice?.soloed ?? false,
+    fx: existingRemoteVoice?.fx ?? (savedRemoteVoice?.fx ? [...savedRemoteVoice.fx] : []),
     section: 'remote'
   };
-  if (!existingMap.has('remote-voice') || remoteVoice.name === 'Mic 1') {
-    remoteVoice.name = 'Vocal';
-  }
-  if (!existingMap.has('remote-voice') || remoteVoice.color === '#22c55e') {
-    remoteVoice.color = DEFAULT_APP_BLUE;
-  }
 
-  const remoteMusic = existingMap.get('remote-music') || {
+  const existingRemoteMusic = existingMap.get('remote-music');
+  const savedRemoteMusic = savedMap['remote-music'];
+  const remoteMusicColor = (existingRemoteMusic?.color ?? savedRemoteMusic?.color) === '#06b6d4'
+    ? DEFAULT_APP_BLUE
+    : (existingRemoteMusic?.color ?? savedRemoteMusic?.color ?? DEFAULT_APP_BLUE);
+
+  const remoteMusicCh: StudioMixerChannel = {
     id: 'remote-music',
-    name: 'Music',
-    icon: 'waves',
-    color: DEFAULT_APP_BLUE,
-    volume: 1.0,
-    pan: 0,
-    muted: false,
-    soloed: false,
-    fx: [],
+    name: existingRemoteMusic?.name ?? savedRemoteMusic?.name ?? 'Music',
+    icon: existingRemoteMusic?.icon ?? savedRemoteMusic?.icon ?? 'waves',
+    color: remoteMusicColor,
+    volume: existingRemoteMusic?.volume ?? savedRemoteMusic?.volume ?? 1.0,
+    pan: existingRemoteMusic?.pan ?? savedRemoteMusic?.pan ?? 0,
+    muted: existingRemoteMusic?.muted ?? false,
+    soloed: existingRemoteMusic?.soloed ?? false,
+    fx: existingRemoteMusic?.fx ?? (savedRemoteMusic?.fx ? [...savedRemoteMusic.fx] : []),
     section: 'remote'
   };
-  if (!existingMap.has('remote-music') || remoteMusic.color === '#06b6d4') {
-    remoteMusic.color = DEFAULT_APP_BLUE;
-  }
 
-  const masterOut = existingMap.get('master-out') || {
+  const existingMaster = existingMap.get('master-out');
+  const savedMaster = savedMap['master-out'];
+  let masterName = existingMaster?.name ?? savedMaster?.name ?? 'Monitor Master';
+  if (masterName === 'Master') masterName = 'Monitor Master';
+
+  const masterOutCh: StudioMixerChannel = {
     id: 'master-out',
-    name: 'Monitor Master',
-    icon: 'crown',
+    name: masterName,
+    icon: existingMaster?.icon ?? savedMaster?.icon ?? 'crown',
     color: MASTER_GOLD,
-    volume: 1.0,
+    volume: existingMaster?.volume ?? savedMaster?.volume ?? 1.0,
     pan: 0,
-    muted: false,
+    muted: existingMaster?.muted ?? false,
     soloed: false,
     fx: [],
     isMaster: true,
     section: 'remote'
   };
-  if (!existingMap.has('master-out') || masterOut.name === 'Master') {
-    masterOut.name = 'Monitor Master';
-  }
-  masterOut.color = MASTER_GOLD;
 
   studioMixerChannels = [
     ...newLocalMicChannels,
-    existingMusic,
-    remoteVoice,
-    remoteMusic,
-    masterOut
+    musicCh,
+    remoteVoiceCh,
+    remoteMusicCh,
+    masterOutCh
   ];
 
   if (studioMixerOpen) {
@@ -13304,6 +13387,7 @@ function renderStudioMixer(): void {
           panRing.removeEventListener('pointermove', onPanMove);
           panRing.removeEventListener('pointerup', onPanUp);
           panRing.removeEventListener('pointercancel', onPanUp);
+          saveStudioMixerConfig();
         };
 
         panRing.addEventListener('pointermove', onPanMove);
@@ -13316,6 +13400,7 @@ function renderStudioMixer(): void {
         channel.pan = 0;
         updatePanVisuals(0);
         applyMixerAudioRouting();
+        saveStudioMixerConfig();
       });
 
       panRing.addEventListener('wheel', (e) => {
@@ -13324,6 +13409,7 @@ function renderStudioMixer(): void {
         channel.pan = Math.max(-1, Math.min(1, channel.pan + delta));
         updatePanVisuals(channel.pan);
         applyMixerAudioRouting();
+        saveStudioMixerConfig();
       }, { passive: false });
 
       strip.appendChild(panWrap);
@@ -13342,6 +13428,7 @@ function renderStudioMixer(): void {
       channel.volume = 1.0;
       renderStudioMixer();
       applyMixerAudioRouting();
+      saveStudioMixerConfig();
     });
     strip.appendChild(readoutRow);
 
@@ -13408,6 +13495,7 @@ function renderStudioMixer(): void {
       faderCap.style.top = `${clampedPct.toFixed(2)}%`;
       faderValEl.textContent = formatDbText(db);
       applyMixerAudioRouting();
+      saveStudioMixerConfig();
     };
 
     faderCap.addEventListener('pointerdown', (e) => {
@@ -13475,6 +13563,7 @@ function renderStudioMixer(): void {
       faderCap.style.top = '16%';
       faderValEl.textContent = '0.0';
       applyMixerAudioRouting();
+      saveStudioMixerConfig();
     });
 
     faderColumn.addEventListener('dblclick', (e) => {
@@ -13483,6 +13572,7 @@ function renderStudioMixer(): void {
       faderCap.style.top = '16%';
       faderValEl.textContent = '0.0';
       applyMixerAudioRouting();
+      saveStudioMixerConfig();
     });
 
     faderColumn.addEventListener('wheel', (e) => {
@@ -13494,6 +13584,7 @@ function renderStudioMixer(): void {
       faderCap.style.top = `${dbToFaderTopPercent(newDb).toFixed(2)}%`;
       faderValEl.textContent = formatDbText(newDb);
       applyMixerAudioRouting();
+      saveStudioMixerConfig();
     }, { passive: false });
 
     strip.appendChild(faderArea);
@@ -13549,6 +13640,7 @@ function renderStudioMixer(): void {
         const val = input.value.trim();
         if (val) {
           channel.name = val;
+          saveStudioMixerConfig();
         }
         renderStudioMixer();
       };
@@ -13627,6 +13719,7 @@ $('mixer-icon-picker-popover')?.addEventListener('click', (e) => {
     const channel = studioMixerChannels.find((c) => c.id === activeIconTarget);
     if (channel && selectedIcon) {
       channel.icon = selectedIcon;
+      saveStudioMixerConfig();
       renderStudioMixer();
     }
     $('mixer-icon-picker-popover')?.classList.add('hidden');
@@ -13640,6 +13733,7 @@ $('mixer-icon-picker-popover')?.addEventListener('click', (e) => {
     const channel = studioMixerChannels.find((c) => c.id === activeIconTarget);
     if (channel && selectedColor) {
       channel.color = selectedColor;
+      saveStudioMixerConfig();
       renderStudioMixer();
     }
     $('mixer-icon-picker-popover')?.classList.add('hidden');
@@ -13660,6 +13754,7 @@ $('mixer-fx-picker-popover')?.addEventListener('click', (e) => {
     } else if (fx) {
       channel.fx[slotIndex] = fx;
     }
+    saveStudioMixerConfig();
     renderStudioMixer();
     applyMixerAudioRouting();
   }
