@@ -2465,12 +2465,12 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
     remoteMasterAnalyserR = remoteAudioCtx.createAnalyser();
     remoteMasterAnalyserR.fftSize = 256;
 
-    // Protective Master Limiter (transparent ceiling at -0.5 dB)
+    // Protective Monitor Master Peak Limiter (fastest practical attack, hard knee, max ratio, ~ -0.5 dBFS threshold)
     remoteLimiter.threshold.setValueAtTime(-0.5, remoteAudioCtx.currentTime);
-    remoteLimiter.knee.setValueAtTime(4.0, remoteAudioCtx.currentTime);
-    remoteLimiter.ratio.setValueAtTime(20.0, remoteAudioCtx.currentTime);
-    remoteLimiter.attack.setValueAtTime(0.003, remoteAudioCtx.currentTime);
-    remoteLimiter.release.setValueAtTime(0.1, remoteAudioCtx.currentTime);
+    remoteLimiter.knee.setValueAtTime(0.0, remoteAudioCtx.currentTime); // Hard knee for peak limiting
+    remoteLimiter.ratio.setValueAtTime(20.0, remoteAudioCtx.currentTime); // High limiting ratio (20:1 max supported)
+    remoteLimiter.attack.setValueAtTime(0.001, remoteAudioCtx.currentTime); // Minimum practical attack (1ms) supported by Web Audio DynamicsCompressorNode
+    remoteLimiter.release.setValueAtTime(0.05, remoteAudioCtx.currentTime); // Fast release (50ms) to minimize pumping
 
     // Audio Graph Static Routing:
     // Panner -> Master
