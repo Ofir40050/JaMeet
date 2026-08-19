@@ -12567,6 +12567,10 @@ function startMixerVuAnimation(): void {
       ? prefs.voiceInputs.filter((v) => v.enabled)
       : [{ id: 1, name: 'Mic 1', enabled: true, gain: 1, channelRoute: '1' }];
 
+    const localMicChannelIds = new Set<string>(
+      activeMics.map((mic) => (mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`))
+    );
+
     activeMics.forEach((mic) => {
       const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
       const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
@@ -12747,8 +12751,10 @@ function startMixerVuAnimation(): void {
       }
     }
 
-    // 5. Aux & Other Channels
-    studioMixerChannels.filter((c) => c.id !== 'you-mic' && c.id !== 'remote-voice' && c.id !== 'music-stream' && c.id !== 'master-out').forEach((ch) => {
+    // 5. Aux & Other Channels (exclude all local mic channels, remote voice, music stream, and master)
+    studioMixerChannels
+      .filter((c) => !localMicChannelIds.has(c.id) && !c.id.startsWith('you-mic') && c.id !== 'remote-voice' && c.id !== 'music-stream' && c.id !== 'master-out')
+      .forEach((ch) => {
       const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${ch.id}"]`);
       if (stripEl) {
         const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
