@@ -17,12 +17,24 @@ function getDesktopApi(): any {
   return (window as any).jameet || (window as any).musiczoom;
 }
 
+function getStereoBalanceGains(pan: number): { left: number; right: number } {
+  const clamped = Math.max(-1, Math.min(1, pan));
+  const left = clamped <= 0 ? 1.0 : Math.max(0, 1.0 - clamped);
+  const right = clamped >= 0 ? 1.0 : Math.max(0, 1.0 + clamped);
+  return { left, right };
+}
+
 type VoiceMicChannel = {
   rawTrack?: MediaStreamTrack;
   isolatedTrack: MediaStreamTrack;
   sourceNode?: MediaStreamAudioSourceNode;
   gainNode: GainNode;
-  pannerNode: StereoPannerNode;
+  isStereo: boolean;
+  pannerNode?: StereoPannerNode;
+  stereoSplitter?: ChannelSplitterNode;
+  leftGainNode?: GainNode;
+  rightGainNode?: GainNode;
+  stereoMerger?: ChannelMergerNode;
   analyserNode: AnalyserNode;  // Always-connected analyser for VU metering
   micDestination: MediaStreamAudioDestinationNode;
   preferences: AudioCapturePreferences;
@@ -36,7 +48,10 @@ export class LocalAudioSourceManager {
   private audioContext: AudioContext | undefined;
   private appAudioContext: AudioContext | undefined;
   private gainNodes = new Map<string, GainNode>();
-  private musicPannerNode?: StereoPannerNode;
+  private musicLeftGainNode?: GainNode;
+  private musicRightGainNode?: GainNode;
+  private musicSplitter?: ChannelSplitterNode;
+  private musicMerger?: ChannelMergerNode;
   private rawTracks = new Map<string, MediaStreamTrack>();
   private voiceMics = new Map<number, VoiceMicChannel>();
   private voiceDestination?: MediaStreamAudioDestinationNode;
@@ -188,6 +203,10 @@ export class LocalAudioSourceManager {
       try { mic.sourceNode?.disconnect(); } catch {}
       try { mic.gainNode?.disconnect(); } catch {}
       try { mic.pannerNode?.disconnect(); } catch {}
+      try { mic.stereoSplitter?.disconnect(); } catch {}
+      try { mic.leftGainNode?.disconnect(); } catch {}
+      try { mic.rightGainNode?.disconnect(); } catch {}
+      try { mic.stereoMerger?.disconnect(); } catch {}
       try { mic.micDestination?.disconnect(); } catch {}
       this.voiceMics.delete(micIndex);
       this.gainNodes.delete(`voice-${micIndex}`);
@@ -219,6 +238,10 @@ export class LocalAudioSourceManager {
       try { prevMic.sourceNode?.disconnect(); } catch {}
       try { prevMic.gainNode?.disconnect(); } catch {}
       try { prevMic.pannerNode?.disconnect(); } catch {}
+      try { prevMic.stereoSplitter?.disconnect(); } catch {}
+      try { prevMic.leftGainNode?.disconnect(); } catch {}
+      try { prevMic.rightGainNode?.disconnect(); } catch {}
+      try { prevMic.stereoMerger?.disconnect(); } catch {}
       try { prevMic.micDestination?.disconnect(); } catch {}
     }
 
@@ -226,18 +249,7 @@ export class LocalAudioSourceManager {
     const gainVal = preferences.inputGain !== undefined ? preferences.inputGain : 1.0;
     gainNode.gain.setValueAtTime(gainVal, ctx.currentTime);
 
-    const pannerNode = ctx.createStereoPanner();
-    const panVal = preferences.pan !== undefined ? preferences.pan : 0.0;
-    pannerNode.pan.setValueAtTime(panVal, ctx.currentTime);
-
-    gainNode.connect(pannerNode);
-
-    if (this.voiceDestination) {
-      pannerNode.connect(this.voiceDestination);
-    }
-
     const micDestination = ctx.createMediaStreamDestination();
-    pannerNode.connect(micDestination);
 
     let stream: MediaStream;
     try {
@@ -269,16 +281,32 @@ export class LocalAudioSourceManager {
 
       if (route === '1-2') {
         splitter.connect(micMerger, 0, 0);
-        splitter.connect(micMerger, 1, 1);
+        if (outChannels > 1) {
+          splitter.connect(micMerger, 1, 1);
+        } else {
+          splitter.connect(micMerger, 1, 0);
+        }
       } else if (route === '3-4') {
         splitter.connect(micMerger, 2, 0);
-        splitter.connect(micMerger, 3, 1);
+        if (outChannels > 1) {
+          splitter.connect(micMerger, 3, 1);
+        } else {
+          splitter.connect(micMerger, 3, 0);
+        }
       } else if (route === '5-6') {
         splitter.connect(micMerger, 4, 0);
-        splitter.connect(micMerger, 5, 1);
+        if (outChannels > 1) {
+          splitter.connect(micMerger, 5, 1);
+        } else {
+          splitter.connect(micMerger, 5, 0);
+        }
       } else if (route === '7-8') {
         splitter.connect(micMerger, 6, 0);
-        splitter.connect(micMerger, 7, 1);
+        if (outChannels > 1) {
+          splitter.connect(micMerger, 7, 1);
+        } else {
+          splitter.connect(micMerger, 7, 0);
+        }
       } else {
         let chIdx = 0;
         const parsed = parseInt(route, 10);
@@ -292,6 +320,48 @@ export class LocalAudioSourceManager {
     }
 
     micMerger.connect(gainNode);
+
+    let pannerNode: StereoPannerNode | undefined;
+    let stereoSplitter: ChannelSplitterNode | undefined;
+    let leftGainNode: GainNode | undefined;
+    let rightGainNode: GainNode | undefined;
+    let stereoMerger: ChannelMergerNode | undefined;
+
+    const panVal = preferences.pan !== undefined ? preferences.pan : 0.0;
+
+    if (isStereoRoute) {
+      // Stereo pair: Stereo Balance behavior (preserves discrete L/R without folding)
+      stereoSplitter = ctx.createChannelSplitter(2);
+      leftGainNode = ctx.createGain();
+      rightGainNode = ctx.createGain();
+      stereoMerger = ctx.createChannelMerger(2);
+
+      const { left, right } = getStereoBalanceGains(panVal);
+      leftGainNode.gain.setValueAtTime(left, ctx.currentTime);
+      rightGainNode.gain.setValueAtTime(right, ctx.currentTime);
+
+      gainNode.connect(stereoSplitter);
+      stereoSplitter.connect(leftGainNode, 0, 0);
+      stereoSplitter.connect(rightGainNode, 1, 0);
+      leftGainNode.connect(stereoMerger, 0, 0);
+      rightGainNode.connect(stereoMerger, 0, 1);
+
+      if (this.voiceDestination) {
+        stereoMerger.connect(this.voiceDestination);
+      }
+      stereoMerger.connect(micDestination);
+    } else {
+      // Mono hardware route: True Constant Power Mono-to-Stereo Panning
+      pannerNode = ctx.createStereoPanner();
+      pannerNode.pan.setValueAtTime(panVal, ctx.currentTime);
+
+      gainNode.connect(pannerNode);
+
+      if (this.voiceDestination) {
+        pannerNode.connect(this.voiceDestination);
+      }
+      pannerNode.connect(micDestination);
+    }
 
     // Create a persistent AnalyserNode connected to gainNode for VU metering from ANY audio path
     const analyserNode = ctx.createAnalyser();
@@ -307,7 +377,12 @@ export class LocalAudioSourceManager {
       isolatedTrack,
       sourceNode,
       gainNode,
+      isStereo: isStereoRoute,
       pannerNode,
+      stereoSplitter,
+      leftGainNode,
+      rightGainNode,
+      stereoMerger,
       analyserNode,
       micDestination,
       preferences,
@@ -360,16 +435,31 @@ export class LocalAudioSourceManager {
     if (mic) {
       mic.preferences.pan = clampedPan;
     }
-    const pannerNode = mic?.pannerNode;
-    if (pannerNode && this.audioContext && this.audioContext.state !== 'closed') {
+    const ctx = this.audioContext;
+    if (mic && ctx && ctx.state !== 'closed') {
       try {
-        if (this.audioContext.state === 'suspended') {
-          void this.audioContext.resume().catch(() => {});
+        if (ctx.state === 'suspended') {
+          void ctx.resume().catch(() => {});
         }
-        pannerNode.pan.cancelScheduledValues(this.audioContext.currentTime);
-        pannerNode.pan.setValueAtTime(clampedPan, this.audioContext.currentTime);
+        const now = ctx.currentTime;
+        if (mic.isStereo && mic.leftGainNode && mic.rightGainNode) {
+          const { left, right } = getStereoBalanceGains(clampedPan);
+          mic.leftGainNode.gain.cancelScheduledValues(now);
+          mic.leftGainNode.gain.setValueAtTime(left, now);
+          mic.rightGainNode.gain.cancelScheduledValues(now);
+          mic.rightGainNode.gain.setValueAtTime(right, now);
+        } else if (mic.pannerNode) {
+          mic.pannerNode.pan.cancelScheduledValues(now);
+          mic.pannerNode.pan.setValueAtTime(clampedPan, now);
+        }
       } catch {
-        pannerNode.pan.value = clampedPan;
+        if (mic.isStereo && mic.leftGainNode && mic.rightGainNode) {
+          const { left, right } = getStereoBalanceGains(clampedPan);
+          mic.leftGainNode.gain.value = left;
+          mic.rightGainNode.gain.value = right;
+        } else if (mic.pannerNode) {
+          mic.pannerNode.pan.value = clampedPan;
+        }
       }
     }
   }
@@ -537,15 +627,29 @@ export class LocalAudioSourceManager {
     const musicGain = appCtx.createGain();
     musicGain.gain.setValueAtTime(1.0, appCtx.currentTime);
 
-    const musicPanner = appCtx.createStereoPanner();
-    const panVal = preferences.pan !== undefined ? preferences.pan : 0.0;
-    musicPanner.pan.setValueAtTime(panVal, appCtx.currentTime);
+    // Stereo Balance Stage for Local Music
+    const musicSplitter = appCtx.createChannelSplitter(2);
+    const musicLeftGain = appCtx.createGain();
+    const musicRightGain = appCtx.createGain();
+    const musicMerger = appCtx.createChannelMerger(2);
 
-    musicGain.connect(musicPanner);
-    musicPanner.connect(destination);
+    const panVal = preferences.pan !== undefined ? preferences.pan : 0.0;
+    const { left: initL, right: initR } = getStereoBalanceGains(panVal);
+    musicLeftGain.gain.setValueAtTime(initL, appCtx.currentTime);
+    musicRightGain.gain.setValueAtTime(initR, appCtx.currentTime);
+
+    musicGain.connect(musicSplitter);
+    musicSplitter.connect(musicLeftGain, 0, 0);
+    musicSplitter.connect(musicRightGain, 1, 0);
+    musicLeftGain.connect(musicMerger, 0, 0);
+    musicRightGain.connect(musicMerger, 0, 1);
+    musicMerger.connect(destination);
 
     this.gainNodes.set('music', musicGain);
-    this.musicPannerNode = musicPanner;
+    this.musicLeftGainNode = musicLeftGain;
+    this.musicRightGainNode = musicRightGain;
+    this.musicSplitter = musicSplitter;
+    this.musicMerger = musicMerger;
 
     // Keep graph clock continuously running without local playback echo
     const silentGain = appCtx.createGain();
@@ -560,10 +664,16 @@ export class LocalAudioSourceManager {
     this.appAudioCleanup = () => {
       cleanupLoopback();
       try { musicGain.disconnect(); } catch {}
-      try { musicPanner.disconnect(); } catch {}
+      try { musicSplitter.disconnect(); } catch {}
+      try { musicLeftGain.disconnect(); } catch {}
+      try { musicRightGain.disconnect(); } catch {}
+      try { musicMerger.disconnect(); } catch {}
       try { silentGain.disconnect(); } catch {}
       this.gainNodes.delete('music');
-      this.musicPannerNode = undefined;
+      this.musicLeftGainNode = undefined;
+      this.musicRightGainNode = undefined;
+      this.musicSplitter = undefined;
+      this.musicMerger = undefined;
       if (this.appAudioContext && this.appAudioContext.state !== 'closed') {
         void this.appAudioContext.close().catch(() => {});
         this.appAudioContext = undefined;
@@ -618,14 +728,27 @@ export class LocalAudioSourceManager {
     const musicGain = appCtx.createGain();
     musicGain.gain.setValueAtTime(1.0, appCtx.currentTime);
 
-    const musicPanner = appCtx.createStereoPanner();
-    musicPanner.pan.setValueAtTime(0.0, appCtx.currentTime);
+    // Stereo Balance Stage for Local Music
+    const musicSplitter = appCtx.createChannelSplitter(2);
+    const musicLeftGain = appCtx.createGain();
+    const musicRightGain = appCtx.createGain();
+    const musicMerger = appCtx.createChannelMerger(2);
 
-    musicGain.connect(musicPanner);
-    musicPanner.connect(destination);
+    musicLeftGain.gain.setValueAtTime(1.0, appCtx.currentTime);
+    musicRightGain.gain.setValueAtTime(1.0, appCtx.currentTime);
+
+    musicGain.connect(musicSplitter);
+    musicSplitter.connect(musicLeftGain, 0, 0);
+    musicSplitter.connect(musicRightGain, 1, 0);
+    musicLeftGain.connect(musicMerger, 0, 0);
+    musicRightGain.connect(musicMerger, 0, 1);
+    musicMerger.connect(destination);
 
     this.gainNodes.set('music', musicGain);
-    this.musicPannerNode = musicPanner;
+    this.musicLeftGainNode = musicLeftGain;
+    this.musicRightGainNode = musicRightGain;
+    this.musicSplitter = musicSplitter;
+    this.musicMerger = musicMerger;
 
     // Keep graph clock continuously running without local playback echo
     const silentGain = appCtx.createGain();
@@ -638,10 +761,16 @@ export class LocalAudioSourceManager {
     this.appAudioCleanup = () => {
       cleanupLoopback();
       try { musicGain.disconnect(); } catch {}
-      try { musicPanner.disconnect(); } catch {}
+      try { musicSplitter.disconnect(); } catch {}
+      try { musicLeftGain.disconnect(); } catch {}
+      try { musicRightGain.disconnect(); } catch {}
+      try { musicMerger.disconnect(); } catch {}
       try { silentGain.disconnect(); } catch {}
       this.gainNodes.delete('music');
-      this.musicPannerNode = undefined;
+      this.musicLeftGainNode = undefined;
+      this.musicRightGainNode = undefined;
+      this.musicSplitter = undefined;
+      this.musicMerger = undefined;
       if (this.appAudioContext && this.appAudioContext.state !== 'closed') {
         void this.appAudioContext.close().catch(() => {});
         this.appAudioContext = undefined;
@@ -909,17 +1038,23 @@ export class LocalAudioSourceManager {
 
   async applyMusicPan(pan: number): Promise<boolean> {
     const clampedPan = Math.max(-1, Math.min(1, pan));
-    const pannerNode = this.musicPannerNode;
+    const leftNode = this.musicLeftGainNode;
+    const rightNode = this.musicRightGainNode;
     const ctx = this.appAudioContext;
-    if (pannerNode && ctx && ctx.state !== 'closed') {
+    if (leftNode && rightNode && ctx && ctx.state !== 'closed') {
+      const { left, right } = getStereoBalanceGains(clampedPan);
       try {
         if (ctx.state === 'suspended') {
           void ctx.resume().catch(() => {});
         }
-        pannerNode.pan.cancelScheduledValues(ctx.currentTime);
-        pannerNode.pan.setValueAtTime(clampedPan, ctx.currentTime);
+        const now = ctx.currentTime;
+        leftNode.gain.cancelScheduledValues(now);
+        leftNode.gain.setValueAtTime(left, now);
+        rightNode.gain.cancelScheduledValues(now);
+        rightNode.gain.setValueAtTime(right, now);
       } catch {
-        pannerNode.pan.value = clampedPan;
+        leftNode.gain.value = left;
+        rightNode.gain.value = right;
       }
       return true;
     }
@@ -955,6 +1090,10 @@ export class LocalAudioSourceManager {
       try { mic.sourceNode?.disconnect(); } catch {}
       try { mic.gainNode?.disconnect(); } catch {}
       try { mic.pannerNode?.disconnect(); } catch {}
+      try { mic.stereoSplitter?.disconnect(); } catch {}
+      try { mic.leftGainNode?.disconnect(); } catch {}
+      try { mic.rightGainNode?.disconnect(); } catch {}
+      try { mic.stereoMerger?.disconnect(); } catch {}
       try { mic.micDestination?.disconnect(); } catch {}
     }
     this.voiceMics.clear();
@@ -963,8 +1102,14 @@ export class LocalAudioSourceManager {
     for (const source of this.sources.values()) source.track.stop();
     this.sources.clear();
     this.gainNodes.clear();
-    try { this.musicPannerNode?.disconnect(); } catch {}
-    this.musicPannerNode = undefined;
+    try { this.musicSplitter?.disconnect(); } catch {}
+    try { this.musicLeftGainNode?.disconnect(); } catch {}
+    try { this.musicRightGainNode?.disconnect(); } catch {}
+    try { this.musicMerger?.disconnect(); } catch {}
+    this.musicSplitter = undefined;
+    this.musicLeftGainNode = undefined;
+    this.musicRightGainNode = undefined;
+    this.musicMerger = undefined;
     this.senders.clear();
     if (this.audioContext && this.audioContext.state !== 'closed') {
       void this.audioContext.close().catch(() => {});

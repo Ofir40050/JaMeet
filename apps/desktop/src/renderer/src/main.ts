@@ -967,6 +967,7 @@ async function replaceMusicInput(): Promise<void> {
       $('music-in-indicator')?.classList.remove('active');
     }
   }
+  applyMixerAudioRouting();
   savePreferences();
   if (inCall) {
     await rtc.audioSourceChanged('music');
