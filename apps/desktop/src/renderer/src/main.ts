@@ -12579,7 +12579,8 @@ function startMixerVuAnimation(): void {
       mixerVuAnimationId = null;
       return;
     }
-    const hasAnySolo = studioMixerChannels.some((c) => c.soloed);
+    const hasLocalSolo = studioMixerChannels.some((c) => !c.isMaster && (c.section === 'local' || c.id === 'music-stream' || c.id.startsWith('you-mic')) && c.soloed);
+    const hasRemoteSolo = studioMixerChannels.some((c) => !c.isMaster && c.section === 'remote' && c.id !== 'master-out' && c.soloed);
 
     // 1. Dynamic Local Microphone Channels Metering
     const activeMics = (prefs.voiceInputs && prefs.voiceInputs.length > 0)
@@ -12604,9 +12605,9 @@ function startMixerVuAnimation(): void {
           const numMicId = Number(mic.id);
           const lvl = activeMicLevels.get(numMicId);
           const micDb = (typeof lvl === 'number' && !isNaN(lvl)) ? lvl : -60;
+          const isAudible = !micCh.muted && (!hasLocalSolo || micCh.soloed);
 
-          // Pre-fader metering: bounce VU meter in direct sync with Sound Check
-          if (micDb <= -58) {
+          if (!isAudible || micDb <= -58) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
@@ -12630,7 +12631,7 @@ function startMixerVuAnimation(): void {
     // 2. Musician (Remote Voice) Channel Metering (from real Web Audio Analyser)
     const voiceCh = studioMixerChannels.find((c) => c.id === 'remote-voice');
     if (voiceCh) {
-      const isAudible = !voiceCh.muted && (!hasAnySolo || voiceCh.soloed);
+      const isAudible = !voiceCh.muted && (!hasRemoteSolo || voiceCh.soloed);
       const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${voiceCh.id}"]`);
       if (stripEl) {
         const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
@@ -12675,7 +12676,7 @@ function startMixerVuAnimation(): void {
     // 3. Local Music Channel Metering (from local music level only)
     const localMusicCh = studioMixerChannels.find((c) => c.id === 'music-stream');
     if (localMusicCh) {
-      const isAudible = !localMusicCh.muted && (!hasAnySolo || localMusicCh.soloed);
+      const isAudible = !localMusicCh.muted && (!hasLocalSolo || localMusicCh.soloed);
       const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${localMusicCh.id}"]`);
       if (stripEl) {
         const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
@@ -12710,7 +12711,7 @@ function startMixerVuAnimation(): void {
     // 4. Remote Music Channel Metering (from real Web Audio Remote Music Analyser)
     const remoteMusicCh = studioMixerChannels.find((c) => c.id === 'remote-music');
     if (remoteMusicCh) {
-      const isAudible = !remoteMusicCh.muted && (!hasAnySolo || remoteMusicCh.soloed);
+      const isAudible = !remoteMusicCh.muted && (!hasRemoteSolo || remoteMusicCh.soloed);
       const stripEl = document.querySelector(`.mixer-strip[data-channel-id="${remoteMusicCh.id}"]`);
       if (stripEl) {
         const vuLeft = stripEl.querySelector<HTMLElement>('.vu-fill-l');
@@ -12805,7 +12806,10 @@ function startMixerVuAnimation(): void {
         const vuRight = stripEl.querySelector<HTMLElement>('.vu-fill-r');
         const peakEl = stripEl.querySelector<HTMLElement>('.mixer-peak-val');
         if (vuLeft && vuRight) {
-          if (ch.muted || ch.volume <= 0.001) {
+          const isLocal = ch.section === 'local' || ch.id.startsWith('you-mic') || ch.id === 'music-stream';
+          const domainSolo = isLocal ? hasLocalSolo : hasRemoteSolo;
+          const isAudible = !ch.muted && (!domainSolo || ch.soloed);
+          if (!isAudible || ch.volume <= 0.001) {
             vuLeft.style.height = '0%';
             vuRight.style.height = '0%';
             if (peakEl) {
@@ -12852,7 +12856,8 @@ function stopMixerVuAnimation(): void {
 }
 
 function applyMixerAudioRouting(): void {
-  const hasAnySolo = studioMixerChannels.some((c) => c.soloed);
+  const hasLocalSolo = studioMixerChannels.some((c) => !c.isMaster && (c.section === 'local' || c.id === 'music-stream' || c.id.startsWith('you-mic')) && c.soloed);
+  const hasRemoteSolo = studioMixerChannels.some((c) => !c.isMaster && c.section === 'remote' && c.id !== 'master-out' && c.soloed);
   const masterCh = studioMixerChannels.find((c) => c.id === 'master-out') || { volume: 1.0, muted: false, pan: 0, fx: [] };
   const monitorTrim = prefs.outputVolume !== undefined ? prefs.outputVolume : 1.0;
   const masterVol = (remoteMuted || masterCh.muted) ? 0 : masterCh.volume * monitorTrim;
@@ -12866,7 +12871,7 @@ function applyMixerAudioRouting(): void {
   activeMics.forEach((mic) => {
     const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
     const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
-    const isAudible = micCh ? (!micCh.muted && (!hasAnySolo || micCh.soloed)) : true;
+    const isAudible = micCh ? (!micCh.muted && (!hasLocalSolo || micCh.soloed)) : true;
     const isMutedGlobally = muted;
     const baseVol = micCh ? micCh.volume : (mic.gain ?? 1);
     const effectiveVol = isAudible && !isMutedGlobally ? baseVol : 0;
@@ -12906,9 +12911,9 @@ function applyMixerAudioRouting(): void {
   const remoteVoiceCh = studioMixerChannels.find((c) => c.id === 'remote-voice');
   const remoteMusicCh = studioMixerChannels.find((c) => c.id === 'remote-music');
 
-  const localMusicAudible = localMusicCh ? (!localMusicCh.muted && (!hasAnySolo || localMusicCh.soloed)) : true;
-  const remoteVoiceAudible = remoteVoiceCh ? (!remoteVoiceCh.muted && (!hasAnySolo || remoteVoiceCh.soloed)) : true;
-  const remoteMusicAudible = remoteMusicCh ? (!remoteMusicCh.muted && (!hasAnySolo || remoteMusicCh.soloed)) : true;
+  const localMusicAudible = localMusicCh ? (!localMusicCh.muted && (!hasLocalSolo || localMusicCh.soloed)) : true;
+  const remoteVoiceAudible = remoteVoiceCh ? (!remoteVoiceCh.muted && (!hasRemoteSolo || remoteVoiceCh.soloed)) : true;
+  const remoteMusicAudible = remoteMusicCh ? (!remoteMusicCh.muted && (!hasRemoteSolo || remoteMusicCh.soloed)) : true;
 
   const effectiveLocalMusicVol = localMusicAudible && localMusicCh ? localMusicCh.volume : 0;
   const localMusicPan = localMusicCh ? (typeof localMusicCh.pan === 'number' && !isNaN(localMusicCh.pan) ? localMusicCh.pan : 0) : 0;
@@ -13026,14 +13031,15 @@ function renderStudioMixer(): void {
   `;
   rack.appendChild(labelsCol);
 
-  const hasAnySolo = studioMixerChannels.some((c) => c.soloed);
+  const hasLocalSolo = studioMixerChannels.some((c) => !c.isMaster && (c.section === 'local' || c.id === 'music-stream' || c.id.startsWith('you-mic')) && c.soloed);
+  const hasRemoteSolo = studioMixerChannels.some((c) => !c.isMaster && c.section === 'remote' && c.id !== 'master-out' && c.soloed);
   let renderedRemoteDivider = false;
 
   studioMixerChannels.forEach((channel) => {
     channel.volume = typeof channel.volume === 'number' && !isNaN(channel.volume) ? channel.volume : 1.0;
     channel.pan = typeof channel.pan === 'number' && !isNaN(channel.pan) ? channel.pan : 0;
     channel.muted = Boolean(channel.muted);
-    channel.soloed = Boolean(channel.soloed);
+    channel.soloed = channel.isMaster ? false : Boolean(channel.soloed);
     channel.fx = Array.isArray(channel.fx) ? channel.fx : [];
     channel.color = channel.color || '#3b82f6';
     channel.icon = channel.icon || 'mic';
@@ -13052,7 +13058,9 @@ function renderStudioMixer(): void {
       rack.appendChild(divider);
     }
 
-    const isDimmed = hasAnySolo && !channel.soloed;
+    const isLocal = channel.section === 'local' || channel.id.startsWith('you-mic') || channel.id === 'music-stream';
+    const domainHasSolo = isLocal ? hasLocalSolo : hasRemoteSolo;
+    const isDimmed = !channel.isMaster && domainHasSolo && !channel.soloed;
     const strip = document.createElement('div');
     strip.className = `mixer-strip ${channel.isMaster ? 'is-master' : ''} ${channel.section === 'remote' ? 'is-remote' : ''} ${isDimmed ? 'is-dimmed' : ''}`;
     strip.dataset.channelId = channel.id;
@@ -13342,20 +13350,31 @@ function renderStudioMixer(): void {
     // 6. Mute & Solo DAW Buttons
     const msGroup = document.createElement('div');
     msGroup.className = 'mixer-ms-group';
-    msGroup.innerHTML = `
-      <button type="button" class="btn-mixer-ms btn-m ${channel.muted ? 'active' : ''}" title="Mute Track">M</button>
-      <button type="button" class="btn-mixer-ms btn-s ${channel.soloed ? 'active' : ''}" title="Solo Track">S</button>
-    `;
-    msGroup.querySelector('.btn-m')?.addEventListener('click', () => {
-      channel.muted = !channel.muted;
-      renderStudioMixer();
-      applyMixerAudioRouting();
-    });
-    msGroup.querySelector('.btn-s')?.addEventListener('click', () => {
-      channel.soloed = !channel.soloed;
-      renderStudioMixer();
-      applyMixerAudioRouting();
-    });
+    if (channel.isMaster) {
+      msGroup.innerHTML = `
+        <button type="button" class="btn-mixer-ms btn-m ${channel.muted ? 'active' : ''}" style="width: 100%;" title="Mute Master Output">M</button>
+      `;
+      msGroup.querySelector('.btn-m')?.addEventListener('click', () => {
+        channel.muted = !channel.muted;
+        renderStudioMixer();
+        applyMixerAudioRouting();
+      });
+    } else {
+      msGroup.innerHTML = `
+        <button type="button" class="btn-mixer-ms btn-m ${channel.muted ? 'active' : ''}" title="Mute Track">M</button>
+        <button type="button" class="btn-mixer-ms btn-s ${channel.soloed ? 'active' : ''}" title="Solo Track">S</button>
+      `;
+      msGroup.querySelector('.btn-m')?.addEventListener('click', () => {
+        channel.muted = !channel.muted;
+        renderStudioMixer();
+        applyMixerAudioRouting();
+      });
+      msGroup.querySelector('.btn-s')?.addEventListener('click', () => {
+        channel.soloed = !channel.soloed;
+        renderStudioMixer();
+        applyMixerAudioRouting();
+      });
+    }
     strip.appendChild(msGroup);
 
     // 8. Bottom Solid Track Color Banner (With rename on double-click)
