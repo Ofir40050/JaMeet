@@ -246,6 +246,16 @@ initAuthUi({
   onNavigateHome: () => showView('home-view'),
   onLogout: async () => {
     await auth.logout();
+  },
+  onLogin: async ({ identifier, password }) => {
+    await auth.login({ usernameOrEmail: identifier, password });
+    if (pendingJoinCode) {
+      const code = pendingJoinCode;
+      pendingJoinCode = '';
+      void prepareStudio({ type: 'join', code });
+    } else {
+      showView('home-view');
+    }
   }
 });
 initProjectsListUi({
@@ -4004,47 +4014,6 @@ for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="set
 }
 
 // Dedicated Auth View actions
-
-$('btn-view-submit-login')?.addEventListener('click', async () => {
-  const submitBtn = $<HTMLButtonElement>('btn-view-submit-login');
-  const identifier = $<HTMLInputElement>('view-login-identifier')?.value.trim();
-  const password = $<HTMLInputElement>('view-login-password')?.value;
-
-  const missing: string[] = [];
-  if (!identifier) missing.push('view-login-identifier');
-  if (!password) missing.push('view-login-password');
-
-  if (missing.length > 0) {
-    showAuthFormError('view-login-error', 'Please enter your username/email and password.', missing);
-    $<HTMLInputElement>(missing[0])?.focus();
-    return;
-  }
-
-  clearAuthFormError('view-login-error', ['view-login-identifier', 'view-login-password']);
-  const originalHtml = submitBtn ? submitBtn.innerHTML : '<span>Sign In</span>';
-  try {
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span>Signing In…</span>';
-    }
-    await auth.login({ usernameOrEmail: identifier!, password: password! });
-    if (pendingJoinCode) {
-      const code = pendingJoinCode;
-      pendingJoinCode = '';
-      void prepareStudio({ type: 'join', code });
-    } else {
-      showView('home-view');
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Invalid credentials. Please try again.';
-    showAuthFormError('view-login-error', msg, ['view-login-identifier', 'view-login-password']);
-  } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = originalHtml;
-    }
-  }
-});
 
 $('btn-view-submit-register')?.addEventListener('click', async () => {
   const submitBtn = $<HTMLButtonElement>('btn-view-submit-register');
