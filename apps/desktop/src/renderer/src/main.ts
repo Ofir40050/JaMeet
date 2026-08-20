@@ -3965,11 +3965,6 @@ function openAuthDialog(tab: 'login' | 'register' = 'login'): void {
   } else {
     openAuthView(tab);
   }
-}
-
-// Navigation & Avatar menu listeners
-$('home-view-profile-btn')?.addEventListener('click', () => openSettings('account'));
-
 for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="settings-default-mode"]')) {
   radio.addEventListener('change', () => {
     prefs.mode = radio.value as AudioMode;

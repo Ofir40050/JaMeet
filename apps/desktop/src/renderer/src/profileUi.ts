@@ -266,6 +266,11 @@ export function initProfileUi(opts: ProfileUiOptions): void {
     toggleAccountMenu($('call-user-btn'));
   });
 
+  // Home view profile button
+  $('home-view-profile-btn')?.addEventListener('click', () => {
+    options?.onOpenProfile?.();
+  });
+
   // Account Menu action buttons
   $('account-menu-profile-btn')?.addEventListener('click', () => {
     options?.onOpenProfile?.();
