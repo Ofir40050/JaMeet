@@ -23,6 +23,14 @@ import { initActivityHistory, renderProjectActivities } from './activity';
 import { initSessionChat, resetChatUi, setSessionChatOpen, isSessionChatOpen, setOnChatOpenCallback } from './chat';
 import { startRemoteVoiceBridge, stopRemoteVoiceBridge } from './remoteVoiceBridge';
 import { logger } from './logger';
+import {
+  type ChannelEqConfig,
+  channelEqDspRegistry,
+  openChannelEqPlugin,
+  getChannelEqConfig,
+  setChannelEqConfig,
+  removeChannelEqConfig
+} from './channelEq';
 import './style.css';
 
 export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
@@ -12639,6 +12647,7 @@ interface PersistentStudioMixerChannel {
   volume?: number;
   pan?: number;
   fx?: string[];
+  eq?: Record<string, ChannelEqConfig>;
 }
 
 type PersistentStudioMixerMap = Record<string, PersistentStudioMixerChannel>;
@@ -12651,7 +12660,19 @@ function loadSavedStudioMixerConfig(): PersistentStudioMixerMap {
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as PersistentStudioMixerMap;
+      const map = parsed as PersistentStudioMixerMap;
+      // Restore Channel EQ configurations
+      for (const [channelId, chData] of Object.entries(map)) {
+        if (chData && chData.eq && typeof chData.eq === 'object') {
+          for (const [slotStr, eqConf] of Object.entries(chData.eq)) {
+            const slotIdx = parseInt(slotStr, 10);
+            if (!isNaN(slotIdx) && eqConf && Array.isArray(eqConf.bands)) {
+              setChannelEqConfig(channelId, slotIdx, eqConf);
+            }
+          }
+        }
+      }
+      return map;
     }
   } catch (err) {
     logger.warn('mixer_storage', 'Failed to load persistent studio mixer configuration', {}, err);
@@ -12686,13 +12707,22 @@ function saveStudioMixerConfig(immediate = true): void {
           volume: typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0
         };
       } else {
+        const eqData: Record<string, ChannelEqConfig> = {};
+        if (Array.isArray(ch.fx)) {
+          for (let i = 0; i < ch.fx.length; i++) {
+            if (ch.fx[i] === 'Chan EQ') {
+              eqData[i] = getChannelEqConfig(ch.id, i);
+            }
+          }
+        }
         map[ch.id] = {
           name: ch.name,
           icon: ch.icon,
           color: ch.color,
           volume: typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0,
           pan: typeof ch.pan === 'number' && !isNaN(ch.pan) ? ch.pan : 0,
-          fx: Array.isArray(ch.fx) ? [...ch.fx] : []
+          fx: Array.isArray(ch.fx) ? [...ch.fx] : [],
+          eq: Object.keys(eqData).length > 0 ? eqData : undefined
         };
       }
     }
@@ -12960,7 +12990,7 @@ function measureTimeDomainLevel(analyser: AnalyserNode | undefined): { rmsDb: nu
   let sumSq = 0;
   let peak = 0;
   for (let i = 0; i < timeDomainBuffer.length; i++) {
-    const s = timeDomainBuffer[i];
+    const s = timeDomainBuffer[i] ?? 0;
     const abs = Math.abs(s);
     if (abs > peak) peak = abs;
     sumSq += s * s;
@@ -13381,8 +13411,8 @@ function applyMixerAudioRouting(): void {
 
     // Dynamic Channel FX Routing: Remote Voice (rebuild topology when fx array or mono/stereo mode changes)
     if (remoteVoiceGain && (remoteVoicePanner || (remoteVoiceSplitter && remoteVoiceMerger))) {
-      const voiceFx = (remoteVoiceCh?.fx || []).filter((f) => Boolean(f) && (f === 'Chan EQ' || f === 'Compressor'));
-      const voiceFxKey = `${remoteVoiceIsStereo ? 'stereo' : 'mono'}|${voiceFx.join('|')}`;
+      const voiceSlots = Array.isArray(remoteVoiceCh?.fx) ? remoteVoiceCh.fx.slice(0, 4) : [];
+      const voiceFxKey = `${remoteVoiceIsStereo ? 'stereo' : 'mono'}|${voiceSlots.map((f, i) => `${i}:${f || ''}`).join('|')}`;
       if (voiceFxKey !== lastConnectedVoiceFx) {
         try { remoteVoiceGain.disconnect(); } catch {}
         for (const node of remoteVoiceFxNodes) {
@@ -13398,24 +13428,15 @@ function applyMixerAudioRouting(): void {
         try { remoteVoiceRightGain?.disconnect(); } catch {}
 
         let currentVoiceSource: AudioNode = remoteVoiceGain;
-        for (const fxName of voiceFx) {
+        for (let i = 0; i < 4; i++) {
+          const fxName = voiceSlots[i];
           if (fxName === 'Chan EQ') {
-            const eqHighpass = remoteAudioCtx.createBiquadFilter();
-            eqHighpass.type = 'highpass';
-            eqHighpass.frequency.setValueAtTime(80, now);
-            eqHighpass.Q.setValueAtTime(0.7, now);
-
-            const eqPeaking = remoteAudioCtx.createBiquadFilter();
-            eqPeaking.type = 'peaking';
-            eqPeaking.frequency.setValueAtTime(3200, now);
-            eqPeaking.Q.setValueAtTime(1.0, now);
-            eqPeaking.gain.setValueAtTime(3.0, now);
-
-            currentVoiceSource.connect(eqHighpass);
-            eqHighpass.connect(eqPeaking);
-            currentVoiceSource = eqPeaking;
-            remoteVoiceFxNodes.push(eqHighpass, eqPeaking);
+            const eqDsp = channelEqDspRegistry.getOrCreate('remote-voice', i, remoteAudioCtx);
+            currentVoiceSource.connect(eqDsp.inputNode);
+            currentVoiceSource = eqDsp.outputNode;
+            remoteVoiceFxNodes.push(eqDsp.inputNode, eqDsp.outputNode);
           } else if (fxName === 'Compressor') {
+            channelEqDspRegistry.remove('remote-voice', i);
             const compressorNode = remoteAudioCtx.createDynamicsCompressor();
             compressorNode.threshold.setValueAtTime(-18.0, now);
             compressorNode.knee.setValueAtTime(6.0, now);
@@ -13426,6 +13447,8 @@ function applyMixerAudioRouting(): void {
             currentVoiceSource.connect(compressorNode);
             currentVoiceSource = compressorNode;
             remoteVoiceFxNodes.push(compressorNode);
+          } else {
+            channelEqDspRegistry.remove('remote-voice', i);
           }
         }
 
@@ -13452,8 +13475,8 @@ function applyMixerAudioRouting(): void {
 
     // Dynamic Channel FX Routing: Remote Music (rebuild topology only when fx array changes)
     if (remoteMusicGain && remoteMusicSplitter) {
-      const musicFx = (remoteMusicCh?.fx || []).filter((f) => Boolean(f) && (f === 'Chan EQ' || f === 'Compressor'));
-      const musicFxKey = musicFx.join('|');
+      const musicSlots = Array.isArray(remoteMusicCh?.fx) ? remoteMusicCh.fx.slice(0, 4) : [];
+      const musicFxKey = musicSlots.map((f, i) => `${i}:${f || ''}`).join('|');
       if (musicFxKey !== lastConnectedMusicFx) {
         try { remoteMusicGain.disconnect(); } catch {}
         for (const node of remoteMusicFxNodes) {
@@ -13462,18 +13485,15 @@ function applyMixerAudioRouting(): void {
         remoteMusicFxNodes = [];
 
         let currentMusicSource: AudioNode = remoteMusicGain;
-        for (const fxName of musicFx) {
+        for (let i = 0; i < 4; i++) {
+          const fxName = musicSlots[i];
           if (fxName === 'Chan EQ') {
-            const eqPeaking = remoteAudioCtx.createBiquadFilter();
-            eqPeaking.type = 'peaking';
-            eqPeaking.frequency.setValueAtTime(2400, now);
-            eqPeaking.Q.setValueAtTime(1.0, now);
-            eqPeaking.gain.setValueAtTime(2.5, now);
-
-            currentMusicSource.connect(eqPeaking);
-            currentMusicSource = eqPeaking;
-            remoteMusicFxNodes.push(eqPeaking);
+            const eqDsp = channelEqDspRegistry.getOrCreate('remote-music', i, remoteAudioCtx);
+            currentMusicSource.connect(eqDsp.inputNode);
+            currentMusicSource = eqDsp.outputNode;
+            remoteMusicFxNodes.push(eqDsp.inputNode, eqDsp.outputNode);
           } else if (fxName === 'Compressor') {
+            channelEqDspRegistry.remove('remote-music', i);
             const compressorNode = remoteAudioCtx.createDynamicsCompressor();
             compressorNode.threshold.setValueAtTime(-12.0, now);
             compressorNode.knee.setValueAtTime(6.0, now);
@@ -13484,6 +13504,8 @@ function applyMixerAudioRouting(): void {
             currentMusicSource.connect(compressorNode);
             currentMusicSource = compressorNode;
             remoteMusicFxNodes.push(compressorNode);
+          } else {
+            channelEqDspRegistry.remove('remote-music', i);
           }
         }
         currentMusicSource.connect(remoteMusicSplitter);
@@ -13577,11 +13599,43 @@ function renderStudioMixer(): void {
         fxSlot.type = 'button';
         fxSlot.className = `mixer-cell-btn ${activeFx ? 'btn-fx-active' : 'btn-fx-empty'}`;
         fxSlot.textContent = activeFx || '';
-        fxSlot.title = activeFx ? `Plugin: ${activeFx} (Click to change/remove)` : `Slot ${i + 1}: Add Audio FX Plugin`;
+        fxSlot.title = activeFx === 'Chan EQ'
+          ? `Channel EQ: Click to open EQ plugin window (Right-click to change/clear)`
+          : activeFx
+          ? `Plugin: ${activeFx} (Click to change/remove)`
+          : `Slot ${i + 1}: Add Audio FX Plugin`;
+
         fxSlot.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (activeFx === 'Chan EQ') {
+            openChannelEqPlugin(
+              channel.id,
+              i,
+              channel.name,
+              channel.color,
+              () => {
+                if (channel.id.startsWith('you-mic')) {
+                  const micIdx = channel.id === 'you-mic' ? 1 : parseInt(channel.id.replace('you-mic-', ''), 10) || 1;
+                  return audio.getVoiceMicEqDsp(micIdx, i);
+                } else if (channel.id === 'music-stream') {
+                  return audio.getMusicEqDsp(i);
+                } else {
+                  return channelEqDspRegistry.get(channel.id, i);
+                }
+              },
+              () => saveStudioMixerConfig(false)
+            );
+          } else {
+            openFxPopover(channel.id, i, fxSlot);
+          }
+        });
+
+        fxSlot.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
           e.stopPropagation();
           openFxPopover(channel.id, i, fxSlot);
         });
+
         fxRack.appendChild(fxSlot);
       }
       strip.appendChild(fxRack);
@@ -13594,7 +13648,7 @@ function renderStudioMixer(): void {
     iconBtn.style.color = channel.color;
     iconBtn.title = 'Change Channel Icon & Color';
     const iconKey = channel.icon || (channel.id === 'you-mic' ? 'mic' : channel.id === 'remote-voice' ? 'headphones' : channel.isMaster ? 'crown' : 'waves');
-    const iconData = STUDIO_ICONS[iconKey] || STUDIO_ICONS.waves;
+    const iconData = STUDIO_ICONS[iconKey] || STUDIO_ICONS.waves || { label: 'Track', svg: '' };
     iconBtn.innerHTML = iconData.svg;
     iconBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -14020,9 +14074,15 @@ $('mixer-fx-picker-popover')?.addEventListener('click', (e) => {
   if (channel) {
     const fx = btn.dataset.fx;
     if (fx === 'remove') {
-      channel.fx.splice(slotIndex, 1);
+      channel.fx[slotIndex] = '';
+      channelEqDspRegistry.remove(channelId, slotIndex);
+      removeChannelEqConfig(channelId, slotIndex);
     } else if (fx) {
       channel.fx[slotIndex] = fx;
+      if (fx !== 'Chan EQ') {
+        channelEqDspRegistry.remove(channelId, slotIndex);
+        removeChannelEqConfig(channelId, slotIndex);
+      }
     }
     saveStudioMixerConfig();
     renderStudioMixer();

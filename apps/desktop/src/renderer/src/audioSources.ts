@@ -1,5 +1,6 @@
 import type { AudioMode, AudioSourceMetadata } from '@jameet/shared';
 import { audioConstraints, effectiveSettings, type AudioCapturePreferences, type EffectiveAudioSettings } from './audioProfiles';
+import { channelEqDspRegistry, ChannelEqDspInstance } from './channelEq';
 
 export type AudioSourcePurpose = 'voice' | 'music';
 export type AudioSourceConfig = {
@@ -1212,8 +1213,9 @@ export class LocalAudioSourceManager {
     const ctx = this.audioContext;
     if (!mic || !ctx || ctx.state === 'closed') return;
 
-    const validFx = (fxList || []).filter((f) => Boolean(f) && (f === 'Chan EQ' || f === 'Compressor'));
-    const fxKey = validFx.join('|');
+    const channelId = micIndex === 1 ? 'you-mic' : `you-mic-${micIndex}`;
+    const slots = Array.isArray(fxList) ? fxList.slice(0, 4) : [];
+    const fxKey = slots.map((f, i) => `${i}:${f || ''}`).join('|');
     if (mic.lastConnectedFx === fxKey) return;
 
     const now = ctx.currentTime;
@@ -1230,24 +1232,15 @@ export class LocalAudioSourceManager {
 
     let currentSource: AudioNode = mic.gainNode;
 
-    for (const fxName of validFx) {
+    for (let i = 0; i < 4; i++) {
+      const fxName = slots[i];
       if (fxName === 'Chan EQ') {
-        const eqHighpass = ctx.createBiquadFilter();
-        eqHighpass.type = 'highpass';
-        eqHighpass.frequency.setValueAtTime(80, now);
-        eqHighpass.Q.setValueAtTime(0.7, now);
-
-        const eqPeaking = ctx.createBiquadFilter();
-        eqPeaking.type = 'peaking';
-        eqPeaking.frequency.setValueAtTime(3200, now);
-        eqPeaking.Q.setValueAtTime(1.0, now);
-        eqPeaking.gain.setValueAtTime(3.0, now);
-
-        currentSource.connect(eqHighpass);
-        eqHighpass.connect(eqPeaking);
-        currentSource = eqPeaking;
-        mic.fxNodes.push(eqHighpass, eqPeaking);
+        const eqDsp = channelEqDspRegistry.getOrCreate(channelId, i, ctx);
+        currentSource.connect(eqDsp.inputNode);
+        currentSource = eqDsp.outputNode;
+        mic.fxNodes.push(eqDsp.inputNode, eqDsp.outputNode);
       } else if (fxName === 'Compressor') {
+        channelEqDspRegistry.remove(channelId, i);
         const compressorNode = ctx.createDynamicsCompressor();
         compressorNode.threshold.setValueAtTime(-18.0, now);
         compressorNode.knee.setValueAtTime(6.0, now);
@@ -1258,6 +1251,8 @@ export class LocalAudioSourceManager {
         currentSource.connect(compressorNode);
         currentSource = compressorNode;
         mic.fxNodes.push(compressorNode);
+      } else {
+        channelEqDspRegistry.remove(channelId, i);
       }
     }
 
@@ -1277,8 +1272,9 @@ export class LocalAudioSourceManager {
     const musicSplitter = this.musicSplitter;
     if (!ctx || ctx.state === 'closed' || !musicGain || !musicSplitter) return;
 
-    const validFx = (fxList || []).filter((f) => Boolean(f) && (f === 'Chan EQ' || f === 'Compressor'));
-    const fxKey = validFx.join('|');
+    const channelId = 'music-stream';
+    const slots = Array.isArray(fxList) ? fxList.slice(0, 4) : [];
+    const fxKey = slots.map((f, i) => `${i}:${f || ''}`).join('|');
     if (this.lastConnectedMusicFx === fxKey) return;
 
     const now = ctx.currentTime;
@@ -1297,18 +1293,15 @@ export class LocalAudioSourceManager {
 
     let currentSource: AudioNode = musicGain;
 
-    for (const fxName of validFx) {
+    for (let i = 0; i < 4; i++) {
+      const fxName = slots[i];
       if (fxName === 'Chan EQ') {
-        const eqPeaking = ctx.createBiquadFilter();
-        eqPeaking.type = 'peaking';
-        eqPeaking.frequency.setValueAtTime(2400, now);
-        eqPeaking.Q.setValueAtTime(1.0, now);
-        eqPeaking.gain.setValueAtTime(2.5, now);
-
-        currentSource.connect(eqPeaking);
-        currentSource = eqPeaking;
-        this.musicFxNodes.push(eqPeaking);
+        const eqDsp = channelEqDspRegistry.getOrCreate(channelId, i, ctx);
+        currentSource.connect(eqDsp.inputNode);
+        currentSource = eqDsp.outputNode;
+        this.musicFxNodes.push(eqDsp.inputNode, eqDsp.outputNode);
       } else if (fxName === 'Compressor') {
+        channelEqDspRegistry.remove(channelId, i);
         const compressorNode = ctx.createDynamicsCompressor();
         compressorNode.threshold.setValueAtTime(-12.0, now);
         compressorNode.knee.setValueAtTime(6.0, now);
@@ -1319,11 +1312,30 @@ export class LocalAudioSourceManager {
         currentSource.connect(compressorNode);
         currentSource = compressorNode;
         this.musicFxNodes.push(compressorNode);
+      } else {
+        channelEqDspRegistry.remove(channelId, i);
       }
     }
 
     currentSource.connect(musicSplitter);
     this.lastConnectedMusicFx = fxKey;
+  }
+
+  getVoiceMicAudioContext(): AudioContext | undefined {
+    return this.audioContext;
+  }
+
+  getAppAudioContext(): AudioContext | undefined {
+    return this.appAudioContext;
+  }
+
+  getVoiceMicEqDsp(micIndex: number, slotIndex: number): ChannelEqDspInstance | undefined {
+    const channelId = micIndex === 1 ? 'you-mic' : `you-mic-${micIndex}`;
+    return channelEqDspRegistry.get(channelId, slotIndex);
+  }
+
+  getMusicEqDsp(slotIndex: number): ChannelEqDspInstance | undefined {
+    return channelEqDspRegistry.get('music-stream', slotIndex);
   }
 
   getVoiceMicsCount(): number {
