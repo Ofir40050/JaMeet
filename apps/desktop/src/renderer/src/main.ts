@@ -3357,7 +3357,22 @@ presenter.setActionHandler(async (action) => {
       break;
     }
     case 'toggle-workspace':
-      setSessionWorkspaceOpen(!sessionWorkspaceOpen);
+    case 'open-workspace':
+      await presenter.showMainWindow();
+      $('session-presenter-banner')?.classList.remove('hidden');
+      setSessionWorkspaceOpen(true);
+      break;
+    case 'toggle-chat':
+    case 'open-chat':
+      await presenter.showMainWindow();
+      $('session-presenter-banner')?.classList.remove('hidden');
+      setSessionChatOpen(true);
+      break;
+    case 'toggle-mixer':
+    case 'open-mixer':
+      await presenter.showMainWindow();
+      $('session-presenter-banner')?.classList.remove('hidden');
+      toggleStudioMixer(true);
       break;
     case 'toggle-pause':
       if (screenTrack) {

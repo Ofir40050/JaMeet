@@ -31,13 +31,13 @@
     .presenter-bar {
       display: inline-flex;
       align-items: center;
-      gap: 5px;
-      padding: 4px 10px 4px 8px;
+      gap: 4px;
+      padding: 4px 8px;
       background: rgba(17, 22, 32, 0.96);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid rgba(255, 255, 255, 0.16);
-      border-radius: 26px;
+      border-radius: 22px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.4);
       -webkit-app-region: drag;
       height: 44px;
@@ -100,29 +100,28 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 5px;
+      width: 32px;
       height: 32px;
-      padding: 0 9px;
-      border-radius: 16px;
+      min-width: 32px;
+      min-height: 32px;
+      padding: 0;
+      border-radius: 8px;
       background: transparent;
       border: 1px solid transparent;
       color: #cbd5e1;
-      font-size: 11.5px;
-      font-weight: 600;
       cursor: pointer;
       transition: all 0.14s ease;
-      white-space: nowrap;
       flex-shrink: 0;
     }
 
     .control-btn:hover {
       background: rgba(255, 255, 255, 0.08);
       color: #ffffff;
-      border-color: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.12);
     }
 
     .control-btn:active {
-      transform: scale(0.97);
+      transform: scale(0.95);
     }
 
     .control-btn.active {
@@ -147,8 +146,7 @@
       background: #dc2626;
       color: #ffffff;
       border: 1px solid #ef4444;
-      padding: 0 12px;
-      font-weight: 700;
+      border-radius: 8px;
       flex-shrink: 0;
     }
 
@@ -158,10 +156,10 @@
     }
 
     .btn-icon-svg {
-      width: 15px;
-      height: 15px;
-      min-width: 15px;
-      min-height: 15px;
+      width: 16px;
+      height: 16px;
+      min-width: 16px;
+      min-height: 16px;
       fill: none;
       stroke: currentColor;
       stroke-width: 2;
@@ -176,7 +174,7 @@
       -webkit-app-region: no-drag;
       position: absolute;
       top: 48px;
-      right: 90px;
+      right: 42px;
       background: #111620;
       border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 10px;
@@ -233,43 +231,56 @@
     </div>
 
     <!-- Mic Button -->
-    <button id="btn-mic" class="control-btn" title="Toggle Microphone">
+    <button id="btn-mic" class="control-btn" title="Toggle Microphone" aria-label="Toggle Microphone">
       <svg class="btn-icon-svg" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
-      <span id="mic-text">Mute</span>
     </button>
 
     <!-- Camera Button -->
-    <button id="btn-cam" class="control-btn" title="Toggle Camera">
+    <button id="btn-cam" class="control-btn" title="Toggle Camera" aria-label="Toggle Camera">
       <svg class="btn-icon-svg" viewBox="0 0 24 24"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
-      <span id="cam-text">Camera</span>
     </button>
 
     <div class="v-divider"></div>
 
     <!-- Pause Share Button -->
-    <button id="btn-pause" class="control-btn" title="Pause Screen Sharing">
+    <button id="btn-pause" class="control-btn" title="Pause Screen Sharing" aria-label="Pause Screen Sharing">
       <svg class="btn-icon-svg" viewBox="0 0 24 24"><rect width="4" height="16" x="6" y="4"/><rect width="4" height="16" x="14" y="4"/></svg>
-      <span id="pause-text">Pause Share</span>
     </button>
 
+    <div class="v-divider"></div>
+
+    <!-- Workspace Button -->
+    <button id="btn-workspace" class="control-btn" title="Project Workspace" aria-label="Project Workspace">
+      <svg class="btn-icon-svg" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+    </button>
+
+    <!-- Chat Button -->
+    <button id="btn-chat" class="control-btn" title="Session Chat" aria-label="Session Chat">
+      <svg class="btn-icon-svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </button>
+
+    <!-- Mixer Button -->
+    <button id="btn-mixer" class="control-btn" title="Studio Mixer Console" aria-label="Studio Mixer Console">
+      <svg class="btn-icon-svg" viewBox="0 0 24 24"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
+    </button>
+
+    <div class="v-divider"></div>
+
     <!-- Show JaMeet Window -->
-    <button id="btn-show-app" class="control-btn" title="Show main JaMeet window">
+    <button id="btn-show-app" class="control-btn" title="Show JaMeet Window" aria-label="Show JaMeet Window">
       <svg class="btn-icon-svg" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-      <span>JaMeet</span>
     </button>
 
     <!-- More Options Dropdown -->
-    <button id="btn-more" class="control-btn" title="More Options">
+    <button id="btn-more" class="control-btn" title="More Options" aria-label="More Options">
       <svg class="btn-icon-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
-      <span>More</span>
     </button>
 
     <div class="v-divider"></div>
 
     <!-- Stop Share Button -->
-    <button id="btn-stop" class="control-btn btn-stop" title="Stop Screen Share">
+    <button id="btn-stop" class="control-btn btn-stop" title="Stop Screen Share" aria-label="Stop Screen Share">
       <svg class="btn-icon-svg" viewBox="0 0 24 24"><rect width="14" height="14" x="5" y="5" rx="2" fill="currentColor"/></svg>
-      <span>Stop Share</span>
     </button>
 
     <!-- More Menu Dropdown -->
@@ -279,7 +290,7 @@
         <span id="mode-text">Music Mode</span>
       </button>
       <button id="item-workspace" class="more-item">
-        <svg class="btn-icon-svg" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+        <svg class="btn-icon-svg" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
         <span>Project Workspace</span>
       </button>
       <button id="item-layout" class="more-item">
@@ -368,19 +379,17 @@
 
       // Mic
       const btnMic = document.getElementById('btn-mic');
-      const micText = document.getElementById('mic-text');
-      if (btnMic && micText) {
+      if (btnMic) {
         btnMic.classList.toggle('muted', currentState.micMuted);
-        micText.textContent = currentState.micMuted ? 'Unmute' : 'Mute';
+        btnMic.title = currentState.micMuted ? 'Unmute Microphone' : 'Mute Microphone';
       }
 
       // Camera
       const btnCam = document.getElementById('btn-cam');
-      const camText = document.getElementById('cam-text');
       if (btnCam) {
         btnCam.classList.toggle('active', currentState.camEnabled);
         btnCam.classList.toggle('muted', !currentState.camEnabled);
-        if (camText) camText.textContent = currentState.camEnabled ? 'Camera' : 'Camera Off';
+        btnCam.title = currentState.camEnabled ? 'Turn Off Camera' : 'Turn On Camera';
       }
 
       // Mode
@@ -392,10 +401,9 @@
 
       // Pause
       const btnPause = document.getElementById('btn-pause');
-      const pauseText = document.getElementById('pause-text');
-      if (btnPause && pauseText) {
+      if (btnPause) {
         btnPause.classList.toggle('paused', currentState.paused);
-        pauseText.textContent = currentState.paused ? 'Resume Share' : 'Pause Share';
+        btnPause.title = currentState.paused ? 'Resume Screen Share' : 'Pause Screen Share';
       }
 
       // PiP
@@ -409,6 +417,9 @@
     document.getElementById('btn-mic')?.addEventListener('click', () => sendAction('toggle-mic'));
     document.getElementById('btn-cam')?.addEventListener('click', () => sendAction('toggle-cam'));
     document.getElementById('btn-pause')?.addEventListener('click', () => sendAction('toggle-pause'));
+    document.getElementById('btn-workspace')?.addEventListener('click', () => sendAction('open-workspace'));
+    document.getElementById('btn-chat')?.addEventListener('click', () => sendAction('open-chat'));
+    document.getElementById('btn-mixer')?.addEventListener('click', () => sendAction('open-mixer'));
     document.getElementById('btn-show-app')?.addEventListener('click', () => sendAction('show-main-window'));
     document.getElementById('btn-stop')?.addEventListener('click', () => sendAction('stop-share'));
 
@@ -432,7 +443,7 @@
 
     document.getElementById('item-workspace')?.addEventListener('click', () => {
       moreMenu?.classList.add('hidden');
-      sendAction('toggle-workspace');
+      sendAction('open-workspace');
     });
 
     document.getElementById('item-layout')?.addEventListener('click', () => {
