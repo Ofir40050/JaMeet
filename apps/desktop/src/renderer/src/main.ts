@@ -527,7 +527,9 @@ import {
   getCameraViewMode,
   getActiveSpeaker,
   setActiveSpeaker,
-  toggleSessionLayout
+  toggleSessionLayout,
+  updateSessionViewButton,
+  renderSessionViewMenu
 } from './sessions/call/sessionView';
 import './style.css';
 
