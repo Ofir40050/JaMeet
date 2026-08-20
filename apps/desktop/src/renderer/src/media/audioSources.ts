@@ -1,53 +1,26 @@
 import type { AudioMode, AudioSourceMetadata } from '@jameet/shared';
 import { audioConstraints, effectiveSettings, type AudioCapturePreferences, type EffectiveAudioSettings } from './audioProfiles';
-import { channelEqDspRegistry, ChannelEqDspInstance } from './channelEq';
+import { channelEqDspRegistry, type ChannelEqDspInstance } from './channelEq';
 
-export type AudioSourcePurpose = 'voice' | 'music';
-export type AudioSourceConfig = {
-  id: string;
-  purpose: AudioSourcePurpose;
-  deviceId?: string;
-  mode: AudioMode;
-  enabled: boolean;
-  track: MediaStreamTrack;
-  effective: EffectiveAudioSettings;
-};
+export {
+  type AudioSourcePurpose,
+  type AudioSourceConfig
+} from './audioSources/types';
 
-function getDesktopApi(): any {
-  if (typeof window === 'undefined') return undefined;
-  return (window as any).jameet || (window as any).musiczoom;
-}
-
-function getStereoBalanceGains(pan: number): { left: number; right: number } {
-  const clamped = Math.max(-1, Math.min(1, pan));
-  const left = clamped <= 0 ? 1.0 : Math.max(0, 1.0 - clamped);
-  const right = clamped >= 0 ? 1.0 : Math.max(0, 1.0 + clamped);
-  return { left, right };
-}
-
-type VoiceMicChannel = {
-  rawTrack?: MediaStreamTrack;
-  isolatedTrack: MediaStreamTrack;
-  sourceNode?: MediaStreamAudioSourceNode;
-  gainNode: GainNode;
-  isStereo: boolean;
-  pannerNode?: StereoPannerNode;
-  stereoSplitter?: ChannelSplitterNode;
-  leftGainNode?: GainNode;
-  rightGainNode?: GainNode;
-  stereoMerger?: ChannelMergerNode;
-  meterSplitter?: ChannelSplitterNode;
-  meterAnalyserL?: AnalyserNode;
-  meterAnalyserR?: AnalyserNode;
-  downmixGainNode?: GainNode;
-  fxNodes: AudioNode[];
-  lastConnectedFx?: string;
-  analyserNode: AnalyserNode;  // Always-connected analyser for Sound Check / active speaker
-  micDestination: MediaStreamAudioDestinationNode;
-  preferences: AudioCapturePreferences;
-  deviceId?: string;
-  nextPlayTime?: number;
-};
+import type {
+  AudioSourcePurpose,
+  AudioSourceConfig,
+  VoiceMicChannel
+} from './audioSources/types';
+import { getDesktopApi } from './audioSources/desktopApi';
+import { getStereoBalanceGains } from './audioSources/stereoBalance';
+import {
+  safeDisconnect,
+  cleanupVoiceMicNodes,
+  cleanupMusicNodes
+} from './audioSources/disconnectUtils';
+import { routeHardwareAudioChunk } from './audioSources/hardwareAudio';
+import { attachAppAudioLoopback } from './audioSources/loopback';
 
 export class LocalAudioSourceManager {
   private sources = new Map<string, AudioSourceConfig>();
@@ -140,115 +113,14 @@ export class LocalAudioSourceManager {
 
     this.hardwareAudioCleanup = api.onHardwareAudioChunk((chunk: Uint8Array) => {
       if (!this.audioContext || this.audioContext.state === 'closed') return;
-      const ctx = this.audioContext;
-
-      const buffer = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength);
-      if (buffer.byteLength < 8) return;
-
-      const uint32Header = new Uint32Array(buffer, 0, 2);
-      const totalChannels = uint32Header[0]!;
-      const frameCount = uint32Header[1]!;
-      if (totalChannels <= 0 || frameCount <= 0) return;
-
-      const floatSamples = new Float32Array(buffer, 8);
-      if (floatSamples.length < frameCount * totalChannels) return;
-
-      const now = ctx.currentTime;
-
-      for (const [, mic] of this.voiceMics.entries()) {
-        const route = mic.preferences.channelRoute || '1';
-        const isStereo = mic.preferences.stereo !== false && (route === '1-2' || route === '3-4' || route === '5-6' || route === '7-8');
-        const outChannels = isStereo ? 2 : 1;
-
-        const audioBuffer = ctx.createBuffer(outChannels, frameCount, 48000);
-
-        if (isStereo) {
-          let leftIdx = 0;
-          let rightIdx = 1;
-          if (route === '3-4') { leftIdx = 2; rightIdx = 3; }
-          else if (route === '5-6') { leftIdx = 4; rightIdx = 5; }
-          else if (route === '7-8') { leftIdx = 6; rightIdx = 7; }
-
-          leftIdx = Math.min(leftIdx, totalChannels - 1);
-          rightIdx = Math.min(rightIdx, totalChannels - 1);
-
-          const leftData = audioBuffer.getChannelData(0);
-          const rightData = audioBuffer.getChannelData(1);
-          for (let f = 0; f < frameCount; f++) {
-            leftData[f] = floatSamples[f * totalChannels + leftIdx]!;
-            rightData[f] = floatSamples[f * totalChannels + rightIdx]!;
-          }
-        } else if (route === '1-2' || route === '3-4' || route === '5-6' || route === '7-8') {
-          let leftIdx = 0;
-          let rightIdx = 1;
-          if (route === '3-4') { leftIdx = 2; rightIdx = 3; }
-          else if (route === '5-6') { leftIdx = 4; rightIdx = 5; }
-          else if (route === '7-8') { leftIdx = 6; rightIdx = 7; }
-
-          leftIdx = Math.min(leftIdx, totalChannels - 1);
-          rightIdx = Math.min(rightIdx, totalChannels - 1);
-
-          const monoData = audioBuffer.getChannelData(0);
-          for (let f = 0; f < frameCount; f++) {
-            monoData[f] = 0.5 * (floatSamples[f * totalChannels + leftIdx]! + floatSamples[f * totalChannels + rightIdx]!);
-          }
-        } else {
-          let chIdx = 0;
-          if (route === '1') chIdx = 0;
-          else if (route === '2') chIdx = 1;
-          else if (route === '3') chIdx = 2;
-          else if (route === '4') chIdx = 3;
-          else if (route === '5') chIdx = 4;
-          else if (route === '6') chIdx = 5;
-          else if (route === '7') chIdx = 6;
-          else if (route === '8') chIdx = 7;
-          else if (route === 'all') chIdx = 0;
-          else {
-            const parsed = parseInt(route, 10);
-            if (!isNaN(parsed) && parsed >= 1) chIdx = parsed - 1;
-          }
-
-          chIdx = Math.min(chIdx, totalChannels - 1);
-          const monoData = audioBuffer.getChannelData(0);
-          for (let f = 0; f < frameCount; f++) {
-            monoData[f] = floatSamples[f * totalChannels + chIdx]!;
-          }
-        }
-
-        const sourceNode = ctx.createBufferSource();
-        sourceNode.buffer = audioBuffer;
-        sourceNode.connect(mic.gainNode);
-
-        if (mic.nextPlayTime === undefined || mic.nextPlayTime < now || mic.nextPlayTime > now + 0.05) {
-          mic.nextPlayTime = now;
-        }
-        sourceNode.start(mic.nextPlayTime);
-        mic.nextPlayTime += audioBuffer.duration;
-      }
+      routeHardwareAudioChunk(this.audioContext, chunk, this.voiceMics);
     });
   }
 
   async removeVoiceMic(micIndex: number): Promise<void> {
     const mic = this.voiceMics.get(micIndex);
     if (mic) {
-      mic.rawTrack?.stop();
-      mic.isolatedTrack?.stop();
-      try { mic.sourceNode?.disconnect(); } catch {}
-      try { mic.gainNode?.disconnect(); } catch {}
-      for (const node of mic.fxNodes) {
-        try { node.disconnect(); } catch {}
-      }
-      mic.fxNodes = [];
-      try { mic.pannerNode?.disconnect(); } catch {}
-      try { mic.stereoSplitter?.disconnect(); } catch {}
-      try { mic.leftGainNode?.disconnect(); } catch {}
-      try { mic.rightGainNode?.disconnect(); } catch {}
-      try { mic.stereoMerger?.disconnect(); } catch {}
-      try { mic.meterSplitter?.disconnect(); } catch {}
-      try { mic.meterAnalyserL?.disconnect(); } catch {}
-      try { mic.meterAnalyserR?.disconnect(); } catch {}
-      try { mic.downmixGainNode?.disconnect(); } catch {}
-      try { mic.micDestination?.disconnect(); } catch {}
+      cleanupVoiceMicNodes(mic);
       this.voiceMics.delete(micIndex);
       this.gainNodes.delete(`voice-${micIndex}`);
     }
@@ -274,24 +146,7 @@ export class LocalAudioSourceManager {
     // Stop previous mic if existing
     const prevMic = this.voiceMics.get(micIndex);
     if (prevMic) {
-      prevMic.rawTrack?.stop();
-      prevMic.isolatedTrack?.stop();
-      try { prevMic.sourceNode?.disconnect(); } catch {}
-      try { prevMic.gainNode?.disconnect(); } catch {}
-      for (const node of prevMic.fxNodes) {
-        try { node.disconnect(); } catch {}
-      }
-      prevMic.fxNodes = [];
-      try { prevMic.pannerNode?.disconnect(); } catch {}
-      try { prevMic.stereoSplitter?.disconnect(); } catch {}
-      try { prevMic.leftGainNode?.disconnect(); } catch {}
-      try { prevMic.rightGainNode?.disconnect(); } catch {}
-      try { prevMic.stereoMerger?.disconnect(); } catch {}
-      try { prevMic.meterSplitter?.disconnect(); } catch {}
-      try { prevMic.meterAnalyserL?.disconnect(); } catch {}
-      try { prevMic.meterAnalyserR?.disconnect(); } catch {}
-      try { prevMic.downmixGainNode?.disconnect(); } catch {}
-      try { prevMic.micDestination?.disconnect(); } catch {}
+      cleanupVoiceMicNodes(prevMic);
     }
 
     const gainNode = ctx.createGain();
@@ -575,142 +430,7 @@ export class LocalAudioSourceManager {
     targetCapture: number | string = 'global',
     channelRoute?: string
   ): () => void {
-    const targetSampleRate = ctx.sampleRate;
-    const ringCapacity = Math.round(targetSampleRate * 0.25); // 250ms ring capacity
-    const maxBufferedFrames = Math.round(targetSampleRate * 0.08); // 80ms max target latency
-    const ringL = new Float32Array(ringCapacity);
-    const ringR = new Float32Array(ringCapacity);
-    let writePos = 0;
-    let readPos = 0;
-    let availableSamples = 0;
-    let lastPacketTime = performance.now();
-
-    const processor = ctx.createScriptProcessor(1024, 0, 2);
-    processor.onaudioprocess = (e) => {
-      const now = performance.now();
-      const outL = e.outputBuffer.getChannelData(0);
-      const outR = e.outputBuffer.getChannelData(1);
-      const bufferSize = outL.length;
-
-      // If no new packets arrived for > 150ms, source stopped or paused: flush stale queue
-      if (now - lastPacketTime > 150) {
-        availableSamples = 0;
-        readPos = writePos;
-        outL.fill(0);
-        outR.fill(0);
-        return;
-      }
-
-      // If backlog grew beyond maxBufferedFrames, skip old frames to prevent delayed audio
-      if (availableSamples > maxBufferedFrames) {
-        const excess = availableSamples - maxBufferedFrames;
-        readPos = (readPos + excess) % ringCapacity;
-        availableSamples = maxBufferedFrames;
-      }
-
-      if (availableSamples >= bufferSize) {
-        for (let i = 0; i < bufferSize; i++) {
-          outL[i] = ringL[readPos]!;
-          outR[i] = ringR[readPos]!;
-          readPos = (readPos + 1) % ringCapacity;
-        }
-        availableSamples -= bufferSize;
-      } else if (availableSamples > 0) {
-        for (let i = 0; i < availableSamples; i++) {
-          outL[i] = ringL[readPos]!;
-          outR[i] = ringR[readPos]!;
-          readPos = (readPos + 1) % ringCapacity;
-        }
-        for (let i = availableSamples; i < bufferSize; i++) {
-          outL[i] = 0;
-          outR[i] = 0;
-        }
-        availableSamples = 0;
-      } else {
-        outL.fill(0);
-        outR.fill(0);
-      }
-    };
-
-    processor.connect(targetNode);
-
-    const api = getDesktopApi();
-    if (api?.startAppAudioCapture) {
-      void api.startAppAudioCapture(targetCapture, channelRoute);
-    }
-
-    const unsubscribeChunk = api?.onAppAudioChunk?.((chunk: Uint8Array) => {
-      if (!ctx || ctx.state === 'closed') return;
-      lastPacketTime = performance.now();
-      const byteLen = chunk.byteLength;
-      if (byteLen < 16) return;
-
-      const buffer = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength);
-      const header = new Uint32Array(buffer, 0, 4);
-      let srcSampleRate = header[0]!;
-      let srcFrames = header[2]!;
-      let floatOffset = 16;
-
-      if (srcSampleRate < 8000 || srcSampleRate > 192000 || srcFrames <= 0) {
-        srcSampleRate = 48000;
-        floatOffset = 0;
-        srcFrames = Math.floor(buffer.byteLength / 8);
-      }
-
-      const floatArray = new Float32Array(buffer, floatOffset);
-      if (floatArray.length < srcFrames * 2) return;
-
-      if (srcSampleRate === targetSampleRate) {
-        for (let f = 0; f < srcFrames; f++) {
-          if (availableSamples < ringCapacity) {
-            ringL[writePos] = floatArray[f * 2]!;
-            ringR[writePos] = floatArray[f * 2 + 1]!;
-            writePos = (writePos + 1) % ringCapacity;
-            availableSamples++;
-          }
-        }
-      } else {
-        const ratio = targetSampleRate / srcSampleRate;
-        const targetFrames = Math.round(srcFrames * ratio);
-        for (let t = 0; t < targetFrames; t++) {
-          if (availableSamples < ringCapacity) {
-            const srcIdx = t / ratio;
-            const i0 = Math.floor(srcIdx);
-            const frac = srcIdx - i0;
-            const i1 = Math.min(i0 + 1, srcFrames - 1);
-
-            const l0 = floatArray[i0 * 2]!;
-            const r0 = floatArray[i0 * 2 + 1]!;
-            const l1 = floatArray[i1 * 2]!;
-            const r1 = floatArray[i1 * 2 + 1]!;
-
-            ringL[writePos] = l0 * (1 - frac) + l1 * frac;
-            ringR[writePos] = r0 * (1 - frac) + r1 * frac;
-            writePos = (writePos + 1) % ringCapacity;
-            availableSamples++;
-          }
-        }
-      }
-    });
-
-    const unsubscribeStopped = api?.onAppAudioStopped?.(() => {
-      availableSamples = 0;
-      readPos = writePos;
-    });
-
-    return () => {
-      availableSamples = 0;
-      readPos = writePos;
-      ringL.fill(0);
-      ringR.fill(0);
-      if (unsubscribeChunk) unsubscribeChunk();
-      if (unsubscribeStopped) unsubscribeStopped();
-      try { processor.disconnect(); } catch {}
-      const cleanupApi = getDesktopApi();
-      if (cleanupApi?.stopAppAudioCapture) {
-        void cleanupApi.stopAppAudioCapture();
-      }
-    };
+    return attachAppAudioLoopback(ctx, targetNode, targetCapture, channelRoute);
   }
 
   async acquireMusic(deviceId: string, preferences: AudioCapturePreferences = {}): Promise<AudioSourceConfig> {
@@ -779,18 +499,18 @@ export class LocalAudioSourceManager {
 
     this.appAudioCleanup = () => {
       cleanupLoopback();
-      try { musicGain.disconnect(); } catch {}
-      for (const node of this.musicFxNodes) {
-        try { node.disconnect(); } catch {}
-      }
+      cleanupMusicNodes({
+        musicGain,
+        musicFxNodes: this.musicFxNodes,
+        musicSplitter,
+        musicLeftGainNode: musicLeftGain,
+        musicRightGainNode: musicRightGain,
+        musicMerger,
+        musicMeterAnalyserL,
+        musicMeterAnalyserR,
+        musicSilentGain: silentGain
+      });
       this.musicFxNodes = [];
-      try { musicSplitter.disconnect(); } catch {}
-      try { musicLeftGain.disconnect(); } catch {}
-      try { musicRightGain.disconnect(); } catch {}
-      try { musicMerger.disconnect(); } catch {}
-      try { musicMeterAnalyserL.disconnect(); } catch {}
-      try { musicMeterAnalyserR.disconnect(); } catch {}
-      try { silentGain.disconnect(); } catch {}
       this.gainNodes.delete('music');
       this.musicLeftGainNode = undefined;
       this.musicRightGainNode = undefined;
@@ -897,18 +617,18 @@ export class LocalAudioSourceManager {
 
     this.appAudioCleanup = () => {
       cleanupLoopback();
-      try { musicGain.disconnect(); } catch {}
-      for (const node of this.musicFxNodes) {
-        try { node.disconnect(); } catch {}
-      }
+      cleanupMusicNodes({
+        musicGain,
+        musicFxNodes: this.musicFxNodes,
+        musicSplitter,
+        musicLeftGainNode: musicLeftGain,
+        musicRightGainNode: musicRightGain,
+        musicMerger,
+        musicMeterAnalyserL,
+        musicMeterAnalyserR,
+        musicSilentGain: silentGain
+      });
       this.musicFxNodes = [];
-      try { musicSplitter.disconnect(); } catch {}
-      try { musicLeftGain.disconnect(); } catch {}
-      try { musicRightGain.disconnect(); } catch {}
-      try { musicMerger.disconnect(); } catch {}
-      try { musicMeterAnalyserL.disconnect(); } catch {}
-      try { musicMeterAnalyserR.disconnect(); } catch {}
-      try { silentGain.disconnect(); } catch {}
       this.gainNodes.delete('music');
       this.musicLeftGainNode = undefined;
       this.musicRightGainNode = undefined;
@@ -1221,9 +941,9 @@ export class LocalAudioSourceManager {
     const now = ctx.currentTime;
 
     // Disconnect gainNode and all previous FX nodes for this channel
-    try { mic.gainNode.disconnect(); } catch {}
+    safeDisconnect(mic.gainNode);
     for (const node of mic.fxNodes) {
-      try { node.disconnect(); } catch {}
+      safeDisconnect(node);
     }
     mic.fxNodes = [];
 
@@ -1280,9 +1000,9 @@ export class LocalAudioSourceManager {
     const now = ctx.currentTime;
 
     // Disconnect musicGain and all previous music FX nodes
-    try { musicGain.disconnect(); } catch {}
+    safeDisconnect(musicGain);
     for (const node of this.musicFxNodes) {
-      try { node.disconnect(); } catch {}
+      safeDisconnect(node);
     }
     this.musicFxNodes = [];
 
@@ -1362,24 +1082,7 @@ export class LocalAudioSourceManager {
       void api?.stopAppAudioCapture?.();
     }
     for (const mic of this.voiceMics.values()) {
-      mic.rawTrack?.stop();
-      mic.isolatedTrack?.stop();
-      try { mic.sourceNode?.disconnect(); } catch {}
-      try { mic.gainNode?.disconnect(); } catch {}
-      for (const node of mic.fxNodes) {
-        try { node.disconnect(); } catch {}
-      }
-      mic.fxNodes = [];
-      try { mic.pannerNode?.disconnect(); } catch {}
-      try { mic.stereoSplitter?.disconnect(); } catch {}
-      try { mic.leftGainNode?.disconnect(); } catch {}
-      try { mic.rightGainNode?.disconnect(); } catch {}
-      try { mic.stereoMerger?.disconnect(); } catch {}
-      try { mic.meterSplitter?.disconnect(); } catch {}
-      try { mic.meterAnalyserL?.disconnect(); } catch {}
-      try { mic.meterAnalyserR?.disconnect(); } catch {}
-      try { mic.downmixGainNode?.disconnect(); } catch {}
-      try { mic.micDestination?.disconnect(); } catch {}
+      cleanupVoiceMicNodes(mic);
     }
     this.voiceMics.clear();
     for (const track of this.rawTracks.values()) track.stop();
@@ -1387,19 +1090,20 @@ export class LocalAudioSourceManager {
     for (const source of this.sources.values()) source.track.stop();
     this.sources.clear();
     this.gainNodes.clear();
-    for (const node of this.musicFxNodes) {
-      try { node.disconnect(); } catch {}
-    }
+    cleanupMusicNodes({
+      musicGain: this.gainNodes.get('music'),
+      musicFxNodes: this.musicFxNodes,
+      musicSplitter: this.musicSplitter,
+      musicLeftGainNode: this.musicLeftGainNode,
+      musicRightGainNode: this.musicRightGainNode,
+      musicMerger: this.musicMerger,
+      musicMeterAnalyserL: this.musicMeterAnalyserL,
+      musicMeterAnalyserR: this.musicMeterAnalyserR,
+      musicSilentGain: this.musicSilentGain
+    });
     this.musicFxNodes = [];
-    try { this.musicSilentGain?.disconnect(); } catch {}
     this.musicSilentGain = undefined;
     this.lastConnectedMusicFx = undefined;
-    try { this.musicSplitter?.disconnect(); } catch {}
-    try { this.musicLeftGainNode?.disconnect(); } catch {}
-    try { this.musicRightGainNode?.disconnect(); } catch {}
-    try { this.musicMerger?.disconnect(); } catch {}
-    try { this.musicMeterAnalyserL?.disconnect(); } catch {}
-    try { this.musicMeterAnalyserR?.disconnect(); } catch {}
     this.musicSplitter = undefined;
     this.musicLeftGainNode = undefined;
     this.musicRightGainNode = undefined;
