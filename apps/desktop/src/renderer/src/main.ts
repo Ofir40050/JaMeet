@@ -1,11 +1,9 @@
 import type { AudioMode, MediaMetadata, MeetingAck, PerformanceMode, VideoQuality, ParticipantIdentity, UserProfile, UpdateProfileRequest, Project, ProjectSessionItem, SessionHistoryItem, ProjectTaskItem, ProjectTaskStatus, ProjectTaskStage, ProjectTaskSubtask, ProjectActivityItem, ProjectActivityType, SessionChatMessage, WaitingParticipantItem, ScheduledSession } from '@jameet/shared';
 import * as projectsApi from './projects/core/projects';
 import {
-  initScheduledSessions,
   loadScheduledSessions
 } from './sessions/scheduled/scheduledSessions';
 import {
-  initRecentSessions,
   loadRecentSessions
 } from './sessions/recent/recentSessions';
 import { initSessionStats } from './sessions/call/sessionStats';
@@ -38,11 +36,9 @@ import {
   hideWaitingBanner
 } from './sessions/call/waitingRoomUi';
 import {
-  initProjectsListController,
   loadProjects
 } from './projects/core/projectsListController';
 import {
-  initProjectsListUi,
   renderProjectsGrid
 } from './projects/core/projectsListUi';
 import { renderProjectHeader } from './projects/header/projectHeaderUi';
@@ -63,17 +59,9 @@ import {
   resetProjectSessionsPage
 } from './projects/sessions/projectSessionsListUi';
 import {
-  initProjectCollaboratorsController,
-  handleAddCollaborator,
-  handleUpdateCollaboratorRole,
-  handleRemoveCollaborator
-} from './projects/collaborators/projectCollaboratorsController';
-import {
-  initProjectViewController,
   renderProjectView
 } from './projects/core/projectViewController';
 import {
-  initProjectOpenController,
   openProjectView
 } from './projects/core/projectOpenController';
 import { initDialogUi } from './core/dialogUi';
@@ -83,6 +71,16 @@ import {
   isProjectOwner,
   applyWorkspacePermissions
 } from './workspace/core/workspacePermissionsController';
+import { initScheduledSessionsController } from './sessions/scheduled/scheduledSessionsController';
+import { initRecentSessionsController } from './sessions/recent/recentSessionsController';
+import { initWorkspaceDrawerController } from './sessions/call/workspaceDrawerController';
+import { initLyricsDomainController } from './workspace/lyrics/lyricsDomainController';
+import { initNotesDomainController } from './workspace/notes/notesDomainController';
+import { initStructureDomainController } from './workspace/structure/structureDomainController';
+import { initProjectsDomainController } from './projects/core/projectsDomainController';
+import { initProjectOpenDomainController } from './projects/core/projectOpenDomainController';
+import { initProjectCollaboratorsDomainController } from './projects/collaborators/projectCollaboratorsDomainController';
+import { initProjectManagementController } from './projects/core/projectManagementController';
 import {
   getWorkspaceContextGen,
   isWorkspaceContextGenCurrent,
@@ -122,25 +120,11 @@ import {
   handleScheduledSessionNotificationClick
 } from './sessions/scheduled/scheduledNotificationUi';
 import {
-  initLyricsController,
-  handleLyricsInput,
-  handleLyricsDocTitleChange,
   hasLyricsSaveTimeout,
   clearLyricsSaveTimeout
 } from './workspace/lyrics/lyricsController';
 import {
-  initNotesController,
-  handleNotesChange
-} from './workspace/notes/notesController';
-import {
-  initStructureController,
-  getStructureSections,
-  reorderStructureSectionToPosition,
-  addStructureSection,
-  moveStructureSection,
-  duplicateStructureSection,
-  deleteStructureSection,
-  handleStructureSectionChange
+  getStructureSections
 } from './workspace/structure/structureController';
 import {
   initStructurePersistence,
@@ -392,30 +376,6 @@ import {
   initProjectTabsUi
 } from './projects/navigation/projectTabsUi';
 import {
-  initProjectMenuUi
-} from './projects/navigation/projectMenuUi';
-import {
-  initProjectRenameController,
-  handleTriggerRename,
-  handleSaveRename
-} from './projects/rename/projectRenameController';
-import {
-  initProjectRenameUi
-} from './projects/rename/projectRenameUi';
-import {
-  initProjectCollaboratorModalUi,
-  closeAddCollaboratorModal,
-  setAddCollaboratorError
-} from './projects/collaborators/projectCollaboratorModalUi';
-import {
-  initProjectDeleteController,
-  handleTriggerDelete,
-  handleConfirmDelete
-} from './projects/delete/projectDeleteController';
-import {
-  initProjectDeleteUi
-} from './projects/delete/projectDeleteUi';
-import {
   initProjectSongDeleteUi,
   renderDeleteSongModal,
   closeDeleteSongModal
@@ -423,17 +383,6 @@ import {
 import {
   computeSongDeletion
 } from './songs/songDeletion';
-import {
-  initProjectArchiveController,
-  handleArchiveProject
-} from './projects/archive/projectArchiveController';
-import {
-  initProjectCreateController,
-  handleCreateProject
-} from './projects/create/projectCreateController';
-import {
-  initProjectCreateUi
-} from './projects/create/projectCreateUi';
 import {
   initCallShortcutsUi,
   toggleShortcutsModal,
@@ -446,7 +395,6 @@ import {
 } from './auth/guestJoinUi';
 import { initProjectNavigationUi } from './projects/navigation/projectNavigationUi';
 import {
-  initLyricsUi,
   getLyricsStatus,
   setLyricsStatus,
   renderLyricsDocTabs,
@@ -454,14 +402,12 @@ import {
   updateLyricsStatsFromHtml
 } from './workspace/lyrics/lyricsUi';
 import {
-  initStructureUi,
   renderStructureWorkspace,
   getStructureStatus,
   setStructureStatus,
   focusStructureSection
 } from './workspace/structure/structureUi';
 import {
-  initNotesUi,
   getNotesStatus,
   setNotesStatus,
   syncNotesControls,
@@ -819,7 +765,7 @@ initLyricsDocumentsController({
     void saveLyricsWorkspace(content, id, title);
   }
 });
-initStructureController({
+initStructureDomainController({
   getProject: () => activeProject,
   getActiveSong: () => getActiveSong(),
   canEdit: () => canUserEditProject(),
@@ -1049,7 +995,7 @@ initWorkspaceFlushController({
     return saveSongsWorkspace();
   }
 });
-initWorkspaceDrawerUi({
+initWorkspaceDrawerController({
   getProjectName: () => activeProject?.name,
   hasActiveProject: () => Boolean(activeProject),
   onSyncWorkspaceInputs: () => {
@@ -1084,18 +1030,18 @@ initDeepLinkController({
     await prepareStudio(options);
   }
 });
-initScheduledSessions({
-  getToken: () => auth.getToken(),
+initScheduledSessionsController({
+  getAuthToken: () => auth.getToken(),
   notificationManager: scheduledNotifications,
-  onStartSession: () => {
-    void prepareStudio({ type: 'create' });
+  onPrepareStudio: (action) => {
+    void prepareStudio(action);
   }
 });
-initRecentSessions({
+initRecentSessionsController({
   getUser: () => auth.getUser(),
   getRecentSessions: () => auth.getRecentSessions(),
-  onStartSession: () => {
-    void prepareStudio({ type: 'create' });
+  onPrepareStudio: (action) => {
+    void prepareStudio(action);
   },
   onNavigateToAllSessions: () => {
     showView('all-sessions-view');
@@ -1156,7 +1102,7 @@ initAuthUiController({
   onLogin: (credentials) => handleLogin(credentials),
   onRegister: (values) => handleRegister(values)
 });
-initLyricsController({
+initLyricsDomainController({
   getActiveProject: () => activeProject,
   getActiveLyricsDoc: () => getActiveLyricsDoc(),
   onIncrementLyricsEditGen: () => {
@@ -1164,48 +1110,11 @@ initLyricsController({
   },
   onSaveLyricsWorkspace: async (content, docId, title) => {
     await saveLyricsWorkspace(content, docId, title);
-  }
-});
-initLyricsUi({
+  },
   isInCall: () => inCall,
-  canEdit: () => canUserEditProject(),
-  getActiveLyricsDoc: () => getActiveLyricsDoc(),
-  onLyricsInput: (newHtml) => {
-    handleLyricsInput(newHtml);
-  },
-  onDocTitleChange: (docId, newTitle) => {
-    handleLyricsDocTitleChange(docId, newTitle);
-  },
-  onSwitchDoc: (docId) => {
-    switchActiveLyricsDoc(docId);
-  },
-  onDuplicateDoc: (docId) => {
-    duplicateLyricsDoc(docId);
-  },
-  onDeleteDoc: (docId) => {
-    deleteLyricsDoc(docId);
-  }
+  canEdit: () => canUserEditProject()
 });
-initStructureUi({
-  getSections: () => getStructureSections(),
-  canEdit: () => canUserEditProject(),
-  onAddSection: (type) => {
-    addStructureSection(type);
-  },
-  onReorderSection: (sourceId, targetId, position) => {
-    reorderStructureSectionToPosition(sourceId, targetId, position);
-  },
-  onDuplicateSection: (sectionId) => {
-    duplicateStructureSection(sectionId);
-  },
-  onDeleteSection: (sectionId) => {
-    deleteStructureSection(sectionId);
-  },
-  onSectionChange: (sectionId, changes) => {
-    handleStructureSectionChange(sectionId, changes);
-  }
-});
-initNotesController({
+initNotesDomainController({
   canUserEditProject: () => canUserEditProject(),
   getActiveProject: () => activeProject,
   getActiveSong: () => getActiveSong(),
@@ -1216,27 +1125,13 @@ initNotesController({
     await saveNotesWorkspace(content, bpm, key);
   }
 });
-initNotesUi({
-  canEdit: () => canUserEditProject(),
-  onNotesChange: (values) => {
-    handleNotesChange(values);
-  }
-});
-initProjectsListController({
+initProjectsDomainController({
   getAuthToken: () => auth.getToken(),
   getUser: () => auth.getUser(),
   onProjectsLoaded: (projects) => {
     projectsList = projects;
-  }
-});
-initProjectsListUi({
-  onOpenProject: (projectId) => {
-    void openProjectView(projectId);
-  }
-});
-initProjectViewController({
+  },
   getProject: () => activeProject,
-  getUser: () => auth.getUser(),
   renderCollaborators: () => {
     renderProjectCollaboratorsView();
   },
@@ -1244,7 +1139,7 @@ initProjectViewController({
     applyWorkspacePermissions();
   }
 });
-initProjectOpenController({
+initProjectOpenDomainController({
   getAuthToken: () => auth.getToken(),
   onUnauthenticated: () => {
     showView('auth-view');
@@ -1268,9 +1163,7 @@ initProjectOpenController({
     syncWorkspaceInputsFromProject(forceAll);
   },
   onJoinSignalingRoom: (projectId, token) => {
-    void signaling
-      .joinProjectWorkspace(projectId, token)
-      .catch((e) => console.warn('[Signaling] Failed to join project workspace socket room:', e));
+    return signaling.joinProjectWorkspace(projectId, token);
   }
 });
 initProjectSessionSummaryUi();
@@ -1289,7 +1182,7 @@ initProjectSessionsController({
   },
   onPrepareStudio: (action) => prepareStudio(action)
 });
-initProjectCollaboratorsController({
+initProjectCollaboratorsDomainController({
   getAuthToken: () => auth.getToken(),
   getProject: () => activeProject,
   onProjectUpdated: (updatedProject) => {
@@ -1303,7 +1196,7 @@ initProjectCollaboratorsController({
   }
 });
 initDialogUi();
-initProjectArchiveController({
+initProjectManagementController({
   getAuthToken: () => auth.getToken(),
   getProject: () => activeProject,
   onProjectUpdated: (updated) => {
@@ -1314,76 +1207,15 @@ initProjectArchiveController({
   },
   onRefreshProjectsList: () => {
     void loadProjects();
-  }
-});
-initProjectMenuUi({
-  onArchiveProject: () => {
-    void handleArchiveProject();
-  }
-});
-
-initProjectRenameController({
-  getAuthToken: () => auth.getToken(),
-  getProject: () => activeProject,
-  onProjectUpdated: (updated) => {
-    activeProject = updated;
   },
-  onRefreshProjectView: () => {
-    renderProjectView();
-  },
-  onRefreshProjectsList: () => {
-    void loadProjects();
-  }
-});
-initProjectRenameUi({
-  onTriggerRename: () => {
-    handleTriggerRename();
-  },
-  onSave: (data) => {
-    void handleSaveRename(data);
-  }
-});
-
-initProjectCollaboratorModalUi({
-  onAddCollaborator: async ({ usernameOrEmail, role }) => {
-    await handleAddCollaborator(usernameOrEmail, role, {
-      onBeforeRequest: () => {
-        setAddCollaboratorError('');
-      },
-      onSuccess: () => {
-        closeAddCollaboratorModal();
-      },
-      onError: (errorMessage) => {
-        setAddCollaboratorError(errorMessage);
-      }
-    });
-  }
-});
-
-initProjectDeleteController({
-  getAuthToken: () => auth.getToken(),
-  getProject: () => activeProject,
   onProjectDeleted: () => {
     activeProject = undefined;
     activeProjectId = undefined;
   },
   onNavigateHome: () => {
     showView('home-view');
-  },
-  onRefreshProjectsList: async () => {
-    await loadProjects();
   }
 });
-initProjectDeleteUi({
-  onTriggerDelete: () => {
-    handleTriggerDelete();
-  },
-  getProjectName: () => activeProject?.name,
-  onConfirmDelete: () => {
-    void handleConfirmDelete();
-  }
-});
-
 initProjectSongDeleteController({
   getProject: () => activeProject,
   canUserEditProject: () => canUserEditProject(),
@@ -1392,21 +1224,6 @@ initProjectSongDeleteController({
   onRenderProjectOverviewSongsList: () => renderProjectOverviewSongsList(),
   onApplyWorkspacePermissions: () => applyWorkspacePermissions(),
   onSaveSongsWorkspace: () => saveSongsWorkspace()
-});
-
-initProjectCreateController({
-  getAuthToken: () => auth.getToken(),
-  onRefreshProjectsList: async () => {
-    await loadProjects();
-  },
-  onOpenProject: async (projectId) => {
-    await openProjectView(projectId);
-  }
-});
-initProjectCreateUi({
-  onCreateProject: (data) => {
-    void handleCreateProject(data);
-  }
 });
 initCallShortcutsUi();
 initGuestJoinController({
