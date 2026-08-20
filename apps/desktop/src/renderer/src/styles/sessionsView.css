@@ -1,0 +1,112 @@
+/* ========================================================
+   ALL SESSIONS DEDICATED VIEW
+   ======================================================== */
+.sessions-view-content {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sessions-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.sessions-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.sessions-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sessions-hero-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 18px 22px;
+  box-shadow: var(--shadow-sm);
+}
+
+.sessions-hero-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.sessions-hero-identity {
+  flex: 1;
+  min-width: 0;
+}
+
+.sessions-hero-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.sessions-hero-icon {
+  font-size: 20px;
+}
+
+.sessions-hero-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.sessions-hero-description {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.45;
+  max-width: 580px;
+}
+
+.sessions-hero-actions {
+  display: flex;
+  align-items: center;
+}
+
+.sessions-start-btn {
+  background: var(--accent-primary) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  font-size: 12.5px !important;
+  padding: 8px 16px !important;
+  border-radius: var(--radius-sm) !important;
+  border: none !important;
+  cursor: pointer !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: background 0.15s ease !important;
+}
+
+.sessions-start-btn:hover {
+  background: var(--accent-primary-hover) !important;
+}
+
+.sessions-panel-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+}

@@ -1,0 +1,976 @@
+/* ========================================================
+   PROJECT WORKSPACE: LYRICS & NOTES
+   ======================================================== */
+.workspace-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workspace-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.workspace-editor-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-editor-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.workspace-editor-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.workspace-editor-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}
+
+.workspace-editor-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-status-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  transition: all 0.15s ease;
+}
+
+.workspace-status-badge.saved {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.workspace-status-badge.saving {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.workspace-status-badge.unsaved {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.workspace-stats-pill {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  background: var(--bg-elevated);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
+}
+/* ========================================================
+   PROJECT WORKSPACE: GOOGLE DOCS-STYLE SONGWRITING STUDIO (LYRICS)
+   US LETTER PAGINATED DOCUMENT CANVAS (8.5" x 11")
+   ======================================================== */
+.lyrics-workspace-layout {
+  display: flex;
+  height: calc(100vh - 165px);
+  min-height: 550px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* --- 1. DEDICATED LYRICS DOCUMENTS SIDEBAR --- */
+.lyrics-workspace-sidebar {
+  width: 210px;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease;
+  overflow: hidden;
+  position: relative;
+}
+
+.lyrics-workspace-sidebar.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  margin-left: -1px;
+  border-right: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lyrics-sidebar-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.lyrics-sidebar-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  gap: 4px;
+}
+
+.sidebar-heading-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sidebar-heading-icon {
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-heading-wrap h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-sidebar-new-doc {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--accent-primary-dim);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-sidebar-new-doc:hover {
+  background: var(--accent-primary);
+  color: #ffffff;
+}
+
+.btn-sidebar-close {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.12s ease;
+}
+
+.btn-sidebar-close:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+}
+
+.lyrics-sidebar-search {
+  width: 100%;
+}
+
+.sidebar-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  border-radius: var(--radius-xs) !important;
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border-subtle) !important;
+}
+
+.sidebar-search-input:focus {
+  border-color: var(--accent-primary) !important;
+}
+
+.lyrics-sidebar-docs-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Sidebar Document Draft Items */
+.lyrics-sidebar-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.lyrics-sidebar-item.dragging {
+  opacity: 0.4;
+  border: 1px dashed var(--accent-primary);
+  background: var(--bg-card);
+}
+
+.lyrics-sidebar-item.drag-over {
+  border-top: 2px solid var(--accent-primary);
+  background: var(--bg-card-hover);
+}
+
+.lyrics-sidebar-item:hover {
+  background: var(--bg-card-hover);
+}
+
+.lyrics-sidebar-item.active {
+  background: var(--accent-primary-dim);
+  border-color: var(--accent-primary);
+}
+
+.lyrics-sidebar-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent-primary);
+}
+
+.sidebar-item-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar-item-icon {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.lyrics-sidebar-item.active .sidebar-item-icon {
+  color: var(--accent-primary);
+}
+
+.sidebar-item-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar-item-title {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lyrics-sidebar-item.active .sidebar-item-title {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.sidebar-item-rename-input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-xs);
+  color: var(--text-main);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 1px 4px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.sidebar-item-sub {
+  font-size: 9.5px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+
+.sidebar-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.lyrics-sidebar-item:hover .sidebar-item-actions,
+.lyrics-sidebar-item.active .sidebar-item-actions {
+  opacity: 1;
+}
+
+.btn-sidebar-item-action {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.12s;
+  padding: 0;
+}
+
+.btn-sidebar-item-action:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+}
+
+.lyrics-sidebar-footer {
+  padding: 6px 10px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  flex-shrink: 0;
+}
+
+.sidebar-footer-text {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* --- 2. MAIN DOCUMENT SONGWRITING STUDIO --- */
+.lyrics-workspace-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-app);
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Compact Google Docs-Style Formatting Toolbar */
+.doc-formatting-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: nowrap;
+  overflow: visible;
+  flex-shrink: 0;
+  z-index: 100;
+  position: relative;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-subtle);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.toolbar-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.12s ease;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.toolbar-btn:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+}
+
+.toolbar-btn.active {
+  background: var(--accent-primary-dim);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.toolbar-select {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
+  outline: none;
+  cursor: pointer;
+  height: 28px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.toolbar-select:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+  border-color: var(--border-medium);
+}
+
+.font-style-select { width: 125px; }
+.font-family-select { width: 135px; }
+.doc-zoom-select { width: 68px; }
+.font-size-select { width: 56px; }
+.line-spacing-select { width: 60px; }
+
+/* Color Pickers & Popovers */
+.color-dropdown-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.color-trigger-btn {
+  flex-direction: column;
+  gap: 1px;
+}
+
+.color-indicator-icon {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.color-bar {
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.color-palette-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 9999;
+  background: #141a29;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.85), 0 4px 14px rgba(0, 0, 0, 0.5);
+  min-width: 220px;
+  width: 240px;
+  box-sizing: border-box;
+}
+
+.palette-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.palette-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  transition: transform 0.1s ease, border-color 0.1s ease;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.palette-swatch:hover {
+  transform: scale(1.25);
+  border-color: #ffffff;
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.palette-swatch.transparent {
+  background: transparent;
+  border: 1px dashed var(--border-medium);
+  color: var(--text-muted);
+  font-size: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.palette-custom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 4px;
+}
+
+.palette-custom-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.palette-color-input {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  cursor: pointer;
+}
+
+/* --- 3. SEPARATED MUSICIAN SONG SECTIONS HELPER BAR --- */
+.lyrics-section-helpers-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  z-index: 9;
+}
+
+.sections-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.sections-bar-label svg {
+  color: var(--text-secondary);
+}
+
+.sections-buttons-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.btn-section-insert {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: var(--radius-xs);
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.btn-section-insert:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-medium);
+  color: var(--text-main);
+}
+
+/* In-Document Search & Replace Bar */
+.doc-search-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 14px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  z-index: 8;
+}
+
+.search-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.search-mini-input {
+  max-width: 200px;
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+  border-radius: var(--radius-xs) !important;
+}
+
+.search-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.search-count-pill {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 2px 4px;
+}
+
+.btn-search-nav, .btn-search-action, .btn-search-close {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.btn-search-nav:hover, .btn-search-action:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-medium);
+  color: var(--text-main);
+}
+
+.btn-search-close {
+  padding: 2px 5px;
+  color: #ef4444;
+}
+
+/* --- 4. REAL US LETTER DOCUMENT CANVAS VIEWPORT (8.5" x 11") --- */
+.lyrics-sheet-viewport {
+  background: var(--bg-app);
+  padding: 32px 32px 80px 32px;
+  overflow-y: auto;
+  overflow-x: auto;
+  flex: 1;
+  display: flex;
+  justify-content: safe center;
+  align-items: safe flex-start;
+  scroll-behavior: smooth;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+}
+
+.lyrics-canvas-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: auto;
+  min-width: min-content;
+  min-height: min-content;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+/* Centered Document Canvas (816px = 8.5 inches at 96 DPI) */
+.lyrics-document-canvas {
+  position: relative;
+  width: 816px;
+  min-width: 816px;
+  display: block;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  transform-origin: top center;
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Layer 1: Background Visual Page Sheets */
+.lyrics-pages-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  pointer-events: none;
+  z-index: 1;
+  width: 816px;
+  box-sizing: border-box;
+}
+
+/* Individual Realistic Sheet of Paper (US Letter: 816px × 1056px = 8.5" × 11") */
+.lyrics-page-sheet {
+  width: 816px;
+  min-width: 816px;
+  height: 1056px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 2px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.15);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 48px 56px 40px;
+  transition: box-shadow 0.15s ease;
+  position: relative;
+}
+
+.lyrics-document-canvas:focus-within .lyrics-page-sheet {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(59, 130, 246, 0.4);
+}
+
+.page-sheet-header-guide {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+  height: 16px;
+  border-bottom: 1px dashed var(--border-subtle);
+  padding-bottom: 4px;
+}
+
+.page-running-title {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-running-doc-badge {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.page-sheet-footer-guide {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 16px;
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 4px;
+}
+
+.page-sheet-number-pill {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--bg-elevated);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Layer 2: Document Content Layer (Text) */
+.lyrics-document-content-layer {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 816px;
+  padding: 48px 56px 40px 56px;
+  box-sizing: border-box;
+}
+
+/* Rich Contenteditable Document Editor */
+.lyrics-document-editor {
+  outline: none;
+  min-height: 900px;
+  width: 100%;
+  color: #111827;
+  font-family: 'Assistant', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 11pt;
+  line-height: 1.65;
+  letter-spacing: 0;
+  word-break: break-word;
+  white-space: pre-wrap;
+  box-sizing: border-box;
+}
+
+.lyrics-document-editor:empty:before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  font-style: italic;
+  pointer-events: none;
+}
+
+/* Rich Typography Elements in Document */
+.lyrics-document-editor h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 16px 0 8px;
+  letter-spacing: -0.02em;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 4px;
+}
+
+.lyrics-document-editor h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 14px 0 6px;
+  letter-spacing: -0.01em;
+}
+
+.lyrics-document-editor h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  margin: 10px 0 4px;
+}
+
+.lyrics-document-editor blockquote {
+  border-left: 3px solid #3b82f6;
+  margin: 10px 0;
+  padding: 4px 12px;
+  background: #eff6ff;
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  color: #1e3a8a;
+  font-style: italic;
+}
+
+.lyrics-document-editor ul, .lyrics-document-editor ol {
+  padding-left: 20px;
+  margin: 6px 0;
+  color: #111827;
+}
+
+.lyrics-document-editor li {
+  margin: 3px 0;
+}
+
+/* Musician Songwriting Section Tags Inside Document */
+.song-section-tag {
+  display: block;
+  background: transparent;
+  border: none;
+  color: #000000;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 0;
+  margin: 16px 0 6px;
+  letter-spacing: -0.01em;
+}
+
+/* Dynamic Page Break Spacer Class */
+.doc-page-break-gap {
+  transition: margin-top 0.15s ease;
+}
+
+/* --- 5. DOCUMENT BOTTOM STATUS BAR --- */
+.lyrics-doc-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.footer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Document Preset Chips in Modal */
+.doc-preset-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.btn-doc-title-preset {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: var(--radius-xs);
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.btn-doc-title-preset:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-medium);
+  color: var(--text-main);
+}
