@@ -135,28 +135,26 @@ import {
 } from './workspace/notes/notesController';
 import {
   initStructureController,
+  getStructureSections,
+  reorderStructureSectionToPosition,
+  addStructureSection,
+  moveStructureSection,
+  duplicateStructureSection,
+  deleteStructureSection,
   handleStructureSectionChange
 } from './workspace/structure/structureController';
+import {
+  initStructurePersistence,
+  debounceSaveStructure,
+  saveStructureWorkspace,
+  hasStructureSaveTimeout,
+  clearStructureSaveTimeout
+} from './workspace/structure/structurePersistence';
 import {
   getActiveSongState
 } from './songs/state/songState';
 import {
-  mutateCreateSong
-} from './songs/state/songCreation';
-import {
-  mutateDuplicateSong
-} from './songs/state/songDuplication';
-import {
-  mutateReorderSongs
-} from './songs/state/songReorder';
-import {
-  mutateRenameSong,
-  mutateToggleArchiveSong,
-  mutateSongCustomization
-} from './songs/state/songMetadata';
-import {
   initSongStudioUi,
-  openSongStudio as openSongStudioUiView,
   closeSongStudio,
   isSongStudioVisible,
   setIsSongStudioVisible,
@@ -168,34 +166,61 @@ import {
   switchActiveSong
 } from './songs/state/songSwitchController';
 import {
-  getActiveLyricsDocState
-} from './workspace/lyrics/lyricsDocumentState';
+  initSongsController,
+  openSongStudio,
+  createNewSong,
+  duplicateSong,
+  deleteSong,
+  reorderSongs,
+  renameSong,
+  toggleArchiveSong,
+  updateSongCustomization
+} from './songs/songsController';
 import {
-  mutateDuplicateLyricsDoc
-} from './workspace/lyrics/lyricsDocumentDuplication';
+  initLyricsDocumentsController,
+  getActiveLyricsDoc,
+  duplicateLyricsDoc,
+  deleteLyricsDoc,
+  switchActiveLyricsDoc
+} from './workspace/lyrics/lyricsDocumentsController';
 import {
-  canDeleteLyricsDoc,
-  findLyricsDocToDelete,
-  mutateDeleteLyricsDoc
-} from './workspace/lyrics/lyricsDocumentDeletion';
+  initTasksController,
+  getProjectTasks,
+  createTask,
+  quickToggleTask,
+  updateTaskStatus,
+  deleteTask,
+  duplicateTask,
+  updateTaskField,
+  reorderTasks,
+  moveTaskToGroup,
+  addSubtask,
+  toggleSubtask,
+  deleteSubtask,
+  updateSubtaskTitle
+} from './workspace/tasks/tasksController';
 import {
-  normalizeStructureSections
-} from './workspace/structure/structureState';
+  initTasksUiController
+} from './workspace/tasks/tasksUiController';
 import {
-  mutateReorderStructureSectionToPosition
-} from './workspace/structure/structureReorder';
+  initTasksPersistence,
+  debounceSaveTasks,
+  saveTasksWorkspace,
+  hasTasksSaveTimeout,
+  clearTasksSaveTimeout
+} from './workspace/tasks/tasksPersistence';
 import {
-  normalizeProjectTasks
-} from './workspace/tasks/tasksState';
+  initWorkspaceSyncController,
+  syncWorkspaceInputsFromProject
+} from './workspace/core/workspaceSyncController';
 import {
-  mutateCreateTask,
-  mutateQuickToggleTask,
-  mutateUpdateTaskStatus,
-  mutateDeleteTask
-} from './workspace/tasks/taskMutations';
+  initAuthoritativeWorkspaceController,
+  applyAuthoritativeWorkspaceUpdate
+} from './workspace/core/authoritativeWorkspaceController';
 import {
-  mutateDuplicateTask
-} from './workspace/tasks/taskDuplication';
+  initWorkspaceFlushController,
+  flushAllWorkspacePendingSaves
+} from './workspace/core/workspaceFlushController';
 import {
   initWorkspaceDrawerUi,
   isSessionWorkspaceOpen,
@@ -383,6 +408,114 @@ initProjectCollaboratorsViewController({
   getProject: () => activeProject,
   getUser: () => auth.getUser()
 });
+initAuthoritativeWorkspaceController({
+  getProject: () => activeProject,
+  getActiveSong: () => getActiveSong(),
+  onRenderProjectSongsSelector: () => {
+    renderProjectSongsSelector();
+  }
+});
+initLyricsDocumentsController({
+  getProject: () => activeProject,
+  getActiveSong: () => getActiveSong(),
+  onRenderLyricsDocTabs: (doc) => {
+    renderLyricsDocTabs(doc);
+  },
+  onUpdateLyricsStats: (html) => {
+    updateLyricsStatsFromHtml(html);
+  },
+  onIncrementLyricsEditGen: () => {
+    incrementLyricsEditGen();
+  },
+  onSetLyricsStatus: (status) => {
+    setLyricsStatus(status);
+  },
+  onSaveLyricsWorkspace: (content, id, title) => {
+    void saveLyricsWorkspace(content, id, title);
+  },
+  onUpdateLastSyncedLyrics: (content) => {
+    lastSyncedLyrics = content;
+  }
+});
+initStructureController({
+  getProject: () => activeProject,
+  getActiveSong: () => getActiveSong(),
+  canEdit: () => canUserEditProject(),
+  onRenderStructureWorkspace: () => {
+    renderStructureWorkspace();
+  },
+  onFocusStructureSection: (id) => {
+    focusStructureSection(id);
+  },
+  onDebounceSaveStructure: () => {
+    debounceSaveStructure();
+  }
+});
+initStructurePersistence({
+  getProject: () => activeProject,
+  getAuthToken: () => auth.getToken(),
+  canEdit: () => canUserEditProject(),
+  getActiveSong: () => getActiveSong(),
+  getStructureSections: () => getStructureSections(),
+  getWorkspaceContextGen: () => getWorkspaceContextGen(),
+  getStructureEditGen: () => getStructureEditGen(),
+  getStructureSaveGen: () => getStructureSaveGen(),
+  incrementStructureEditGen: () => incrementStructureEditGen(),
+  incrementStructureSaveGen: () => incrementStructureSaveGen(),
+  setStructureStatus: (status) => {
+    setStructureStatus(status);
+  },
+  onUpdateSignaling: async (projectId, payload, token) => {
+    return signaling.updateProjectWorkspace(projectId, payload, token);
+  },
+  onApplyAuthoritativeWorkspace: (area, workspace) => {
+    applyAuthoritativeWorkspaceUpdate(area, workspace);
+  },
+  onRenderProjectActivities: (project) => {
+    renderProjectActivities(project, auth.getUser());
+  }
+});
+initTasksController({
+  getProject: () => activeProject,
+  canEdit: () => canUserEditProject(),
+  onRenderTasksWorkspace: () => {
+    renderTasksWorkspace();
+  },
+  onDebounceSaveTasks: () => {
+    debounceSaveTasks();
+  },
+  onFlushSaveTasks: () => {
+    clearTasksSaveTimeout();
+    void saveTasksWorkspace();
+  }
+});
+initTasksPersistence({
+  getProject: () => activeProject,
+  getAuthToken: () => auth.getToken(),
+  canEdit: () => canUserEditProject(),
+  getTasks: () => getProjectTasks(),
+  getWorkspaceContextGen: () => getWorkspaceContextGen(),
+  getTasksEditGen: () => getTasksEditGen(),
+  getTasksSaveGen: () => getTasksSaveGen(),
+  incrementTasksEditGen: () => incrementTasksEditGen(),
+  incrementTasksSaveGen: () => incrementTasksSaveGen(),
+  setTasksStatus: (status) => {
+    setTasksStatus(status);
+  },
+  onUpdateSignaling: async (projectId, payload, token) => {
+    return signaling.updateProjectWorkspace(projectId, payload, token);
+  },
+  onApplyAuthoritativeWorkspace: (area, workspace) => {
+    applyAuthoritativeWorkspaceUpdate(area, workspace);
+  }
+});
+initTasksUiController({
+  getProject: () => activeProject,
+  canEdit: () => canUserEditProject(),
+  onUpdateSongCustomization: (songId, changes) => {
+    updateSongCustomization(songId, changes);
+  }
+});
 initSongDeleteController({
   canEdit: () => canUserEditProject(),
   hasActiveProject: () => Boolean(activeProject)
@@ -426,18 +559,127 @@ initSongSwitchController({
   onSaveNotesWorkspace: (content, bpm, key) => {
     void saveNotesWorkspace(content, bpm, key);
   },
-  hasStructureSaveTimeout: () => Boolean(structureSaveTimeout),
+  hasStructureSaveTimeout: () => hasStructureSaveTimeout(),
   clearStructureSaveTimeout: () => {
-    if (structureSaveTimeout) {
-      clearTimeout(structureSaveTimeout);
-      structureSaveTimeout = null;
-    }
+    clearStructureSaveTimeout();
   },
   onSaveStructureWorkspace: (sections) => {
-    void saveStructureWorkspace(sections);
+    void saveStructureWorkspace();
   },
   onSyncWorkspaceInputs: (forceAll) => {
     syncWorkspaceInputsFromProject(forceAll);
+  },
+  onSaveSongsWorkspace: () => {
+    return saveSongsWorkspace();
+  }
+});
+initSongsController({
+  getProject: () => activeProject,
+  canEdit: () => canUserEditProject(),
+  onSyncWorkspaceInputs: (forceAll) => {
+    syncWorkspaceInputsFromProject(forceAll);
+  },
+  onSaveSongsWorkspace: () => {
+    return saveSongsWorkspace();
+  },
+  onRenderTasksWorkspace: () => {
+    renderTasksWorkspace();
+  }
+});
+initWorkspaceSyncController({
+  getProject: () => activeProject,
+  getUser: () => auth.getUser(),
+  getActiveSong: () => getActiveSong(),
+  getActiveLyricsDoc: () => getActiveLyricsDoc(),
+  onRenderProjectSongsSelector: () => {
+    renderProjectSongsSelector();
+  },
+  onRenderLyricsDocTabs: (doc) => {
+    renderLyricsDocTabs(doc);
+  },
+  onUpdateLyricsStats: (html) => {
+    updateLyricsStatsFromHtml(html);
+  },
+  onSyncNotesControls: (values, force) => {
+    syncNotesControls(values, force);
+  },
+  onRenderStructureWorkspace: () => {
+    renderStructureWorkspace();
+  },
+  onRenderTasksWorkspace: () => {
+    renderTasksWorkspace();
+  },
+  onRenderProjectActivities: (project, user) => {
+    renderProjectActivities(project, user);
+  },
+  getLyricsStatus: () => getLyricsStatus(),
+  setLyricsStatus: (status) => {
+    setLyricsStatus(status);
+  },
+  hasLyricsSaveTimeout: () => lyricsSaveTimeout !== null,
+  getNotesStatus: () => getNotesStatus(),
+  setNotesStatus: (status) => {
+    setNotesStatus(status);
+  },
+  hasNotesSaveTimeout: () => notesSaveTimeout !== null,
+  getStructureStatus: () => getStructureStatus(),
+  setStructureStatus: (status) => {
+    setStructureStatus(status);
+  },
+  hasStructureSaveTimeout: () => hasStructureSaveTimeout(),
+  getTasksStatus: () => getTasksStatus(),
+  setTasksStatus: (status) => {
+    setTasksStatus(status);
+  },
+  hasTasksSaveTimeout: () => hasTasksSaveTimeout(),
+  onApplyWorkspacePermissions: () => {
+    applyWorkspacePermissions();
+  },
+  onUpdateLastSyncedValues: (values) => {
+    if (values.lyrics !== undefined) lastSyncedLyrics = values.lyrics;
+    if (values.notes !== undefined) lastSyncedNotes = values.notes;
+    if (values.bpm !== undefined) lastSyncedNotesBpm = values.bpm;
+    if (values.key !== undefined) lastSyncedNotesKey = values.key;
+  }
+});
+initWorkspaceFlushController({
+  getProject: () => activeProject,
+  hasLyricsSaveTimeout: () => lyricsSaveTimeout !== null,
+  clearLyricsSaveTimeout: () => {
+    if (lyricsSaveTimeout) {
+      clearTimeout(lyricsSaveTimeout);
+      lyricsSaveTimeout = null;
+    }
+  },
+  getActiveLyricsDoc: () => getActiveLyricsDoc(),
+  onSaveLyricsWorkspace: (content, id, title) => {
+    return saveLyricsWorkspace(content, id, title);
+  },
+  hasNotesSaveTimeout: () => notesSaveTimeout !== null,
+  clearNotesSaveTimeout: () => {
+    if (notesSaveTimeout) {
+      clearTimeout(notesSaveTimeout);
+      notesSaveTimeout = null;
+    }
+  },
+  getNotesFieldValues: () => getNotesFieldValues(),
+  onSaveNotesWorkspace: (content, bpm, key) => {
+    return saveNotesWorkspace(content, bpm, key);
+  },
+  hasStructureSaveTimeout: () => hasStructureSaveTimeout(),
+  clearStructureSaveTimeout: () => {
+    clearStructureSaveTimeout();
+  },
+  getStructureSections: () => getStructureSections(),
+  onSaveStructureWorkspace: (sections) => {
+    return saveStructureWorkspace();
+  },
+  hasTasksSaveTimeout: () => hasTasksSaveTimeout(),
+  clearTasksSaveTimeout: () => {
+    clearTasksSaveTimeout();
+  },
+  onSaveTasksWorkspace: () => {
+    return saveTasksWorkspace();
   },
   onSaveSongsWorkspace: () => {
     return saveSongsWorkspace();
@@ -4676,157 +4918,7 @@ async function saveSongsWorkspace(): Promise<boolean> {
   }
 }
 
-function getActiveLyricsDoc(): { id: string; title: string; content: string; updatedAt: number } {
-  const activeSong = getActiveSong();
-  return getActiveLyricsDocState(activeSong);
-}
 
-function duplicateLyricsDoc(docId: string): void {
-  if (!activeProject) return;
-  const activeSong = getActiveSong();
-  const newId = `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const result = mutateDuplicateLyricsDoc(activeProject, activeSong, docId, newId);
-  if (!result) return;
-  switchActiveLyricsDoc(newId);
-}
-
-function deleteLyricsDoc(docId: string): void {
-  if (!activeProject) return;
-  if (!canDeleteLyricsDoc(activeProject)) {
-    alert('A project must have at least one Lyrics document.');
-    return;
-  }
-  const targetDoc = findLyricsDocToDelete(activeProject, docId);
-  if (!targetDoc) return;
-  if (confirm(`Are you sure you want to delete "${targetDoc.title}"?`)) {
-    const result = mutateDeleteLyricsDoc(activeProject, docId);
-    if (result) {
-      switchActiveLyricsDoc(result.nextDocId);
-    }
-  }
-}
-
-function switchActiveLyricsDoc(docId: string): void {
-  if (!activeProject?.workspace?.lyrics) return;
-  activeProject.workspace.lyrics.activeDocumentId = docId;
-  const doc = getActiveLyricsDoc();
-  renderLyricsDocTabs(doc);
-
-  const projectEditor = $('project-lyrics-editor');
-  const sessionEditor = $('session-lyrics-editor');
-
-  if (projectEditor) projectEditor.innerHTML = sanitizeLyricsHtml(doc.content || '');
-  if (sessionEditor) sessionEditor.innerHTML = sanitizeLyricsHtml(doc.content || '');
-
-  lastSyncedLyrics = doc.content || '';
-  updateLyricsStatsFromHtml(doc.content || '');
-  lyricsEditGen++;
-  setLyricsStatus('saving');
-
-  // Debounce save active document switch
-  void saveLyricsWorkspace(doc.content || '', doc.id, doc.title);
-}
-
-function applyAuthoritativeWorkspaceUpdate(
-  savedArea: 'lyrics' | 'notes' | 'structure' | 'tasks',
-  serverWorkspace: any
-): void {
-  if (!activeProject || !serverWorkspace) return;
-  if (!activeProject.workspace) {
-    activeProject.workspace = {
-      activeSongId: 'song-1',
-      songs: [],
-      lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: Date.now() }], content: '', updatedAt: Date.now() },
-      notes: { revision: 1, content: '', updatedAt: Date.now() },
-      structure: { revision: 1, sections: [], updatedAt: Date.now() },
-      tasks: { revision: 1, tasks: [], updatedAt: Date.now() }
-    };
-  }
-
-  const activeSong = getActiveSong();
-
-  // Only apply authoritative state to the specific saved area
-  if (savedArea === 'lyrics' && serverWorkspace.lyrics) {
-    activeProject.workspace.lyrics = serverWorkspace.lyrics;
-    activeSong.lyrics = serverWorkspace.lyrics;
-    activeSong.updatedAt = Date.now();
-  } else if (savedArea === 'notes' && serverWorkspace.notes) {
-    activeProject.workspace.notes = serverWorkspace.notes;
-    activeSong.notes = serverWorkspace.notes;
-    activeSong.updatedAt = Date.now();
-  } else if (savedArea === 'structure' && serverWorkspace.structure) {
-    activeProject.workspace.structure = serverWorkspace.structure;
-    activeSong.structure = serverWorkspace.structure;
-    activeSong.updatedAt = Date.now();
-  } else if (savedArea === 'tasks' && serverWorkspace.tasks) {
-    activeProject.workspace.tasks = serverWorkspace.tasks;
-  }
-
-  if (serverWorkspace.songs && Array.isArray(serverWorkspace.songs)) {
-    activeProject.workspace.songs = serverWorkspace.songs;
-    if (serverWorkspace.activeSongId) {
-      activeProject.workspace.activeSongId = serverWorkspace.activeSongId;
-    }
-    renderProjectSongsSelector();
-  }
-}
-
-function syncWorkspaceInputsFromProject(force = false): void {
-  if (!activeProject) return;
-  const activeSong = getActiveSong();
-  renderProjectSongsSelector();
-
-  const ws = activeProject.workspace || {
-    lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: 0 }], content: '', updatedAt: 0 },
-    notes: { content: '', updatedAt: 0 }
-  };
-
-  const activeDoc = getActiveLyricsDoc();
-  renderLyricsDocTabs(activeDoc);
-  const lyricsHtml = activeDoc.content || '';
-  const notesContent = activeSong.notes?.content || '';
-  const notesBpm = activeSong.notes?.bpm || '';
-  const notesKey = activeSong.notes?.key || '';
-
-  if (force) {
-    lastSyncedLyrics = lyricsHtml;
-    lastSyncedNotes = notesContent;
-    lastSyncedNotesBpm = notesBpm;
-    lastSyncedNotesKey = notesKey;
-  }
-
-  const projectEditor = $('project-lyrics-editor');
-  const sessionEditor = $('session-lyrics-editor');
-  if (projectEditor && (force || document.activeElement !== projectEditor)) {
-    projectEditor.innerHTML = sanitizeLyricsHtml(lyricsHtml);
-  }
-  if (sessionEditor && (force || document.activeElement !== sessionEditor)) {
-    sessionEditor.innerHTML = sanitizeLyricsHtml(lyricsHtml);
-  }
-  updateLyricsStatsFromHtml(lyricsHtml);
-
-  syncNotesControls({ content: notesContent, bpm: notesBpm, key: notesKey }, force);
-
-  renderStructureWorkspace();
-  renderTasksWorkspace();
-  renderProjectActivities(activeProject ?? null, auth.getUser());
-
-  if (force || (getLyricsStatus() !== 'unsaved' && getLyricsStatus() !== 'saving' && lyricsSaveTimeout === null)) {
-    setLyricsStatus('saved');
-  }
-  if (force || (getNotesStatus() !== 'unsaved' && getNotesStatus() !== 'saving' && notesSaveTimeout === null)) {
-    setNotesStatus('saved');
-  }
-  if (force || (getStructureStatus() !== 'unsaved' && getStructureStatus() !== 'saving' && structureSaveTimeout === null)) {
-    setStructureStatus('saved');
-  }
-  if (force || (getTasksStatus() !== 'unsaved' && getTasksStatus() !== 'saving' && tasksSaveTimeout === null)) {
-    setTasksStatus('saved');
-  }
-
-  // Enforce read-only UI restrictions if user is viewer
-  applyWorkspacePermissions();
-}
 
 async function saveLyricsWorkspace(content: string, documentId?: string, title?: string): Promise<void> {
   if (!activeProject || !canUserEditProject()) return;
@@ -5047,213 +5139,7 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
   }
 }
 
-// ========================================================
-// PROJECT WORKSPACE: SONG STRUCTURE & ARRANGEMENT ENGINE
-// ========================================================
-let structureSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 
-function getStructureSections(): any[] {
-  const activeSong = getActiveSong();
-  return normalizeStructureSections(activeProject, activeSong);
-}
-
-function reorderStructureSectionToPosition(
-  sourceId: string,
-  targetId: string,
-  position: 'before' | 'after'
-): void {
-  const sections = getStructureSections();
-  const changed = mutateReorderStructureSectionToPosition(sections, sourceId, targetId, position);
-  if (!changed) return;
-
-  renderStructureWorkspace();
-  debounceSaveStructure();
-}
-
-function debounceSaveStructure(): void {
-  if (!canUserEditProject()) return;
-  incrementStructureEditGen();
-  setStructureStatus('saving');
-  if (structureSaveTimeout) clearTimeout(structureSaveTimeout);
-  structureSaveTimeout = setTimeout(() => {
-    structureSaveTimeout = null;
-    void saveStructureWorkspace();
-  }, 350);
-}
-
-async function saveStructureWorkspace(): Promise<void> {
-  if (!activeProject || !canUserEditProject()) return;
-  const token = auth.getToken();
-  if (!token) {
-    setStructureStatus('unsaved');
-    return;
-  }
-  const activeSong = getActiveSong();
-  const targetProjectId = activeProject.id;
-  const targetContextGen = getWorkspaceContextGen();
-  const targetEditGen = getStructureEditGen();
-  const targetSaveGen = incrementStructureSaveGen();
-  const baseRevision = activeSong.structure?.revision ?? 1;
-
-  try {
-    const sections = getStructureSections();
-    if (activeSong.structure) {
-      activeSong.structure.sections = sections;
-      activeSong.updatedAt = Date.now();
-    }
-    if (activeProject.workspace?.structure) {
-      activeProject.workspace.structure.sections = sections;
-    }
-
-    const payload: UpdateProjectWorkspaceRequest = {
-      activeSongId: activeSong.id,
-      songId: activeSong.id,
-      songs: activeProject.workspace?.songs,
-      structure: { baseRevision, sections }
-    };
-
-    let res = await signaling.updateProjectWorkspace(targetProjectId, payload, token);
-    if (!res?.ok && !res?.conflict && res?.code !== 'WORKSPACE_CONFLICT') {
-      try {
-        const httpRes = await projectsApi.updateProjectWorkspace(token, targetProjectId, payload);
-        if (httpRes?.workspace) {
-          res = { ok: true, workspace: httpRes.workspace, project: httpRes.project };
-        }
-      } catch (httpErr: any) {
-        console.warn('HTTP workspace update fallback failed for structure:', httpErr);
-      }
-    }
-    const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === getWorkspaceContextGen()) &&
-      (targetSaveGen === getStructureSaveGen()) &&
-      (targetEditGen === getStructureEditGen());
-    if (!isLatest) return;
-
-    if (res?.ok && res.workspace && activeProject) {
-      applyAuthoritativeWorkspaceUpdate('structure', res.workspace);
-      if (res.project?.activities) {
-        activeProject.activities = res.project.activities;
-        renderProjectActivities(activeProject);
-      }
-      setStructureStatus('saved');
-    } else if (res?.conflict || res?.code === 'WORKSPACE_CONFLICT') {
-      // Confirmed WORKSPACE_CONFLICT: preserve local edits exactly, keep unsaved, do not overwrite local content
-      setStructureStatus('unsaved');
-    } else {
-      setStructureStatus('unsaved');
-    }
-  } catch (err) {
-    console.error('Failed to save structure workspace:', err);
-    const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === getWorkspaceContextGen()) &&
-      (targetSaveGen === getStructureSaveGen()) &&
-      (targetEditGen === getStructureEditGen());
-    if (isLatest) {
-      setStructureStatus('unsaved');
-    }
-  }
-}
-
-const SECTION_TYPE_DEFAULT_BARS: Record<string, number> = {
-  'intro': 8,
-  'verse': 16,
-  'pre-chorus': 8,
-  'chorus': 16,
-  'post-chorus': 8,
-  'hook': 8,
-  'bridge': 8,
-  'breakdown': 8,
-  'solo': 8,
-  'outro': 8,
-  'custom': 8
-};
-
-const SECTION_TYPE_DEFAULT_NAMES: Record<string, string> = {
-  'intro': 'Intro',
-  'verse': 'Verse',
-  'pre-chorus': 'Pre-Chorus',
-  'chorus': 'Chorus',
-  'post-chorus': 'Post-Chorus',
-  'hook': 'Hook',
-  'bridge': 'Bridge',
-  'breakdown': 'Breakdown',
-  'solo': 'Solo',
-  'outro': 'Outro',
-  'custom': 'Custom'
-};
-
-function addStructureSection(type: string): void {
-  if (!canUserEditProject()) return;
-  const sections = getStructureSections();
-  const sameTypeCount = sections.filter((s) => s.type === type).length;
-  const baseLabel = SECTION_TYPE_DEFAULT_NAMES[type] || 'Section';
-  const name = sameTypeCount === 0 && (type === 'intro' || type === 'bridge' || type === 'outro' || type === 'hook')
-    ? baseLabel
-    : `${baseLabel} ${sameTypeCount + 1}`;
-  const bars = SECTION_TYPE_DEFAULT_BARS[type] || 8;
-  const newId = `sec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-
-  sections.push({
-    id: newId,
-    type: type as any,
-    name,
-    bars,
-    note: '',
-    updatedAt: Date.now()
-  });
-
-  renderStructureWorkspace();
-  debounceSaveStructure();
-
-  setTimeout(() => {
-    focusStructureSection(newId);
-  }, 50);
-}
-
-function moveStructureSection(id: string, direction: 'up' | 'down'): void {
-  if (!canUserEditProject()) return;
-  const sections = getStructureSections();
-  const idx = sections.findIndex((s) => s.id === id);
-  if (idx === -1) return;
-  const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-  if (targetIdx < 0 || targetIdx >= sections.length) return;
-
-  const [moved] = sections.splice(idx, 1);
-  sections.splice(targetIdx, 0, moved);
-  renderStructureWorkspace();
-  debounceSaveStructure();
-}
-
-function duplicateStructureSection(id: string): void {
-  if (!canUserEditProject()) return;
-  const sections = getStructureSections();
-  const idx = sections.findIndex((s) => s.id === id);
-  if (idx === -1) return;
-  const source = sections[idx];
-  const newId = `sec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-
-  sections.splice(idx + 1, 0, {
-    id: newId,
-    type: source.type,
-    name: `${source.name} (Copy)`,
-    bars: source.bars,
-    note: source.note || '',
-    updatedAt: Date.now()
-  });
-
-  renderStructureWorkspace();
-  debounceSaveStructure();
-}
-
-function deleteStructureSection(id: string): void {
-  if (!canUserEditProject()) return;
-  const sections = getStructureSections();
-  const idx = sections.findIndex((s) => s.id === id);
-  if (idx === -1) return;
-  sections.splice(idx, 1);
-  renderStructureWorkspace();
-  debounceSaveStructure();
-}
 
 // Real-Time Socket Workspace Sync
 signaling.on('project:workspace:synced', (data: { projectId: string; workspace: any; activities?: any[]; updatedBy?: string; updatedByName?: string }) => {
@@ -5456,501 +5342,7 @@ function getProjectTasks(): ProjectTaskItem[] {
   return normalizeProjectTasks(activeProject);
 }
 
-function debounceSaveTasks(): void {
-  incrementTasksEditGen();
-  setTasksStatus('saving');
-  if (tasksSaveTimeout) clearTimeout(tasksSaveTimeout);
-  tasksSaveTimeout = setTimeout(() => {
-    tasksSaveTimeout = null;
-    void saveTasksWorkspace();
-  }, 350);
-}
 
-async function flushAllWorkspacePendingSaves(): Promise<void> {
-  if (!activeProject?.workspace) return;
-  const promises: Promise<any>[] = [];
-
-  if (lyricsSaveTimeout) {
-    clearTimeout(lyricsSaveTimeout);
-    lyricsSaveTimeout = null;
-    const activeDoc = getActiveLyricsDoc();
-    promises.push(saveLyricsWorkspace(activeDoc.content, activeDoc.id, activeDoc.title));
-  }
-  if (notesSaveTimeout) {
-    clearTimeout(notesSaveTimeout);
-    notesSaveTimeout = null;
-    const vals = getNotesFieldValues();
-    promises.push(saveNotesWorkspace(vals.content, vals.bpm, vals.key));
-  }
-  if (structureSaveTimeout) {
-    clearTimeout(structureSaveTimeout);
-    structureSaveTimeout = null;
-    const sections = activeProject.workspace.structure?.sections || [];
-    promises.push(saveStructureWorkspace(sections));
-  }
-  if (tasksSaveTimeout) {
-    clearTimeout(tasksSaveTimeout);
-    tasksSaveTimeout = null;
-  }
-  promises.push(saveTasksWorkspace());
-
-  if (activeProject.workspace.songs) {
-    promises.push(saveSongsWorkspace());
-  }
-
-  await Promise.allSettled(promises);
-}
-
-async function saveTasksWorkspace(): Promise<void> {
-  if (!activeProject) return;
-  const token = auth.getToken();
-  if (!token) {
-    setTasksStatus('unsaved');
-    return;
-  }
-  const targetProjectId = activeProject.id;
-  const targetContextGen = getWorkspaceContextGen();
-  const targetEditGen = getTasksEditGen();
-  const targetSaveGen = incrementTasksSaveGen();
-  const baseRevision = activeProject.workspace?.tasks?.revision ?? 1;
-  const tasks = getProjectTasks().map((t) => ({
-    id: t.id,
-    title: t.title?.trim() || 'Untitled Task',
-    status: t.status || 'todo',
-    assigneeId: t.assigneeId || undefined,
-    assigneeName: t.assigneeName || undefined,
-    songId: t.songId || undefined,
-    songTitle: t.songTitle || undefined,
-    stage: t.stage || undefined,
-    subtasks: Array.isArray(t.subtasks) && t.subtasks.length > 0 ? t.subtasks.map((st) => ({
-      id: st.id,
-      title: st.title.trim(),
-      done: Boolean(st.done)
-    })) : undefined,
-    note: t.note && t.note.trim() ? t.note.trim() : undefined,
-    dueDate: t.dueDate || undefined,
-    createdAt: t.createdAt || Date.now(),
-    completedAt: t.completedAt || undefined,
-    updatedAt: t.updatedAt || Date.now()
-  }));
-
-  try {
-    let res = await signaling.updateProjectWorkspace(targetProjectId, {
-      tasks: { baseRevision, tasks }
-    }, token);
-    if (!res?.ok && !res?.conflict && res?.code !== 'WORKSPACE_CONFLICT') {
-      try {
-        const httpRes = await projectsApi.updateProjectWorkspace(token, targetProjectId, {
-          tasks: { baseRevision, tasks }
-        });
-        if (httpRes?.workspace) {
-          res = { ok: true, workspace: httpRes.workspace, project: httpRes.project };
-        }
-      } catch (httpErr: any) {
-        console.warn('HTTP workspace update fallback failed for tasks:', httpErr);
-      }
-    }
-    // If the server responded with a newer revision, always record it to prevent 409 conflict loops
-    if (res?.ok && res.workspace?.tasks?.revision && activeProject?.workspace?.tasks) {
-      activeProject.workspace.tasks.revision = res.workspace.tasks.revision;
-    }
-
-    const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === getWorkspaceContextGen()) &&
-      (targetSaveGen === getTasksSaveGen()) &&
-      (targetEditGen === getTasksEditGen());
-    if (!isLatest) return;
-
-    if (res?.ok && res.workspace && activeProject) {
-      applyAuthoritativeWorkspaceUpdate('tasks', res.workspace);
-      setTasksStatus('saved');
-    } else if (res?.conflict || res?.code === 'WORKSPACE_CONFLICT') {
-      if (res.workspace?.tasks?.revision && activeProject?.workspace?.tasks) {
-        activeProject.workspace.tasks.revision = res.workspace.tasks.revision;
-      } else if (res.currentRevision && activeProject?.workspace?.tasks) {
-        activeProject.workspace.tasks.revision = res.currentRevision;
-      }
-      setTasksStatus('saving');
-      debounceSaveTasks();
-    } else {
-      setTasksStatus('unsaved');
-    }
-  } catch (err) {
-    console.error('Failed to save tasks workspace:', err);
-    const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === getWorkspaceContextGen()) &&
-      (targetSaveGen === getTasksSaveGen()) &&
-      (targetEditGen === getTasksEditGen());
-    if (isLatest) {
-      setTasksStatus('unsaved');
-    }
-  }
-}
-
-function createTask(
-  title: string,
-  assigneeId?: string,
-  assigneeName?: string,
-  dueDate?: string,
-  note?: string,
-  songId?: string,
-  songTitle?: string,
-  stage?: ProjectTaskStage
-): void {
-  if (!canUserEditProject()) return;
-  const tasks = getProjectTasks();
-  const newId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const created = mutateCreateTask(
-    tasks,
-    title,
-    newId,
-    assigneeId,
-    assigneeName,
-    dueDate,
-    note,
-    songId,
-    songTitle,
-    stage
-  );
-  if (!created) return;
-  renderTasksWorkspace();
-  debounceSaveTasks();
-}
-
-function quickToggleTask(id: string): void {
-  if (!canUserEditProject()) return;
-  const tasks = getProjectTasks();
-  const changed = mutateQuickToggleTask(tasks, id);
-  if (!changed) return;
-  renderTasksWorkspace();
-  debounceSaveTasks();
-}
-
-function updateTaskStatus(id: string, status: ProjectTaskStatus): void {
-  if (!canUserEditProject()) return;
-  const tasks = getProjectTasks();
-  const changed = mutateUpdateTaskStatus(tasks, id, status);
-  if (!changed) return;
-  renderTasksWorkspace();
-  debounceSaveTasks();
-}
-
-function deleteTask(id: string): void {
-  if (!canUserEditProject()) return;
-  const tasks = getProjectTasks();
-  const changed = mutateDeleteTask(tasks, id);
-  if (!changed) return;
-  renderTasksWorkspace();
-  debounceSaveTasks();
-}
-
-function duplicateTask(taskId: string): void {
-  const tasks = getProjectTasks();
-  const now = Date.now();
-  const newTaskId = `task_${now}_${Math.random().toString(36).substring(2, 7)}`;
-  const copy = mutateDuplicateTask(
-    tasks,
-    taskId,
-    newTaskId,
-    () => `sub_${now}_${Math.random().toString(36).substring(2, 6)}`,
-    now
-  );
-  if (!copy) return;
-  renderTasksWorkspace();
-  debounceSaveTasks();
-}
-
-function updateTaskField(
-  taskId: string,
-  changes: TaskFieldUpdate,
-  options?: { immediateFlush?: boolean; rerender?: boolean }
-): void {
-  if (!canUserEditProject()) return;
-  const tasks = getProjectTasks();
-  const task = tasks.find((t) => t.id === taskId);
-  if (!task) return;
-
-  if (changes.title !== undefined) task.title = changes.title;
-  if (changes.note !== undefined) task.note = changes.note || undefined;
-  if (changes.dueDate !== undefined) task.dueDate = changes.dueDate || undefined;
-  if (changes.stage !== undefined) task.stage = changes.stage || undefined;
-  if (changes.songId !== undefined) task.songId = changes.songId || undefined;
-  if (changes.songTitle !== undefined) task.songTitle = changes.songTitle || undefined;
-  if (changes.assigneeId !== undefined) task.assigneeId = changes.assigneeId || undefined;
-  if (changes.assigneeName !== undefined) task.assigneeName = changes.assigneeName || undefined;
-  if (changes.priority !== undefined) task.priority = changes.priority;
-
-  task.updatedAt = Date.now();
-
-  if (options?.rerender) {
-    renderTasksWorkspace();
-  }
-
-  if (options?.immediateFlush) {
-    if (tasksSaveTimeout) {
-      clearTimeout(tasksSaveTimeout);
-      tasksSaveTimeout = null;
-    }
-    void saveTasksWorkspace();
-  } else {
-    debounceSaveTasks();
-  }
-}
-
-function reorderTasks(
-  draggedTaskId: string,
-  targetTaskId: string,
-  insertAfter: boolean,
-  inheritedChanges?: {
-    songId?: string | null;
-    songTitle?: string | null;
-    stage?: ProjectTaskStage | null;
-    status?: ProjectTaskStatus;
-  }
-): void {
-  if (!canUserEditProject()) return;
-  const tasks = getProjectTasks();
-  const draggedIndex = tasks.findIndex((t) => t.id === draggedTaskId);
-  const targetIndex = tasks.findIndex((t) => t.id === targetTaskId);
-  if (draggedIndex === -1 || targetIndex === -1) return;
-
-  const [draggedItem] = tasks.splice(draggedIndex, 1);
-
-  if (inheritedChanges) {
-    if (inheritedChanges.songId !== undefined) {
-      draggedItem.songId = inheritedChanges.songId || undefined;
-      draggedItem.songTitle = inheritedChanges.songTitle || undefined;
-    }
-    if (inheritedChanges.stage !== undefined) {
-      draggedItem.stage = inheritedChanges.stage || undefined;
-    }
-    if (inheritedChanges.status !== undefined) {
-      draggedItem.status = inheritedChanges.status;
-    }
-  }
-
-  const newTargetIndex = tasks.findIndex((t) => t.id === targetTaskId);
-  const insertIndex = insertAfter ? newTargetIndex + 1 : newTargetIndex;
-  tasks.splice(insertIndex, 0, draggedItem);
-
-  draggedItem.updatedAt = Date.now();
-  renderTasksWorkspace();
-  debounceSaveTasks();
-}
-
-function moveTaskToGroup(
-  draggedTaskId: string,
-  groupChanges: {
-    songId?: string | null;
-    songTitle?: string | null;
-    stage?: ProjectTaskStage | null;
-  }
-): void {
-  if (!canUserEditProject()) return;
-  const tasks = getProjectTasks();
-  const draggedTask = tasks.find((t) => t.id === draggedTaskId);
-  if (!draggedTask) return;
-
-  if (groupChanges.songId !== undefined) {
-    draggedTask.songId = groupChanges.songId || undefined;
-    draggedTask.songTitle = groupChanges.songTitle || undefined;
-  }
-  if (groupChanges.stage !== undefined) {
-    draggedTask.stage = groupChanges.stage || undefined;
-  }
-
-  draggedTask.updatedAt = Date.now();
-  renderTasksWorkspace();
-  debounceSaveTasks();
-}
-
-function addSubtask(taskId: string, title: string): void {
-  if (!canUserEditProject()) return;
-  const trimmed = title.trim();
-  if (!trimmed) return;
-  const tasks = getProjectTasks();
-  const task = tasks.find((t) => t.id === taskId);
-  if (!task) return;
-  if (!Array.isArray(task.subtasks)) task.subtasks = [];
-  task.subtasks.push({
-    id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    title: trimmed,
-    done: false
-  });
-  task.updatedAt = Date.now();
-  renderTasksWorkspace();
-  debounceSaveTasks();
-}
-
-function toggleSubtask(taskId: string, subtaskId: string): void {
-  if (!canUserEditProject()) return;
-  const tasks = getProjectTasks();
-  const task = tasks.find((t) => t.id === taskId);
-  if (!task || !Array.isArray(task.subtasks)) return;
-  const sub = task.subtasks.find((s) => s.id === subtaskId);
-  if (!sub) return;
-  sub.done = !sub.done;
-  task.updatedAt = Date.now();
-  renderTasksWorkspace();
-  debounceSaveTasks();
-}
-
-function deleteSubtask(taskId: string, subtaskId: string): void {
-  if (!canUserEditProject()) return;
-  const tasks = getProjectTasks();
-  const task = tasks.find((t) => t.id === taskId);
-  if (!task || !Array.isArray(task.subtasks)) return;
-  task.subtasks = task.subtasks.filter((s) => s.id !== subtaskId);
-  task.updatedAt = Date.now();
-  renderTasksWorkspace();
-  debounceSaveTasks();
-}
-
-function updateSubtaskTitle(taskId: string, subtaskId: string, title: string): void {
-  if (!canUserEditProject()) return;
-  const tasks = getProjectTasks();
-  const task = tasks.find((t) => t.id === taskId);
-  if (!task || !Array.isArray(task.subtasks)) return;
-  const sub = task.subtasks.find((s) => s.id === subtaskId);
-  if (!sub) return;
-  sub.title = title;
-  task.updatedAt = Date.now();
-  debounceSaveTasks();
-}
-
-function updateSongCustomization(songId: string, changes: { icon?: string; color?: string }): void {
-  if (!activeProject?.workspace?.songs) return;
-  const changed = mutateSongCustomization(activeProject, songId, changes);
-  if (!changed) return;
-
-  void saveSongsWorkspace();
-  renderTasksWorkspace();
-  renderProjectSongsSelector();
-}
-
-// Initialize Tasks UI domain
-initTasksUi({
-  getTasks: () => getProjectTasks(),
-  getSongs: () => activeProject?.workspace?.songs || [],
-  getCollaborators: () => {
-    const list: TaskCollaboratorOption[] = [];
-    if (activeProject?.ownerId) {
-      list.push({
-        userId: activeProject.ownerId,
-        displayName: activeProject.ownerDisplayName || activeProject.ownerUsername || 'Owner',
-        username: activeProject.ownerUsername,
-        isOwner: true
-      });
-    }
-    if (Array.isArray(activeProject?.collaborators)) {
-      for (const c of activeProject.collaborators) {
-        if (c.userId !== activeProject?.ownerId) {
-          list.push({
-            userId: c.userId,
-            displayName: c.displayName,
-            username: c.username,
-            isOwner: false
-          });
-        }
-      }
-    }
-    return list;
-  },
-  canEdit: () => canUserEditProject(),
-  onCreateTask: (data) => {
-    createTask(
-      data.title,
-      data.assigneeId,
-      data.assigneeName,
-      data.dueDate,
-      data.note,
-      data.songId,
-      data.songTitle,
-      data.stage
-    );
-  },
-  onLiveUpdateTaskField: (taskId, changes) => {
-    updateTaskField(taskId, changes, { rerender: false });
-  },
-  onCommitTaskField: (taskId, changes, options) => {
-    updateTaskField(taskId, changes, options);
-  },
-  onToggleTaskStatus: (taskId) => {
-    quickToggleTask(taskId);
-  },
-  onUpdateTaskStatus: (taskId, status) => {
-    updateTaskStatus(taskId, status);
-  },
-  onDeleteTask: (taskId) => {
-    deleteTask(taskId);
-  },
-  onDuplicateTask: (taskId) => {
-    duplicateTask(taskId);
-  },
-  onReorderTasks: (draggedTaskId, targetTaskId, insertAfter, inheritedChanges) => {
-    reorderTasks(draggedTaskId, targetTaskId, insertAfter, inheritedChanges);
-  },
-  onMoveTaskToGroup: (draggedTaskId, groupChanges) => {
-    moveTaskToGroup(draggedTaskId, groupChanges);
-  },
-  onAddSubtask: (taskId, title) => {
-    addSubtask(taskId, title);
-  },
-  onToggleSubtask: (taskId, subtaskId) => {
-    toggleSubtask(taskId, subtaskId);
-  },
-  onDeleteSubtask: (taskId, subtaskId) => {
-    deleteSubtask(taskId, subtaskId);
-  },
-  onLiveUpdateSubtask: (taskId, subtaskId, title) => {
-    updateSubtaskTitle(taskId, subtaskId, title);
-  },
-  onUpdateSongCustomization: (songId, changes) => {
-    updateSongCustomization(songId, changes);
-  }
-});
-
-// Initialize Songs UI domain
-initSongsUi({
-  getSongs: () => activeProject?.workspace?.songs || [],
-  getActiveSongId: () => activeProject?.workspace?.activeSongId,
-  getProjectNotesFallback: () => activeProject?.workspace?.notes ? { bpm: activeProject.workspace.notes.bpm, key: activeProject.workspace.notes.key } : null,
-  canEdit: () => canUserEditProject(),
-  onCreateSong: (title) => {
-    createNewSong(title);
-  },
-  onSelectSong: (songId) => {
-    switchActiveSong(songId);
-  },
-  onOpenSongStudio: (songId, targetTab) => {
-    openSongStudio(songId, targetTab || 'lyrics');
-  },
-  onCloseSongStudio: () => {
-    closeSongStudio();
-  },
-  onSwitchSongInStudio: (songId) => {
-    switchActiveSong(songId);
-    openSongStudio(songId, getCurrentSongStudioTab());
-  },
-  onRenameSong: (songId, newTitle) => {
-    renameSong(songId, newTitle);
-  },
-  onDuplicateSong: (songId) => {
-    duplicateSong(songId);
-  },
-  onToggleArchiveSong: (songId, isArchived) => {
-    toggleArchiveSong(songId, isArchived);
-  },
-  onDeleteSong: (songId) => {
-    const song = activeProject?.workspace?.songs?.find((s) => s.id === songId);
-    if (song) {
-      openDeleteSongModal(song);
-    }
-  },
-  onReorderSongs: (sourceId, targetId) => {
-    reorderSongs(sourceId, targetId);
-  }
-});
 
 // ========================================================
 // ACTIVITY HISTORY & SESSION CHAT SUBSYSTEMS
