@@ -8,12 +8,21 @@ import {
   initRecentSessions,
   loadRecentSessions
 } from './recentSessions';
+import { initSessionStats } from './sessionStats';
 import {
-  initSessionStats,
-  openStatsDialog,
-  refreshStatsModal,
-  stopStatsTimer
-} from './sessionStats';
+  initProfileUi,
+  applyAvatarToElement,
+  highlightActiveSwatch,
+  updateProfileLivePreview,
+  switchProfileSubtab,
+  showProfileFeedback,
+  toggleAccountMenu,
+  closeAccountMenu,
+  getEditingAvatarColor,
+  setEditingAvatarColor,
+  getEditingAvatarUrl,
+  setEditingAvatarUrl
+} from './profileUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -106,6 +115,9 @@ initRecentSessions({
   onNavigateToHome: () => {
     showView('home-view');
   }
+});
+initProfileUi({
+  getUser: () => auth.getUser()
 });
 let myIdentity: ParticipantIdentity | null = null;
 let peerIdentity: ParticipantIdentity | null = null;
@@ -3462,93 +3474,6 @@ function updateParticipantIdentityUi(): void {
   renderSessionViewMenu();
 }
 
-let editingAvatarColor = '#06b6d4';
-let editingAvatarUrl: string | undefined = undefined;
-
-function applyAvatarToElement(
-  el: HTMLElement | null,
-  displayName: string,
-  avatarColor = '#06b6d4',
-  avatarUrl?: string
-): void {
-  if (!el) return;
-  const initials = displayName
-    ? displayName.trim().split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
-    : 'U';
-  if (avatarUrl) {
-    el.textContent = '';
-    el.style.backgroundImage = `url("${avatarUrl}")`;
-    el.style.backgroundSize = 'cover';
-    el.style.backgroundPosition = 'center';
-    el.style.backgroundColor = 'transparent';
-  } else {
-    const safeColor = safeAvatarColor(avatarColor, '#06b6d4');
-    el.textContent = initials;
-    el.style.backgroundImage = 'none';
-    el.style.backgroundColor = safeColor;
-    el.style.background = `linear-gradient(135deg, ${safeColor}, #0284c7)`;
-  }
-}
-
-function highlightActiveSwatch(color: string): void {
-  const swatches = document.querySelectorAll<HTMLButtonElement>('.color-swatch-btn');
-  swatches.forEach((swatch) => {
-    const swatchColor = swatch.dataset.color?.toLowerCase();
-    swatch.classList.toggle('active', swatchColor === color.toLowerCase());
-  });
-}
-
-function updateProfileLivePreview(): void {
-  const nameInput = $<HTMLInputElement>('profile-edit-display-name')?.value.trim();
-  const roleInput = $<HTMLInputElement>('profile-edit-role')?.value.trim();
-  const locInput = $<HTMLInputElement>('profile-edit-location')?.value.trim();
-  const dawInput = $<HTMLSelectElement>('profile-edit-daw')?.value.trim();
-
-  const user = auth.getUser();
-  const name = nameInput || user?.displayName || 'Musician';
-  setText('profile-display-name', name);
-  setText('profile-role-text', roleInput || 'Musician');
-
-  const locChip = $('profile-location-chip');
-  if (locChip) {
-    locChip.classList.toggle('hidden', !locInput);
-    setText('profile-location-text', locInput);
-  }
-
-  const dawChip = $('profile-daw-chip');
-  if (dawChip) {
-    dawChip.classList.toggle('hidden', !dawInput);
-    setText('profile-daw-text', dawInput);
-  }
-
-  const circle = $('profile-avatar-circle');
-  applyAvatarToElement(circle, name, editingAvatarColor, editingAvatarUrl);
-  const largePrev = $('avatar-upload-preview');
-  applyAvatarToElement(largePrev, name, editingAvatarColor, editingAvatarUrl);
-}
-
-function switchProfileSubtab(tabName: 'info' | 'avatar' | 'security'): void {
-  const tabs = ['info', 'avatar', 'security'] as const;
-  for (const t of tabs) {
-    const isCur = t === tabName;
-    $(`profile-subtab-${t}`)?.classList.toggle('active', isCur);
-    $(`profile-panel-${t}`)?.classList.toggle('hidden', !isCur);
-  }
-}
-
-function showProfileFeedback(msg: string, type: 'error' | 'success' | 'info'): void {
-  const el = $('profile-feedback-msg');
-  if (!el) return;
-  el.textContent = msg;
-  el.className = `message ${type}`;
-  el.classList.remove('hidden');
-  if (type === 'success') {
-    setTimeout(() => {
-      el.classList.add('hidden');
-    }, 4000);
-  }
-}
-
 // User Authentication, Personalized Home & Identity Management
 function updateAuthUi(user: UserProfile | null, guestName: string): void {
   const isLogged = Boolean(user);
@@ -3647,8 +3572,8 @@ function updateAuthUi(user: UserProfile | null, guestName: string): void {
 
   if (isLogged && user) {
     setText('auth-dialog-title', 'Account Profile');
-    editingAvatarColor = safeAvatarColor(user.avatarColor, '#06b6d4');
-    editingAvatarUrl = user.avatarUrl;
+    setEditingAvatarColor(safeAvatarColor(user.avatarColor, '#06b6d4'));
+    setEditingAvatarUrl(user.avatarUrl);
 
     // Populate profile form fields
     const nameInp = $<HTMLInputElement>('profile-edit-display-name');
@@ -3677,8 +3602,8 @@ function updateAuthUi(user: UserProfile | null, guestName: string): void {
     // Set preview card & avatar
     setText('profile-username', `@${user.username}`);
     setText('profile-email', user.email);
-    highlightActiveSwatch(editingAvatarColor);
-    $('btn-remove-avatar-photo')?.classList.toggle('hidden', !Boolean(editingAvatarUrl));
+    highlightActiveSwatch(getEditingAvatarColor());
+    $('btn-remove-avatar-photo')?.classList.toggle('hidden', !Boolean(getEditingAvatarUrl()));
     $('profile-feedback-msg')?.classList.add('hidden');
 
     switchProfileSubtab('info');
@@ -3714,63 +3639,6 @@ function switchAuthViewTab(tab: 'login' | 'register'): void {
 }
 
 let lastActiveViewBeforeSettings = 'home-view';
-
-function toggleAccountMenu(triggerEl?: HTMLElement | null): void {
-  const menu = $('account-menu');
-  if (!menu) return;
-  const isHidden = menu.classList.contains('hidden');
-  if (!isHidden) {
-    closeAccountMenu();
-    return;
-  }
-  const user = auth.getUser();
-  const guestActions = $('account-menu-guest-actions');
-  const userActions = $('account-menu-user-actions');
-  const logoutDivider = $('account-menu-logout-divider');
-  const logoutGroup = $('account-menu-logout-group');
-
-  if (user) {
-    setText('account-menu-name', user.displayName || user.username);
-    setText('account-menu-handle', `@${user.username}`);
-    const roleEl = $('account-menu-role');
-    if (roleEl) {
-      roleEl.textContent = user.role || 'Musician';
-      roleEl.classList.remove('hidden');
-    }
-    const avatarBg = safeAvatarColor(user.avatarColor, '#38bdf8');
-    applyAvatarToElement($('account-menu-avatar'), user.displayName || user.username, avatarBg, user.avatarUrl);
-    userActions?.classList.remove('hidden');
-    guestActions?.classList.add('hidden');
-    logoutDivider?.classList.remove('hidden');
-    logoutGroup?.classList.remove('hidden');
-  } else {
-    setText('account-menu-name', 'Guest Musician');
-    setText('account-menu-handle', 'Not signed in');
-    $('account-menu-role')?.classList.add('hidden');
-    const menuAvatar = $('account-menu-avatar');
-    if (menuAvatar) {
-      menuAvatar.style.background = 'var(--bg-elevated)';
-      menuAvatar.style.backgroundImage = 'none';
-      menuAvatar.innerHTML = icons.user({ size: 18 });
-    }
-    userActions?.classList.add('hidden');
-    guestActions?.classList.remove('hidden');
-    logoutDivider?.classList.add('hidden');
-    logoutGroup?.classList.add('hidden');
-  }
-
-  if (triggerEl) {
-    const rect = triggerEl.getBoundingClientRect();
-    menu.style.top = `${rect.bottom + 6}px`;
-    menu.style.right = `${Math.max(12, window.innerWidth - rect.right)}px`;
-    menu.style.left = 'auto';
-  }
-  menu.classList.remove('hidden');
-}
-
-function closeAccountMenu(): void {
-  $('account-menu')?.classList.add('hidden');
-}
 
 function openSettings(section: 'general' | 'audio' | 'video' | 'screenshare' | 'account' = 'account'): void {
   closeAccountMenu();
@@ -4218,73 +4086,6 @@ $('btn-auth-logout')?.addEventListener('click', async () => {
   showView('home-view');
 });
 
-// Profile Sub-tab Navigation
-$('profile-subtab-info')?.addEventListener('click', () => switchProfileSubtab('info'));
-$('profile-subtab-avatar')?.addEventListener('click', () => switchProfileSubtab('avatar'));
-$('profile-subtab-security')?.addEventListener('click', () => switchProfileSubtab('security'));
-
-// Live preview inputs
-$('profile-edit-display-name')?.addEventListener('input', () => updateProfileLivePreview());
-$('profile-edit-role')?.addEventListener('input', () => updateProfileLivePreview());
-$('profile-edit-location')?.addEventListener('input', () => updateProfileLivePreview());
-$('profile-edit-daw')?.addEventListener('change', () => updateProfileLivePreview());
-
-// Quick role presets
-document.querySelectorAll<HTMLButtonElement>('.btn-role-preset').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const role = btn.dataset.role || '';
-    const roleInp = $<HTMLInputElement>('profile-edit-role');
-    if (roleInp) {
-      roleInp.value = role;
-      updateProfileLivePreview();
-    }
-  });
-});
-
-// Avatar Color Swatches
-document.querySelectorAll<HTMLButtonElement>('.color-swatch-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const color = btn.dataset.color;
-    if (color) {
-      editingAvatarColor = color;
-      highlightActiveSwatch(color);
-      updateProfileLivePreview();
-    }
-  });
-});
-
-// Avatar Photo Upload & Removal
-$('btn-trigger-avatar-upload')?.addEventListener('click', () => {
-  switchProfileSubtab('avatar');
-  $<HTMLInputElement>('profile-avatar-file-input')?.click();
-});
-
-$('profile-avatar-file-input')?.addEventListener('change', (e) => {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-  if (file.size > 2 * 1024 * 1024) {
-    showProfileFeedback('Image file is too large. Please select an image under 2MB.', 'error');
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = () => {
-    editingAvatarUrl = reader.result as string;
-    $('btn-remove-avatar-photo')?.classList.remove('hidden');
-    updateProfileLivePreview();
-    showProfileFeedback('Photo loaded. Click "Save Profile Changes" to apply.', 'info');
-  };
-  reader.readAsDataURL(file);
-});
-
-$('btn-remove-avatar-photo')?.addEventListener('click', () => {
-  editingAvatarUrl = undefined;
-  const fileInput = $<HTMLInputElement>('profile-avatar-file-input');
-  if (fileInput) fileInput.value = '';
-  $('btn-remove-avatar-photo')?.classList.add('hidden');
-  updateProfileLivePreview();
-  showProfileFeedback('Photo removed. Click "Save Profile Changes" to apply.', 'info');
-});
-
 // Save Profile Changes
 $('btn-profile-save')?.addEventListener('click', async () => {
   const displayName = $<HTMLInputElement>('profile-edit-display-name')?.value.trim();
@@ -4342,8 +4143,8 @@ $('btn-profile-save')?.addEventListener('click', async () => {
       genres: genres.length > 0 ? genres : undefined,
       bio: bio || undefined,
       socialHandle: social || undefined,
-      avatarColor: editingAvatarColor,
-      avatarUrl: editingAvatarUrl || ''
+      avatarColor: getEditingAvatarColor(),
+      avatarUrl: getEditingAvatarUrl() || ''
     };
 
     if (newPass && curPass) {
