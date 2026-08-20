@@ -5930,7 +5930,7 @@ initSongsUi({
   },
   onSwitchSongInStudio: (songId) => {
     switchActiveSong(songId);
-    openSongStudio(songId, currentSongStudioTab);
+    openSongStudio(songId, getCurrentSongStudioTab());
   },
   onRenameSong: (songId, newTitle) => {
     renameSong(songId, newTitle);
@@ -5950,23 +5950,6 @@ initSongsUi({
   onReorderSongs: (sourceId, targetId) => {
     reorderSongs(sourceId, targetId);
   }
-});
-
-// Song Studio Tab Buttons (Lyrics, Structure, Notes)
-document.querySelectorAll<HTMLButtonElement>('.song-studio-tab-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const targetSongTab = btn.dataset.songTab as 'lyrics' | 'structure' | 'notes';
-    if (!targetSongTab) return;
-    currentSongStudioTab = targetSongTab;
-    document.querySelectorAll<HTMLButtonElement>('.song-studio-tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    $('project-panel-lyrics')?.classList.toggle('hidden', targetSongTab !== 'lyrics');
-    $('project-panel-structure')?.classList.toggle('hidden', targetSongTab !== 'structure');
-    $('project-panel-notes')?.classList.toggle('hidden', targetSongTab !== 'notes');
-    if (targetSongTab === 'lyrics') {
-      setTimeout(() => updateLyricsDocumentPagination(), 20);
-    }
-    applyWorkspacePermissions();
-  });
 });
 
 // ========================================================
