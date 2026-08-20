@@ -446,6 +446,15 @@ import {
   removeChannelEqConfig
 } from './media/channelEq';
 import {
+  type StudioMixerChannel,
+  type PersistentStudioMixerChannel,
+  type PersistentStudioMixerMap,
+  getLocalMicChannelId,
+  parseLocalMicId,
+  serializeStudioMixerConfig,
+  computeMixerRouting
+} from './media/studioMixerLogic';
+import {
   readPreferences,
   savePreferences as persistPreferences,
   type Preferences,
@@ -3218,19 +3227,6 @@ initSessionChat({ getSessionCode: () => currentCode, signaling });
 // ========================================================
 // LOGIC PRO STYLE STUDIO MULTITRACK MIXER SUBSYSTEM
 // ========================================================
-interface StudioMixerChannel {
-  id: string;
-  name: string;
-  icon: string;
-  color: string;
-  volume: number; // 0 to 1.5 (1.0 = 0 dB)
-  pan: number; // -1 to 1 (0 = Center)
-  muted: boolean;
-  soloed: boolean;
-  fx: string[];
-  isMaster?: boolean;
-  section?: 'local' | 'remote';
-}
 
 const STUDIO_ICONS: Record<string, { label: string; svg: string }> = {
   mic: {
@@ -3344,18 +3340,6 @@ const STUDIO_ICONS: Record<string, { label: string; svg: string }> = {
   }
 };
 
-interface PersistentStudioMixerChannel {
-  name?: string;
-  icon?: string;
-  color?: string;
-  volume?: number;
-  pan?: number;
-  fx?: string[];
-  eq?: Record<string, ChannelEqConfig>;
-}
-
-type PersistentStudioMixerMap = Record<string, PersistentStudioMixerChannel>;
-
 const STUDIO_MIXER_STORAGE_KEY = 'jameet-studio-mixer-config';
 
 function loadSavedStudioMixerConfig(): PersistentStudioMixerMap {
@@ -3402,37 +3386,11 @@ function saveStudioMixerConfig(immediate = true): void {
     mixerSaveDebounceTimer = null;
   }
   try {
-    const map = loadSavedStudioMixerConfig();
-    const MASTER_GOLD = '#f59e0b';
-    for (const ch of studioMixerChannels) {
-      if (ch.id === 'master-out' || ch.isMaster) {
-        map[ch.id] = {
-          name: ch.name,
-          icon: ch.icon,
-          color: MASTER_GOLD,
-          volume: typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0
-        };
-      } else {
-        const isLocalMic = ch.id.startsWith('you-mic') || ch.id === 'you-mic';
-        const eqData: Record<string, ChannelEqConfig> = {};
-        if (Array.isArray(ch.fx)) {
-          for (let i = 0; i < ch.fx.length; i++) {
-            if (ch.fx[i] === 'Chan EQ') {
-              eqData[i] = getChannelEqConfig(ch.id, i);
-            }
-          }
-        }
-        map[ch.id] = {
-          name: ch.name,
-          icon: ch.icon,
-          color: ch.color,
-          volume: isLocalMic ? undefined : (typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0),
-          pan: typeof ch.pan === 'number' && !isNaN(ch.pan) ? ch.pan : 0,
-          fx: Array.isArray(ch.fx) ? [...ch.fx] : [],
-          eq: Object.keys(eqData).length > 0 ? eqData : undefined
-        };
-      }
-    }
+    const savedPrev = loadSavedStudioMixerConfig();
+    const map = {
+      ...savedPrev,
+      ...serializeStudioMixerConfig(studioMixerChannels, (chId, slot) => getChannelEqConfig(chId, slot))
+    };
     localStorage.setItem(STUDIO_MIXER_STORAGE_KEY, JSON.stringify(map));
   } catch (err) {
     logger.warn('mixer_storage', 'Failed to save persistent studio mixer configuration', {}, err);
@@ -4012,73 +3970,56 @@ function stopMixerVuAnimation(): void {
 }
 
 function applyMixerAudioRouting(): void {
-  const hasLocalSolo = studioMixerChannels.some((c) => !c.isMaster && (c.section === 'local' || c.id === 'music-stream' || c.id.startsWith('you-mic')) && c.soloed);
-  const hasRemoteSolo = studioMixerChannels.some((c) => !c.isMaster && c.section === 'remote' && c.id !== 'master-out' && c.soloed);
-  const masterCh = studioMixerChannels.find((c) => c.id === 'master-out') || { volume: 1.0, muted: false, pan: 0, fx: [] };
-  const monitorTrim = prefs.outputVolume !== undefined ? prefs.outputVolume : 1.0;
-  const masterVol = (remoteMuted || masterCh.muted) ? 0 : masterCh.volume * monitorTrim;
+  const routing = computeMixerRouting({
+    channels: studioMixerChannels,
+    voiceInputs: prefs.voiceInputs,
+    outputVolume: prefs.outputVolume,
+    globalMuted: muted,
+    remoteMuted
+  });
+  const masterVol = routing.masterVol;
 
-  // Dynamic Local Microphones Routing
-  let anyLocalMicActive = false;
-  const activeMics = (prefs.voiceInputs && prefs.voiceInputs.length > 0)
-    ? prefs.voiceInputs.filter((v) => v.enabled)
-    : [{ id: 1, name: 'Mic 1', enabled: true, gain: 1, channelRoute: '1' }];
-
-  activeMics.forEach((mic) => {
-    const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
-    const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
-    const isAudible = micCh ? (!micCh.muted && (!hasLocalSolo || micCh.soloed)) : true;
-    const isMutedGlobally = muted;
-    const gainVal = mic.gain ?? (micCh ? micCh.volume : 1);
-    const effectiveVol = isAudible && !isMutedGlobally ? gainVal : 0;
-    const pan = micCh ? (typeof micCh.pan === 'number' && !isNaN(micCh.pan) ? micCh.pan : 0) : 0;
-    if (effectiveVol > 0) anyLocalMicActive = true;
-    
+  routing.localMics.forEach((micResult, micId) => {
+    const micCh = studioMixerChannels.find((c) => c.id === micResult.channelId || (micId === 1 && c.id === 'you-mic'));
     if (micCh) {
-      micCh.volume = gainVal;
+      micCh.volume = micResult.gainVal;
     }
 
     for (const prefix of ['', 'call-']) {
-      const slider = document.querySelector<HTMLInputElement>(`#${prefix}gain-${mic.id}`);
-      const valLabel = document.querySelector<HTMLElement>(`#${prefix}gain-val-${mic.id}`);
-      if (slider) slider.value = String(gainVal);
-      if (valLabel) valLabel.textContent = `${Math.round(gainVal * 100)}%`;
+      const slider = document.querySelector<HTMLInputElement>(`#${prefix}gain-${micId}`);
+      const valLabel = document.querySelector<HTMLElement>(`#${prefix}gain-val-${micId}`);
+      if (slider) slider.value = String(micResult.gainVal);
+      if (valLabel) valLabel.textContent = `${Math.round(micResult.gainVal * 100)}%`;
     }
-    if (mic.id === 1) {
+    if (micId === 1) {
       for (const otherId of ['input-gain', 'call-input-gain']) {
         const el = document.querySelector<HTMLInputElement>(`#${otherId}`);
-        if (el) el.value = String(gainVal);
+        if (el) el.value = String(micResult.gainVal);
       }
       for (const labelId of ['gain-value', 'call-gain-value']) {
         const el = document.getElementById(labelId);
-        if (el) el.textContent = `${Math.round(gainVal * 100)}%`;
+        if (el) el.textContent = `${Math.round(micResult.gainVal * 100)}%`;
       }
     }
 
     // Apply to audio engine
-    const micFx = micCh?.fx || [];
-    audio.setVoiceMicFx(mic.id, micFx);
-    void audio.setVoiceMicGain(mic.id, effectiveVol);
-    void audio.setVoiceMicPan(mic.id, pan);
+    audio.setVoiceMicFx(micId, micResult.fx);
+    void audio.setVoiceMicGain(micId, micResult.effectiveVol);
+    void audio.setVoiceMicPan(micId, micResult.pan);
   });
 
-  audio.setEnabled('voice', !muted && anyLocalMicActive);
+  audio.setEnabled('voice', routing.voiceSenderEnabled);
 
   const localMusicCh = studioMixerChannels.find((c) => c.id === 'music-stream');
   const remoteVoiceCh = studioMixerChannels.find((c) => c.id === 'remote-voice');
   const remoteMusicCh = studioMixerChannels.find((c) => c.id === 'remote-music');
 
-  const localMusicAudible = localMusicCh ? (!localMusicCh.muted && (!hasLocalSolo || localMusicCh.soloed)) : true;
-  const remoteVoiceAudible = remoteVoiceCh ? (!remoteVoiceCh.muted && (!hasRemoteSolo || remoteVoiceCh.soloed)) : true;
-  const remoteMusicAudible = remoteMusicCh ? (!remoteMusicCh.muted && (!hasRemoteSolo || remoteMusicCh.soloed)) : true;
+  const effectiveLocalMusicVol = routing.effectiveLocalMusicVol;
+  const localMusicPan = routing.localMusicPan;
+  const effectiveRemoteVoiceVol = routing.effectiveRemoteVoiceVol;
+  const effectiveRemoteMusicVol = routing.effectiveRemoteMusicVol;
 
-  const effectiveLocalMusicVol = localMusicAudible && localMusicCh ? localMusicCh.volume : 0;
-  const localMusicPan = localMusicCh ? (typeof localMusicCh.pan === 'number' && !isNaN(localMusicCh.pan) ? localMusicCh.pan : 0) : 0;
-  const effectiveRemoteVoiceVol = remoteVoiceAudible && remoteVoiceCh ? remoteVoiceCh.volume : 0;
-  const effectiveRemoteMusicVol = remoteMusicAudible && remoteMusicCh ? remoteMusicCh.volume : 0;
-
-  const musicFx = localMusicCh?.fx || [];
-  audio.setMusicFx(musicFx);
+  audio.setMusicFx(routing.localMusicFx);
   audio.setEnabled('music', effectiveLocalMusicVol > 0);
   void audio.applyMusicGain(effectiveLocalMusicVol);
   void audio.applyMusicPan(localMusicPan);

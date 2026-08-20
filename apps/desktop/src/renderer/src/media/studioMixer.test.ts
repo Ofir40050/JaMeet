@@ -1,142 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-
-interface StudioMixerChannel {
-  id: string;
-  name: string;
-  icon: string;
-  color: string;
-  volume: number;
-  pan: number;
-  muted: boolean;
-  soloed: boolean;
-  fx: string[];
-  isMaster?: boolean;
-  section: 'local' | 'remote';
-}
-
-interface PersistentStudioMixerChannel {
-  name?: string;
-  icon?: string;
-  color?: string;
-  volume?: number;
-  pan?: number;
-  fx?: string[];
-  eq?: Record<string, unknown>;
-}
-
-type PersistentStudioMixerMap = Record<string, PersistentStudioMixerChannel>;
-
-interface VoiceInputPref {
-  id: number;
-  name: string;
-  enabled: boolean;
-  gain: number;
-  channelRoute: string;
-}
-
-interface PreferencesState {
-  outputVolume: number;
-  voiceInputs: VoiceInputPref[];
-  inputGain: number;
-}
-
-// Pure implementation mirroring Studio Mixer routing calculation from main.ts
-function computeMixerRouting(
-  channels: StudioMixerChannel[],
-  prefs: PreferencesState,
-  options: { globalMuted?: boolean; remoteMuted?: boolean } = {}
-) {
-  const globalMuted = options.globalMuted ?? false;
-  const remoteMuted = options.remoteMuted ?? false;
-
-  const hasLocalSolo = channels.some(
-    (c) => !c.isMaster && (c.section === 'local' || c.id === 'music-stream' || c.id.startsWith('you-mic')) && c.soloed
-  );
-  const hasRemoteSolo = channels.some(
-    (c) => !c.isMaster && c.section === 'remote' && c.id !== 'master-out' && c.soloed
-  );
-
-  const masterCh = channels.find((c) => c.id === 'master-out') || { volume: 1.0, muted: false, pan: 0, fx: [] };
-  const monitorTrim = prefs.outputVolume !== undefined ? prefs.outputVolume : 1.0;
-  const masterVol = remoteMuted || masterCh.muted ? 0 : masterCh.volume * monitorTrim;
-
-  // Local Microphones Routing
-  let anyLocalMicActive = false;
-  const activeMics = prefs.voiceInputs.filter((v) => v.enabled);
-
-  const localMicOutputs: Record<number, { effectiveVol: number; isAudible: boolean; pan: number; fx: string[] }> = {};
-
-  activeMics.forEach((mic) => {
-    const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
-    const micCh = channels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
-    const isAudible = micCh ? !micCh.muted && (!hasLocalSolo || micCh.soloed) : true;
-    const isMutedGlobally = globalMuted;
-    const gainVal = mic.gain ?? (micCh ? micCh.volume : 1);
-    const effectiveVol = isAudible && !isMutedGlobally ? gainVal : 0;
-    const pan = micCh ? (typeof micCh.pan === 'number' && !isNaN(micCh.pan) ? micCh.pan : 0) : 0;
-    if (effectiveVol > 0) anyLocalMicActive = true;
-
-    localMicOutputs[mic.id] = {
-      effectiveVol,
-      isAudible,
-      pan,
-      fx: micCh?.fx || []
-    };
-  });
-
-  const localMusicCh = channels.find((c) => c.id === 'music-stream');
-  const remoteVoiceCh = channels.find((c) => c.id === 'remote-voice');
-  const remoteMusicCh = channels.find((c) => c.id === 'remote-music');
-
-  const localMusicAudible = localMusicCh ? !localMusicCh.muted && (!hasLocalSolo || localMusicCh.soloed) : true;
-  const remoteVoiceAudible = remoteVoiceCh ? !remoteVoiceCh.muted && (!hasRemoteSolo || remoteVoiceCh.soloed) : true;
-  const remoteMusicAudible = remoteMusicCh ? !remoteMusicCh.muted && (!hasRemoteSolo || remoteMusicCh.soloed) : true;
-
-  const effectiveLocalMusicVol = localMusicAudible && localMusicCh ? localMusicCh.volume : 0;
-  const localMusicPan = localMusicCh ? (typeof localMusicCh.pan === 'number' && !isNaN(localMusicCh.pan) ? localMusicCh.pan : 0) : 0;
-  const effectiveRemoteVoiceVol = remoteVoiceAudible && remoteVoiceCh ? remoteVoiceCh.volume : 0;
-  const effectiveRemoteMusicVol = remoteMusicAudible && remoteMusicCh ? remoteMusicCh.volume : 0;
-
-  return {
-    hasLocalSolo,
-    hasRemoteSolo,
-    masterVol,
-    anyLocalMicActive,
-    voiceSenderEnabled: !globalMuted && anyLocalMicActive,
-    localMicOutputs,
-    effectiveLocalMusicVol,
-    localMusicPan,
-    effectiveRemoteVoiceVol,
-    effectiveRemoteMusicVol
-  };
-}
-
-// Pure implementation mirroring serialize persistent config from main.ts
-function serializeStudioMixerConfig(channels: StudioMixerChannel[]): PersistentStudioMixerMap {
-  const map: PersistentStudioMixerMap = {};
-  const MASTER_GOLD = '#f59e0b';
-  for (const ch of channels) {
-    if (ch.id === 'master-out' || ch.isMaster) {
-      map[ch.id] = {
-        name: ch.name,
-        icon: ch.icon,
-        color: MASTER_GOLD,
-        volume: typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0
-      };
-    } else {
-      const isLocalMic = ch.id.startsWith('you-mic') || ch.id === 'you-mic';
-      map[ch.id] = {
-        name: ch.name,
-        icon: ch.icon,
-        color: ch.color,
-        volume: isLocalMic ? undefined : typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0,
-        pan: typeof ch.pan === 'number' && !isNaN(ch.pan) ? ch.pan : 0,
-        fx: Array.isArray(ch.fx) ? [...ch.fx] : []
-      };
-    }
-  }
-  return map;
-}
+import {
+  type StudioMixerChannel,
+  type StudioMixerVoiceInput,
+  getLocalMicChannelId,
+  parseLocalMicId,
+  serializeStudioMixerConfig,
+  computeMixerRouting
+} from './studioMixerLogic';
 
 function createDefaultTestChannels(): StudioMixerChannel[] {
   return [
@@ -149,91 +19,106 @@ function createDefaultTestChannels(): StudioMixerChannel[] {
   ];
 }
 
-function createDefaultTestPrefs(): PreferencesState {
-  return {
-    outputVolume: 1.0,
-    inputGain: 1.0,
-    voiceInputs: [
-      { id: 1, name: 'Microphone 1', enabled: true, gain: 1.0, channelRoute: 'all' },
-      { id: 2, name: 'Microphone 2', enabled: true, gain: 0.8, channelRoute: 'all' }
-    ]
-  };
+function createDefaultTestVoiceInputs(): StudioMixerVoiceInput[] {
+  return [
+    { id: 1, name: 'Microphone 1', enabled: true, gain: 1.0, channelRoute: 'all' },
+    { id: 2, name: 'Microphone 2', enabled: true, gain: 0.8, channelRoute: 'all' }
+  ];
 }
 
-describe('Studio Mixer Routing & Invariants Regression Coverage', () => {
+describe('Studio Mixer Production Routing & Serialization Logic', () => {
+  describe('Channel ID Mapping', () => {
+    it('maps Mic 1 to you-mic and Mic N to you-mic-N', () => {
+      expect(getLocalMicChannelId(1)).toBe('you-mic');
+      expect(getLocalMicChannelId(2)).toBe('you-mic-2');
+      expect(getLocalMicChannelId(3)).toBe('you-mic-3');
+
+      expect(parseLocalMicId('you-mic')).toBe(1);
+      expect(parseLocalMicId('you-mic-2')).toBe(2);
+      expect(parseLocalMicId('you-mic-3')).toBe(3);
+      expect(parseLocalMicId('music-stream')).toBeUndefined();
+    });
+  });
+
   describe('Local Microphone Mute', () => {
     it('muting Mic 1 silences only Mic 1 and leaves other channels active', () => {
       const channels = createDefaultTestChannels();
-      const prefs = createDefaultTestPrefs();
+      const voiceInputs = createDefaultTestVoiceInputs();
 
       channels[0]!.muted = true; // Mute Mic 1
 
-      const routing = computeMixerRouting(channels, prefs);
-      expect(routing.localMicOutputs[1]?.effectiveVol).toBe(0);
-      expect(routing.localMicOutputs[1]?.isAudible).toBe(false);
+      const routing = computeMixerRouting({ channels, voiceInputs, outputVolume: 1.0 });
+      const mic1 = routing.localMics.get(1);
+      const mic2 = routing.localMics.get(2);
 
-      expect(routing.localMicOutputs[2]?.effectiveVol).toBe(0.8);
-      expect(routing.localMicOutputs[2]?.isAudible).toBe(true);
+      expect(mic1?.effectiveVol).toBe(0);
+      expect(mic1?.isAudible).toBe(false);
+
+      expect(mic2?.effectiveVol).toBe(0.8);
+      expect(mic2?.isAudible).toBe(true);
       expect(routing.effectiveLocalMusicVol).toBe(1.0);
     });
 
     it('muting Mic 2 silences only Mic 2', () => {
       const channels = createDefaultTestChannels();
-      const prefs = createDefaultTestPrefs();
+      const voiceInputs = createDefaultTestVoiceInputs();
 
       channels[1]!.muted = true; // Mute Mic 2
 
-      const routing = computeMixerRouting(channels, prefs);
-      expect(routing.localMicOutputs[1]?.effectiveVol).toBe(1.0);
-      expect(routing.localMicOutputs[1]?.isAudible).toBe(true);
+      const routing = computeMixerRouting({ channels, voiceInputs, outputVolume: 1.0 });
+      const mic1 = routing.localMics.get(1);
+      const mic2 = routing.localMics.get(2);
 
-      expect(routing.localMicOutputs[2]?.effectiveVol).toBe(0);
-      expect(routing.localMicOutputs[2]?.isAudible).toBe(false);
+      expect(mic1?.effectiveVol).toBe(1.0);
+      expect(mic1?.isAudible).toBe(true);
+
+      expect(mic2?.effectiveVol).toBe(0);
+      expect(mic2?.isAudible).toBe(false);
     });
 
     it('muting one local microphone does not change the gain state of another microphone', () => {
       const channels = createDefaultTestChannels();
-      const prefs = createDefaultTestPrefs();
+      const voiceInputs = createDefaultTestVoiceInputs();
 
       channels[0]!.muted = true; // Mute Mic 1
 
-      computeMixerRouting(channels, prefs);
-      expect(prefs.voiceInputs[0]?.gain).toBe(1.0);
-      expect(prefs.voiceInputs[1]?.gain).toBe(0.8);
+      computeMixerRouting({ channels, voiceInputs, outputVolume: 1.0 });
+      expect(voiceInputs[0]?.gain).toBe(1.0);
+      expect(voiceInputs[1]?.gain).toBe(0.8);
     });
 
     it('unmuting a microphone restores its authoritative prefs.voiceInputs[n].gain value', () => {
       const channels = createDefaultTestChannels();
-      const prefs = createDefaultTestPrefs();
-      prefs.voiceInputs[0]!.gain = 0.92;
+      const voiceInputs = createDefaultTestVoiceInputs();
+      voiceInputs[0]!.gain = 0.92;
 
       channels[0]!.muted = true;
-      let routing = computeMixerRouting(channels, prefs);
-      expect(routing.localMicOutputs[1]?.effectiveVol).toBe(0);
+      let routing = computeMixerRouting({ channels, voiceInputs, outputVolume: 1.0 });
+      expect(routing.localMics.get(1)?.effectiveVol).toBe(0);
 
       channels[0]!.muted = false;
-      routing = computeMixerRouting(channels, prefs);
-      expect(routing.localMicOutputs[1]?.effectiveVol).toBe(0.92);
+      routing = computeMixerRouting({ channels, voiceInputs, outputVolume: 1.0 });
+      expect(routing.localMics.get(1)?.effectiveVol).toBe(0.92);
     });
   });
 
   describe('Local Microphone Solo', () => {
     it('soloing Mic 1 suppresses other local microphone channels and local music', () => {
       const channels = createDefaultTestChannels();
-      const prefs = createDefaultTestPrefs();
+      const voiceInputs = createDefaultTestVoiceInputs();
 
       channels[0]!.soloed = true; // Solo Mic 1
 
-      const routing = computeMixerRouting(channels, prefs);
+      const routing = computeMixerRouting({ channels, voiceInputs, outputVolume: 1.0 });
       expect(routing.hasLocalSolo).toBe(true);
       expect(routing.hasRemoteSolo).toBe(false);
 
-      expect(routing.localMicOutputs[1]?.effectiveVol).toBe(1.0);
-      expect(routing.localMicOutputs[1]?.isAudible).toBe(true);
+      expect(routing.localMics.get(1)?.effectiveVol).toBe(1.0);
+      expect(routing.localMics.get(1)?.isAudible).toBe(true);
 
       // Mic 2 and local music suppressed
-      expect(routing.localMicOutputs[2]?.effectiveVol).toBe(0);
-      expect(routing.localMicOutputs[2]?.isAudible).toBe(false);
+      expect(routing.localMics.get(2)?.effectiveVol).toBe(0);
+      expect(routing.localMics.get(2)?.isAudible).toBe(false);
       expect(routing.effectiveLocalMusicVol).toBe(0);
 
       // Remote channels remain active
@@ -243,26 +128,26 @@ describe('Studio Mixer Routing & Invariants Regression Coverage', () => {
 
     it('soloing Mic 2 preserves Mic 2 and suppresses other local channels', () => {
       const channels = createDefaultTestChannels();
-      const prefs = createDefaultTestPrefs();
+      const voiceInputs = createDefaultTestVoiceInputs();
 
       channels[1]!.soloed = true; // Solo Mic 2
 
-      const routing = computeMixerRouting(channels, prefs);
-      expect(routing.localMicOutputs[2]?.effectiveVol).toBe(0.8);
-      expect(routing.localMicOutputs[1]?.effectiveVol).toBe(0);
+      const routing = computeMixerRouting({ channels, voiceInputs, outputVolume: 1.0 });
+      expect(routing.localMics.get(2)?.effectiveVol).toBe(0.8);
+      expect(routing.localMics.get(1)?.effectiveVol).toBe(0);
       expect(routing.effectiveLocalMusicVol).toBe(0);
     });
 
     it('multiple soloed local channels remain audible together', () => {
       const channels = createDefaultTestChannels();
-      const prefs = createDefaultTestPrefs();
+      const voiceInputs = createDefaultTestVoiceInputs();
 
       channels[0]!.soloed = true; // Solo Mic 1
       channels[1]!.soloed = true; // Solo Mic 2
 
-      const routing = computeMixerRouting(channels, prefs);
-      expect(routing.localMicOutputs[1]?.effectiveVol).toBe(1.0);
-      expect(routing.localMicOutputs[2]?.effectiveVol).toBe(0.8);
+      const routing = computeMixerRouting({ channels, voiceInputs, outputVolume: 1.0 });
+      expect(routing.localMics.get(1)?.effectiveVol).toBe(1.0);
+      expect(routing.localMics.get(2)?.effectiveVol).toBe(0.8);
 
       // Unsoloed local music is suppressed
       expect(routing.effectiveLocalMusicVol).toBe(0);
@@ -272,12 +157,12 @@ describe('Studio Mixer Routing & Invariants Regression Coverage', () => {
   describe('Remote Solo Domain Separation', () => {
     it('soloing remote voice suppresses remote music without changing local microphone routing', () => {
       const channels = createDefaultTestChannels();
-      const prefs = createDefaultTestPrefs();
+      const voiceInputs = createDefaultTestVoiceInputs();
 
       const remoteVoice = channels.find((c) => c.id === 'remote-voice')!;
       remoteVoice.soloed = true;
 
-      const routing = computeMixerRouting(channels, prefs);
+      const routing = computeMixerRouting({ channels, voiceInputs, outputVolume: 1.0 });
       expect(routing.hasRemoteSolo).toBe(true);
       expect(routing.hasLocalSolo).toBe(false);
 
@@ -285,56 +170,55 @@ describe('Studio Mixer Routing & Invariants Regression Coverage', () => {
       expect(routing.effectiveRemoteMusicVol).toBe(0);
 
       // Local channels remain unaffected
-      expect(routing.localMicOutputs[1]?.effectiveVol).toBe(1.0);
-      expect(routing.localMicOutputs[2]?.effectiveVol).toBe(0.8);
+      expect(routing.localMics.get(1)?.effectiveVol).toBe(1.0);
+      expect(routing.localMics.get(2)?.effectiveVol).toBe(0.8);
       expect(routing.effectiveLocalMusicVol).toBe(1.0);
     });
 
     it('soloing remote music suppresses remote voice without changing local microphone routing', () => {
       const channels = createDefaultTestChannels();
-      const prefs = createDefaultTestPrefs();
+      const voiceInputs = createDefaultTestVoiceInputs();
 
       const remoteMusic = channels.find((c) => c.id === 'remote-music')!;
       remoteMusic.soloed = true;
 
-      const routing = computeMixerRouting(channels, prefs);
+      const routing = computeMixerRouting({ channels, voiceInputs, outputVolume: 1.0 });
       expect(routing.effectiveRemoteMusicVol).toBe(1.0);
       expect(routing.effectiveRemoteVoiceVol).toBe(0);
 
-      expect(routing.localMicOutputs[1]?.effectiveVol).toBe(1.0);
-      expect(routing.localMicOutputs[2]?.effectiveVol).toBe(0.8);
+      expect(routing.localMics.get(1)?.effectiveVol).toBe(1.0);
+      expect(routing.localMics.get(2)?.effectiveVol).toBe(0.8);
     });
   });
 
   describe('Master Output', () => {
     it('master mute silences the remote monitor master path', () => {
       const channels = createDefaultTestChannels();
-      const prefs = createDefaultTestPrefs();
+      const voiceInputs = createDefaultTestVoiceInputs();
 
       const master = channels.find((c) => c.id === 'master-out')!;
       master.muted = true;
 
-      const routing = computeMixerRouting(channels, prefs);
+      const routing = computeMixerRouting({ channels, voiceInputs, outputVolume: 1.0 });
       expect(routing.masterVol).toBe(0);
     });
 
     it('remoteMuted silences the remote monitor master path', () => {
       const channels = createDefaultTestChannels();
-      const prefs = createDefaultTestPrefs();
+      const voiceInputs = createDefaultTestVoiceInputs();
 
-      const routing = computeMixerRouting(channels, prefs, { remoteMuted: true });
+      const routing = computeMixerRouting({ channels, voiceInputs, outputVolume: 1.0, remoteMuted: true });
       expect(routing.masterVol).toBe(0);
     });
 
     it('master volume applies outputVolume monitor trim exactly once', () => {
       const channels = createDefaultTestChannels();
-      const prefs = createDefaultTestPrefs();
+      const voiceInputs = createDefaultTestVoiceInputs();
 
       const master = channels.find((c) => c.id === 'master-out')!;
       master.volume = 0.8;
-      prefs.outputVolume = 0.75;
 
-      const routing = computeMixerRouting(channels, prefs);
+      const routing = computeMixerRouting({ channels, voiceInputs, outputVolume: 0.75 });
       expect(routing.masterVol).toBeCloseTo(0.6, 5); // 0.8 * 0.75
     });
   });
@@ -408,37 +292,6 @@ describe('Studio Mixer Routing & Invariants Regression Coverage', () => {
 
       expect(remoteVoice.fx).toEqual(['Chan EQ']);
       expect(remoteMusic.fx).toEqual(['Compressor']);
-    });
-  });
-
-  describe('Metering Resolution', () => {
-    it('verifies each local microphone meter resolves its analyser using that microphone exact mic id', () => {
-      const audioMock = {
-        getVoiceMicAnalysers: vi.fn((micId: number) => ({
-          left: { id: `analyser-L-${micId}` } as unknown as AnalyserNode,
-          right: { id: `analyser-R-${micId}` } as unknown as AnalyserNode
-        }))
-      };
-
-      const activeMics = [
-        { id: 1, name: 'Mic 1' },
-        { id: 2, name: 'Mic 2' },
-        { id: 3, name: 'Mic 3' }
-      ];
-
-      // Simulate VU meter dispatch loop
-      activeMics.forEach((mic) => {
-        const numMicId = Number(mic.id);
-        const { left, right } = audioMock.getVoiceMicAnalysers(numMicId);
-        expect(left).toBeDefined();
-        expect(right).toBeDefined();
-        expect((left as unknown as { id: string }).id).toBe(`analyser-L-${numMicId}`);
-        expect((right as unknown as { id: string }).id).toBe(`analyser-R-${numMicId}`);
-      });
-
-      expect(audioMock.getVoiceMicAnalysers).toHaveBeenCalledWith(1);
-      expect(audioMock.getVoiceMicAnalysers).toHaveBeenCalledWith(2);
-      expect(audioMock.getVoiceMicAnalysers).toHaveBeenCalledWith(3);
     });
   });
 });
