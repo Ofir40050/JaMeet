@@ -6,7 +6,6 @@ import {
 import {
   loadRecentSessions
 } from './sessions/recent/recentSessions';
-import { initSessionStats } from './sessions/call/sessionStats';
 import {
   applyAvatarToElement,
   highlightActiveSwatch,
@@ -31,7 +30,6 @@ import {
   clearAuthFormError
 } from './auth/authUi';
 import {
-  initWaitingRoomUi,
   renderWaitingBanner,
   hideWaitingBanner
 } from './sessions/call/waitingRoomUi';
@@ -66,7 +64,6 @@ import {
 } from './projects/core/projectOpenController';
 import { initDialogUi } from './core/dialogUi';
 import {
-  initWorkspacePermissionsController,
   canUserEditProject,
   isProjectOwner,
   applyWorkspacePermissions
@@ -81,6 +78,26 @@ import { initProjectsDomainController } from './projects/core/projectsDomainCont
 import { initProjectOpenDomainController } from './projects/core/projectOpenDomainController';
 import { initProjectCollaboratorsDomainController } from './projects/collaborators/projectCollaboratorsDomainController';
 import { initProjectManagementController } from './projects/core/projectManagementController';
+import { initSessionStatsController } from './sessions/call/sessionStatsController';
+import { initWaitingRoomUiController } from './sessions/call/waitingRoomUiController';
+import { initSessionViewStateController } from './sessions/call/sessionViewStateController';
+import { initDeepLinkDomainController } from './sessions/join/deepLinkDomainController';
+import { initSessionUtilityUiController } from './sessions/call/sessionUtilityUiController';
+import { initProjectNavigationDomainController } from './projects/navigation/projectNavigationDomainController';
+import { initProjectSongDeleteDomainController } from './songs/delete/projectSongDeleteDomainController';
+import { initSongsDomainController } from './songs/songsDomainController';
+import { initTasksDomainController } from './workspace/tasks/tasksDomainController';
+import { initStructurePersistenceController } from './workspace/structure/structurePersistenceController';
+import { initWorkspaceCoreController } from './workspace/core/workspaceCoreController';
+import { initWorkspacePersistenceController } from './workspace/core/workspacePersistenceController';
+import { initWorkspaceRealtimeDomainController } from './workspace/core/workspaceRealtimeDomainController';
+import { updateLocalPreviews as updateLocalPreviewsHelper } from './sessions/call/localPreviewUi';
+import { createDownscaledVideoTrack } from './sessions/call/videoTrackScaling';
+import { createSessionMetadata, createCurrentStream, performCheckActiveSpeaker } from './sessions/call/sessionMediaStateController';
+import { deviceError } from './media/deviceError';
+import { initInCallAudioModalController } from './sessions/call/inCallAudioModalController';
+import { initCallToolbarController } from './sessions/call/callToolbarController';
+import { initSessionUtilityBindingsController } from './sessions/call/sessionUtilityBindingsController';
 import {
   getWorkspaceContextGen,
   isWorkspaceContextGenCurrent,
@@ -127,7 +144,6 @@ import {
   getStructureSections
 } from './workspace/structure/structureController';
 import {
-  initStructurePersistence,
   debounceSaveStructure,
   saveStructureWorkspace,
   hasStructureSaveTimeout,
@@ -137,26 +153,17 @@ import {
   getActiveSongState
 } from './songs/state/songState';
 import {
-  initSongsPersistence,
   saveSongsWorkspace
 } from './songs/state/songsPersistence';
 import {
-  initLyricsPersistence,
   saveLyricsWorkspace
 } from './workspace/lyrics/lyricsPersistence';
 import {
-  initNotesPersistence,
   saveNotesWorkspace,
   debounceSaveNotesRetry,
   hasNotesSaveTimeout,
   clearNotesSaveTimeout
 } from './workspace/notes/notesPersistence';
-import {
-  initWorkspaceRealtimeSync
-} from './workspace/core/workspaceRealtimeSyncController';
-import {
-  initProjectActivitySync
-} from './projects/core/projectActivitySyncController';
 import {
   initAuthStateUiController,
   updateAuthUi
@@ -216,7 +223,6 @@ import {
   initProjectSongDeleteController
 } from './songs/delete/projectSongDeleteController';
 import {
-  initGuestJoinController,
   getPendingJoinCode,
   setPendingJoinCode,
   clearPendingJoinCode
@@ -244,12 +250,7 @@ import {
   updateCallMode
 } from './sessions/call/callModeUiController';
 import {
-  checkActiveSpeaker as checkActiveSpeakerImpl
-} from './sessions/call/activeSpeakerController';
-import {
-  buildSessionMetadata,
-  effectiveVideoQuality,
-  buildCurrentStream
+  effectiveVideoQuality
 } from './sessions/call/sessionMetadataController';
 import {
   enterSession as enterSessionController
@@ -283,7 +284,6 @@ import {
   initProjectSessionsController
 } from './projects/sessions/projectSessionsController';
 import {
-  initSongStudioUi,
   closeSongStudio,
   isSongStudioVisible,
   setIsSongStudioVisible,
@@ -291,11 +291,9 @@ import {
   type SongStudioTab
 } from './songs/studio/songStudioUi';
 import {
-  initSongSwitchController,
   switchActiveSong
 } from './songs/state/songSwitchController';
 import {
-  initSongsController,
   openSongStudio,
   createNewSong,
   duplicateSong,
@@ -313,7 +311,6 @@ import {
   switchActiveLyricsDoc
 } from './workspace/lyrics/lyricsDocumentsController';
 import {
-  initTasksController,
   getProjectTasks,
   createTask,
   quickToggleTask,
@@ -329,40 +326,30 @@ import {
   updateSubtaskTitle
 } from './workspace/tasks/tasksController';
 import {
-  initTasksUiController
-} from './workspace/tasks/tasksUiController';
-import {
-  initTasksPersistence,
   debounceSaveTasks,
   saveTasksWorkspace,
   hasTasksSaveTimeout,
   clearTasksSaveTimeout
 } from './workspace/tasks/tasksPersistence';
 import {
-  initWorkspaceSyncController,
   syncWorkspaceInputsFromProject
 } from './workspace/core/workspaceSyncController';
 import {
-  initAuthoritativeWorkspaceController,
   applyAuthoritativeWorkspaceUpdate
 } from './workspace/core/authoritativeWorkspaceController';
 import {
-  initWorkspaceFlushController,
   flushAllWorkspacePendingSaves
 } from './workspace/core/workspaceFlushController';
 import {
-  initWorkspaceDrawerUi,
   isSessionWorkspaceOpen,
   setSessionWorkspaceOpen
 } from './sessions/call/workspaceDrawerUi';
 import {
-  initSongDeleteController,
   openDeleteSongModal,
   getSongPendingDeletion,
   clearSongPendingDeletion
 } from './songs/delete/songDeleteController';
 import {
-  initDeepLinkController,
   handleDeepLink
 } from './sessions/join/deepLinkController';
 import {
@@ -493,34 +480,94 @@ logger.info('renderer_startup', 'JaMeet renderer application initialized', { par
 
 const auth = new AuthManager(signalingUrl);
 const signaling = new SignalingClient(signalingUrl);
-initWorkspacePermissionsController({
+initWorkspaceCoreController({
   getProject: () => activeProject,
-  getUser: () => auth.getUser()
+  getUser: () => auth.getUser(),
+  getActiveSong: () => getActiveSong(),
+  getActiveLyricsDoc: () => getActiveLyricsDoc(),
+  onRenderProjectSongsSelector: () => {
+    renderProjectSongsSelector();
+  },
+  onRenderLyricsDocTabs: (doc) => {
+    renderLyricsDocTabs(doc);
+  },
+  onUpdateLyricsStats: (html) => {
+    updateLyricsStatsFromHtml(html);
+  },
+  onSyncNotesControls: (values, force) => {
+    syncNotesControls(values, force);
+  },
+  onRenderStructureWorkspace: () => {
+    renderStructureWorkspace();
+  },
+  onRenderTasksWorkspace: () => {
+    renderTasksWorkspace();
+  },
+  onRenderProjectActivities: (project, user) => {
+    renderProjectActivities(project, user);
+  },
+  getLyricsStatus: () => getLyricsStatus(),
+  setLyricsStatus: (status) => {
+    setLyricsStatus(status);
+  },
+  hasLyricsSaveTimeout: () => hasLyricsSaveTimeout(),
+  clearLyricsSaveTimeout: () => {
+    clearLyricsSaveTimeout();
+  },
+  onSaveLyricsWorkspace: (content, id, title) => {
+    return saveLyricsWorkspace(content, id, title);
+  },
+  getNotesStatus: () => getNotesStatus(),
+  setNotesStatus: (status) => {
+    setNotesStatus(status);
+  },
+  hasNotesSaveTimeout: () => hasNotesSaveTimeout(),
+  clearNotesSaveTimeout: () => {
+    clearNotesSaveTimeout();
+  },
+  getNotesFieldValues: () => getNotesFieldValues(),
+  onSaveNotesWorkspace: (content, bpm, key) => {
+    return saveNotesWorkspace(content, bpm, key);
+  },
+  getStructureStatus: () => getStructureStatus(),
+  setStructureStatus: (status) => {
+    setStructureStatus(status);
+  },
+  hasStructureSaveTimeout: () => hasStructureSaveTimeout(),
+  clearStructureSaveTimeout: () => {
+    clearStructureSaveTimeout();
+  },
+  getStructureSections: () => getStructureSections(),
+  onSaveStructureWorkspace: () => {
+    return saveStructureWorkspace();
+  },
+  getTasksStatus: () => getTasksStatus(),
+  setTasksStatus: (status) => {
+    setTasksStatus(status);
+  },
+  hasTasksSaveTimeout: () => hasTasksSaveTimeout(),
+  clearTasksSaveTimeout: () => {
+    clearTasksSaveTimeout();
+  },
+  onSaveTasksWorkspace: () => {
+    return saveTasksWorkspace();
+  },
+  onSaveSongsWorkspace: () => {
+    return saveSongsWorkspace();
+  },
+  onApplyWorkspacePermissions: () => {
+    applyWorkspacePermissions();
+  }
 });
 initProjectCollaboratorsViewController({
   getProject: () => activeProject,
   getUser: () => auth.getUser()
 });
-initAuthoritativeWorkspaceController({
-  getProject: () => activeProject,
-  getActiveSong: () => getActiveSong(),
-  onRenderProjectSongsSelector: () => {
-    renderProjectSongsSelector();
-  }
-});
-initSongsPersistence({
-  getProject: () => activeProject,
-  getAuthToken: () => auth.getToken(),
-  isSignalingConnected: () => signaling.isConnected(),
-  onSignalingUpdateProjectWorkspace: async (projectId, payload, token) => {
-    return signaling.updateProjectWorkspace(projectId, payload, token);
-  }
-});
-initLyricsPersistence({
+initWorkspacePersistenceController({
   getProject: () => activeProject,
   getAuthToken: () => auth.getToken(),
   getUser: () => auth.getUser(),
-  canEdit: () => canUserEditProject(),
+  canUserEditProject: () => canUserEditProject(),
   getActiveSong: () => getActiveSong(),
   getActiveLyricsDoc: () => getActiveLyricsDoc(),
   getWorkspaceContextGen: () => getWorkspaceContextGen(),
@@ -530,23 +577,6 @@ initLyricsPersistence({
   setLyricsStatus: (status) => {
     setLyricsStatus(status);
   },
-  onSignalingUpdate: async (projectId, payload, token) => {
-    return signaling.updateProjectWorkspace(projectId, payload, token);
-  },
-  onApplyAuthoritativeWorkspace: (area, workspace) => {
-    applyAuthoritativeWorkspaceUpdate(area, workspace);
-  },
-  onRenderProjectActivities: (project, user) => {
-    renderProjectActivities(project, user);
-  }
-});
-initNotesPersistence({
-  getProject: () => activeProject,
-  getAuthToken: () => auth.getToken(),
-  getUser: () => auth.getUser(),
-  canEdit: () => canUserEditProject(),
-  getActiveSong: () => getActiveSong(),
-  getWorkspaceContextGen: () => getWorkspaceContextGen(),
   getNotesEditGen: () => getNotesEditGen(),
   getNotesSaveGen: () => getNotesSaveGen(),
   incrementNotesSaveGen: () => incrementNotesSaveGen(),
@@ -556,7 +586,8 @@ initNotesPersistence({
   onSyncNotesControls: (values, force) => {
     syncNotesControls(values, force);
   },
-  onSignalingUpdate: async (projectId, payload, token) => {
+  isSignalingConnected: () => signaling.isConnected(),
+  onSignalingUpdateProjectWorkspace: async (projectId, payload, token) => {
     return signaling.updateProjectWorkspace(projectId, payload, token);
   },
   onApplyAuthoritativeWorkspace: (area, workspace) => {
@@ -566,7 +597,7 @@ initNotesPersistence({
     renderProjectActivities(project, user);
   }
 });
-initWorkspaceRealtimeSync({
+initWorkspaceRealtimeDomainController({
   signaling,
   getActiveProject: () => activeProject,
   getSessionProjectId: () => sessionProjectId,
@@ -612,14 +643,6 @@ initWorkspaceRealtimeSync({
   hasTasksSaveTimeout: () => hasTasksSaveTimeout(),
   onRenderTasksWorkspace: () => {
     renderTasksWorkspace();
-  }
-});
-initProjectActivitySync({
-  signaling,
-  getActiveProject: () => activeProject,
-  getUser: () => auth.getUser(),
-  onRenderProjectActivities: (project, user) => {
-    renderProjectActivities(project, user);
   }
 });
 initAuthStateUiController({
@@ -779,9 +802,10 @@ initStructureDomainController({
     debounceSaveStructure();
   }
 });
-initStructurePersistence({
+initStructurePersistenceController({
   getProject: () => activeProject,
   getAuthToken: () => auth.getToken(),
+  getUser: () => auth.getUser(),
   canEdit: () => canUserEditProject(),
   getActiveSong: () => getActiveSong(),
   getStructureSections: () => getStructureSections(),
@@ -799,28 +823,26 @@ initStructurePersistence({
   onApplyAuthoritativeWorkspace: (area, workspace) => {
     applyAuthoritativeWorkspaceUpdate(area, workspace);
   },
-  onRenderProjectActivities: (project) => {
-    renderProjectActivities(project, auth.getUser());
+  onRenderProjectActivities: (project, user) => {
+    renderProjectActivities(project, user);
   }
 });
-initTasksController({
+initTasksDomainController({
   getProject: () => activeProject,
-  canEdit: () => canUserEditProject(),
+  getAuthToken: () => auth.getToken(),
+  canUserEditProject: () => canUserEditProject(),
   onRenderTasksWorkspace: () => {
     renderTasksWorkspace();
   },
   onDebounceSaveTasks: () => {
     debounceSaveTasks();
   },
-  onFlushSaveTasks: () => {
+  onClearTasksSaveTimeout: () => {
     clearTasksSaveTimeout();
-    void saveTasksWorkspace();
-  }
-});
-initTasksPersistence({
-  getProject: () => activeProject,
-  getAuthToken: () => auth.getToken(),
-  canEdit: () => canUserEditProject(),
+  },
+  onSaveTasksWorkspace: () => {
+    return saveTasksWorkspace();
+  },
   getTasks: () => getProjectTasks(),
   getWorkspaceContextGen: () => getWorkspaceContextGen(),
   getTasksEditGen: () => getTasksEditGen(),
@@ -835,36 +857,26 @@ initTasksPersistence({
   },
   onApplyAuthoritativeWorkspace: (area, workspace) => {
     applyAuthoritativeWorkspaceUpdate(area, workspace);
-  }
-});
-initTasksUiController({
-  getProject: () => activeProject,
-  canEdit: () => canUserEditProject(),
+  },
   onUpdateSongCustomization: (songId, changes) => {
     updateSongCustomization(songId, changes);
   }
 });
-initSongDeleteController({
-  canEdit: () => canUserEditProject(),
-  hasActiveProject: () => Boolean(activeProject)
-});
-initSongStudioUi({
-  getProjectName: () => activeProject?.name,
-  onRenderHeader: () => {
+initSongsDomainController({
+  getProject: () => activeProject,
+  canUserEditProject: () => canUserEditProject(),
+  onRenderSongStudioHeader: () => {
     renderSongStudioHeader();
   },
-  onApplyPermissions: () => {
+  onApplyWorkspacePermissions: () => {
     applyWorkspacePermissions();
   },
-  onSwitchTabToOverview: () => {
-    switchProjectTab('overview');
+  onSwitchProjectTab: (tab) => {
+    switchProjectTab(tab);
   },
-  onRenderOverviewSongsList: () => {
+  onRenderProjectOverviewSongsList: () => {
     renderProjectOverviewSongsList();
-  }
-});
-initSongSwitchController({
-  getProject: () => activeProject,
+  },
   hasLyricsSaveTimeout: () => hasLyricsSaveTimeout(),
   clearLyricsSaveTimeout: () => {
     clearLyricsSaveTimeout();
@@ -885,7 +897,7 @@ initSongSwitchController({
   clearStructureSaveTimeout: () => {
     clearStructureSaveTimeout();
   },
-  onSaveStructureWorkspace: (sections) => {
+  onSaveStructureWorkspace: () => {
     void saveStructureWorkspace();
   },
   onSyncWorkspaceInputs: (forceAll) => {
@@ -893,106 +905,9 @@ initSongSwitchController({
   },
   onSaveSongsWorkspace: () => {
     return saveSongsWorkspace();
-  }
-});
-initSongsController({
-  getProject: () => activeProject,
-  canEdit: () => canUserEditProject(),
-  onSyncWorkspaceInputs: (forceAll) => {
-    syncWorkspaceInputsFromProject(forceAll);
-  },
-  onSaveSongsWorkspace: () => {
-    return saveSongsWorkspace();
   },
   onRenderTasksWorkspace: () => {
     renderTasksWorkspace();
-  }
-});
-initWorkspaceSyncController({
-  getProject: () => activeProject,
-  getUser: () => auth.getUser(),
-  getActiveSong: () => getActiveSong(),
-  getActiveLyricsDoc: () => getActiveLyricsDoc(),
-  onRenderProjectSongsSelector: () => {
-    renderProjectSongsSelector();
-  },
-  onRenderLyricsDocTabs: (doc) => {
-    renderLyricsDocTabs(doc);
-  },
-  onUpdateLyricsStats: (html) => {
-    updateLyricsStatsFromHtml(html);
-  },
-  onSyncNotesControls: (values, force) => {
-    syncNotesControls(values, force);
-  },
-  onRenderStructureWorkspace: () => {
-    renderStructureWorkspace();
-  },
-  onRenderTasksWorkspace: () => {
-    renderTasksWorkspace();
-  },
-  onRenderProjectActivities: (project, user) => {
-    renderProjectActivities(project, user);
-  },
-  getLyricsStatus: () => getLyricsStatus(),
-  setLyricsStatus: (status) => {
-    setLyricsStatus(status);
-  },
-  hasLyricsSaveTimeout: () => hasLyricsSaveTimeout(),
-  getNotesStatus: () => getNotesStatus(),
-  setNotesStatus: (status) => {
-    setNotesStatus(status);
-  },
-  hasNotesSaveTimeout: () => hasNotesSaveTimeout(),
-  getStructureStatus: () => getStructureStatus(),
-  setStructureStatus: (status) => {
-    setStructureStatus(status);
-  },
-  hasStructureSaveTimeout: () => hasStructureSaveTimeout(),
-  getTasksStatus: () => getTasksStatus(),
-  setTasksStatus: (status) => {
-    setTasksStatus(status);
-  },
-  hasTasksSaveTimeout: () => hasTasksSaveTimeout(),
-  onApplyWorkspacePermissions: () => {
-    applyWorkspacePermissions();
-  }
-});
-initWorkspaceFlushController({
-  getProject: () => activeProject,
-  hasLyricsSaveTimeout: () => hasLyricsSaveTimeout(),
-  clearLyricsSaveTimeout: () => {
-    clearLyricsSaveTimeout();
-  },
-  getActiveLyricsDoc: () => getActiveLyricsDoc(),
-  onSaveLyricsWorkspace: (content, id, title) => {
-    return saveLyricsWorkspace(content, id, title);
-  },
-  hasNotesSaveTimeout: () => hasNotesSaveTimeout(),
-  clearNotesSaveTimeout: () => {
-    clearNotesSaveTimeout();
-  },
-  getNotesFieldValues: () => getNotesFieldValues(),
-  onSaveNotesWorkspace: (content, bpm, key) => {
-    return saveNotesWorkspace(content, bpm, key);
-  },
-  hasStructureSaveTimeout: () => hasStructureSaveTimeout(),
-  clearStructureSaveTimeout: () => {
-    clearStructureSaveTimeout();
-  },
-  getStructureSections: () => getStructureSections(),
-  onSaveStructureWorkspace: (sections) => {
-    return saveStructureWorkspace();
-  },
-  hasTasksSaveTimeout: () => hasTasksSaveTimeout(),
-  clearTasksSaveTimeout: () => {
-    clearTasksSaveTimeout();
-  },
-  onSaveTasksWorkspace: () => {
-    return saveTasksWorkspace();
-  },
-  onSaveSongsWorkspace: () => {
-    return saveSongsWorkspace();
   }
 });
 initWorkspaceDrawerController({
@@ -1017,7 +932,7 @@ initWorkspaceDrawerController({
     setOnChatOpenCallback(cb);
   }
 });
-initDeepLinkController({
+initDeepLinkDomainController({
   isInCall: () => inCall,
   getUser: () => auth.getUser(),
   onSetPendingJoinCode: (code) => {
@@ -1216,7 +1131,7 @@ initProjectManagementController({
     showView('home-view');
   }
 });
-initProjectSongDeleteController({
+initProjectSongDeleteDomainController({
   getProject: () => activeProject,
   canUserEditProject: () => canUserEditProject(),
   onSwitchActiveSong: (songId) => switchActiveSong(songId),
@@ -1225,8 +1140,7 @@ initProjectSongDeleteController({
   onApplyWorkspacePermissions: () => applyWorkspacePermissions(),
   onSaveSongsWorkspace: () => saveSongsWorkspace()
 });
-initCallShortcutsUi();
-initGuestJoinController({
+initSessionUtilityUiController({
   onOpenSignIn: () => {
     openAuthView('login');
   },
@@ -1237,7 +1151,7 @@ initGuestJoinController({
     void prepareStudio(action);
   }
 });
-initProjectNavigationController({
+initProjectNavigationDomainController({
   getProject: () => activeProject,
   onClearActiveProject: () => {
     activeProjectId = undefined;
@@ -1299,16 +1213,16 @@ const rtc = new WebRtcSession(
   }
 );
 
-setSessionViewStateProvider(() => ({
-  screenTrack,
-  remoteMedia,
-  remoteVideoStream,
-  peerIdentity,
-  myIdentity,
-  sharingSourceTitle: currentSharingSourceTitle
-}));
+initSessionViewStateController({
+  getScreenTrack: () => screenTrack,
+  getRemoteMedia: () => remoteMedia,
+  getRemoteVideoStream: () => remoteVideoStream,
+  getPeerIdentity: () => peerIdentity,
+  getMyIdentity: () => myIdentity,
+  getSharingSourceTitle: () => currentSharingSourceTitle
+});
 
-initSessionStats({
+initSessionStatsController({
   getStatsReport: () => rtc.getStatsReport(),
   isInCall: () => inCall,
   getPreferences: () => prefs,
@@ -1321,8 +1235,8 @@ initSessionStats({
   })
 });
 
-initWaitingRoomUi({
-  onAdmit: async (participantId) => signaling.admitParticipant(currentCode, participantId)
+initWaitingRoomUiController({
+  onAdmitParticipant: async (participantId) => signaling.admitParticipant(currentCode, participantId)
 });
 let remoteVoiceMeter: LevelMeter | undefined = undefined;
 let lastLocalVoiceDb = -60;
@@ -1334,7 +1248,7 @@ function savePreferences(): void {
 }
 
 function metadata(): MediaMetadata {
-  return buildSessionMetadata({
+  return createSessionMetadata({
     getAudioSources: () => audio.metadata(),
     isCameraEnabled: () => cameraEnabled,
     getCameraQuality: () => prefs.cameraQuality,
@@ -1346,11 +1260,11 @@ function metadata(): MediaMetadata {
 }
 
 function currentStream(): MediaStream {
-  return buildCurrentStream(screenTrack, cameraEnabled, videoTrack);
+  return createCurrentStream(screenTrack, cameraEnabled, videoTrack);
 }
 
 function checkActiveSpeaker(): void {
-  checkActiveSpeakerImpl({
+  performCheckActiveSpeaker({
     isLocalMuted: () => muted,
     isRemoteMuted: () => remoteMuted,
     getLastLocalVoiceDb: () => lastLocalVoiceDb,
@@ -1362,105 +1276,14 @@ function checkActiveSpeaker(): void {
   });
 }
 
-function createDownscaledVideoTrack(rawTrack: MediaStreamTrack, width: number, height: number, fps: number): MediaStreamTrack {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-  const hiddenVideo = document.createElement('video');
-  hiddenVideo.muted = true;
-  hiddenVideo.playsInline = true;
-  hiddenVideo.srcObject = new MediaStream([rawTrack]);
-  hiddenVideo.play().catch(() => {});
-
-  let animFrameId: number;
-  const render = () => {
-    if (rawTrack.readyState === 'ended') return;
-    if (ctx && hiddenVideo.readyState >= 2) {
-      ctx.drawImage(hiddenVideo, 0, 0, width, height);
-    }
-    animFrameId = requestAnimationFrame(render);
-  };
-  render();
-
-  const scaledStream = canvas.captureStream(fps);
-  const scaledTrack = scaledStream.getVideoTracks()[0];
-  if (!scaledTrack) return rawTrack;
-
-  const originalStop = scaledTrack.stop.bind(scaledTrack);
-  scaledTrack.stop = () => {
-    cancelAnimationFrame(animFrameId);
-    hiddenVideo.srcObject = null;
-    rawTrack.stop();
-    originalStop();
-  };
-  return scaledTrack;
-}
-
 function updateLocalPreviews(): void {
-  const setupVisible = !$('setup-view')?.classList.contains('hidden');
-  const callVisible = !$('call-view')?.classList.contains('hidden');
-  const settingsVisible = !$('settings-view')?.classList.contains('hidden');
-  const setupVideo = $<HTMLVideoElement>('setup-video');
-  const localVideo = $<HTMLVideoElement>('local-video');
-  const settingsVideo = $<HTMLVideoElement>('settings-video');
-  const isMirrored = prefs.mirrorCamera !== false;
-  const visibleTrack = screenTrack ?? (cameraEnabled ? videoTrack : undefined);
-  const isLowRes = prefs.cameraQuality === 'low';
-  
-  if (setupVisible && setupVideo) {
-    const currentTrack = (setupVideo.srcObject as MediaStream)?.getVideoTracks()[0];
-    if (currentTrack !== visibleTrack) {
-      setupVideo.srcObject = visibleTrack ? new MediaStream([visibleTrack]) : null;
-      if (visibleTrack) setupVideo.play().catch(() => {});
-    }
-    setupVideo.classList.toggle('mirror', isMirrored);
-    setupVideo.classList.toggle('res-low', isLowRes);
-  }
-  if (callVisible && localVideo) {
-    const camTrack = (cameraEnabled && videoTrack) ? videoTrack : undefined;
-    const currentTrack = (localVideo.srcObject as MediaStream)?.getVideoTracks()[0];
-    if (currentTrack !== camTrack) {
-      localVideo.srcObject = camTrack ? new MediaStream([camTrack]) : null;
-      if (camTrack) localVideo.play().catch(() => {});
-    }
-    localVideo.classList.toggle('mirror', isMirrored);
-    localVideo.classList.toggle('res-low', isLowRes);
-  }
-  if (settingsVisible && settingsVideo) {
-    const currentTrack = (settingsVideo.srcObject as MediaStream)?.getVideoTracks()[0];
-    if (currentTrack !== visibleTrack) {
-      settingsVideo.srcObject = visibleTrack ? new MediaStream([visibleTrack]) : null;
-      if (visibleTrack) settingsVideo.play().catch(() => {});
-    }
-    settingsVideo.classList.toggle('mirror', isMirrored);
-    settingsVideo.classList.toggle('res-low', isLowRes);
-  }
-
-  const badgeEl = $('settings-video-res-badge');
-  if (badgeEl) {
-    if (!videoTrack || !cameraEnabled) {
-      badgeEl.textContent = 'Camera Off';
-    } else {
-      const q = prefs.cameraQuality;
-      if (q === 'low') badgeEl.textContent = '360p · 15 fps (Low)';
-      else if (q === 'standard') badgeEl.textContent = '540p · 24 fps (Standard)';
-      else if (q === 'high') badgeEl.textContent = '720p · 30 fps (HD)';
-      else if (q === 'fhd') badgeEl.textContent = '1080p · 30 fps (Full HD)';
-      else if (q === 'qhd') badgeEl.textContent = '1440p · 30 fps (2K Quad HD)';
-      else if (q === 'uhd') badgeEl.textContent = '2160p · 30 fps (4K Ultra HD)';
-      else badgeEl.textContent = 'Auto (1080p · 30 fps)';
-    }
-  }
-  
-  const isVideoLive = Boolean(videoTrack && cameraEnabled);
-  $('setup-video-placeholder')?.classList.toggle('hidden', isVideoLive);
-  $('local-placeholder')?.classList.toggle('hidden', isVideoLive);
-  $('settings-video-placeholder')?.classList.toggle('hidden', isVideoLive);
-  const modeLabel = $('mode-label');
-  if (modeLabel) modeLabel.textContent = prefs.mode === 'music' ? 'Music Mode' : 'Talk Mode';
-
-  updateSessionStage();
+  updateLocalPreviewsHelper({
+    getScreenTrack: () => screenTrack,
+    getVideoTrack: () => videoTrack,
+    isCameraEnabled: () => cameraEnabled,
+    getPreferences: () => prefs,
+    onUpdateSessionStage: () => updateSessionStage()
+  });
 }
 
 async function acquireVideo(deviceId?: string): Promise<MediaStreamTrack> {
@@ -2383,12 +2206,6 @@ async function prepareStudio(action: PendingAction): Promise<void> {
     onReplaceMusicInput: () => replaceMusicInput(),
     onShowSessionError: (error) => showSessionErrorModal(parseSessionError(error))
   });
-}
-
-function deviceError(error: unknown): string {
-  if (error instanceof DOMException && error.name === 'NotAllowedError') return 'Camera or microphone access was denied. Allow access in system settings, then try again.';
-  if (error instanceof DOMException && error.name === 'NotFoundError') return 'No usable camera or audio input was found.';
-  return error instanceof Error ? error.message : 'The selected device could not be opened.';
 }
 
 function renderAudioLimitations(): void {
@@ -3615,59 +3432,27 @@ function toggleMute(): void {
   syncMediaActiveState();
 }
 
-for (const id of ['toggle-mic', 'mute-button']) $(id)?.addEventListener('click', toggleMute);
-
-for (const id of ['toggle-camera', 'camera-button']) {
-  $(id)?.addEventListener('click', () => void toggleCamera().catch((error) => setCallStatus(deviceError(error))));
-}
-
-for (const id of ['toggle-screen', 'screen-button']) {
-  $(id)?.addEventListener('click', () => void showScreenPicker().then(() => {
-    $('toggle-screen')?.classList.toggle('active', Boolean(screenTrack));
-  }).catch((error) => setCallStatus(deviceError(error))));
-}
-
-$('mode-music-btn')?.addEventListener('click', () => void switchAudioMode('music'));
-$('mode-talk-btn')?.addEventListener('click', () => void switchAudioMode('talk'));
-$('mode-button')?.addEventListener('click', () => {
-  const next: AudioMode = prefs.mode === 'music' ? 'talk' : 'music';
-  void switchAudioMode(next);
+initCallToolbarController({
+  onToggleMute: () => toggleMute(),
+  onToggleCamera: () => toggleCamera(),
+  onShowScreenPicker: () => showScreenPicker(),
+  hasScreenTrack: () => Boolean(screenTrack),
+  getAudioMode: () => prefs.mode,
+  onSwitchAudioMode: (mode) => switchAudioMode(mode),
+  isAudioOnly: () => audioOnly,
+  onSetAudioOnly: (only) => setAudioOnly(only),
+  onSetCallStatus: (status) => setCallStatus(status)
 });
 
-$('audio-only-button')?.addEventListener('click', () => void setAudioOnly(!audioOnly).catch((error) => setCallStatus(deviceError(error))));
-$<HTMLInputElement>('audio-only-setup')?.addEventListener('change', (event) => void setAudioOnly((event.currentTarget as HTMLInputElement).checked).catch((error) => setMessage('setup-status', deviceError(error), true)));
-
-function openInCallAudioModal(): void {
-  setModeRadios(prefs.mode);
-  void enumerateAndPopulate();
-  updateMusicWarning();
-  $('in-call-audio-modal')?.classList.remove('hidden');
-}
-
-function closeInCallAudioModal(): void {
-  $('in-call-audio-modal')?.classList.add('hidden');
-}
-
-$('btn-close-in-call-audio')?.addEventListener('click', closeInCallAudioModal);
-$('btn-done-in-call-audio')?.addEventListener('click', closeInCallAudioModal);
-$('in-call-audio-modal')?.addEventListener('click', (e) => {
-  if (e.target === $('in-call-audio-modal')) closeInCallAudioModal();
+const { openInCallAudioModal, closeInCallAudioModal } = initInCallAudioModalController({
+  getAudioMode: () => prefs.mode,
+  setModeRadios: (mode) => setModeRadios(mode),
+  onEnumerateAndPopulate: () => enumerateAndPopulate(),
+  onUpdateMusicWarning: () => updateMusicWarning(),
+  onOpenSettings: (section) => openSettings(section),
+  isInCall: () => inCall,
+  isCallViewVisible: () => !$('call-view')?.classList.contains('hidden')
 });
-$('in-call-advanced-settings-btn')?.addEventListener('click', () => {
-  closeInCallAudioModal();
-  openSettings('audio');
-});
-
-for (const id of ['open-settings', 'devices-button']) {
-  $(id)?.addEventListener('click', () => {
-    void enumerateAndPopulate();
-    if (inCall || !$('call-view')?.classList.contains('hidden')) {
-      openInCallAudioModal();
-    } else {
-      openSettings('audio');
-    }
-  });
-}
 
 
 // ========================================================
@@ -3848,10 +3633,6 @@ $('call-output-volume')?.addEventListener('input', (event) => {
   applyMixerAudioRouting();
 });
 
-$('test-output-both')?.addEventListener('click', () => void testSpeakers('both').then(() => setMessage('device-dialog-status', 'Stereo test complete.')).catch((e) => setMessage('device-dialog-status', deviceError(e), true)));
-$('test-output-left')?.addEventListener('click', () => void testSpeakers('left').then(() => setMessage('device-dialog-status', 'Left channel test complete.')).catch((e) => setMessage('device-dialog-status', deviceError(e), true)));
-$('test-output-right')?.addEventListener('click', () => void testSpeakers('right').then(() => setMessage('device-dialog-status', 'Right channel test complete.')).catch((e) => setMessage('device-dialog-status', deviceError(e), true)));
-
 for (const id of ['channel-mode-select', 'call-channel-mode-select']) {
   $<HTMLSelectElement>(id)?.addEventListener('change', async (event) => {
     const isStereo = (event.currentTarget as HTMLSelectElement).value === 'stereo';
@@ -3864,12 +3645,6 @@ for (const id of ['channel-mode-select', 'call-channel-mode-select']) {
     } catch (error) {
       setMessage(inCall ? 'device-dialog-status' : 'setup-status', deviceError(error), true);
     }
-  });
-}
-for (const id of ['open-system-audio', 'call-open-system-audio']) {
-  $(id)?.addEventListener('click', () => {
-    const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
-    void desktopApi?.openSystemAudioSettings?.();
   });
 }
 for (const id of ['sample-rate-select', 'call-sample-rate-select']) {
@@ -3932,31 +3707,16 @@ for (const id of ['input-gain', 'call-input-gain']) {
     }
   });
 }
-$('remote-mute-button')?.addEventListener('click', () => {
-  remoteMuted = !remoteMuted;
-  setText('remote-mute-button', remoteMuted ? 'Unmute Remote' : 'Mute Remote');
-  applyMixerAudioRouting();
+initSessionUtilityBindingsController({
+  isRemoteMuted: () => remoteMuted,
+  onToggleRemoteMuted: () => {
+    remoteMuted = !remoteMuted;
+  },
+  onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
+  onFullscreenRemote: (isScreen) => fullscreenRemote(isScreen),
+  onStopScreenShare: () => stopScreenShare(),
+  onTestSpeakers: (pan) => testSpeakers(pan)
 });
-$('fullscreen-video-button')?.addEventListener('click', () => void fullscreenRemote(false));
-$('fullscreen-share-button')?.addEventListener('click', () => void fullscreenRemote(true));
-
-// Screen Sharing Tabs & Floating Stop Button
-$('tab-btn-apps')?.addEventListener('click', () => {
-  $('tab-btn-apps')?.classList.add('active');
-  $('tab-btn-screens')?.classList.remove('active');
-  $('section-apps')?.classList.remove('hidden');
-  $('section-screens')?.classList.add('hidden');
-});
-
-$('tab-btn-screens')?.addEventListener('click', () => {
-  $('tab-btn-screens')?.classList.add('active');
-  $('tab-btn-apps')?.classList.remove('active');
-  $('section-screens')?.classList.remove('hidden');
-  $('section-apps')?.classList.add('hidden');
-});
-
-$('btn-stop-share-floating')?.addEventListener('click', () => void stopScreenShare());
-$('stage-stop-share-btn')?.addEventListener('click', () => void stopScreenShare());
 
 
 
