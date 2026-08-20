@@ -38,6 +38,20 @@ import {
 } from './preferences';
 import { signalingUrl, participantId } from './runtime';
 import { $, setText, setMessage } from './dom';
+import {
+  type ParticipantViewMode,
+  type ScreenViewMode,
+  type ParticipantTarget,
+  applyParticipantViewLayout,
+  updateSessionStage,
+  toggleSessionViewMenu,
+  closeSessionViewMenu,
+  setSessionViewStateProvider,
+  getCameraViewMode,
+  getActiveSpeaker,
+  setActiveSpeaker,
+  toggleSessionLayout
+} from './sessionView';
 import './style.css';
 
 export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
@@ -81,6 +95,7 @@ let currentRole: 'host' | 'guest' = 'guest';
 let currentIceServers: RTCIceServer[] = [];
 let videoTrack: MediaStreamTrack | undefined;
 let screenTrack: MediaStreamTrack | undefined;
+let currentSharingSourceTitle = '';
 let muted = false;
 let cameraEnabled = !prefs.audioOnly;
 let audioOnly = prefs.audioOnly;
@@ -114,14 +129,14 @@ const rtc = new WebRtcSession(
   }
 );
 
-type ParticipantViewMode = 'gallery' | 'speaker' | 'focus';
-type ScreenViewMode = 'screen' | 'side-by-side' | 'screen-focus';
-type ParticipantTarget = 'remote' | 'local';
-
-let currentCameraViewMode: ParticipantViewMode = 'gallery';
-let currentScreenViewMode: ScreenViewMode = 'screen';
-let currentFocusTarget: ParticipantTarget = 'remote';
-let currentActiveSpeaker: ParticipantTarget = 'remote';
+setSessionViewStateProvider(() => ({
+  screenTrack,
+  remoteMedia,
+  remoteVideoStream,
+  peerIdentity,
+  myIdentity,
+  sharingSourceTitle: currentSharingSourceTitle
+}));
 let remoteVoiceMeter: LevelMeter | undefined = undefined;
 let lastLocalVoiceDb = -60;
 let lastRemoteVoiceDb = -60;
@@ -164,246 +179,6 @@ function currentStream(): MediaStream {
   return new MediaStream(visibleTrack ? [visibleTrack] : []);
 }
 
-function applyParticipantViewLayout(): void {
-  const workspace = document.getElementById('session-workspace');
-  const videoGrid = document.getElementById('video-grid');
-  const remoteTile = document.getElementById('remote-tile');
-  const localTile = document.getElementById('local-tile');
-  if (!workspace || !videoGrid || !remoteTile || !localTile) return;
-
-  const isLocalSharing = Boolean(screenTrack);
-  const isRemoteSharing = Boolean(remoteMedia?.sharingScreen && remoteVideoStream);
-  const isAnySharing = isLocalSharing || isRemoteSharing;
-
-  // Clean previous layout classes
-  workspace.classList.remove(
-    'view-gallery',
-    'view-speaker',
-    'view-focus',
-    'screen-view-standard',
-    'screen-view-side-by-side',
-    'screen-view-focus'
-  );
-  videoGrid.classList.remove(
-    'layout-gallery',
-    'layout-speaker',
-    'layout-focus',
-    'dominant-remote',
-    'dominant-local'
-  );
-  remoteTile.classList.remove('dominant-tile', 'secondary-tile');
-  localTile.classList.remove('dominant-tile', 'secondary-tile');
-  remoteTile.removeAttribute('title');
-  localTile.removeAttribute('title');
-
-  if (isAnySharing) {
-    workspace.classList.add('stage-mode');
-    if (currentScreenViewMode === 'side-by-side') {
-      workspace.classList.add('screen-view-side-by-side');
-    } else if (currentScreenViewMode === 'screen-focus') {
-      workspace.classList.add('screen-view-focus');
-    } else {
-      workspace.classList.add('screen-view-standard');
-    }
-  } else {
-    workspace.classList.remove('stage-mode');
-    if (currentCameraViewMode === 'speaker') {
-      workspace.classList.add('view-speaker');
-      videoGrid.classList.add('layout-speaker');
-      const dominant = currentActiveSpeaker;
-      videoGrid.classList.add(dominant === 'remote' ? 'dominant-remote' : 'dominant-local');
-      if (dominant === 'remote') {
-        remoteTile.classList.add('dominant-tile');
-        localTile.classList.add('secondary-tile');
-        localTile.setAttribute('title', 'Click to switch focus to You');
-      } else {
-        localTile.classList.add('dominant-tile');
-        remoteTile.classList.add('secondary-tile');
-        remoteTile.setAttribute('title', `Click to switch focus to ${peerIdentity?.displayName || 'Musician'}`);
-      }
-    } else if (currentCameraViewMode === 'focus') {
-      workspace.classList.add('view-focus');
-      videoGrid.classList.add('layout-focus');
-      const dominant = currentFocusTarget;
-      videoGrid.classList.add(dominant === 'remote' ? 'dominant-remote' : 'dominant-local');
-      if (dominant === 'remote') {
-        remoteTile.classList.add('dominant-tile');
-        localTile.classList.add('secondary-tile');
-        localTile.setAttribute('title', 'Click to switch focus to You');
-      } else {
-        localTile.classList.add('dominant-tile');
-        remoteTile.classList.add('secondary-tile');
-        remoteTile.setAttribute('title', `Click to switch focus to ${peerIdentity?.displayName || 'Musician'}`);
-      }
-    } else {
-      workspace.classList.add('view-gallery');
-      videoGrid.classList.add('layout-gallery');
-    }
-  }
-
-  setupParticipantTileInteractions();
-  updateSessionViewButton();
-  renderSessionViewMenu();
-}
-
-function updateSessionViewButton(): void {
-  const isLocalSharing = Boolean(screenTrack);
-  const isRemoteSharing = Boolean(remoteMedia?.sharingScreen && remoteVideoStream);
-  const isAnySharing = isLocalSharing || isRemoteSharing;
-
-  const btn = document.getElementById('session-view-btn');
-  const iconEl = document.getElementById('session-view-btn-icon');
-  const labelEl = document.getElementById('session-view-btn-label');
-  if (!btn || !iconEl) return;
-
-  if (isAnySharing) {
-    if (currentScreenViewMode === 'side-by-side') {
-      iconEl.innerHTML = icons.sideBySide({ size: 18 });
-      if (labelEl) labelEl.textContent = 'Side by Side';
-      btn.title = 'Stage Layout: Side by Side View';
-    } else if (currentScreenViewMode === 'screen-focus') {
-      iconEl.innerHTML = icons.maximize({ size: 18 });
-      if (labelEl) labelEl.textContent = 'Screen Focus';
-      btn.title = 'Stage Layout: Screen Focus View';
-    } else {
-      iconEl.innerHTML = icons.monitor({ size: 18 });
-      if (labelEl) labelEl.textContent = 'Screen View';
-      btn.title = 'Stage Layout: Screen View';
-    }
-  } else {
-    if (currentCameraViewMode === 'speaker') {
-      iconEl.innerHTML = icons.layoutSpeaker({ size: 18 });
-      if (labelEl) labelEl.textContent = 'Speaker';
-      btn.title = 'Stage Layout: Speaker View';
-    } else if (currentCameraViewMode === 'focus') {
-      iconEl.innerHTML = icons.pin({ size: 18 });
-      const targetName = currentFocusTarget === 'remote' ? (peerIdentity?.displayName || 'Musician') : 'You';
-      if (labelEl) labelEl.textContent = `Focus: ${targetName}`;
-      btn.title = `Stage Layout: Focus (${targetName})`;
-    } else {
-      iconEl.innerHTML = icons.layoutGrid({ size: 18 });
-      if (labelEl) labelEl.textContent = 'Gallery';
-      btn.title = 'Stage Layout: Gallery View';
-    }
-  }
-}
-
-function renderSessionViewMenu(): void {
-  const menu = document.getElementById('session-view-menu');
-  if (!menu) return;
-
-  const isLocalSharing = Boolean(screenTrack);
-  const isRemoteSharing = Boolean(remoteMedia?.sharingScreen && remoteVideoStream);
-  const isAnySharing = isLocalSharing || isRemoteSharing;
-
-  const remoteName = peerIdentity?.displayName || 'Musician';
-  const localName = myIdentity?.displayName || 'You';
-
-  let html = '';
-
-  if (isAnySharing) {
-    html += `
-      <div class="view-menu-section-header">SCREEN VIEW</div>
-      <button type="button" class="view-menu-item ${currentScreenViewMode === 'screen' ? 'active' : ''}" data-screen-mode="screen">
-        <span class="menu-item-icon">${icons.monitor({ size: 14 })}</span>
-        <span class="menu-item-text">Screen View</span>
-        ${currentScreenViewMode === 'screen' ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
-      </button>
-      <button type="button" class="view-menu-item ${currentScreenViewMode === 'side-by-side' ? 'active' : ''}" data-screen-mode="side-by-side">
-        <span class="menu-item-icon">${icons.sideBySide({ size: 14 })}</span>
-        <span class="menu-item-text">Side by Side View</span>
-        ${currentScreenViewMode === 'side-by-side' ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
-      </button>
-      <button type="button" class="view-menu-item ${currentScreenViewMode === 'screen-focus' ? 'active' : ''}" data-screen-mode="screen-focus">
-        <span class="menu-item-icon">${icons.maximize({ size: 14 })}</span>
-        <span class="menu-item-text">Screen Focus View</span>
-        ${currentScreenViewMode === 'screen-focus' ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
-      </button>
-      <div class="view-menu-divider"></div>
-      <div class="view-menu-section-header">PARTICIPANT TILES</div>
-    `;
-  } else {
-    html += `<div class="view-menu-section-header">STAGE VIEW</div>`;
-  }
-
-  html += `
-    <button type="button" class="view-menu-item ${(!isAnySharing && currentCameraViewMode === 'gallery') ? 'active' : ''}" data-camera-mode="gallery">
-      <span class="menu-item-icon">${icons.layoutGrid({ size: 14 })}</span>
-      <span class="menu-item-text">Gallery View</span>
-      ${(!isAnySharing && currentCameraViewMode === 'gallery') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
-    </button>
-    <button type="button" class="view-menu-item ${(!isAnySharing && currentCameraViewMode === 'speaker') ? 'active' : ''}" data-camera-mode="speaker">
-      <span class="menu-item-icon">${icons.layoutSpeaker({ size: 14 })}</span>
-      <span class="menu-item-text">Speaker View</span>
-      ${(!isAnySharing && currentCameraViewMode === 'speaker') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
-    </button>
-    <div class="view-menu-divider"></div>
-    <div class="view-menu-section-header">FOCUS PIN</div>
-    <button type="button" class="view-menu-item ${(!isAnySharing && currentCameraViewMode === 'focus' && currentFocusTarget === 'remote') ? 'active' : ''}" data-camera-mode="focus" data-focus-target="remote">
-      <span class="menu-item-icon">${icons.pin({ size: 14 })}</span>
-      <span class="menu-item-text">Focus: ${escapeHtml(remoteName)}</span>
-      ${(!isAnySharing && currentCameraViewMode === 'focus' && currentFocusTarget === 'remote') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
-    </button>
-    <button type="button" class="view-menu-item ${(!isAnySharing && currentCameraViewMode === 'focus' && currentFocusTarget === 'local') ? 'active' : ''}" data-camera-mode="focus" data-focus-target="local">
-      <span class="menu-item-icon">${icons.pin({ size: 14 })}</span>
-      <span class="menu-item-text">Focus: ${escapeHtml(localName)}</span>
-      ${(!isAnySharing && currentCameraViewMode === 'focus' && currentFocusTarget === 'local') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
-    </button>
-  `;
-
-  menu.innerHTML = html;
-
-  menu.querySelectorAll<HTMLButtonElement>('.view-menu-item').forEach((item) => {
-    item.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const screenMode = item.getAttribute('data-screen-mode') as ScreenViewMode | null;
-      const cameraMode = item.getAttribute('data-camera-mode') as ParticipantViewMode | null;
-      const focusTarget = item.getAttribute('data-focus-target') as ParticipantTarget | null;
-
-      if (screenMode) {
-        currentScreenViewMode = screenMode;
-      }
-      if (cameraMode) {
-        currentCameraViewMode = cameraMode;
-        if (focusTarget) {
-          currentFocusTarget = focusTarget;
-        }
-      }
-      applyParticipantViewLayout();
-      closeSessionViewMenu();
-    });
-  });
-}
-
-function toggleSessionViewMenu(e?: Event): void {
-  e?.stopPropagation();
-  const menu = document.getElementById('session-view-menu');
-  const btn = document.getElementById('session-view-btn');
-  if (!menu || !btn) return;
-
-  const isHidden = menu.classList.contains('hidden');
-  if (isHidden) {
-    renderSessionViewMenu();
-    menu.classList.remove('hidden');
-    btn.classList.add('active');
-    btn.setAttribute('aria-expanded', 'true');
-  } else {
-    menu.classList.add('hidden');
-    btn.classList.remove('active');
-    btn.setAttribute('aria-expanded', 'false');
-  }
-}
-
-function closeSessionViewMenu(): void {
-  const menu = document.getElementById('session-view-menu');
-  const btn = document.getElementById('session-view-btn');
-  if (menu) menu.classList.add('hidden');
-  if (btn) {
-    btn.classList.remove('active');
-    btn.setAttribute('aria-expanded', 'false');
-  }
-}
-
 function checkActiveSpeaker(): void {
   const VOICE_THRESHOLD_DB = -46;
   const now = performance.now();
@@ -421,85 +196,15 @@ function checkActiveSpeaker(): void {
     newSpeaker = 'local';
   }
 
-  if (newSpeaker && newSpeaker !== currentActiveSpeaker) {
+  if (newSpeaker && newSpeaker !== getActiveSpeaker()) {
     if (now - lastSpeakerSwitchTime > SPEAKER_SWITCH_HOLD_MS) {
-      currentActiveSpeaker = newSpeaker;
+      setActiveSpeaker(newSpeaker);
       lastSpeakerSwitchTime = now;
-      if (currentCameraViewMode === 'speaker') {
+      if (getCameraViewMode() === 'speaker') {
         applyParticipantViewLayout();
       }
     }
   }
-}
-
-let participantTileInteractionsBound = false;
-function setupParticipantTileInteractions(): void {
-  if (participantTileInteractionsBound) return;
-  participantTileInteractionsBound = true;
-
-  const remoteTile = document.getElementById('remote-tile');
-  const localTile = document.getElementById('local-tile');
-
-  remoteTile?.addEventListener('click', () => {
-    if (remoteTile.classList.contains('secondary-tile')) {
-      if (currentCameraViewMode === 'focus') {
-        currentFocusTarget = 'remote';
-        applyParticipantViewLayout();
-      } else if (currentCameraViewMode === 'speaker') {
-        currentCameraViewMode = 'focus';
-        currentFocusTarget = 'remote';
-        applyParticipantViewLayout();
-      }
-    }
-  });
-
-  localTile?.addEventListener('click', () => {
-    if (localTile.classList.contains('secondary-tile')) {
-      if (currentCameraViewMode === 'focus') {
-        currentFocusTarget = 'local';
-        applyParticipantViewLayout();
-      } else if (currentCameraViewMode === 'speaker') {
-        currentCameraViewMode = 'focus';
-        currentFocusTarget = 'local';
-        applyParticipantViewLayout();
-      }
-    }
-  });
-}
-
-function updateSessionStage(): void {
-  const workspace = document.getElementById('session-workspace');
-  const stageTile = document.getElementById('stage-tile');
-  const stageVideo = document.getElementById('stage-video') as HTMLVideoElement | null;
-  const stageStopBtn = document.getElementById('stage-stop-share-btn');
-  const stageTitle = document.getElementById('stage-title-text');
-  if (!workspace || !stageTile || !stageVideo) return;
-
-  const isLocalSharing = Boolean(screenTrack);
-  const isRemoteSharing = Boolean(remoteMedia?.sharingScreen && remoteVideoStream);
-  const isAnySharing = isLocalSharing || isRemoteSharing;
-
-  stageTile.classList.toggle('hidden', !isAnySharing);
-
-  if (isLocalSharing && screenTrack) {
-    const screenStream = new MediaStream([screenTrack]);
-    stageVideo.classList.remove('hidden');
-    if (stageVideo.srcObject !== screenStream) stageVideo.srcObject = screenStream;
-    if (stageVideo.paused) stageVideo.play().catch(() => {});
-    if (stageTitle) stageTitle.textContent = currentSharingSourceTitle ? `Sharing: ${currentSharingSourceTitle}` : 'Sharing Screen';
-    if (stageStopBtn) stageStopBtn.classList.remove('hidden');
-  } else if (isRemoteSharing && remoteVideoStream) {
-    stageVideo.classList.remove('hidden');
-    if (stageVideo.srcObject !== remoteVideoStream) stageVideo.srcObject = remoteVideoStream;
-    if (stageVideo.paused) stageVideo.play().catch(() => {});
-    if (stageTitle) stageTitle.textContent = 'Musician is sharing Screen / DAW';
-    if (stageStopBtn) stageStopBtn.classList.add('hidden');
-  } else {
-    stageVideo.srcObject = null;
-    stageVideo.classList.remove('hidden');
-  }
-
-  applyParticipantViewLayout();
 }
 
 function createDownscaledVideoTrack(rawTrack: MediaStreamTrack, width: number, height: number, fps: number): MediaStreamTrack {
@@ -1614,10 +1319,6 @@ function updateCallMode(): void {
   
   updateHeadphoneWarning();
   updateLocalPreviews();
-}
-
-let currentSharingSourceTitle = '';
-
 async function startScreenShare(sourceId: string, optimizeFor: 'detail' | 'motion' = 'detail'): Promise<void> {
   if (!inCall || screenTrack) return;
   
@@ -3289,16 +2990,7 @@ presenter.setActionHandler(async (action) => {
       break;
     case 'toggle-layout': {
       const isAnySharing = Boolean(screenTrack) || Boolean(remoteMedia?.sharingScreen && remoteVideoStream);
-      if (isAnySharing) {
-        if (currentScreenViewMode === 'screen-view') currentScreenViewMode = 'side-by-side';
-        else if (currentScreenViewMode === 'side-by-side') currentScreenViewMode = 'screen-focus';
-        else currentScreenViewMode = 'screen-view';
-      } else {
-        if (currentCameraViewMode === 'gallery') currentCameraViewMode = 'speaker';
-        else if (currentCameraViewMode === 'speaker') currentCameraViewMode = 'focus';
-        else currentCameraViewMode = 'gallery';
-      }
-      applyParticipantViewLayout();
+      toggleSessionLayout(isAnySharing);
       break;
     }
     case 'show-main-window':
