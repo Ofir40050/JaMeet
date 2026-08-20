@@ -43,6 +43,7 @@ import {
   renderProjectsGrid
 } from './projectsListUi';
 import { renderProjectHeader } from './projectHeaderUi';
+import { renderProjectCollaborators } from './projectCollaboratorsUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -4247,7 +4248,7 @@ function renderProjectView(): void {
   renderProjectHeader(p, user);
 
   // Collaborators
-  renderProjectCollaborators();
+  renderProjectCollaboratorsView();
 
   // Sessions
   currentProjectSessionsPage = 1;
@@ -4257,104 +4258,23 @@ function renderProjectView(): void {
   applyWorkspacePermissions();
 }
 
-function renderProjectCollaborators(): void {
-  if (!activeProject) return;
-  const listOverview = $('project-collaborators-list');
-  const listFull = $('project-collaborators-full-list');
-
-  const user = auth.getUser();
-  const isOwner = user?.id === activeProject.ownerId;
-  const ownerAvatarUrl = activeProject.ownerId === user?.id ? user?.avatarUrl : (activeProject as any).ownerAvatarUrl;
-  const allMembers = [
-    {
-      userId: activeProject.ownerId,
-      displayName: activeProject.ownerDisplayName,
-      username: activeProject.ownerUsername,
-      avatarColor: safeAvatarColor(activeProject.ownerAvatarColor, '#f59e0b'),
-      avatarUrl: ownerAvatarUrl,
-      role: 'owner' as const,
-      addedAt: activeProject.createdAt
+function renderProjectCollaboratorsView(): void {
+  renderProjectCollaborators(activeProject, auth.getUser(), {
+    onUpdateRole: async (userId, targetRole) => {
+      const token = auth.getToken();
+      if (!token || !activeProject) return;
+      try {
+        activeProject = await projectsApi.updateCollaboratorRole(token, activeProject.id, userId, targetRole);
+        renderProjectView();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Failed to update member permission.');
+        renderProjectCollaboratorsView();
+      }
     },
-    ...activeProject.collaborators.map((c) => ({
-      ...c,
-      avatarUrl: c.userId === user?.id ? user?.avatarUrl : (c as any).avatarUrl
-    }))
-  ];
-
-  const buildItems = (container: HTMLElement | null) => {
-    if (!container) return;
-    container.replaceChildren();
-
-    for (const member of allMembers) {
-      const isMemberOwner = member.role === 'owner';
-      const isViewer = member.role === 'viewer';
-      const isEditor = member.role === 'editor' || member.role === 'collaborator';
-
-      let roleHtml = '';
-      if (isMemberOwner) {
-        roleHtml = `<span class="collab-role-badge role-owner">${icons.crown({ size: 12 })} <span>Owner</span></span>`;
-      } else if (isOwner) {
-        roleHtml = `
-          <div class="collab-role-select-wrap">
-            <select class="collab-role-dropdown" data-user-id="${escapeHtml(member.userId)}" aria-label="Permission Level">
-              <option value="editor" ${isEditor ? 'selected' : ''}>Editor (Can Edit)</option>
-              <option value="viewer" ${isViewer ? 'selected' : ''}>Viewer (View Only)</option>
-            </select>
-          </div>
-        `;
-      } else {
-        roleHtml = `
-          <span class="collab-role-badge ${isViewer ? 'role-viewer' : 'role-editor'}">
-            <span>${isViewer ? 'Viewer' : 'Editor'}</span>
-          </span>
-        `;
-      }
-
-      const item = document.createElement('div');
-      item.className = 'collab-item';
-      item.innerHTML = `
-        <div class="collab-avatar"></div>
-        <div class="collab-info">
-          <div class="collab-name">${escapeHtml(member.displayName)}</div>
-          <div class="collab-username">@${escapeHtml(member.username)}</div>
-        </div>
-        ${roleHtml}
-        ${isOwner && !isMemberOwner ? `<button class="collab-remove-btn" data-user-id="${escapeHtml(member.userId)}" title="Remove member">${icons.x({ size: 14 })}</button>` : ''}
-      `;
-      const avatarEl = item.querySelector<HTMLElement>('.collab-avatar');
-      applyAvatarToElement(avatarEl, member.displayName, member.avatarColor, member.avatarUrl);
-
-      const roleDropdown = item.querySelector<HTMLSelectElement>('.collab-role-dropdown');
-      if (roleDropdown) {
-        roleDropdown.addEventListener('change', async (e) => {
-          e.stopPropagation();
-          const targetRole = roleDropdown.value;
-          const token = auth.getToken();
-          if (!token || !activeProject) return;
-          try {
-            roleDropdown.disabled = true;
-            activeProject = await projectsApi.updateCollaboratorRole(token, activeProject.id, member.userId, targetRole);
-            renderProjectView();
-          } catch (err) {
-            alert(err instanceof Error ? err.message : 'Failed to update member permission.');
-            renderProjectCollaborators();
-          }
-        });
-      }
-
-      const removeBtn = item.querySelector<HTMLButtonElement>('.collab-remove-btn');
-      if (removeBtn) {
-        removeBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          void removeProjectCollaborator(member.userId);
-        });
-      }
-      container.appendChild(item);
+    onRemoveCollaborator: (userId) => {
+      void removeProjectCollaborator(userId);
     }
-  };
-
-  buildItems(listOverview);
-  buildItems(listFull);
+  });
 }
 
 let currentProjectSessionsSearch = '';
@@ -4698,7 +4618,7 @@ async function removeProjectCollaborator(targetUserId: string): Promise<void> {
   if (!token) return;
   try {
     activeProject = await projectsApi.removeCollaborator(token, activeProject.id, targetUserId);
-    renderProjectCollaborators();
+    renderProjectCollaboratorsView();
   } catch (err) {
     console.error('Failed to remove collaborator:', err);
   }
