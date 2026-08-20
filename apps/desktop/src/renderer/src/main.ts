@@ -20,7 +20,8 @@ import {
   getEditingAvatarColor,
   setEditingAvatarColor,
   getEditingAvatarUrl,
-  setEditingAvatarUrl
+  setEditingAvatarUrl,
+  clearProfilePasswordInputs
 } from './profileUi';
 import {
   initSettingsUi,
@@ -210,6 +211,30 @@ initProfileUi({
   onLogout: async () => {
     await auth.logout();
     showView('home-view');
+  },
+  onSaveProfile: async (formValues) => {
+    try {
+      const payload: UpdateProfileRequest = {
+        displayName: formValues.displayName,
+        role: formValues.role,
+        location: formValues.location,
+        primaryDaw: formValues.primaryDaw,
+        genres: formValues.genres,
+        bio: formValues.bio,
+        socialHandle: formValues.socialHandle,
+        avatarColor: getEditingAvatarColor(),
+        avatarUrl: getEditingAvatarUrl() || '',
+        currentPassword: formValues.currentPassword,
+        newPassword: formValues.newPassword
+      };
+
+      await auth.updateProfile(payload);
+      showProfileFeedback('✓ Profile updated successfully!', 'success');
+      clearProfilePasswordInputs();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update profile.';
+      showProfileFeedback(msg, 'error');
+    }
   }
 });
 initSettingsUi({
@@ -4105,98 +4130,6 @@ $('btn-auth-logout')?.addEventListener('click', async () => {
   await auth.logout();
   $<HTMLDialogElement>('auth-dialog')?.close();
   showView('home-view');
-});
-
-// Save Profile Changes
-$('btn-profile-save')?.addEventListener('click', async () => {
-  const displayName = $<HTMLInputElement>('profile-edit-display-name')?.value.trim();
-  const role = $<HTMLInputElement>('profile-edit-role')?.value.trim();
-  const location = $<HTMLInputElement>('profile-edit-location')?.value.trim();
-  const primaryDaw = $<HTMLSelectElement>('profile-edit-daw')?.value.trim();
-  const genresRaw = $<HTMLInputElement>('profile-edit-genres')?.value.trim();
-  const bio = $<HTMLTextAreaElement>('profile-edit-bio')?.value.trim();
-  const social = $<HTMLInputElement>('profile-edit-social')?.value.trim();
-
-  const curPass = $<HTMLInputElement>('profile-input-cur-password')?.value;
-  const newPass = $<HTMLInputElement>('profile-input-new-password')?.value;
-  const confPass = $<HTMLInputElement>('profile-input-confirm-password')?.value;
-
-  if (!displayName) {
-    showProfileFeedback('Display Name cannot be empty.', 'error');
-    switchProfileSubtab('info');
-    return;
-  }
-
-  if (newPass || curPass || confPass) {
-    if (!curPass) {
-      showProfileFeedback('Current password is required to change password.', 'error');
-      switchProfileSubtab('security');
-      return;
-    }
-    if (!newPass || newPass.length < 8) {
-      showProfileFeedback('New password must be at least 8 characters long.', 'error');
-      switchProfileSubtab('security');
-      return;
-    }
-    if (newPass !== confPass) {
-      showProfileFeedback('New passwords do not match.', 'error');
-      switchProfileSubtab('security');
-      return;
-    }
-  }
-
-  const genres = genresRaw
-    ? genresRaw.split(',').map((g) => g.trim()).filter(Boolean)
-    : [];
-
-  const saveBtn = $<HTMLButtonElement>('btn-profile-save');
-  try {
-    if (saveBtn) {
-      saveBtn.disabled = true;
-      saveBtn.innerHTML = `<span>Saving Changes…</span>`;
-    }
-
-    const payload: UpdateProfileRequest = {
-      displayName,
-      role: role || undefined,
-      location: location || undefined,
-      primaryDaw: primaryDaw || undefined,
-      genres: genres.length > 0 ? genres : undefined,
-      bio: bio || undefined,
-      socialHandle: social || undefined,
-      avatarColor: getEditingAvatarColor(),
-      avatarUrl: getEditingAvatarUrl() || ''
-    };
-
-    if (newPass && curPass) {
-      payload.currentPassword = curPass;
-      payload.newPassword = newPass;
-    }
-
-    await auth.updateProfile(payload);
-    showProfileFeedback('✓ Profile updated successfully!', 'success');
-
-    // clear password inputs
-    const curPassEl = $<HTMLInputElement>('profile-input-cur-password');
-    const newPassEl = $<HTMLInputElement>('profile-input-new-password');
-    const confPassEl = $<HTMLInputElement>('profile-input-confirm-password');
-    if (curPassEl) curPassEl.value = '';
-    if (newPassEl) newPassEl.value = '';
-    if (confPassEl) confPassEl.value = '';
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Failed to update profile.';
-    showProfileFeedback(msg, 'error');
-  } finally {
-    if (saveBtn) {
-      saveBtn.disabled = false;
-      saveBtn.innerHTML = `
-        <span class="btn-icon-inner">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><polyline points="20 6 9 17 4 12"/></svg>
-        </span>
-        <span>Save Profile Changes</span>
-      `;
-    }
-  }
 });
 
 let pendingJoinCode = '';
