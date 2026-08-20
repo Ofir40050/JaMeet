@@ -90,6 +90,12 @@ import {
   renderDeleteSongModal,
   closeDeleteSongModal
 } from './projectSongDeleteUi';
+import {
+  initProjectCreateUi,
+  closeNewProjectModal,
+  setNewProjectError,
+  setNewProjectBusy
+} from './projectCreateUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -347,6 +353,31 @@ initProjectSongDeleteUi({
     renderProjectOverviewSongsList();
     applyWorkspacePermissions();
     void saveSongsWorkspace();
+  }
+});
+initProjectCreateUi({
+  onCreateProject: async ({ name, description }) => {
+    const token = auth.getToken();
+    if (!token) {
+      setNewProjectError('Please sign in to your JaMeet account to create projects.');
+      return;
+    }
+    setNewProjectBusy(true);
+    try {
+      setNewProjectError('');
+      const created = await projectsApi.createProject(token, { name, description: description || undefined });
+      closeNewProjectModal();
+      await loadProjects();
+      // Open the newly created project immediately!
+      if (created?.id) {
+        await openProjectView(created.id);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not create project. Please try again.';
+      setNewProjectError(msg);
+    } finally {
+      setNewProjectBusy(false);
+    }
   }
 });
 let myIdentity: ParticipantIdentity | null = null;
@@ -4600,73 +4631,6 @@ async function removeProjectCollaborator(targetUserId: string): Promise<void> {
 }
 
 // --- Project Event Listeners ---
-
-function openNewProjectModal(): void {
-  const nameInput = $<HTMLInputElement>('new-project-name');
-  const descInput = $<HTMLInputElement>('new-project-desc');
-  if (nameInput) nameInput.value = '';
-  if (descInput) descInput.value = '';
-  setText('new-project-error', '');
-  $('new-project-modal')?.classList.remove('hidden');
-  setTimeout(() => nameInput?.focus(), 50);
-}
-
-$('btn-new-project')?.addEventListener('click', openNewProjectModal);
-$('btn-create-first-project')?.addEventListener('click', openNewProjectModal);
-
-$('btn-close-new-project')?.addEventListener('click', () => $('new-project-modal')?.classList.add('hidden'));
-$('btn-cancel-new-project')?.addEventListener('click', () => $('new-project-modal')?.classList.add('hidden'));
-
-$<HTMLInputElement>('new-project-name')?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    $<HTMLButtonElement>('btn-create-project')?.click();
-  }
-});
-$<HTMLInputElement>('new-project-desc')?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    $<HTMLButtonElement>('btn-create-project')?.click();
-  }
-});
-
-$('btn-create-project')?.addEventListener('click', async () => {
-  const name = $<HTMLInputElement>('new-project-name')?.value.trim();
-  const desc = $<HTMLInputElement>('new-project-desc')?.value.trim();
-  if (!name) {
-    setText('new-project-error', 'Please enter a song or project name.');
-    $<HTMLInputElement>('new-project-name')?.focus();
-    return;
-  }
-  const token = auth.getToken();
-  if (!token) {
-    setText('new-project-error', 'Please sign in to your JaMeet account to create projects.');
-    return;
-  }
-  const submitBtn = $<HTMLButtonElement>('btn-create-project');
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Creating…';
-  }
-  try {
-    setText('new-project-error', '');
-    const created = await projectsApi.createProject(token, { name, description: desc || undefined });
-    $('new-project-modal')?.classList.add('hidden');
-    await loadProjects();
-    // Open the newly created project immediately!
-    if (created?.id) {
-      await openProjectView(created.id);
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Could not create project. Please try again.';
-    setText('new-project-error', msg);
-  } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Create Project';
-    }
-  }
-});
 
 $('btn-refresh-projects')?.addEventListener('click', () => void loadProjects());
 
