@@ -303,7 +303,7 @@ initProjectDeleteUi({
   }
 });
 initProjectSongDeleteUi({
-  getSongTitle: () => (songPendingDeletion ? songPendingDeletion.title || 'Untitled Song' : undefined),
+  getSongTitle: () => (songPendingDeletion ? songPendingDeletion.title : undefined),
   onCancel: () => {
     songPendingDeletion = null;
   },

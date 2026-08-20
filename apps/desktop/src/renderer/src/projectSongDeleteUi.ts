@@ -55,7 +55,7 @@ export function initProjectSongDeleteUi(options: ProjectSongDeleteUiOptions = {}
     if (rawTitle === undefined) return;
     const inputEl = e.target as HTMLInputElement;
     const val = inputEl.value.trim().toLowerCase();
-    const sTitle = (rawTitle || 'Untitled Song').trim().toLowerCase();
+    const sTitle = (rawTitle || '').trim().toLowerCase();
     const targetA = `delete ${sTitle}`;
     const targetB = `delete - ${sTitle}`;
     const targetC = `delete "${sTitle}"`;
