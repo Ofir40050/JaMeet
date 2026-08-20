@@ -20,7 +20,6 @@ import {
   clearProfilePasswordInputs
 } from './auth/profile/profileUi';
 import {
-  initSettingsUi,
   switchSettingsSection,
   type SettingsSection
 } from './auth/settings/settingsUi';
@@ -98,6 +97,24 @@ import { deviceError } from './media/deviceError';
 import { initInCallAudioModalController } from './sessions/call/inCallAudioModalController';
 import { initCallToolbarController } from './sessions/call/callToolbarController';
 import { initSessionUtilityBindingsController } from './sessions/call/sessionUtilityBindingsController';
+import { refreshRunningApps as refreshRunningAppsHelper, updateAppIconBadge, getCachedRunningApps } from './media/runningApplicationsController';
+import {
+  type HardwareAudioDeviceInfo,
+  findHardwareDevice,
+  formatDeviceDisplayName,
+  formatOutputChannelName,
+  generateInputChannelOptions,
+  generateOutputChannelOptions,
+  type ChannelDropdownOption
+} from './media/hardwareDeviceUtils';
+import { fillSelects, populateChannelDropdowns } from './media/deviceSelectUi';
+import { enumerateAndPopulateDevices } from './media/deviceEnumerationController';
+import { renderAudioLimitations as renderAudioLimitationsUi } from './media/audioLimitationsUi';
+import { handleRemoteMediaUi } from './sessions/call/remoteMediaUiController';
+import { prepareStudioDomain } from './sessions/setup/studioPreparationDomainController';
+import { getMeterInterval, getEffectiveMusicBitrate } from './media/mediaPreferenceController';
+import { bindDeviceSelect } from './media/deviceChangeController';
+import { initAuthDomainController } from './auth/authDomainController';
 import {
   getWorkspaceContextGen,
   isWorkspaceContextGenCurrent,
@@ -123,51 +140,6 @@ import {
   incrementTasksSaveGen,
   setTasksSaveGen
 } from './workspace/core/workspaceGenerationState';
-import {
-  initProfileController,
-  handleSaveProfile
-} from './auth/profile/profileController';
-import {
-  initAuthController,
-  handleLogin,
-  handleRegister,
-  handleLogout
-} from './auth/authController';
-import {
-  handleScheduledSessionNotificationClick
-} from './sessions/scheduled/scheduledNotificationUi';
-import {
-  hasLyricsSaveTimeout,
-  clearLyricsSaveTimeout
-} from './workspace/lyrics/lyricsController';
-import {
-  getStructureSections
-} from './workspace/structure/structureController';
-import {
-  debounceSaveStructure,
-  saveStructureWorkspace,
-  hasStructureSaveTimeout,
-  clearStructureSaveTimeout
-} from './workspace/structure/structurePersistence';
-import {
-  getActiveSongState
-} from './songs/state/songState';
-import {
-  saveSongsWorkspace
-} from './songs/state/songsPersistence';
-import {
-  saveLyricsWorkspace
-} from './workspace/lyrics/lyricsPersistence';
-import {
-  saveNotesWorkspace,
-  debounceSaveNotesRetry,
-  hasNotesSaveTimeout,
-  clearNotesSaveTimeout
-} from './workspace/notes/notesPersistence';
-import {
-  initAuthStateUiController,
-  updateAuthUi
-} from './auth/authStateUiController';
 import {
   initAuthNavigation,
   openAuthView,
@@ -217,11 +189,40 @@ import {
   initDesktopLifecycle
 } from './core/desktopLifecycleController';
 import {
-  initProjectNavigationController
-} from './projects/navigation/projectNavigationController';
+  handleScheduledSessionNotificationClick
+} from './sessions/scheduled/scheduledNotificationUi';
 import {
-  initProjectSongDeleteController
-} from './songs/delete/projectSongDeleteController';
+  hasLyricsSaveTimeout,
+  clearLyricsSaveTimeout
+} from './workspace/lyrics/lyricsController';
+import {
+  getStructureSections
+} from './workspace/structure/structureController';
+import {
+  debounceSaveStructure,
+  saveStructureWorkspace,
+  hasStructureSaveTimeout,
+  clearStructureSaveTimeout
+} from './workspace/structure/structurePersistence';
+import {
+  getActiveSongState
+} from './songs/state/songState';
+import {
+  saveSongsWorkspace
+} from './songs/state/songsPersistence';
+import {
+  saveLyricsWorkspace
+} from './workspace/lyrics/lyricsPersistence';
+import {
+  saveNotesWorkspace,
+  debounceSaveNotesRetry,
+  hasNotesSaveTimeout,
+  clearNotesSaveTimeout
+} from './workspace/notes/notesPersistence';
+import {
+  initAuthStateUiController,
+  updateAuthUi
+} from './auth/authStateUiController';
 import {
   getPendingJoinCode,
   setPendingJoinCode,
@@ -240,7 +241,6 @@ import {
   initStudioSetupController
 } from './sessions/setup/studioSetupController';
 import {
-  prepareStudio as prepareStudioController,
   type PendingAction
 } from './sessions/setup/studioPreparationController';
 import {
@@ -965,57 +965,20 @@ initRecentSessionsController({
     showView('home-view');
   }
 });
-initProfileController({
-  onUpdateProfile: async (payload) => {
-    await auth.updateProfile(payload);
-  }
-});
-initProfileUiController({
-  getUser: () => auth.getUser(),
-  onOpenAccountSettings: () => openSettings('account'),
-  onOpenGeneralSettings: () => openSettings('general'),
+initAuthDomainController({
+  auth,
+  onOpenSettings: (section) => openSettings(section as any),
   onOpenAuthView: (mode) => openAuthView(mode),
-  onLogout: async () => {
-    await handleLogout();
-  },
   onShowHomeView: () => showView('home-view'),
-  onSaveProfile: (formValues) => {
-    void handleSaveProfile(formValues);
-  }
-});
-initSettingsUi({
-  onCloseSettings: () => showView(getLastActiveViewBeforeSettings() || 'home-view')
-});
-initAuthController({
-  onLoginAuth: async (credentials) => {
-    await auth.login(credentials);
-  },
-  onRegisterAuth: async (values) => {
-    await auth.register(values);
-  },
-  onLogoutAuth: async () => {
-    await auth.logout();
-  },
+  getLastActiveViewBeforeSettings: () => getLastActiveViewBeforeSettings(),
+  onShowView: (view) => showView(view as any),
   getPendingJoinCode: () => getPendingJoinCode(),
-  clearPendingJoinCode: () => {
+  onClearPendingJoinCode: () => {
     clearPendingJoinCode();
   },
-  onJoinStudio: (code) => {
-    void prepareStudio({ type: 'join', code });
-  },
-  onNavigateHome: () => {
-    showView('home-view');
+  onPrepareStudio: (action) => {
+    void prepareStudio(action);
   }
-});
-initAuthUiController({
-  onOpenSignIn: () => openAuthView('login'),
-  onOpenRegister: () => openAuthView('register'),
-  onNavigateHome: () => showView('home-view'),
-  onLogout: () => {
-    void handleLogout();
-  },
-  onLogin: (credentials) => handleLogin(credentials),
-  onRegister: (values) => handleRegister(values)
 });
 initLyricsDomainController({
   getActiveProject: () => activeProject,
@@ -1403,86 +1366,14 @@ async function replaceAudioInput(deviceId: string | undefined, mode = prefs.mode
   savePreferences();
   await syncAllVoiceMics(mode);
 }
-function meterInterval(): number { return prefs.performanceMode === 'low' ? 125 : prefs.performanceMode === 'quality' ? 40 : 66; }
-function effectiveMusicBitrate(): number {
-  const cap: Record<PerformanceMode, number> = { low: 192_000, balanced: 384_000, quality: 510_000 };
-  return Math.min(prefs.musicBitrate, cap[prefs.performanceMode]);
-}
-
-let cachedRunningApps: Array<{ pid: number; name: string; bundleId: string; isDaw: boolean; category?: string; iconDataUrl?: string }> = [];
-
-function updateAppIconBadge(pid: number | undefined): void {
-  const app = cachedRunningApps.find((a) => a.pid === pid);
-  for (const prefix of ['', 'call-']) {
-    const wrap = document.getElementById(`${prefix}music-app-icon-wrap`);
-    const img = document.getElementById(`${prefix}music-app-icon`) as HTMLImageElement | null;
-    if (wrap && img) {
-      if (app?.iconDataUrl) {
-        img.src = app.iconDataUrl;
-        wrap.classList.remove('hidden');
-      } else {
-        img.removeAttribute('src');
-        wrap.classList.add('hidden');
-      }
-    }
-  }
-}
+function meterInterval(): number { return getMeterInterval(prefs.performanceMode); }
+function effectiveMusicBitrate(): number { return getEffectiveMusicBitrate(prefs); }
 
 async function refreshRunningApps(): Promise<void> {
-  const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
-  if (desktopApi?.listAudioApplications) {
-    cachedRunningApps = await desktopApi.listAudioApplications().catch(() => []);
-  }
-
-  for (const id of ['music-app-select', 'call-music-app-select']) {
-    const select = document.getElementById(id) as HTMLSelectElement | null;
-    if (!select) continue;
-    select.replaceChildren();
-
-    if (!cachedRunningApps.length) {
-      select.add(new Option('No running audio apps found', ''));
-      continue;
-    }
-
-    const musicGroup = document.createElement('optgroup');
-    musicGroup.label = 'DAWs & Music Apps';
-    const mediaGroup = document.createElement('optgroup');
-    mediaGroup.label = 'Browsers & Media Players';
-    const otherGroup = document.createElement('optgroup');
-    otherGroup.label = 'Other Applications';
-
-    for (const app of cachedRunningApps) {
-      // Clean application name only: NO PID! NO internal process identifiers!
-      const opt = new Option(app.name, String(app.pid));
-
-      if (app.category === 'music' || app.isDaw) {
-        musicGroup.appendChild(opt);
-      } else if (app.category === 'media') {
-        mediaGroup.appendChild(opt);
-      } else {
-        otherGroup.appendChild(opt);
-      }
-    }
-
-    if (musicGroup.childElementCount > 0) select.appendChild(musicGroup);
-    if (mediaGroup.childElementCount > 0) select.appendChild(mediaGroup);
-    if (otherGroup.childElementCount > 0) select.appendChild(otherGroup);
-
-    if (prefs.musicAppPid && cachedRunningApps.some((a) => a.pid === prefs.musicAppPid)) {
-      select.value = String(prefs.musicAppPid);
-    } else {
-      const defaultApp = cachedRunningApps.find((a) => a.isDaw || a.category === 'music') ||
-                         cachedRunningApps.find((a) => a.category === 'media') ||
-                         cachedRunningApps[0];
-      if (defaultApp) {
-        select.value = String(defaultApp.pid);
-        prefs.musicAppPid = defaultApp.pid;
-        prefs.musicAppName = defaultApp.name;
-      }
-    }
-  }
-
-  updateAppIconBadge(prefs.musicAppPid);
+  await refreshRunningAppsHelper({
+    getPreferences: () => prefs,
+    onUpdatePreferences: () => savePreferences()
+  });
 }
 
 async function replaceMusicInput(): Promise<void> {
@@ -1578,230 +1469,7 @@ async function replaceMusicInput(): Promise<void> {
   }
 }
 
-type HardwareAudioDeviceInfo = {
-  id: number;
-  name: string;
-  uid: string;
-  inputChannels: number;
-  outputChannels: number;
-  sampleRate: number;
-  defaultInput: boolean;
-  defaultOutput: boolean;
-  inputChannelNames?: string[];
-  outputChannelNames?: string[];
-};
-
 let cachedHardwareDevices: HardwareAudioDeviceInfo[] = [];
-
-function findHardwareDevice(deviceId: string | undefined, devices: MediaDeviceInfo[]): HardwareAudioDeviceInfo | undefined {
-  if (!cachedHardwareDevices.length) return undefined;
-  const mediaDevice = deviceId ? devices.find((d) => d.deviceId === deviceId) : undefined;
-  if (!mediaDevice) {
-    return cachedHardwareDevices.find((hw) => hw.defaultInput || hw.defaultOutput);
-  }
-  const label = (mediaDevice.label || '').toLowerCase();
-  return cachedHardwareDevices.find((hw) =>
-    (hw.uid && mediaDevice.deviceId && hw.uid === mediaDevice.deviceId) ||
-    (hw.name && label && label.includes(hw.name.toLowerCase())) ||
-    (hw.name && label && hw.name.toLowerCase().includes(label))
-  );
-}
-
-export type ChannelDropdownOption = {
-  value: string;
-  label: string;
-  group?: string;
-};
-
-function formatDeviceDisplayName(rawName: string | undefined): string {
-  if (!rawName) return 'Default Device';
-  let name = rawName.trim();
-  if (name === 'Universal Audio Thunderbolt' || name.toLowerCase().includes('uad2audioengine') || name.toLowerCase().includes('apollo')) {
-    return 'Universal Audio Apollo';
-  }
-  if (name === 'BuiltInSpeakerDevice' || name === 'MacBook Pro Speakers') {
-    return 'MacBook Pro Speakers';
-  }
-  if (name === 'BuiltInMicrophoneDevice' || name === 'MacBook Pro Microphone') {
-    return 'MacBook Pro Microphone';
-  }
-  // Strip trailing device IDs, hex hashes, vendor IDs, and anything in parentheses like (5bc678), (05ac:8514), etc.
-  name = name.replace(/\s*\([^)]*\)\s*$/g, '').trim();
-  name = name.replace(/:\d+$/, '').replace(/_DeviceUID$/, '').trim();
-  return name || rawName.trim();
-}
-
-function formatOutputChannelName(rawName: string | undefined, chNumber: number): { name: string; isUnassigned: boolean } {
-  if (!rawName || rawName.trim().length === 0) {
-    return { name: `Output ${chNumber}`, isUnassigned: false };
-  }
-  const trimmed = rawName.trim();
-  const lower = trimmed.toLowerCase();
-  if (lower === 'none' || lower.startsWith('none (') || lower.startsWith('none(')) {
-    return { name: `Output ${chNumber} (Unassigned)`, isUnassigned: true };
-  }
-  if (lower.startsWith('input ') || lower.startsWith('in ')) {
-    return { name: `Output ${chNumber}`, isUnassigned: false };
-  }
-  return { name: trimmed, isUnassigned: false };
-}
-
-function generateInputChannelOptions(channelCount: number, channelNames?: string[]): ChannelDropdownOption[] {
-  const names = channelNames || [];
-
-  if (channelCount <= 2) {
-    const ch1Name = names[0] ? ` (${names[0]})` : '';
-    const ch2Name = names[1] ? ` (${names[1]})` : '';
-    return [
-      { value: 'all', label: 'All Channels (Default Mix)', group: 'Hardware Mix' },
-      { value: '1', label: `Input 1${ch1Name} (Mono)`, group: 'Discrete Inputs' },
-      { value: '2', label: `Input 2${ch2Name} (Mono)`, group: 'Discrete Inputs' },
-      { value: '1-2', label: 'Inputs 1 & 2 (Stereo L/R)', group: 'Stereo Pairs' }
-    ];
-  }
-
-  const options: ChannelDropdownOption[] = [];
-  const discrete: ChannelDropdownOption[] = [];
-  const pairs: ChannelDropdownOption[] = [];
-
-  // Discrete Inputs
-  for (let ch = 1; ch <= channelCount; ch++) {
-    const rawName = names[ch - 1] || `Input ${ch}`;
-    const isNone = rawName.toLowerCase().includes('none');
-    if (isNone) continue;
-    discrete.push({
-      value: String(ch),
-      label: `Input ${ch} (${rawName})`,
-      group: 'Discrete Inputs'
-    });
-  }
-
-  // Stereo Pairs
-  for (let ch = 1; ch < channelCount; ch += 2) {
-    const lName = names[ch - 1] || `In ${ch}`;
-    const rName = names[ch] || `In ${ch + 1}`;
-    const isNone = lName.toLowerCase().includes('none') && rName.toLowerCase().includes('none');
-    if (isNone) continue;
-    pairs.push({
-      value: `${ch}-${ch + 1}`,
-      label: `Inputs ${ch} & ${ch + 1} (${lName} / ${rName})`,
-      group: 'Stereo Input Pairs'
-    });
-  }
-
-  options.push(...pairs);
-  options.push(...discrete);
-  options.push({
-    value: 'all',
-    label: `All ${channelCount} Channels (Hardware Mix)`,
-    group: 'Hardware Mix'
-  });
-
-  return options;
-}
-
-function generateOutputChannelOptions(channelCount: number, channelNames?: string[]): ChannelDropdownOption[] {
-  const names = channelNames || [];
-
-  if (channelCount <= 2) {
-    const lInfo = formatOutputChannelName(names[0], 1);
-    const rInfo = formatOutputChannelName(names[1], 2);
-    const hasNamed = names[0] && names[1] && names[0].trim().length > 0 && names[1].trim().length > 0 && !lInfo.isUnassigned && !rInfo.isUnassigned;
-    const pairLabel = hasNamed ? `${lInfo.name} / ${rInfo.name}` : 'Outputs 1 & 2 (Main Stereo)';
-    return [
-      { value: '1-2', label: pairLabel, group: 'Stereo Output Pairs' },
-      { value: '1', label: `${lInfo.name} (Output 1 · Left)`, group: 'Discrete Outputs' },
-      { value: '2', label: `${rInfo.name} (Output 2 · Right)`, group: 'Discrete Outputs' },
-      { value: 'all', label: 'All Active Outputs (Hardware Master Mix)', group: 'Hardware Sum' }
-    ];
-  }
-
-  const options: ChannelDropdownOption[] = [];
-  const stereoPairs: ChannelDropdownOption[] = [];
-  const discreteMono: ChannelDropdownOption[] = [];
-
-  // 1. Stereo Pairs (Primary)
-  for (let ch = 1; ch < channelCount; ch += 2) {
-    const lInfo = formatOutputChannelName(names[ch - 1], ch);
-    const rInfo = formatOutputChannelName(names[ch], ch + 1);
-
-    // Hide unassigned / NONE pairs from primary list by default
-    if (lInfo.isUnassigned && rInfo.isUnassigned) {
-      continue;
-    }
-
-    const pairLabel = `${lInfo.name} / ${rInfo.name}`;
-    stereoPairs.push({
-      value: `${ch}-${ch + 1}`,
-      label: pairLabel,
-      group: 'Stereo Output Pairs'
-    });
-  }
-
-  if (stereoPairs.length === 0) {
-    stereoPairs.push({
-      value: '1-2',
-      label: 'Outputs 1 & 2 (Main Stereo)',
-      group: 'Stereo Output Pairs'
-    });
-  }
-
-  // 2. Discrete Mono Outputs (Secondary / Advanced)
-  for (let ch = 1; ch <= channelCount; ch++) {
-    const info = formatOutputChannelName(names[ch - 1], ch);
-    if (info.isUnassigned) {
-      continue;
-    }
-    discreteMono.push({
-      value: String(ch),
-      label: info.name,
-      group: 'Discrete Mono Outputs'
-    });
-  }
-
-  options.push(...stereoPairs);
-  options.push(...discreteMono);
-
-  // 3. Hardware Sum / Master
-  options.push({
-    value: 'all',
-    label: `All Active Outputs (Hardware Master Mix)`,
-    group: 'Hardware Sum'
-  });
-
-  return options;
-}
-
-function populateChannelDropdowns(ids: string[], options: ChannelDropdownOption[], selectedValue?: string): void {
-  for (const id of ids) {
-    const select = document.getElementById(id) as HTMLSelectElement | null;
-    if (!select) continue;
-    select.replaceChildren();
-
-    const groups = new Map<string, HTMLOptGroupElement>();
-
-    for (const opt of options) {
-      if (opt.group) {
-        if (!groups.has(opt.group)) {
-          const grp = document.createElement('optgroup');
-          grp.label = opt.group;
-          groups.set(opt.group, grp);
-          select.appendChild(grp);
-        }
-        const optEl = new Option(opt.label, opt.value);
-        groups.get(opt.group)!.appendChild(optEl);
-      } else {
-        select.add(new Option(opt.label, opt.value));
-      }
-    }
-
-    if (selectedValue && options.some((opt) => opt.value === selectedValue)) {
-      select.value = selectedValue;
-    } else if (options.length > 0) {
-      select.value = options[0]!.value;
-    }
-  }
-}
 
 function getOrCreateVoiceMeter(id: number): LevelMeter {
   let m = voiceMeters.get(id);
@@ -1891,7 +1559,7 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
     const badgeClass = isPrimary ? '' : mic.id === 2 ? 'secondary' : mic.id === 3 ? 'guest' : 'room';
     const shortTitle = isPrimary ? 'Microphone 1 (Lead)' : mic.id === 2 ? 'Microphone 2 (Singer / Co-Host)' : mic.id === 3 ? 'Microphone 3 (Guest)' : `Microphone ${mic.id} (Room)`;
 
-    const hw = findHardwareDevice(mic.deviceId, audioInputs);
+    const hw = findHardwareDevice(mic.deviceId, audioInputs, cachedHardwareDevices);
     const channels = hw?.inputChannels ?? 2;
     const channelOptions = generateInputChannelOptions(channels, hw?.inputChannelNames);
 
@@ -2074,116 +1742,24 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
 }
 
 async function enumerateAndPopulate(): Promise<void> {
-  const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
-  if (desktopApi?.getHardwareAudioDevices) {
-    cachedHardwareDevices = await desktopApi.getHardwareAudioDevices().catch(() => []);
-  }
-  await refreshRunningApps();
-
-  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
-  const groups: Record<MediaDeviceKind, MediaDeviceInfo[]> = { videoinput: [], audioinput: [], audiooutput: [] };
-  for (const device of devices) groups[device.kind]?.push(device);
-  
-  fillSelects(['camera-select', 'call-camera-select'], groups.videoinput, prefs.cameraId, 'Camera');
-  fillSelects(['audio-output-select', 'call-audio-output-select'], groups.audiooutput, prefs.audioOutputId, 'System default');
-
-  const interfaceList = groups.audiooutput.length > 0 ? groups.audiooutput : groups.audioinput;
-  fillSelects(['music-input-select', 'call-music-input-select'], interfaceList, prefs.musicInputId || prefs.audioOutputId, 'Default Audio Interface');
-
-  renderVoiceInputControls(groups.audioinput);
-
-  const selectedMusicDeviceId = prefs.musicInputId || prefs.audioOutputId;
-  const musicHw = findHardwareDevice(selectedMusicDeviceId, groups.audiooutput) || findHardwareDevice(selectedMusicDeviceId, groups.audioinput);
-  const musicOutChannels = musicHw?.outputChannels ?? 2;
-  const musicOutNames = musicHw?.outputChannelNames;
-  populateChannelDropdowns(['music-channel-select', 'call-music-channel-select'], generateOutputChannelOptions(musicOutChannels, musicOutNames), prefs.musicChannel ?? (musicOutChannels >= 2 ? '1-2' : '1'));
-
-  const outputHw = findHardwareDevice(prefs.audioOutputId, groups.audiooutput);
-  const outChannels = outputHw?.outputChannels ?? 2;
-  const outNames = outputHw?.outputChannelNames;
-  populateChannelDropdowns(['output-channel-select', 'call-output-channel-select'], generateOutputChannelOptions(outChannels, outNames), prefs.outputChannel ?? (outChannels >= 2 ? '1-2' : '1'));
-
-  for (const id of ['music-source-type-select', 'call-music-source-type-select']) {
-    const el = document.getElementById(id) as HTMLSelectElement | null;
-    if (el) el.value = prefs.musicSourceType || 'app';
-  }
-
-  const isApp = (prefs.musicSourceType || 'app') === 'app';
-  const isInterface = prefs.musicSourceType === 'interface';
-  const isSystem = prefs.musicSourceType === 'system';
-  $('music-app-group')?.classList.toggle('hidden', !isApp);
-  $('call-music-app-group')?.classList.toggle('hidden', !isApp);
-  $('music-interface-group')?.classList.toggle('hidden', !isInterface);
-  $('call-music-interface-group')?.classList.toggle('hidden', !isInterface);
-  $('music-system-group')?.classList.toggle('hidden', !isSystem);
-  $('call-music-system-group')?.classList.toggle('hidden', !isSystem);
-
-  const voiceHw = findHardwareDevice(prefs.audioInputId, groups.audioinput);
-  const activeRate = voiceHw?.sampleRate || outputHw?.sampleRate || prefs.sampleRate || 44100;
-  for (const rateId of ['active-sample-rate', 'call-active-sample-rate']) {
-    const el = document.getElementById(rateId);
-    if (el) el.textContent = `${Math.round(activeRate).toLocaleString()} Hz`;
-  }
-
-  const outVolEl = document.getElementById('call-output-volume') as HTMLInputElement | null;
-  if (outVolEl) outVolEl.value = String(prefs.outputVolume ?? 1);
-  const outVolVal = document.getElementById('call-output-volume-val');
-  if (outVolVal) outVolVal.textContent = `${Math.round((prefs.outputVolume ?? 1) * 100)}%`;
-
-  for (const id of ['camera-quality-select', 'call-camera-quality-select']) {
-    const el = document.getElementById(id) as HTMLSelectElement | null;
-    if (el) el.value = prefs.cameraQuality;
-  }
-  for (const id of ['receive-quality-select', 'call-receive-quality-select']) {
-    const el = document.getElementById(id) as HTMLSelectElement | null;
-    if (el) el.value = prefs.receiveQuality;
-  }
-  for (const id of ['performance-select', 'call-performance-select']) {
-    const el = document.getElementById(id) as HTMLSelectElement | null;
-    if (el) el.value = prefs.performanceMode;
-  }
-  for (const id of ['channel-mode-select', 'call-channel-mode-select']) {
-    const el = document.getElementById(id) as HTMLSelectElement | null;
-    if (el) el.value = prefs.stereoMusic ? 'stereo' : 'mono';
-  }
-  for (const id of ['sample-rate-select', 'call-sample-rate-select']) {
-    const el = document.getElementById(id) as HTMLSelectElement | null;
-    if (el) el.value = String(prefs.sampleRate ?? 44100);
-  }
-  for (const id of ['music-quality-select', 'call-music-quality-select']) {
-    const el = document.getElementById(id) as HTMLSelectElement | null;
-    if (el) el.value = String(prefs.musicBitrate);
-  }
-  const mirrorEl = document.getElementById('settings-mirror-camera') as HTMLInputElement | null;
-  if (mirrorEl) mirrorEl.checked = prefs.mirrorCamera !== false;
-  const audioOnlyEl = document.getElementById('audio-only-setup') as HTMLInputElement | null;
-  if (audioOnlyEl) audioOnlyEl.checked = audioOnly;
-  setModeRadios(prefs.mode);
-}
-
-function fillSelects(ids: string[], devices: MediaDeviceInfo[], selected: string | undefined, fallback: string): void {
-  for (const id of ids) {
-    const select = document.getElementById(id) as HTMLSelectElement | null;
-    if (!select) continue;
-    select.replaceChildren();
-    if (!devices.length || id.includes('output') || id.includes('music-input')) select.add(new Option(fallback, ''));
-    devices.forEach((device, index) => {
-      const displayLabel = formatDeviceDisplayName(device.label) || `${fallback} ${index + 1}`;
-      select.add(new Option(displayLabel, device.deviceId));
-    });
-    if (selected && devices.some((device) => device.deviceId === selected)) select.value = selected;
-    else if (selected) {
-      const key = id.includes('camera') ? 'cameraId' : id.includes('output') ? 'audioOutputId' : id.includes('music-input') ? 'musicInputId' : 'audioInputId';
-      prefs[key] = undefined;
-      select.value = '';
-      setMessage(inCall ? 'device-dialog-status' : 'setup-status', `A saved ${fallback.toLowerCase()} is unavailable; using the system default.`);
-    }
-  }
-  savePreferences();
+  await enumerateAndPopulateDevices({
+    getPreferences: () => prefs,
+    onSavePreferences: () => savePreferences(),
+    getCachedHardwareDevices: () => cachedHardwareDevices,
+    onSetCachedHardwareDevices: (devices) => {
+      cachedHardwareDevices = devices;
+    },
+    onRefreshRunningApps: () => refreshRunningApps(),
+    onRenderVoiceInputControls: (audioInputs) => renderVoiceInputControls(audioInputs),
+    onSetMessage: (id, text) => setMessage(id, text),
+    isInCall: () => inCall,
+    isAudioOnly: () => audioOnly,
+    onSetModeRadios: (mode) => setModeRadios(mode)
+  });
 }
 
 async function prepareStudio(action: PendingAction): Promise<void> {
-  await prepareStudioController(action, {
+  await prepareStudioDomain(action, {
     onSetPendingAction: (act) => {
       pending = act;
     },
@@ -2203,34 +1779,16 @@ async function prepareStudio(action: PendingAction): Promise<void> {
     onEnumerateAndPopulate: () => enumerateAndPopulate(),
     onSyncAllVoiceMics: (mode) => syncAllVoiceMics(mode),
     onReplaceCamera: (camId) => replaceCamera(camId),
-    onReplaceMusicInput: () => replaceMusicInput(),
-    onShowSessionError: (error) => showSessionErrorModal(parseSessionError(error))
+    onReplaceMusicInput: () => replaceMusicInput()
   });
 }
 
 function renderAudioLimitations(): void {
-  const source = audio.primary;
-  if (!source) return;
-  const effectiveHz = prefs.sampleRate ?? source.effective.sampleRate ?? 44_100;
-  const hzText = `${effectiveHz.toLocaleString()} Hz`;
-  const isStereo = prefs.stereoMusic !== false;
-  const channelText = isStereo ? 'Stereo' : 'Mono';
-  
-  for (const id of ['active-sample-rate', 'call-active-sample-rate', 'advanced-quick-spec']) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = `${hzText} · ${channelText}`;
-  }
-
-  const summary = `Hardware Stream: ${hzText} · ${channelText}`;
-  const limits = audioLimitations(source.mode, { ...source.effective, channelCount: isStereo ? 2 : 1, sampleRate: effectiveHz });
-  setMessage('audio-limitations', [summary, ...limits].join('  '), limits.length > 0);
-  for (const id of ['input-gain', 'call-input-gain']) {
-    const control = $<HTMLInputElement>(id);
-    if (control) {
-      control.disabled = false;
-      control.title = 'Hardware & stream input gain';
-    }
-  }
+  renderAudioLimitationsUi({
+    getPrimaryAudioSource: () => audio.primary,
+    getPreferences: () => prefs,
+    onSetMessage: (id, text, isError) => setMessage(id, text, isError)
+  });
 }
 
 async function startScreenShare(sourceId: string, optimizeFor: 'detail' | 'motion' = 'detail'): Promise<void> {
@@ -2985,18 +2543,16 @@ async function refreshRemoteAudio(): Promise<void> {
 }
 
 function handleRemoteMedia(media: MediaMetadata): void {
-  remoteMedia = media;
-  const shouldRender = Boolean(remoteVideoStream && (!media.audioOnly || media.sharingScreen));
-  const video = $<HTMLVideoElement>('remote-video');
-  if (video) video.srcObject = shouldRender ? remoteVideoStream! : null;
-  $('remote-placeholder')?.classList.toggle('hidden', shouldRender);
-  const fullShareBtn = $<HTMLButtonElement>('fullscreen-share-button');
-  if (fullShareBtn) fullShareBtn.disabled = !media.sharingScreen;
-  setText('remote-placeholder', media.sharingScreen ? 'Loading shared screen…' : media.audioOnly || !media.cameraEnabled ? 'Musician is in Audio Only' : 'Waiting for Musician');
-  updateSessionStage();
-  if (inCall) {
-    applyMixerAudioRouting();
-  }
+  handleRemoteMediaUi(media, {
+    onSetRemoteMedia: (m) => {
+      remoteMedia = m;
+    },
+    getRemoteVideoStream: () => remoteVideoStream,
+    onUpdateSessionStage: () => updateSessionStage(),
+    isInCall: () => inCall,
+    onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
+    onSetText: (id, text) => setText(id, text)
+  });
 }
 
 async function leaveSession(endedMessage?: string): Promise<void> {
@@ -3158,13 +2714,11 @@ async function leaveSession(endedMessage?: string): Promise<void> {
 }
 
 function bindSelect(id: string, handler: (value: string) => Promise<void>): void {
-  const select = document.getElementById(id) as HTMLSelectElement | null;
-  if (!select) return;
-  select.addEventListener('change', async (event) => {
-    const target = event.currentTarget as HTMLSelectElement;
-    const previous = id.includes('camera') ? prefs.cameraId : id.includes('output') ? prefs.audioOutputId : prefs.audioInputId;
-    try { await handler(target.value); await enumerateAndPopulate(); setMessage(inCall ? 'device-dialog-status' : 'setup-status', 'Device changed.'); }
-    catch (error) { target.value = previous ?? ''; setMessage(inCall ? 'device-dialog-status' : 'setup-status', deviceError(error), true); }
+  bindDeviceSelect(id, handler, {
+    getPreferences: () => prefs,
+    isInCall: () => inCall,
+    onEnumerateAndPopulate: () => enumerateAndPopulate(),
+    onSetMessage: (statusId, text, isError) => setMessage(statusId, text, isError)
   });
 }
 
@@ -3363,7 +2917,7 @@ for (const id of ['music-app-select', 'call-music-app-select']) {
   $<HTMLSelectElement>(id)?.addEventListener('change', async (event) => {
     const pid = Number((event.currentTarget as HTMLSelectElement).value);
     prefs.musicAppPid = pid;
-    const matched = cachedRunningApps.find((a) => a.pid === pid);
+    const matched = getCachedRunningApps().find((a) => a.pid === pid);
     if (matched) prefs.musicAppName = matched.name;
     savePreferences();
     updateAppIconBadge(pid);
