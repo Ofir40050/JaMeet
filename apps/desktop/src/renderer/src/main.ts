@@ -3370,9 +3370,11 @@ presenter.setActionHandler(async (action) => {
       break;
     case 'toggle-mixer':
     case 'open-mixer':
-      await presenter.showMainWindow();
-      $('session-presenter-banner')?.classList.remove('hidden');
-      toggleStudioMixer(true);
+      if (!studioMixerOpen) {
+        await presenter.showMainWindow();
+        $('session-presenter-banner')?.classList.remove('hidden');
+      }
+      toggleStudioMixer();
       break;
     case 'toggle-pause':
       if (screenTrack) {
