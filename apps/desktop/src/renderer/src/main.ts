@@ -55,10 +55,25 @@ import {
 } from './projectSessionSummaryUi';
 import {
   initProjectSessionsListUi,
+  renderProjectSessions,
+  resetProjectSessionsPage,
   updateProjectSessionsCounter,
   renderProjectSessionsEmptyState,
   renderProjectSessionsPagination
 } from './projectSessionsListUi';
+import {
+  initProjectCollaboratorsController,
+  handleUpdateCollaboratorRole,
+  handleRemoveCollaborator
+} from './projectCollaboratorsController';
+import { initDialogUi } from './dialogUi';
+import { applyWorkspacePermissionsPresentation } from './workspacePermissionsUi';
+import {
+  threeWayLineMergeDetailed,
+  threeWayLineMerge,
+  type ThreeWayMergeResult,
+  type Change
+} from './workspaceMerge';
 import {
   switchProjectTab,
   initProjectTabsUi
@@ -112,7 +127,6 @@ import {
   initLyricsUi,
   getLyricsStatus,
   setLyricsStatus,
-  applyLyricsPermissions,
   renderLyricsDocTabs,
   updateLyricsDocumentPagination,
   updateLyricsStatsFromHtml
@@ -122,14 +136,12 @@ import {
   renderStructureWorkspace,
   getStructureStatus,
   setStructureStatus,
-  applyStructurePermissions,
   focusStructureSection
 } from './structureUi';
 import {
   initNotesUi,
   getNotesStatus,
   setNotesStatus,
-  applyNotesPermissions,
   syncNotesControls,
   getNotesFieldValues
 } from './notesUi';
@@ -138,7 +150,6 @@ import {
   renderTasksWorkspace,
   getTasksStatus,
   setTasksStatus,
-  applyTasksPermissions,
   type TaskCollaboratorOption,
   type TaskFieldUpdate
 } from './tasksUi';
@@ -423,27 +434,32 @@ initProjectTabsUi({
   }
 });
 initProjectSessionsListUi({
-  onSearchChange: (query) => {
-    currentProjectSessionsSearch = query;
-    currentProjectSessionsPage = 1;
-    renderProjectSessions();
+  getSessions: () => activeProject?.sessions || [],
+  formatRelativeTime: (t) => projectsApi.formatRelativeTime(t),
+  onOpenSummary: (session) => {
+    openSessionSummaryModal(session);
   },
-  onFilterChange: (filter) => {
-    currentProjectSessionsFilter = (filter as any) || 'all';
-    currentProjectSessionsPage = 1;
-    renderProjectSessions();
-  },
-  onPrevPage: () => {
-    if (currentProjectSessionsPage > 1) {
-      currentProjectSessionsPage--;
-      renderProjectSessions();
-    }
-  },
-  onNextPage: () => {
-    currentProjectSessionsPage++;
-    renderProjectSessions();
+  onStartSession: async () => {
+    if (!activeProject) return;
+    await flushAllWorkspacePendingSaves();
+    activeProjectId = activeProject.id;
+    await prepareStudio({ type: 'create' });
   }
 });
+initProjectCollaboratorsController({
+  getAuthToken: () => auth.getToken(),
+  getProject: () => activeProject,
+  onProjectUpdated: (updatedProject) => {
+    activeProject = updatedProject;
+  },
+  onRefreshProjectView: () => {
+    renderProjectView();
+  },
+  onRefreshCollaboratorsView: () => {
+    renderProjectCollaboratorsView();
+  }
+});
+initDialogUi();
 initProjectMenuUi({
   onArchiveProject: async () => {
     if (!activeProject) return;
@@ -4333,19 +4349,6 @@ const desktopBridge = typeof window !== 'undefined' ? (window.jameet || window.m
 desktopBridge?.onDeepLink?.((url) => void handleDeepLink(url));
 void desktopBridge?.getInitialDeepLink?.().then((url) => { if (url) void handleDeepLink(url); });
 
-// Dialog close button and backdrop click listeners
-document.querySelectorAll<HTMLDialogElement>('dialog').forEach((dialog) => {
-  dialog.querySelectorAll('.dialog-close, [value="cancel"], [value="done"]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      dialog.close();
-    });
-  });
-  dialog.addEventListener('click', (event) => {
-    if (event.target === dialog) dialog.close();
-  });
-});
-
 // Initial startup view and background device pre-warming
 showView('home-view');
 void auth.init().catch(() => {});
@@ -4432,7 +4435,7 @@ function renderProjectView(): void {
   renderProjectCollaboratorsView();
 
   // Sessions
-  currentProjectSessionsPage = 1;
+  resetProjectSessionsPage();
   renderProjectSessions();
 
   // Enforce workspace edit/view permissions across UI
@@ -4441,148 +4444,19 @@ function renderProjectView(): void {
 
 function renderProjectCollaboratorsView(): void {
   renderProjectCollaborators(activeProject, auth.getUser(), {
-    onUpdateRole: async (userId, targetRole) => {
-      const token = auth.getToken();
-      if (!token || !activeProject) return;
-      try {
-        activeProject = await projectsApi.updateCollaboratorRole(token, activeProject.id, userId, targetRole);
-        renderProjectView();
-      } catch (err) {
-        alert(err instanceof Error ? err.message : 'Failed to update member permission.');
-        renderProjectCollaboratorsView();
-      }
+    onUpdateRole: (userId, targetRole) => {
+      void handleUpdateCollaboratorRole(userId, targetRole);
     },
     onRemoveCollaborator: (userId) => {
-      void removeProjectCollaborator(userId);
+      void handleRemoveCollaborator(userId);
     }
   });
-}
-
-let currentProjectSessionsSearch = '';
-let currentProjectSessionsFilter: 'all' | 'solo' | 'collab' = 'all';
-let activeSummarySession: ProjectSessionItem | null = null;
-const SESSIONS_PER_PAGE = 10;
-let currentProjectSessionsPage = 1;
-
-function formatTotalStudioTime(totalSeconds: number): string {
-  if (!totalSeconds || totalSeconds < 60) return '< 1m';
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  if (h > 0) {
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  }
-  return `${m}m`;
-}
-
-function renderProjectSessions(): void {
-  if (!activeProject) return;
-  const listOverview = $('project-sessions-list');
-  const listFull = $('project-sessions-full-list');
-  const emptyEl = $('project-sessions-empty');
-
-  const sessions = activeProject.sessions || [];
-
-  // 1. Calculate & Render Stats
-  const totalCount = sessions.length;
-  const totalSec = sessions.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
-  const lastActiveText = sessions.length > 0 ? projectsApi.formatRelativeTime(sessions[0].startedAt) : '—';
-
-  setText('project-stat-sessions-time', `${formatTotalStudioTime(totalSec)} studio time`);
-  setText('project-stat-sessions-last', `Last active: ${lastActiveText}`);
-
-  // 2. Render mini list in Overview tab (top 5)
-  if (listOverview) {
-    if (!sessions.length) {
-      listOverview.replaceChildren();
-      if (emptyEl) { emptyEl.classList.remove('hidden'); listOverview.appendChild(emptyEl); }
-    } else {
-      if (emptyEl) emptyEl.classList.add('hidden');
-      listOverview.replaceChildren();
-      for (const session of sessions.slice(0, 5)) {
-        listOverview.appendChild(createOverviewSessionItem(session));
-      }
-    }
-  }
-
-  // 3. Filter sessions for Full Sessions Tab
-  if (listFull) {
-    let filtered = sessions;
-
-    // Filter by type
-    if (currentProjectSessionsFilter === 'solo') {
-      filtered = filtered.filter((s) => !s.collaborator);
-    } else if (currentProjectSessionsFilter === 'collab') {
-      filtered = filtered.filter((s) => Boolean(s.collaborator));
-    }
-
-    // Filter by search query
-    if (currentProjectSessionsSearch.trim()) {
-      const q = currentProjectSessionsSearch.trim().toLowerCase();
-      filtered = filtered.filter((s) => {
-        const codeMatch = s.code?.toLowerCase().includes(q);
-        const nameMatch = s.collaborator?.displayName?.toLowerCase().includes(q);
-        const userMatch = s.collaborator?.username?.toLowerCase().includes(q);
-        return codeMatch || nameMatch || userMatch;
-      });
-    }
-
-    // Update counter badge
-    updateProjectSessionsCounter(filtered.length);
-
-    const totalFiltered = filtered.length;
-    const totalPages = Math.max(1, Math.ceil(totalFiltered / SESSIONS_PER_PAGE));
-    if (currentProjectSessionsPage > totalPages) currentProjectSessionsPage = totalPages;
-    if (currentProjectSessionsPage < 1) currentProjectSessionsPage = 1;
-
-    const startIndex = (currentProjectSessionsPage - 1) * SESSIONS_PER_PAGE;
-    const paginated = filtered.slice(startIndex, startIndex + SESSIONS_PER_PAGE);
-
-    if (!filtered.length) {
-      renderProjectSessionsEmptyState(listFull, sessions.length > 0);
-    } else {
-      listFull.replaceChildren();
-      for (const session of paginated) {
-        listFull.appendChild(
-          createProjectSessionCard(session, {
-            onOpenSummary: (s) => openSessionSummaryModal(s),
-            onStartSession: async () => {
-              if (!activeProject) return;
-              await flushAllWorkspacePendingSaves();
-              activeProjectId = activeProject.id;
-              await prepareStudio({ type: 'create' });
-            }
-          })
-        );
-      }
-
-      // Update Pagination UI
-      renderProjectSessionsPagination({
-        totalFiltered,
-        pageSize: SESSIONS_PER_PAGE,
-        currentPage: currentProjectSessionsPage,
-        totalPages,
-        startIndex
-      });
-    }
-  }
 }
 
 function openSessionSummaryModal(session: ProjectSessionItem): void {
   activeSummarySession = session;
   if (!activeProject) return;
   renderSessionSummaryModal(activeProject, session);
-}
-
-async function removeProjectCollaborator(targetUserId: string): Promise<void> {
-  if (!activeProject) return;
-  const token = auth.getToken();
-  if (!token) return;
-  try {
-    activeProject = await projectsApi.removeCollaborator(token, activeProject.id, targetUserId);
-    renderProjectCollaboratorsView();
-  } catch (err) {
-    console.error('Failed to remove collaborator:', err);
-  }
 }
 
 // Delete Song Modal Handlers
@@ -4592,12 +4466,6 @@ function openDeleteSongModal(song: ProjectSongItem): void {
   if (!activeProject || !canUserEditProject()) return;
   songPendingDeletion = song;
   renderDeleteSongModal(song.title);
-}
-
-// Close modals on overlay click
-for (const modalId of ['new-project-modal', 'rename-project-modal', 'add-collab-modal', 'delete-project-modal', 'delete-song-modal']) {
-  const modal = $(modalId);
-  modal?.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
 }
 
 // ========================================================
@@ -4642,243 +4510,11 @@ function canUserEditProject(): boolean {
 function applyWorkspacePermissions(): void {
   const canEdit = canUserEditProject();
   const user = auth.getUser();
-  const isOwner = user?.id === activeProject?.ownerId || (user?.username && activeProject?.ownerUsername && activeProject.ownerUsername.toLowerCase() === user.username.toLowerCase());
-
-  // 1. Lyrics editor & formatting toolbar
-  applyLyricsPermissions(canEdit);
-
-  // 2. Notes & BPM / Key inputs
-  applyNotesPermissions(canEdit);
-
-  // 3. Tasks inputs, rows & actions
-  applyTasksPermissions(canEdit);
-
-  // 4. Structure controls & cards
-  applyStructurePermissions(canEdit);
-
-  // 5. Song creation and toolbar actions
-  for (const songBtnId of [
-    'btn-overview-new-song',
-    'btn-quick-new-song',
-    'btn-open-new-song-modal',
-    'btn-session-new-song',
-    'btn-song-studio-add-song',
-    'btn-song-studio-rename-song',
-    'btn-song-studio-delete-song'
-  ]) {
-    const el = $(songBtnId);
-    if (el) el.style.display = canEdit ? '' : 'none';
-  }
-
-  // 6. Collaborator add buttons (Only owner)
-  const addCollabHero = $('btn-project-add-collab');
-  if (addCollabHero) addCollabHero.style.display = isOwner ? '' : 'none';
-  const addCollabTab = $('btn-project-add-collab-tab');
-  if (addCollabTab) addCollabTab.style.display = isOwner ? '' : 'none';
-}
-
-interface Change {
-  baseStart: number;
-  baseEnd: number;
-  lines: string[];
-}
-
-function computeLcs(a: string[], b: string[]): Array<{ aIdx: number; bIdx: number }> {
-  const m = a.length;
-  const n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
-    }
-  }
-
-  const matches: Array<{ aIdx: number; bIdx: number }> = [];
-  let i = m, j = n;
-  while (i > 0 && j > 0) {
-    if (a[i - 1] === b[j - 1]) {
-      matches.push({ aIdx: i - 1, bIdx: j - 1 });
-      i--;
-      j--;
-    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
-      i--;
-    } else {
-      j--;
-    }
-  }
-  matches.reverse();
-  return matches;
-}
-
-function arraysEqual(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-function getChanges(base: string[], target: string[]): Change[] {
-  const matches = computeLcs(base, target);
-  const changes: Change[] = [];
-  let lastBase = 0;
-  let lastTarget = 0;
-
-  for (const m of matches) {
-    if (m.aIdx > lastBase || m.bIdx > lastTarget) {
-      changes.push({
-        baseStart: lastBase,
-        baseEnd: m.aIdx,
-        lines: target.slice(lastTarget, m.bIdx)
-      });
-    }
-    lastBase = m.aIdx + 1;
-    lastTarget = m.bIdx + 1;
-  }
-
-  if (lastBase < base.length || lastTarget < target.length) {
-    changes.push({
-      baseStart: lastBase,
-      baseEnd: base.length,
-      lines: target.slice(lastTarget)
-    });
-  }
-
-  return changes;
-}
-
-function mergeIntervals(changesA: Change[], changesB: Change[], baseLength: number): Array<{ start: number; end: number }> {
-  const allIntervals: Array<{ start: number; end: number }> = [];
-  for (const c of changesA) allIntervals.push({ start: c.baseStart, end: c.baseEnd });
-  for (const c of changesB) allIntervals.push({ start: c.baseStart, end: c.baseEnd });
-
-  if (allIntervals.length === 0) return [];
-
-  allIntervals.sort((x, y) => x.start - y.start || x.end - y.end);
-
-  const merged: Array<{ start: number; end: number }> = [];
-  let curr = { ...allIntervals[0] };
-
-  for (let i = 1; i < allIntervals.length; i++) {
-    const next = allIntervals[i];
-    if (next.start < curr.end || (next.start === curr.end && (next.start === next.end || curr.start === curr.end || next.start < baseLength))) {
-      curr.end = Math.max(curr.end, next.end);
-    } else {
-      merged.push(curr);
-      curr = { ...next };
-    }
-  }
-  merged.push(curr);
-
-  return merged;
-}
-
-function reconstructSlice(base: string[], changes: Change[], start: number, end: number): string[] {
-  const relevant = changes.filter((c) => c.baseStart >= start && c.baseEnd <= end);
-  if (relevant.length === 0) {
-    return base.slice(start, end);
-  }
-
-  const result: string[] = [];
-  let currBase = start;
-
-  for (const c of relevant) {
-    if (c.baseStart > currBase) {
-      result.push(...base.slice(currBase, c.baseStart));
-    }
-    result.push(...c.lines);
-    currBase = c.baseEnd;
-  }
-
-  if (currBase < end) {
-    result.push(...base.slice(currBase, end));
-  }
-
-  return result;
-}
-
-interface ThreeWayMergeResult {
-  merged: string;
-  hasConflict: boolean;
-}
-
-/**
- * Intelligent 3-way non-destructive line merge for collaborative notes & text
- */
-function threeWayLineMergeDetailed(base: string, local: string, remote: string): ThreeWayMergeResult {
-  if (local === remote) return { merged: local, hasConflict: false };
-  if (local === base) return { merged: remote, hasConflict: false };
-  if (remote === base) return { merged: local, hasConflict: false };
-
-  const baseLines = base.split('\n');
-  const localLines = local.split('\n');
-  const remoteLines = remote.split('\n');
-
-  const changesLocal = getChanges(baseLines, localLines);
-  const changesRemote = getChanges(baseLines, remoteLines);
-
-  const combinedIntervals = mergeIntervals(changesLocal, changesRemote, baseLines.length);
-
-  const resultLines: string[] = [];
-  let prevEnd = 0;
-  let hasConflict = false;
-
-  for (const interval of combinedIntervals) {
-    if (interval.start > prevEnd) {
-      resultLines.push(...baseLines.slice(prevEnd, interval.start));
-    }
-
-    const localSlice = reconstructSlice(baseLines, changesLocal, interval.start, interval.end);
-    const remoteSlice = reconstructSlice(baseLines, changesRemote, interval.start, interval.end);
-    const baseSlice = baseLines.slice(interval.start, interval.end);
-
-    const localChanged = !arraysEqual(localSlice, baseSlice);
-    const remoteChanged = !arraysEqual(remoteSlice, baseSlice);
-
-    if (localChanged && remoteChanged) {
-      if (arraysEqual(localSlice, remoteSlice)) {
-        resultLines.push(...localSlice);
-      } else if (interval.start === interval.end) {
-        // Pure simultaneous boundary insertion: preserve distinct lines from both collaborators
-        const combined = [...localSlice];
-        for (const r of remoteSlice) {
-          if (!combined.includes(r)) {
-            combined.push(r);
-          }
-        }
-        resultLines.push(...combined);
-      } else {
-        hasConflict = true;
-        resultLines.push(...localSlice);
-      }
-    } else if (localChanged) {
-      resultLines.push(...localSlice);
-    } else if (remoteChanged) {
-      resultLines.push(...remoteSlice);
-    } else {
-      resultLines.push(...baseSlice);
-    }
-
-    prevEnd = interval.end;
-  }
-
-  if (prevEnd < baseLines.length) {
-    resultLines.push(...baseLines.slice(prevEnd));
-  }
-
-  return {
-    merged: hasConflict ? local : resultLines.join('\n'),
-    hasConflict
-  };
-}
-
-function threeWayLineMerge(base: string, local: string, remote: string): string {
-  return threeWayLineMergeDetailed(base, local, remote).merged;
+  const isOwner = Boolean(
+    user?.id === activeProject?.ownerId ||
+    (user?.username && activeProject?.ownerUsername && activeProject.ownerUsername.toLowerCase() === user.username.toLowerCase())
+  );
+  applyWorkspacePermissionsPresentation({ canEdit, isOwner });
 }
 
 interface NotesStateValues {
