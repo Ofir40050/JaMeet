@@ -1088,10 +1088,10 @@ export class LocalAudioSourceManager {
     for (const track of this.rawTracks.values()) track.stop();
     this.rawTracks.clear();
     for (const source of this.sources.values()) source.track.stop();
-    this.sources.clear();
+    const musicGain = this.gainNodes.get('music');
     this.gainNodes.clear();
     cleanupMusicNodes({
-      musicGain: this.gainNodes.get('music'),
+      musicGain,
       musicFxNodes: this.musicFxNodes,
       musicSplitter: this.musicSplitter,
       musicLeftGainNode: this.musicLeftGainNode,
