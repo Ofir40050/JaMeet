@@ -56,7 +56,6 @@ export function mutateCreateSong(
   ws.lyrics = newSong.lyrics;
   ws.notes = newSong.notes;
   ws.structure = newSong.structure;
-  project.workspace = ws;
 
   return { newSong, newId };
 }
