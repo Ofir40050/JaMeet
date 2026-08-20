@@ -8,6 +8,12 @@ import {
   initRecentSessions,
   loadRecentSessions
 } from './recentSessions';
+import {
+  initSessionStats,
+  openStatsDialog,
+  refreshStatsModal,
+  stopStatsTimer
+} from './sessionStats';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -159,6 +165,19 @@ setSessionViewStateProvider(() => ({
   myIdentity,
   sharingSourceTitle: currentSharingSourceTitle
 }));
+
+initSessionStats({
+  getStatsReport: () => rtc.getStatsReport(),
+  isInCall: () => inCall,
+  getPreferences: () => prefs,
+  getEffectiveSampleRate: () => audio.primary?.effective.sampleRate,
+  getVideoState: () => ({
+    screenTrack,
+    videoTrack,
+    cameraEnabled,
+    remoteVideoStream
+  })
+});
 let remoteVoiceMeter: LevelMeter | undefined = undefined;
 let lastLocalVoiceDb = -60;
 let lastRemoteVoiceDb = -60;
@@ -3396,82 +3415,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Session Diagnostics & Stats Modal Management
-let statsTimerHandle: number | undefined;
-
-async function refreshStatsModal(): Promise<void> {
-  const report = await rtc.getStatsReport();
-  if (!report) {
-    setText('stat-conn-state', inCall ? 'Connecting P2P…' : 'Standby');
-    setText('stat-ice-state', inCall ? 'Negotiating ICE…' : 'Not Connected');
-    setText('stat-rtt', '—');
-    setText('stat-jitter', '—');
-    setText('stat-loss', '—');
-    setText('stat-audio-bitrate', '—');
-    setText('stat-video-out', '—');
-    setText('stat-video-in', '—');
-    setText('stat-video-bitrate', '—');
-    return;
-  }
-
-  // Connection & Latency
-  const connStateText = report.connectionState === 'connected' ? 'Connected' : report.connectionState === 'connecting' ? 'Connecting' : report.connectionState;
-  setText('stat-conn-state', connStateText);
-  setText('stat-ice-state', `${report.candidateType} (${report.protocol})`);
-  setText('stat-rtt', report.rttMs !== null ? `${report.rttMs} ms` : inCall ? '< 1 ms (Local/Direct)' : '—');
-  setText('stat-jitter', report.audioJitterMs !== null ? `${report.audioJitterMs} ms` : '0 ms');
-  setText('stat-loss', `${report.packetLossPercent.toFixed(1)}%`);
-
-  // Audio Fidelity & Clock
-  const profileName = prefs.mode === 'music' ? 'Music Mode (Unprocessed Stereo 48 kHz)' : 'Talk Mode (Speech Enhanced & AEC)';
-  setText('stat-audio-profile', profileName);
-  setText('stat-audio-bitrate', `Tx: ${report.audioOutKbps} kbps · Rx: ${report.audioInKbps} kbps`);
-  setText('stat-audio-codec', report.audioCodec);
-  const activeRate = prefs.sampleRate ?? audio.primary?.effective.sampleRate ?? 44100;
-  setText('stat-sample-rate', `${activeRate.toLocaleString()} Hz (CoreAudio Engine)`);
-  
-  const activeMicCount = (prefs.voiceInputs || []).filter((v) => v.enabled).length;
-  setText('stat-active-mics', `${activeMicCount} Active Input${activeMicCount === 1 ? '' : 's'}`);
-
-  // Video & Screen Performance
-  const outRes = report.videoResolutionOut ? `${report.videoResolutionOut}${report.videoFpsOut ? ` @ ${report.videoFpsOut} FPS` : ''}` : screenTrack ? '1920×1080 @ 30 FPS (Screen)' : videoTrack && cameraEnabled ? '1280×720 @ 30 FPS (Camera)' : 'Disabled';
-  const inRes = report.videoResolutionIn ? `${report.videoResolutionIn}${report.videoFpsIn ? ` @ ${report.videoFpsIn} FPS` : ''}` : remoteVideoStream ? '1280×720 @ 30 FPS' : 'Waiting for remote stream…';
-  
-  setText('stat-video-out', outRes);
-  setText('stat-video-in', inRes);
-  setText('stat-video-bitrate', `Tx: ${report.videoOutKbps} kbps · Rx: ${report.videoInKbps} kbps`);
-  setText('stat-video-codec', report.videoCodec);
-}
-
-function openStatsDialog(): void {
-  const dialog = $<HTMLDialogElement>('stats-dialog');
-  if (!dialog) return;
-  void refreshStatsModal();
-  if (statsTimerHandle) window.clearInterval(statsTimerHandle);
-  statsTimerHandle = window.setInterval(() => {
-    if (dialog.open) void refreshStatsModal();
-  }, 1000);
-  dialog.showModal();
-}
-
-$('call-stats-btn')?.addEventListener('click', () => {
-  openStatsDialog();
-});
-
-$<HTMLDialogElement>('stats-dialog')?.addEventListener('close', () => {
-  if (statsTimerHandle) {
-    window.clearInterval(statsTimerHandle);
-    statsTimerHandle = undefined;
-  }
-});
-
-$('stats-dialog')?.addEventListener('click', (e) => {
-  const dialog = $<HTMLDialogElement>('stats-dialog');
-  if (e.target === dialog) {
-    dialog.close();
-  }
-});
-
 function updateParticipantIdentityUi(): void {
   const user = auth.getUser();
   const guestName = auth.getGuestName();
@@ -3948,7 +3891,6 @@ document.querySelectorAll<HTMLButtonElement>('.settings-nav-item').forEach((btn)
 });
 $('btn-settings-back')?.addEventListener('click', () => showView(lastActiveViewBeforeSettings || 'home-view'));
 $('btn-settings-done')?.addEventListener('click', () => showView(lastActiveViewBeforeSettings || 'home-view'));
-$('btn-settings-open-stats')?.addEventListener('click', () => $<HTMLDialogElement>('stats-dialog')?.showModal());
 
 for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="settings-default-mode"]')) {
   radio.addEventListener('change', () => {
