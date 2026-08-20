@@ -164,6 +164,44 @@ import {
   type SongStudioTab
 } from './songs/studio/songStudioUi';
 import {
+  initSongSwitchController,
+  switchActiveSong
+} from './songs/state/songSwitchController';
+import {
+  getActiveLyricsDocState
+} from './workspace/lyrics/lyricsDocumentState';
+import {
+  mutateDuplicateLyricsDoc
+} from './workspace/lyrics/lyricsDocumentDuplication';
+import {
+  canDeleteLyricsDoc,
+  findLyricsDocToDelete,
+  mutateDeleteLyricsDoc
+} from './workspace/lyrics/lyricsDocumentDeletion';
+import {
+  normalizeStructureSections
+} from './workspace/structure/structureState';
+import {
+  mutateReorderStructureSectionToPosition
+} from './workspace/structure/structureReorder';
+import {
+  normalizeProjectTasks
+} from './workspace/tasks/tasksState';
+import {
+  mutateCreateTask,
+  mutateQuickToggleTask,
+  mutateUpdateTaskStatus,
+  mutateDeleteTask
+} from './workspace/tasks/taskMutations';
+import {
+  mutateDuplicateTask
+} from './workspace/tasks/taskDuplication';
+import {
+  initWorkspaceDrawerUi,
+  isSessionWorkspaceOpen,
+  setSessionWorkspaceOpen
+} from './sessions/call/workspaceDrawerUi';
+import {
   initSongDeleteController,
   openDeleteSongModal,
   getSongPendingDeletion,
@@ -362,6 +400,69 @@ initSongStudioUi({
   },
   onRenderOverviewSongsList: () => {
     renderProjectOverviewSongsList();
+  }
+});
+initSongSwitchController({
+  getProject: () => activeProject,
+  hasLyricsSaveTimeout: () => Boolean(lyricsSaveTimeout),
+  clearLyricsSaveTimeout: () => {
+    if (lyricsSaveTimeout) {
+      clearTimeout(lyricsSaveTimeout);
+      lyricsSaveTimeout = null;
+    }
+  },
+  getActiveLyricsDoc: () => getActiveLyricsDoc(),
+  onSaveLyricsWorkspace: (content, id, title) => {
+    void saveLyricsWorkspace(content, id, title);
+  },
+  hasNotesSaveTimeout: () => Boolean(notesSaveTimeout),
+  clearNotesSaveTimeout: () => {
+    if (notesSaveTimeout) {
+      clearTimeout(notesSaveTimeout);
+      notesSaveTimeout = null;
+    }
+  },
+  getNotesFieldValues: () => getNotesFieldValues(),
+  onSaveNotesWorkspace: (content, bpm, key) => {
+    void saveNotesWorkspace(content, bpm, key);
+  },
+  hasStructureSaveTimeout: () => Boolean(structureSaveTimeout),
+  clearStructureSaveTimeout: () => {
+    if (structureSaveTimeout) {
+      clearTimeout(structureSaveTimeout);
+      structureSaveTimeout = null;
+    }
+  },
+  onSaveStructureWorkspace: (sections) => {
+    void saveStructureWorkspace(sections);
+  },
+  onSyncWorkspaceInputs: (forceAll) => {
+    syncWorkspaceInputsFromProject(forceAll);
+  },
+  onSaveSongsWorkspace: () => {
+    return saveSongsWorkspace();
+  }
+});
+initWorkspaceDrawerUi({
+  getProjectName: () => activeProject?.name,
+  hasActiveProject: () => Boolean(activeProject),
+  onSyncWorkspaceInputs: () => {
+    syncWorkspaceInputsFromProject();
+  },
+  onRenderTasksWorkspace: () => {
+    renderTasksWorkspace();
+  },
+  onRenderStructureWorkspace: () => {
+    renderStructureWorkspace();
+  },
+  onUpdateLyricsPagination: () => {
+    updateLyricsDocumentPagination();
+  },
+  setSessionChatOpen: (open) => {
+    setSessionChatOpen(open);
+  },
+  setOnChatOpenCallback: (cb) => {
+    setOnChatOpenCallback(cb);
   }
 });
 initDeepLinkController({
@@ -3188,7 +3289,7 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   $('toggle-session-workspace')?.classList.remove('active');
   $('toggle-session-workspace')?.classList.add('hidden');
   hideWaitingBanner();
-  sessionWorkspaceOpen = false;
+  setSessionWorkspaceOpen(false);
   resetChatUi();
   isSessionLocked = false;
   updateLockUi();
@@ -3660,7 +3761,7 @@ presenter.setActionHandler(async (action) => {
     }
     case 'toggle-workspace':
     case 'open-workspace':
-      if (!sessionWorkspaceOpen) {
+      if (!isSessionWorkspaceOpen()) {
         await presenter.showMainWindow();
         $('session-presenter-banner')?.classList.remove('hidden');
         setSessionWorkspaceOpen(true);
@@ -3834,7 +3935,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'w' || e.key === 'W') {
       e.preventDefault();
       if (activeProject) {
-        setSessionWorkspaceOpen(!sessionWorkspaceOpen);
+        setSessionWorkspaceOpen(!isSessionWorkspaceOpen());
       }
       return;
     }
@@ -4449,7 +4550,6 @@ function resetProjectTabs(): void {
 // ========================================================
 let lyricsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 let notesSaveTimeout: ReturnType<typeof setTimeout> | null = null;
-let sessionWorkspaceOpen = false;
 
 // Snapshot of last confirmed server state for 3-way merging
 let lastSyncedLyrics = '';
@@ -4469,41 +4569,6 @@ function openSongStudio(songId?: string, targetTab: SongStudioTab = 'lyrics'): v
     switchActiveSong(songId);
   }
   openSongStudioUiView(targetTab);
-}
-
-function switchActiveSong(songId: string): void {
-  if (!activeProject?.workspace?.songs) return;
-  const ws = activeProject.workspace;
-  const song = ws.songs.find((s) => s.id === songId);
-  if (!song) return;
-
-  // Persist current active song's edits first if pending
-  if (lyricsSaveTimeout) {
-    clearTimeout(lyricsSaveTimeout);
-    lyricsSaveTimeout = null;
-    const activeDoc = getActiveLyricsDoc();
-    void saveLyricsWorkspace(activeDoc.content, activeDoc.id, activeDoc.title);
-  }
-  if (notesSaveTimeout) {
-    clearTimeout(notesSaveTimeout);
-    notesSaveTimeout = null;
-    const vals = getNotesFieldValues();
-    void saveNotesWorkspace(vals.content, vals.bpm, vals.key);
-  }
-  if (structureSaveTimeout) {
-    clearTimeout(structureSaveTimeout);
-    structureSaveTimeout = null;
-    const sections = activeProject.workspace.structure?.sections || [];
-    void saveStructureWorkspace(sections);
-  }
-
-  ws.activeSongId = songId;
-  ws.lyrics = song.lyrics;
-  ws.notes = song.notes;
-  ws.structure = song.structure;
-
-  syncWorkspaceInputsFromProject(true);
-  void saveSongsWorkspace();
 }
 
 function createNewSong(title: string, autoOpenStudio: boolean = false): void {
@@ -4613,50 +4678,31 @@ async function saveSongsWorkspace(): Promise<boolean> {
 
 function getActiveLyricsDoc(): { id: string; title: string; content: string; updatedAt: number } {
   const activeSong = getActiveSong();
-  const ws = activeSong.lyrics;
-  if (!ws.documents || !Array.isArray(ws.documents) || ws.documents.length === 0) {
-    ws.documents = [{ id: 'doc-main', title: 'Main Lyrics', content: ws.content || '', updatedAt: ws.updatedAt || Date.now() }];
-    ws.activeDocumentId = 'doc-main';
-  }
-
-  const activeId = ws.activeDocumentId || ws.documents[0].id;
-  const doc = ws.documents.find((d) => d && d.id === activeId) || ws.documents[0];
-  ws.activeDocumentId = doc.id;
-  return doc;
+  return getActiveLyricsDocState(activeSong);
 }
 
 function duplicateLyricsDoc(docId: string): void {
-  if (!activeProject?.workspace?.lyrics?.documents) return;
-  const docs = activeProject.workspace.lyrics.documents;
-  const source = docs.find((d) => d && d.id === docId) || getActiveLyricsDoc();
+  if (!activeProject) return;
+  const activeSong = getActiveSong();
   const newId = `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const newTitle = `${source.title} (Copy)`;
-
-  docs.push({
-    id: newId,
-    title: newTitle,
-    content: source.content || '',
-    updatedAt: Date.now()
-  });
-  activeProject.workspace.lyrics.activeDocumentId = newId;
+  const result = mutateDuplicateLyricsDoc(activeProject, activeSong, docId, newId);
+  if (!result) return;
   switchActiveLyricsDoc(newId);
 }
 
 function deleteLyricsDoc(docId: string): void {
-  if (!activeProject?.workspace?.lyrics?.documents) return;
-  const docs = activeProject.workspace.lyrics.documents;
-  if (docs.length <= 1) {
+  if (!activeProject) return;
+  if (!canDeleteLyricsDoc(activeProject)) {
     alert('A project must have at least one Lyrics document.');
     return;
   }
-  const targetDoc = docs.find((d) => d && d.id === docId);
+  const targetDoc = findLyricsDocToDelete(activeProject, docId);
   if (!targetDoc) return;
   if (confirm(`Are you sure you want to delete "${targetDoc.title}"?`)) {
-    const idx = docs.findIndex((d) => d.id === docId);
-    if (idx !== -1) docs.splice(idx, 1);
-    const nextDoc = docs[0];
-    activeProject.workspace.lyrics.activeDocumentId = nextDoc.id;
-    switchActiveLyricsDoc(nextDoc.id);
+    const result = mutateDeleteLyricsDoc(activeProject, docId);
+    if (result) {
+      switchActiveLyricsDoc(result.nextDocId);
+    }
   }
 }
 
@@ -5007,18 +5053,8 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
 let structureSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function getStructureSections(): any[] {
-  if (!activeProject) return [];
   const activeSong = getActiveSong();
-  if (!activeSong.structure) {
-    activeSong.structure = { revision: 1, sections: [], updatedAt: Date.now() };
-  }
-  if (!Array.isArray(activeSong.structure.sections)) {
-    activeSong.structure.sections = [];
-  }
-  if (activeProject.workspace) {
-    activeProject.workspace.structure = activeSong.structure;
-  }
-  return activeSong.structure.sections;
+  return normalizeStructureSections(activeProject, activeSong);
 }
 
 function reorderStructureSectionToPosition(
@@ -5027,14 +5063,8 @@ function reorderStructureSectionToPosition(
   position: 'before' | 'after'
 ): void {
   const sections = getStructureSections();
-  const sourceIdx = sections.findIndex((s) => s.id === sourceId);
-  const targetIdx = sections.findIndex((s) => s.id === targetId);
-  if (sourceIdx === -1 || targetIdx === -1 || sourceIdx === targetIdx) return;
-
-  const [moved] = sections.splice(sourceIdx, 1);
-  const newTargetIdx = sections.findIndex((s) => s.id === targetId);
-  const insertIndex = position === 'before' ? newTargetIdx : newTargetIdx + 1;
-  sections.splice(insertIndex, 0, moved);
+  const changed = mutateReorderStructureSectionToPosition(sections, sourceId, targetId, position);
+  if (!changed) return;
 
   renderStructureWorkspace();
   debounceSaveStructure();
@@ -5418,148 +5448,12 @@ signaling.on('project:activity:new', (data: { projectId: string; activities: Pro
 });
 
 // ========================================================
-// IN-SESSION PROJECT WORKSPACE DRAWER & STUDIO DESK ENGINE
-// ========================================================
-
-// Initialize saved workspace width
-try {
-  const savedDrawerWidth = parseInt(localStorage.getItem('jameet-session-workspace-width') || localStorage.getItem('musiczoom-session-workspace-width') || '540', 10);
-  if (savedDrawerWidth && savedDrawerWidth >= 340 && savedDrawerWidth <= 1400) {
-    document.documentElement.style.setProperty('--session-drawer-width', `${savedDrawerWidth}px`);
-  }
-} catch {
-  // ignore
-}
-
-function setSessionWorkspaceOpen(open: boolean): void {
-  sessionWorkspaceOpen = open;
-  $('session-workspace-drawer')?.classList.toggle('hidden', !open);
-  $('toggle-session-workspace')?.classList.toggle('active', open);
-  $('call-view')?.classList.toggle('has-drawer-open', open);
-
-  if (open) {
-    // Close Session Chat if open so they never overlap
-    setSessionChatOpen(false);
-
-    const titleEl = $('session-workspace-project-name');
-    if (titleEl && activeProject) {
-      titleEl.textContent = activeProject.name || 'Project Workspace';
-    }
-    syncWorkspaceInputsFromProject();
-
-    // Restore saved workspace tab
-    const savedTab = localStorage.getItem('jameet-session-workspace-tab') || localStorage.getItem('musiczoom-session-workspace-tab') || 'lyrics';
-    const targetTabBtn = document.querySelector<HTMLButtonElement>(`.drawer-tab-btn[data-drawer-tab="${savedTab}"]`);
-    if (targetTabBtn) {
-      targetTabBtn.click();
-    }
-  }
-}
-
-// In-Session Workspace Drawer Toggle
-$('toggle-session-workspace')?.addEventListener('click', () => {
-  setSessionWorkspaceOpen(!sessionWorkspaceOpen);
-});
-
-$('btn-close-session-workspace')?.addEventListener('click', () => {
-  setSessionWorkspaceOpen(false);
-});
-
-setOnChatOpenCallback(() => {
-  setSessionWorkspaceOpen(false);
-});
-
-// In-Session Drawer Tabs
-document.querySelectorAll<HTMLButtonElement>('.drawer-tab-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const tab = btn.dataset.drawerTab;
-    if (!tab) return;
-    document.querySelectorAll<HTMLButtonElement>('.drawer-tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    $('drawer-panel-lyrics')?.classList.toggle('hidden', tab !== 'lyrics');
-    $('drawer-panel-structure')?.classList.toggle('hidden', tab !== 'structure');
-    $('drawer-panel-notes')?.classList.toggle('hidden', tab !== 'notes');
-    $('drawer-panel-tasks')?.classList.toggle('hidden', tab !== 'tasks');
-    
-    // Hide top track selector bar specifically in Tasks tab
-    $('session-drawer-song-bar')?.classList.toggle('hidden', tab === 'tasks');
-
-    if (tab === 'tasks') {
-      renderTasksWorkspace();
-    } else if (tab === 'structure') {
-      renderStructureWorkspace();
-    } else if (tab === 'lyrics') {
-      updateLyricsDocumentPagination();
-    }
-    try {
-      localStorage.setItem('jameet-session-workspace-tab', tab);
-    } catch {
-      // ignore
-    }
-  });
-});
-
-// Resizable Session Workspace Panel
-let isResizingDrawer = false;
-let resizeStartX = 0;
-let resizeStartWidth = 400;
-
-$('session-workspace-resize-handle')?.addEventListener('mousedown', (e) => {
-  isResizingDrawer = true;
-  resizeStartX = e.clientX;
-  const drawer = $('session-workspace-drawer');
-  resizeStartWidth = drawer?.getBoundingClientRect().width || 400;
-  drawer?.classList.add('is-resizing');
-  document.body.style.cursor = 'col-resize';
-  document.body.style.userSelect = 'none';
-});
-
-window.addEventListener('mousemove', (e) => {
-  if (!isResizingDrawer) return;
-  const deltaX = resizeStartX - e.clientX; // Dragging left increases width
-  const maxW = Math.max(900, Math.min(window.innerWidth - 60, 1400));
-  const newWidth = Math.max(340, Math.min(maxW, resizeStartWidth + deltaX));
-  document.documentElement.style.setProperty('--session-drawer-width', `${Math.round(newWidth)}px`);
-});
-
-window.addEventListener('mouseup', () => {
-  if (!isResizingDrawer) return;
-  isResizingDrawer = false;
-  $('session-workspace-drawer')?.classList.remove('is-resizing');
-  document.body.style.cursor = '';
-  document.body.style.userSelect = '';
-  const currentWidth = $('session-workspace-drawer')?.getBoundingClientRect().width;
-  if (currentWidth) {
-    try {
-      const w = Math.round(currentWidth).toString();
-      localStorage.setItem('jameet-session-workspace-width', w);
-    } catch {
-      // ignore
-    }
-  }
-});
-
-// ========================================================
 // PROJECT WORKSPACE: TASKS & CHECKLIST ENGINE
 // ========================================================
 let tasksSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function getProjectTasks(): ProjectTaskItem[] {
-  if (!activeProject) return [];
-  if (!activeProject.workspace) {
-    activeProject.workspace = {
-      lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: 0 }], content: '', updatedAt: 0 },
-      notes: { content: '', updatedAt: 0 },
-      structure: { sections: [], updatedAt: 0 },
-      tasks: { tasks: [], updatedAt: 0 }
-    };
-  }
-  if (!activeProject.workspace.tasks) {
-    activeProject.workspace.tasks = { tasks: [], updatedAt: 0 };
-  }
-  if (!Array.isArray(activeProject.workspace.tasks.tasks)) {
-    activeProject.workspace.tasks.tasks = [];
-  }
-  return activeProject.workspace.tasks.tasks;
+  return normalizeProjectTasks(activeProject);
 }
 
 function debounceSaveTasks(): void {
@@ -5704,26 +5598,21 @@ function createTask(
   stage?: ProjectTaskStage
 ): void {
   if (!canUserEditProject()) return;
-  const trimmed = title.trim();
-  if (!trimmed) return;
   const tasks = getProjectTasks();
-  const now = Date.now();
-  const newTask: ProjectTaskItem = {
-    id: `task_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    title: trimmed,
-    status: 'todo',
-    assigneeId: assigneeId || undefined,
-    assigneeName: assigneeName || undefined,
-    songId: songId || undefined,
-    songTitle: songTitle || undefined,
-    stage: stage || undefined,
-    subtasks: [],
-    dueDate: dueDate || undefined,
-    note: note || undefined,
-    createdAt: now,
-    updatedAt: now
-  };
-  tasks.unshift(newTask);
+  const newId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const created = mutateCreateTask(
+    tasks,
+    title,
+    newId,
+    assigneeId,
+    assigneeName,
+    dueDate,
+    note,
+    songId,
+    songTitle,
+    stage
+  );
+  if (!created) return;
   renderTasksWorkspace();
   debounceSaveTasks();
 }
@@ -5731,17 +5620,8 @@ function createTask(
 function quickToggleTask(id: string): void {
   if (!canUserEditProject()) return;
   const tasks = getProjectTasks();
-  const task = tasks.find((t) => t.id === id);
-  if (!task) return;
-  const now = Date.now();
-  if (task.status === 'done') {
-    task.status = 'todo';
-    task.completedAt = undefined;
-  } else {
-    task.status = 'done';
-    task.completedAt = now;
-  }
-  task.updatedAt = now;
+  const changed = mutateQuickToggleTask(tasks, id);
+  if (!changed) return;
   renderTasksWorkspace();
   debounceSaveTasks();
 }
@@ -5749,16 +5629,8 @@ function quickToggleTask(id: string): void {
 function updateTaskStatus(id: string, status: ProjectTaskStatus): void {
   if (!canUserEditProject()) return;
   const tasks = getProjectTasks();
-  const task = tasks.find((t) => t.id === id);
-  if (!task) return;
-  const now = Date.now();
-  task.status = status;
-  if (status === 'done') {
-    task.completedAt = now;
-  } else {
-    task.completedAt = undefined;
-  }
-  task.updatedAt = now;
+  const changed = mutateUpdateTaskStatus(tasks, id, status);
+  if (!changed) return;
   renderTasksWorkspace();
   debounceSaveTasks();
 }
@@ -5766,34 +5638,24 @@ function updateTaskStatus(id: string, status: ProjectTaskStatus): void {
 function deleteTask(id: string): void {
   if (!canUserEditProject()) return;
   const tasks = getProjectTasks();
-  const idx = tasks.findIndex((t) => t.id === id);
-  if (idx === -1) return;
-  tasks.splice(idx, 1);
+  const changed = mutateDeleteTask(tasks, id);
+  if (!changed) return;
   renderTasksWorkspace();
   debounceSaveTasks();
 }
 
 function duplicateTask(taskId: string): void {
   const tasks = getProjectTasks();
-  const index = tasks.findIndex((t) => t.id === taskId);
-  if (index === -1) return;
-  const original = tasks[index];
   const now = Date.now();
-  const copy: ProjectTaskItem = {
-    ...original,
-    id: `task_${now}_${Math.random().toString(36).substring(2, 7)}`,
-    title: `${original.title} (Copy)`,
-    createdAt: now,
-    updatedAt: now,
-    subtasks: Array.isArray(original.subtasks)
-      ? original.subtasks.map((st) => ({
-          id: `sub_${now}_${Math.random().toString(36).substring(2, 6)}`,
-          title: st.title,
-          done: st.done
-        }))
-      : []
-  };
-  tasks.splice(index + 1, 0, copy);
+  const newTaskId = `task_${now}_${Math.random().toString(36).substring(2, 7)}`;
+  const copy = mutateDuplicateTask(
+    tasks,
+    taskId,
+    newTaskId,
+    () => `sub_${now}_${Math.random().toString(36).substring(2, 6)}`,
+    now
+  );
+  if (!copy) return;
   renderTasksWorkspace();
   debounceSaveTasks();
 }
