@@ -195,6 +195,40 @@ import {
   initSessionViewSelectorUi
 } from './sessions/call/sessionViewSelectorUi';
 import {
+  initSessionConnection
+} from './sessions/call/sessionConnectionController';
+import {
+  initWaitingRoomController
+} from './sessions/call/waitingRoomController';
+import {
+  initSessionModeration,
+  getIsSessionLocked,
+  setIsSessionLocked
+} from './sessions/call/sessionModerationController';
+import {
+  initInviteLinkController
+} from './sessions/call/inviteLinkController';
+import {
+  initCallNavigation
+} from './sessions/call/callNavigationController';
+import {
+  initSessionTimer,
+  startSessionTimer,
+  stopSessionTimer
+} from './sessions/call/sessionTimer';
+import {
+  setCallStatus
+} from './sessions/call/sessionStatusUi';
+import {
+  initSessionKeyboard
+} from './sessions/call/sessionKeyboardController';
+import {
+  startRendererApp
+} from './core/startupController';
+import {
+  initDesktopLifecycle
+} from './core/desktopLifecycleController';
+import {
   initSongStudioUi,
   closeSongStudio,
   isSongStudioVisible,
@@ -600,6 +634,57 @@ initParticipantIdentityUi({
 initSessionViewSelectorUi({
   onToggleSessionViewMenu: (e) => toggleSessionViewMenu(e),
   onCloseSessionViewMenu: () => closeSessionViewMenu()
+});
+initSessionConnection({
+  signaling,
+  isInCall: () => inCall,
+  onSetCallStatus: (status) => setCallStatus(status)
+});
+initWaitingRoomController({
+  signaling,
+  participantId,
+  getAuthToken: () => auth.getToken(),
+  getGuestName: () => auth.getGuestName(),
+  getMetadata: () => metadata(),
+  onRenderWaitingBanner: (waitingList) => renderWaitingBanner(waitingList),
+  onInitializeActiveCall: async (ack) => {
+    await initializeActiveCall(ack);
+  }
+});
+initSessionModeration({
+  signaling,
+  getCurrentRole: () => currentRole,
+  getCurrentCode: () => currentCode,
+  getPeerParticipantId: () => peerParticipantId || undefined,
+  getPeerIdentity: () => peerIdentity || undefined,
+  onUpdateLockUi: () => updateLockUi(),
+  onSetStatusMessage: (id, text, isError) => setMessage(id, text, isError)
+});
+initInviteLinkController({
+  getCurrentCode: () => currentCode
+});
+initCallNavigation({
+  onLeaveSession: (message) => leaveSession(message),
+  onShowHomeView: () => showView('home-view')
+});
+initSessionTimer({
+  isInCall: () => inCall,
+  onSetCallStatus: (status) => setCallStatus(status)
+});
+initSessionKeyboard({
+  isInCall: () => inCall,
+  isShortcutsModalOpen: () => isShortcutsModalOpen(),
+  closeShortcutsModal: () => closeShortcutsModal(),
+  toggleShortcutsModal: () => toggleShortcutsModal(),
+  isMuted: () => muted,
+  toggleMute: () => toggleMute(),
+  toggleCamera: () => toggleCamera(),
+  getAudioMode: () => prefs.mode,
+  switchAudioMode: (mode) => switchAudioMode(mode),
+  hasActiveProject: () => Boolean(activeProject),
+  isSessionWorkspaceOpen: () => isSessionWorkspaceOpen(),
+  setSessionWorkspaceOpen: (open) => setSessionWorkspaceOpen(open),
+  toggleStudioMixer: () => toggleStudioMixer()
 });
 initLyricsDocumentsController({
   getProject: () => activeProject,
@@ -1280,7 +1365,6 @@ let myIdentity: ParticipantIdentity | null = null;
 let peerIdentity: ParticipantIdentity | null = null;
 let hostIdentity: ParticipantIdentity | null = null;
 let peerParticipantId: string | null = null;
-let isSessionLocked = false;
 
 export type { VoiceInputConfig };
 type PendingAction = { type: 'create' } | { type: 'join'; code: string };
@@ -2498,28 +2582,6 @@ function setModeRadios(mode: AudioMode): void {
 function updateMusicWarning(): void {
   updateHeadphoneWarning();
 }
-let sessionStartTime = 0;
-let sessionTimerHandle: number | undefined;
-
-function startSessionTimer(): void {
-  stopSessionTimer();
-  sessionStartTime = Date.now();
-  setCallStatus('00:00');
-  sessionTimerHandle = window.setInterval(() => {
-    if (!inCall) return;
-    const elapsedSec = Math.floor((Date.now() - sessionStartTime) / 1000);
-    const m = Math.floor(elapsedSec / 60).toString().padStart(2, '0');
-    const s = (elapsedSec % 60).toString().padStart(2, '0');
-    setCallStatus(`${m}:${s}`);
-  }, 1000);
-}
-
-function stopSessionTimer(): void {
-  if (sessionTimerHandle) {
-    window.clearInterval(sessionTimerHandle);
-    sessionTimerHandle = undefined;
-  }
-}
 
 function updateCallMode(): void {
   const music = prefs.mode === 'music';
@@ -2905,7 +2967,7 @@ async function initializeActiveCall(ack: MeetingAck): Promise<void> {
   }
 
   resetChatUi();
-  isSessionLocked = Boolean(ack.locked);
+  setIsSessionLocked(Boolean(ack.locked));
   updateLockUi();
   showView('call-view');
   startSessionTimer();
@@ -2920,12 +2982,13 @@ function updateLockUi(): void {
     btn.classList.add('hidden');
     return;
   }
+  const locked = getIsSessionLocked();
   btn.classList.remove('hidden');
-  btn.classList.toggle('is-locked', isSessionLocked);
-  $('lock-icon-unlocked')?.classList.toggle('hidden', isSessionLocked);
-  $('lock-icon-locked')?.classList.toggle('hidden', !isSessionLocked);
-  setText('btn-lock-session-label', isSessionLocked ? 'Locked' : 'Lock');
-  btn.title = isSessionLocked ? 'Unlock Session (Allow participants to join)' : 'Lock Session (Prevent new participants from joining)';
+  btn.classList.toggle('is-locked', locked);
+  $('lock-icon-unlocked')?.classList.toggle('hidden', locked);
+  $('lock-icon-locked')?.classList.toggle('hidden', !locked);
+  setText('btn-lock-session-label', locked ? 'Locked' : 'Lock');
+  btn.title = locked ? 'Unlock Session (Allow participants to join)' : 'Lock Session (Prevent new participants from joining)';
 }
 
 interface SessionErrorModalOptions {
@@ -3555,8 +3618,6 @@ function handleRemoteMedia(media: MediaMetadata): void {
   }
 }
 
-function setCallStatus(status: string): void { setText('call-status', status); }
-
 async function leaveSession(endedMessage?: string): Promise<void> {
   stopSessionTimer();
   logger.info('session_leave', 'Left session', { code: currentCode }, { sessionCode: currentCode });
@@ -3698,7 +3759,7 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   hideWaitingBanner();
   setSessionWorkspaceOpen(false);
   resetChatUi();
-  isSessionLocked = false;
+  setIsSessionLocked(false);
   updateLockUi();
   if (endedMessage) {
     setMessage('home-error', endedMessage, endedMessage.toLowerCase().includes('ended') || endedMessage.toLowerCase().includes('left'));
@@ -4115,35 +4176,6 @@ for (const id of ['open-settings', 'devices-button']) {
   });
 }
 
-for (const id of ['leave-call', 'leave-button']) {
-  $(id)?.addEventListener('click', () => void leaveSession('You left the session.'));
-}
-$('home-button')?.addEventListener('click', () => showView('home-view'));
-
-$('copy-invite')?.addEventListener('click', () => {
-  if (!currentCode) return;
-  const link = `jameet://join/${currentCode}`;
-  const api = window.jameet || window.musiczoom;
-  const setCopiedState = () => {
-    const btn = $('copy-invite');
-    if (btn) {
-      const origHtml = btn.innerHTML;
-      const origTitle = btn.title;
-      btn.innerHTML = icons.check({ size: 13 });
-      btn.title = 'Link copied to clipboard!';
-      window.setTimeout(() => {
-        btn.innerHTML = origHtml;
-        btn.title = origTitle;
-      }, 1800);
-    }
-  };
-  void (api?.copyText ? api.copyText(link) : Promise.reject())
-    .then(setCopiedState)
-    .catch(() => {
-      void navigator.clipboard?.writeText(link);
-      setCopiedState();
-    });
-});
 
 // ========================================================
 // Presenter Mode Coordination & In-Session Return Banner
@@ -4259,120 +4291,6 @@ $('btn-return-presenter')?.addEventListener('click', () => {
   });
 });
 
-let pttActive = false;
-let pttPreviousMutedState = false;
-
-function isTypingContext(target: EventTarget | null): boolean {
-  if (!target || !(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  if (target.isContentEditable || target.getAttribute('contenteditable') === 'true') return true;
-  if (target.closest('.ql-editor') || target.closest('[contenteditable="true"]')) return true;
-  return false;
-}
-
-window.addEventListener('keydown', (e) => {
-  // Always handle Escape
-  if (e.key === 'Escape') {
-    if (isShortcutsModalOpen()) {
-      closeShortcutsModal();
-      return;
-    }
-    document.querySelectorAll<HTMLDialogElement>('dialog[open]').forEach((d) => d.close());
-    document.querySelectorAll<HTMLElement>('.modal-overlay:not(.hidden)').forEach((m) => m.classList.add('hidden'));
-    return;
-  }
-
-  // If user is actively typing in a text field, do not trigger single-letter shortcuts
-  if (isTypingContext(e.target)) return;
-
-  // Shortcuts Cheatsheet: '?' or '/'
-  if (e.key === '?' || (e.shiftKey && e.key === '/')) {
-    e.preventDefault();
-    toggleShortcutsModal();
-    return;
-  }
-
-  // In-Call Shortcuts
-  if (inCall) {
-    // Push-to-Talk (Space bar)
-    if (e.code === 'Space' && !e.repeat) {
-      e.preventDefault();
-      if (!pttActive) {
-        pttActive = true;
-        pttPreviousMutedState = muted;
-        if (muted) {
-          toggleMute();
-        }
-        $('push-to-talk-hud')?.classList.remove('hidden');
-      }
-      return;
-    }
-
-    // Mute / Unmute Microphone: M or Cmd+D
-    if (e.key === 'm' || e.key === 'M' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd')) {
-      e.preventDefault();
-      toggleMute();
-      return;
-    }
-
-    // Toggle Camera: V or Cmd+E
-    if (e.key === 'v' || e.key === 'V' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e')) {
-      e.preventDefault();
-      void toggleCamera().catch(() => {});
-      return;
-    }
-
-    // Toggle Screen Share: S
-    if (e.key === 's' || e.key === 'S') {
-      e.preventDefault();
-      $('toggle-screen')?.click();
-      return;
-    }
-
-    // Toggle Talk / Music Mode: T
-    if (e.key === 't' || e.key === 'T') {
-      e.preventDefault();
-      const nextMode = prefs.mode === 'talk' ? 'music' : 'talk';
-      void switchAudioMode(nextMode);
-      return;
-    }
-
-    // Toggle Workspace Drawer: W
-    if (e.key === 'w' || e.key === 'W') {
-      e.preventDefault();
-      if (activeProject) {
-        setSessionWorkspaceOpen(!isSessionWorkspaceOpen());
-      }
-      return;
-    }
-
-    // Toggle Session Chat: C
-    if (e.key === 'c' || e.key === 'C') {
-      e.preventDefault();
-      $('toggle-session-chat')?.click();
-      return;
-    }
-
-    // Toggle Studio Mixer: X
-    if (e.key === 'x' || e.key === 'X') {
-      e.preventDefault();
-      toggleStudioMixer();
-      return;
-    }
-  }
-});
-
-window.addEventListener('keyup', (e) => {
-  if (e.code === 'Space' && pttActive) {
-    pttActive = false;
-    $('push-to-talk-hud')?.classList.add('hidden');
-    // If it was muted before holding space, return to muted
-    if (pttPreviousMutedState && !muted) {
-      toggleMute();
-    }
-  }
-});
 
 for (const id of ['voice-channel-select', 'call-voice-channel-select']) {
   $<HTMLSelectElement>(id)?.addEventListener('change', async (event) => {
@@ -4597,21 +4515,6 @@ signaling.on('meeting:ended', () => void leaveSession('The session creator ended
 signaling.on('meeting:removed', (payload: { code: string; message?: string }) => {
   void leaveSession(payload.message || 'You have been removed from the session by the host.');
 });
-signaling.on('disconnect', () => { if (inCall) setCallStatus('Signaling reconnecting…'); });
-signaling.on('connect', () => { if (inCall) setCallStatus('Reconnecting session…'); });
-
-signaling.on('waiting:update', (waitingList: WaitingParticipantItem[]) => {
-  renderWaitingBanner(waitingList);
-});
-
-signaling.on('waiting:admitted', async (ack: MeetingAck) => {
-  if (!ack.ok) return;
-  const token = auth.getToken() || undefined;
-  const guestName = auth.getGuestName() || undefined;
-  signaling.setResume(ack.code, participantId, metadata(), token, guestName, ack.reconnectToken);
-  await initializeActiveCall(ack);
-});
-
 $('btn-leave-waiting')?.addEventListener('click', async () => {
   signaling.leave();
   inCall = false;
@@ -4635,79 +4538,51 @@ $('btn-leave-waiting')?.addEventListener('click', async () => {
   }
 });
 
-signaling.on('session:locked', (payload: { code: string; locked: boolean }) => {
-  if (payload.code === currentCode) {
-    isSessionLocked = payload.locked;
-    updateLockUi();
-  }
-});
-
-$('btn-lock-session')?.addEventListener('click', async () => {
-  if (currentRole !== 'host' || !currentCode) return;
-  const targetState = !isSessionLocked;
-  const btn = $<HTMLButtonElement>('btn-lock-session');
-  if (btn) btn.disabled = true;
-  try {
-    const res = await signaling.setSessionLock(currentCode, targetState);
-    if (res.ok) {
-      isSessionLocked = Boolean(res.locked);
-      updateLockUi();
-    } else {
-      setMessage('call-status', res.message || 'Failed to update session lock', true);
+initDesktopLifecycle({
+  onDeviceChange: () => {
+    void enumerateAndPopulate();
+  },
+  onBeforeUnload: () => {
+    signaling.leave();
+    signaling.disconnect();
+    rtc.dispose();
+    audio.dispose();
+    const sharing = screenTrack;
+    screenTrack = undefined;
+    if (sharing) {
+      sharing.onended = null;
+      sharing.stop();
     }
-  } catch {
-    // Keep current state on error
-  } finally {
-    if (btn) btn.disabled = false;
+    void presenter.stopNativeCapture();
+    void presenter.exitPresenterMode();
+    videoTrack?.stop();
+    stopRemoteVoiceBridge();
+    for (const m of voiceMeters.values()) void m.stop();
+    void musicMeter.stop();
+  },
+  onHandleDeepLink: (url) => {
+    void handleDeepLink(url);
   }
 });
-
-$('btn-remove-participant')?.addEventListener('click', async () => {
-  if (currentRole !== 'host' || !currentCode || !peerParticipantId) return;
-  const peerName = peerIdentity?.displayName || 'this participant';
-  const confirmed = window.confirm(`Are you sure you want to remove ${peerName} from the session?`);
-  if (!confirmed) return;
-  const btn = $<HTMLButtonElement>('btn-remove-participant');
-  if (btn) btn.disabled = true;
-  try {
-    const res = await signaling.removeParticipant(currentCode, peerParticipantId);
-    if (!res.ok) {
-      setMessage('call-status', res.message || 'Failed to remove participant', true);
-    }
-  } catch {
-    // Keep current state on error
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-});
-
-navigator.mediaDevices.addEventListener('devicechange', () => void enumerateAndPopulate());
-window.addEventListener('beforeunload', () => {
-  signaling.leave();
-  signaling.disconnect();
-  rtc.dispose();
-  audio.dispose();
-  const sharing = screenTrack;
-  screenTrack = undefined;
-  if (sharing) { sharing.onended = null; sharing.stop(); }
-  void presenter.stopNativeCapture();
-  void presenter.exitPresenterMode();
-  videoTrack?.stop();
-  stopRemoteVoiceBridge();
-  for (const m of voiceMeters.values()) void m.stop();
-  void musicMeter.stop();
-});
-
-const desktopBridge = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
-desktopBridge?.onDeepLink?.((url) => void handleDeepLink(url));
-void desktopBridge?.getInitialDeepLink?.().then((url) => { if (url) void handleDeepLink(url); });
 
 // Initial startup view and background device pre-warming
-showView('home-view');
-void auth.init().catch(() => {});
-void enumerateAndPopulate().then(() => {
-  if (!audioOnly) void replaceCamera(prefs.cameraId).catch(() => {});
-  void syncAllVoiceMics(prefs.mode).catch(() => {});
+startRendererApp({
+  onShowHomeView: () => showView('home-view'),
+  onInitAuth: async () => {
+    await auth.init();
+  },
+  onEnumerateAndPopulate: async () => {
+    await enumerateAndPopulate();
+  },
+  isAudioOnly: () => audioOnly,
+  getCameraId: () => prefs.cameraId,
+  getAudioMode: () => prefs.mode,
+  onReplaceCamera: async (camId) => {
+    await replaceCamera(camId);
+  },
+  onSyncAllVoiceMics: async (mode) => {
+    await syncAllVoiceMics(mode);
+  }
 });
 
 // ======= PROJECTS SYSTEM =======
