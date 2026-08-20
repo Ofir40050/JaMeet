@@ -20,7 +20,6 @@ export type {
 export { SONG_ICONS, SONG_COLORS, STAGE_CONFIG } from "./tasksConstants";
 
 export {
-  formatShortDate,
   setTasksStatus,
   getTasksStatus,
   applyTasksPermissions
