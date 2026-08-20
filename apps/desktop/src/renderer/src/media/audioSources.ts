@@ -1089,6 +1089,7 @@ export class LocalAudioSourceManager {
     this.rawTracks.clear();
     for (const source of this.sources.values()) source.track.stop();
     const musicGain = this.gainNodes.get('music');
+    this.sources.clear();
     this.gainNodes.clear();
     cleanupMusicNodes({
       musicGain,
