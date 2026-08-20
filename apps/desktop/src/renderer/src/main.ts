@@ -201,7 +201,16 @@ initRecentSessions({
   }
 });
 initProfileUi({
-  getUser: () => auth.getUser()
+  getUser: () => auth.getUser(),
+  onOpenProfile: () => openSettings('account'),
+  onOpenSettings: () => openSettings('general'),
+  onOpenGuestSettings: () => openSettings('general'),
+  onOpenSignIn: () => openAuthView('login'),
+  onOpenRegister: () => openAuthView('register'),
+  onLogout: async () => {
+    await auth.logout();
+    showView('home-view');
+  }
 });
 initSettingsUi();
 initAuthUi({
@@ -3958,24 +3967,6 @@ function openAuthDialog(tab: 'login' | 'register' = 'login'): void {
 
 // Navigation & Avatar menu listeners
 $('home-view-profile-btn')?.addEventListener('click', () => openSettings('account'));
-
-// Account Menu action buttons
-$('account-menu-profile-btn')?.addEventListener('click', () => openSettings('account'));
-$('account-menu-settings-btn')?.addEventListener('click', () => openSettings('general'));
-$('account-menu-guest-settings-btn')?.addEventListener('click', () => openSettings('general'));
-$('account-menu-signin-btn')?.addEventListener('click', () => {
-  closeAccountMenu();
-  openAuthView('login');
-});
-$('account-menu-register-btn')?.addEventListener('click', () => {
-  closeAccountMenu();
-  openAuthView('register');
-});
-$('account-menu-logout-btn')?.addEventListener('click', async () => {
-  closeAccountMenu();
-  await auth.logout();
-  showView('home-view');
-});
 
 // Settings back & done listeners
 $('btn-settings-back')?.addEventListener('click', () => showView(lastActiveViewBeforeSettings || 'home-view'));

@@ -5,6 +5,12 @@ import { $, setText } from './dom';
 
 export interface ProfileUiOptions {
   getUser: () => UserProfile | null;
+  onOpenProfile?: () => void;
+  onOpenSettings?: () => void;
+  onOpenGuestSettings?: () => void;
+  onOpenSignIn?: () => void;
+  onOpenRegister?: () => void;
+  onLogout?: () => Promise<void> | void;
 }
 
 let options: ProfileUiOptions | null = null;
@@ -258,6 +264,29 @@ export function initProfileUi(opts: ProfileUiOptions): void {
   $('call-user-btn')?.addEventListener('click', (e) => {
     e.stopPropagation();
     toggleAccountMenu($('call-user-btn'));
+  });
+
+  // Account Menu action buttons
+  $('account-menu-profile-btn')?.addEventListener('click', () => {
+    options?.onOpenProfile?.();
+  });
+  $('account-menu-settings-btn')?.addEventListener('click', () => {
+    options?.onOpenSettings?.();
+  });
+  $('account-menu-guest-settings-btn')?.addEventListener('click', () => {
+    options?.onOpenGuestSettings?.();
+  });
+  $('account-menu-signin-btn')?.addEventListener('click', () => {
+    closeAccountMenu();
+    options?.onOpenSignIn?.();
+  });
+  $('account-menu-register-btn')?.addEventListener('click', () => {
+    closeAccountMenu();
+    options?.onOpenRegister?.();
+  });
+  $('account-menu-logout-btn')?.addEventListener('click', () => {
+    closeAccountMenu();
+    void options?.onLogout?.();
   });
 
   // Close account menu on click-outside or Escape
