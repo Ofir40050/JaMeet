@@ -1,28 +1,11 @@
 import { $ } from "../../core/dom";
 import { tasksState } from "./tasksUiState";
-import type { TasksStatusType } from "./tasksTypes";
 
 // ========================================================
-// STATUS BADGES & FORMATTING HELPERS
+// STATUS BADGES & HELPERS
 // ========================================================
 
-export function formatShortDate(d: string): string {
-  try {
-    const parts = d.split("-");
-    if (parts.length === 3 && parts[1] && parts[2]) {
-      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const monthIndex = parseInt(parts[1], 10) - 1;
-      const month = months[monthIndex] || parts[1];
-      const day = parseInt(parts[2], 10);
-      return `${month} ${day}`;
-    }
-  } catch {
-    // ignore
-  }
-  return d;
-}
-
-export function setTasksStatus(status: TasksStatusType): void {
+export function setTasksStatus(status: "saving" | "saved" | "unsaved"): void {
   tasksState.currentTasksStatus = status;
   const label = status === "saving" ? "Saving…" : status === "saved" ? "Saved" : "Save failed";
   const badge = $("project-tasks-status");
@@ -37,8 +20,23 @@ export function setTasksStatus(status: TasksStatusType): void {
   }
 }
 
-export function getTasksStatus(): TasksStatusType {
+export function getTasksStatus(): "saving" | "saved" | "unsaved" {
   return tasksState.currentTasksStatus;
+}
+
+export function formatShortDate(d: string): string {
+  try {
+    const parts = d.split("-");
+    if (parts.length === 3) {
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const month = months[parseInt(parts[1], 10) - 1] || parts[1];
+      const day = parseInt(parts[2], 10);
+      return `${month} ${day}`;
+    }
+  } catch {
+    // ignore
+  }
+  return d;
 }
 
 // ========================================================

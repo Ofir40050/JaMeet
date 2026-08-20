@@ -1,4 +1,4 @@
-import type { ProjectTaskStatus, ProjectTaskStage } from '@jameet/shared';
+import type { ProjectTaskStatus, ProjectTaskStage } from "@jameet/shared";
 
 // ========================================================
 // TYPES & READONLY PRESENTATION INTERFACES
@@ -22,7 +22,7 @@ export type ReadonlyTaskItem = Readonly<{
   subtasks?: readonly ReadonlySubtaskItem[];
   note?: string;
   dueDate?: string;
-  priority?: 'none' | 'low' | 'medium' | 'high' | 'urgent';
+  priority?: "none" | "low" | "medium" | "high" | "urgent";
   createdAt?: number;
   completedAt?: number;
   updatedAt?: number;
@@ -65,7 +65,7 @@ export interface TaskFieldUpdate {
   songTitle?: string | null;
   assigneeId?: string | null;
   assigneeName?: string | null;
-  priority?: 'none' | 'low' | 'medium' | 'high' | 'urgent';
+  priority?: "none" | "low" | "medium" | "high" | "urgent";
 }
 
 export interface TasksUiOptions {
@@ -116,8 +116,3 @@ export interface TasksUiOptions {
   onUpdateSongCustomization: (songId: string, changes: { icon?: string; color?: string }) => void;
   onNavigateToTasksTab?: () => void;
 }
-
-export type TaskFilterType = 'all' | 'todo' | 'in_progress' | 'done';
-export type TasksViewMode = 'list' | 'board';
-export type TasksGroupingType = 'song' | 'stage' | 'status' | 'none';
-export type TasksStatusType = 'saving' | 'saved' | 'unsaved';

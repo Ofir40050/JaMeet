@@ -4,19 +4,18 @@ import { renderTasksIntoList } from "./taskListRenderer";
 import { renderBoard } from "./taskBoardRenderer";
 import { tasksState } from "./tasksUiState";
 
-// ========================================================
-// MAIN TASKS WORKSPACE RENDERING
-// ========================================================
-
 export function renderTasksWorkspace(): void {
   const tasksUiOptions = tasksState.tasksUiOptions;
   if (!tasksUiOptions) return;
   const tasks = tasksUiOptions.getTasks();
   const songs = tasksUiOptions.getSongs();
   const collaborators = tasksUiOptions.getCollaborators();
+  const canEdit = tasksUiOptions.canEdit();
 
   const totalCount = tasks.length;
   const doneCount = tasks.filter((t) => t.status === "done").length;
+  const inProgressCount = tasks.filter((t) => t.status === "in_progress").length;
+  const todoCount = tasks.filter((t) => t.status === "todo").length;
   const remainingCount = totalCount - doneCount;
 
   // 1. Update Apple Reminders Hero Title & Stats
@@ -187,7 +186,7 @@ export function renderTasksWorkspace(): void {
         `;
         item.querySelector(".reminders-check-btn")?.addEventListener("click", (e) => {
           e.stopPropagation();
-          tasksState.tasksUiOptions?.onToggleTaskStatus(task.id);
+          tasksUiOptions?.onToggleTaskStatus(task.id);
         });
         overviewListEl.appendChild(item);
       });

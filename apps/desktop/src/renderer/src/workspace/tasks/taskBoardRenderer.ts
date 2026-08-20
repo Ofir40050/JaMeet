@@ -7,10 +7,6 @@ import { showTaskContextMenu } from "./taskContextMenu";
 import { tasksState } from "./tasksUiState";
 import type { ReadonlyTaskItem, ReadonlySongItem } from "./tasksTypes";
 
-// ========================================================
-// KANBAN BOARD RENDERING
-// ========================================================
-
 export function renderBoardCard(task: ReadonlyTaskItem, songs: readonly ReadonlySongItem[]): HTMLElement {
   const card = document.createElement("div");
   card.className = `board-task-card status-${task.status || "todo"}`;

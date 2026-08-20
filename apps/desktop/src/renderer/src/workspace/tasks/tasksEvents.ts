@@ -3,10 +3,6 @@ import { $ } from "../../core/dom";
 import { renderTasksWorkspace } from "./tasksWorkspaceRenderer";
 import { tasksState } from "./tasksUiState";
 
-// ========================================================
-// EVENT LISTENERS & FORM BINDINGS
-// ========================================================
-
 export function bindTasksEventListeners(): void {
   if (tasksState.listenersBound) return;
   tasksState.listenersBound = true;
@@ -201,8 +197,9 @@ export function bindTasksEventListeners(): void {
 
   // View All Tasks from Overview
   $("btn-overview-view-tasks")?.addEventListener("click", () => {
-    if (tasksState.tasksUiOptions?.onNavigateToTasksTab) {
-      tasksState.tasksUiOptions.onNavigateToTasksTab();
+    const tasksUiOptions = tasksState.tasksUiOptions;
+    if (tasksUiOptions?.onNavigateToTasksTab) {
+      tasksUiOptions.onNavigateToTasksTab();
     } else {
       const taskTabBtn = document.querySelector<HTMLButtonElement>('.project-tab-btn[data-tab="tasks"]');
       taskTabBtn?.click();

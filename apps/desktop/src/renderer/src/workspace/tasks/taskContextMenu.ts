@@ -2,7 +2,7 @@ import { tasksState } from "./tasksUiState";
 import type { ReadonlyTaskItem } from "./tasksTypes";
 
 // ========================================================
-// TASK CONTEXT MENU
+// CONTEXT MENU & INSPECTOR POPOVERS
 // ========================================================
 
 export function showTaskContextMenu(e: MouseEvent, task: ReadonlyTaskItem): void {
@@ -99,8 +99,7 @@ export function showTaskContextMenu(e: MouseEvent, task: ReadonlyTaskItem): void
   menu.style.top = `${posY}px`;
 
   menu.addEventListener("click", (ev) => {
-    const currentOptions = tasksState.tasksUiOptions;
-    if (!currentOptions) return;
+    if (!tasksUiOptions) return;
     ev.stopPropagation();
     const item = (ev.target as HTMLElement).closest<HTMLElement>(".task-context-item");
     if (!item) return;
@@ -108,14 +107,14 @@ export function showTaskContextMenu(e: MouseEvent, task: ReadonlyTaskItem): void
     menu.remove();
 
     if (action === "toggle-status") {
-      currentOptions.onToggleTaskStatus(task.id);
+      tasksUiOptions.onToggleTaskStatus(task.id);
     } else if (action === "duplicate") {
-      currentOptions.onDuplicateTask(task.id);
+      tasksUiOptions.onDuplicateTask(task.id);
     } else if (action === "copy") {
       navigator.clipboard.writeText(task.title || "").catch(() => {});
     } else if (action === "add-subtask") {
       tasksState.currentSelectedTaskId = task.id;
-      currentOptions.onAddSubtask(task.id, "New subtask");
+      tasksUiOptions.onAddSubtask(task.id, "New subtask");
       setTimeout(() => {
         const taskRow = document.querySelector(`.reminders-task-row[data-task-id="${task.id}"]`);
         const addInput = taskRow?.querySelector<HTMLInputElement>(".task-subtask-add-input");
@@ -123,17 +122,17 @@ export function showTaskContextMenu(e: MouseEvent, task: ReadonlyTaskItem): void
       }, 10);
     } else if (action === "add-note") {
       const initialNote = task.note || "Note...";
-      currentOptions.onCommitTaskField(task.id, { note: initialNote }, { rerender: true });
+      tasksUiOptions.onCommitTaskField(task.id, { note: initialNote }, { rerender: true });
     } else if (action === "due-today") {
       const today = new Date().toISOString().split("T")[0];
-      currentOptions.onCommitTaskField(task.id, { dueDate: today }, { rerender: true });
+      tasksUiOptions.onCommitTaskField(task.id, { dueDate: today }, { rerender: true });
     } else if (action === "due-tomorrow") {
       const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
-      currentOptions.onCommitTaskField(task.id, { dueDate: tomorrow }, { rerender: true });
+      tasksUiOptions.onCommitTaskField(task.id, { dueDate: tomorrow }, { rerender: true });
     } else if (action === "clear-due") {
-      currentOptions.onCommitTaskField(task.id, { dueDate: null }, { rerender: true });
+      tasksUiOptions.onCommitTaskField(task.id, { dueDate: null }, { rerender: true });
     } else if (action === "delete") {
-      currentOptions.onDeleteTask(task.id);
+      tasksUiOptions.onDeleteTask(task.id);
     }
   });
 

@@ -3,10 +3,6 @@ import { escapeHtml } from "../../core/htmlSecurity";
 import { tasksState } from "./tasksUiState";
 import type { ReadonlyTaskItem } from "./tasksTypes";
 
-// ========================================================
-// TASK INSPECTOR / DETAILS POPOVER
-// ========================================================
-
 export function openTaskInspector(task: ReadonlyTaskItem, anchorEl: HTMLElement): void {
   const tasksUiOptions = tasksState.tasksUiOptions;
   if (!tasksUiOptions) return;
@@ -56,7 +52,7 @@ export function openTaskInspector(task: ReadonlyTaskItem, anchorEl: HTMLElement)
       </div>
       <div class="inspector-row">
         <div class="inspector-row-left">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1z"/><line x1="4" x2="22" y1="22" y2="15"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
           <span>Priority</span>
         </div>
         <select class="inspector-select inspector-priority-select">
@@ -135,61 +131,58 @@ export function openTaskInspector(task: ReadonlyTaskItem, anchorEl: HTMLElement)
   if (canEdit && tasksUiOptions) {
     const titleInput = popover.querySelector<HTMLInputElement>(".inspector-title-input");
     titleInput?.addEventListener("input", () => {
-      tasksState.tasksUiOptions?.onCommitTaskField(task.id, { title: titleInput.value }, { rerender: true });
+      tasksUiOptions?.onCommitTaskField(task.id, { title: titleInput.value }, { rerender: true });
     });
 
     const notesTextarea = popover.querySelector<HTMLTextAreaElement>(".inspector-notes-textarea");
     notesTextarea?.addEventListener("input", () => {
-      tasksState.tasksUiOptions?.onCommitTaskField(task.id, { note: notesTextarea.value }, { rerender: true });
+      tasksUiOptions?.onCommitTaskField(task.id, { note: notesTextarea.value }, { rerender: true });
     });
 
     const dateToggle = popover.querySelector<HTMLInputElement>(".inspector-date-toggle");
     const dateInput = popover.querySelector<HTMLInputElement>(".inspector-date-input");
 
     dateToggle?.addEventListener("change", () => {
-      const currentOpts = tasksState.tasksUiOptions;
-      if (!currentOpts) return;
+      if (!tasksUiOptions) return;
       if (dateToggle.checked) {
         dateInput?.classList.remove("hidden");
-        const today = new Date().toISOString().split("T")[0] || "";
+        const today = new Date().toISOString().split("T")[0];
         const newDue = dateInput?.value || today;
         if (dateInput) dateInput.value = newDue;
-        currentOpts.onCommitTaskField(task.id, { dueDate: newDue }, { rerender: true });
+        tasksUiOptions.onCommitTaskField(task.id, { dueDate: newDue }, { rerender: true });
       } else {
         dateInput?.classList.add("hidden");
-        currentOpts.onCommitTaskField(task.id, { dueDate: null }, { rerender: true });
+        tasksUiOptions.onCommitTaskField(task.id, { dueDate: null }, { rerender: true });
       }
     });
 
     dateInput?.addEventListener("change", () => {
-      tasksState.tasksUiOptions?.onCommitTaskField(task.id, { dueDate: dateInput.value || null }, { rerender: true });
+      tasksUiOptions?.onCommitTaskField(task.id, { dueDate: dateInput.value || null }, { rerender: true });
     });
 
     const prioritySelect = popover.querySelector<HTMLSelectElement>(".inspector-priority-select");
     prioritySelect?.addEventListener("change", () => {
-      tasksState.tasksUiOptions?.onCommitTaskField(task.id, { priority: prioritySelect.value as any }, { rerender: true });
+      tasksUiOptions?.onCommitTaskField(task.id, { priority: prioritySelect.value as any }, { rerender: true });
     });
 
     const songSelect = popover.querySelector<HTMLSelectElement>(".inspector-song-select");
     songSelect?.addEventListener("change", () => {
-      const currentOpts = tasksState.tasksUiOptions;
-      if (!currentOpts) return;
+      if (!tasksUiOptions) return;
       const val = songSelect.value;
       if (!val) {
-        currentOpts.onCommitTaskField(task.id, { songId: null, songTitle: null }, { rerender: true });
+        tasksUiOptions.onCommitTaskField(task.id, { songId: null, songTitle: null }, { rerender: true });
       } else {
         const [sId, sTitle] = val.split("|");
-        currentOpts.onCommitTaskField(task.id, { songId: sId || null, songTitle: sTitle || null }, { rerender: true });
+        tasksUiOptions.onCommitTaskField(task.id, { songId: sId, songTitle: sTitle }, { rerender: true });
       }
     });
 
     const stageSelect = popover.querySelector<HTMLSelectElement>(".inspector-stage-select");
     stageSelect?.addEventListener("change", () => {
-      const currentOpts = tasksState.tasksUiOptions;
-      if (!currentOpts) return;
+      if (!tasksUiOptions) return;
       const val = stageSelect.value as ProjectTaskStage;
       const stage = val === "general" ? null : val;
-      currentOpts.onCommitTaskField(task.id, { stage }, { rerender: true });
+      tasksUiOptions.onCommitTaskField(task.id, { stage }, { rerender: true });
     });
   }
 

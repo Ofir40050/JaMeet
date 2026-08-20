@@ -7,15 +7,11 @@ import { openTaskInspector } from "./taskInspector";
 import { tasksState } from "./tasksUiState";
 import type { ReadonlyTaskItem, ReadonlySongItem } from "./tasksTypes";
 
-// ========================================================
-// LIST ROW & GROUP RENDERING
-// ========================================================
-
 export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
   const tasksUiOptions = tasksState.tasksUiOptions;
-  const songs = tasksUiOptions?.getSongs() || [];
-  const collaborators = tasksUiOptions?.getCollaborators() || [];
-  const canEdit = tasksUiOptions?.canEdit() ?? false;
+  const songs = tasksUiOptions ? tasksUiOptions.getSongs() : [];
+  const collaborators = tasksUiOptions ? tasksUiOptions.getCollaborators() : [];
+  const canEdit = tasksUiOptions ? tasksUiOptions.canEdit() : false;
 
   const isSelected = tasksState.currentSelectedTaskId === task.id;
   const row = document.createElement("div");
@@ -136,7 +132,7 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
   // Wiring Row Events
   row.querySelector(".reminders-check-btn")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    tasksState.tasksUiOptions?.onToggleTaskStatus(task.id);
+    tasksUiOptions?.onToggleTaskStatus(task.id);
   });
 
   // Stage Change
@@ -146,7 +142,7 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
     if (tasksState.currentTasksGrouping === "stage") {
       tasksState.currentSelectedTaskId = task.id;
     }
-    tasksState.tasksUiOptions?.onCommitTaskField(task.id, { stage }, { rerender: tasksState.currentTasksGrouping === "stage" });
+    tasksUiOptions?.onCommitTaskField(task.id, { stage }, { rerender: tasksState.currentTasksGrouping === "stage" });
   });
 
   // Track Change
@@ -156,13 +152,13 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
     let sTitle: string | null = null;
     if (val) {
       const parts = val.split("|");
-      sId = parts[0] || null;
-      sTitle = parts[1] || null;
+      sId = parts[0];
+      sTitle = parts[1];
     }
     if (tasksState.currentTasksGrouping === "song") {
       tasksState.currentSelectedTaskId = task.id;
     }
-    tasksState.tasksUiOptions?.onCommitTaskField(task.id, { songId: sId, songTitle: sTitle }, { rerender: tasksState.currentTasksGrouping === "song" });
+    tasksUiOptions?.onCommitTaskField(task.id, { songId: sId, songTitle: sTitle }, { rerender: tasksState.currentTasksGrouping === "song" });
   });
 
   // Assignee Change
@@ -172,10 +168,10 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
     let aName: string | null = null;
     if (val) {
       const parts = val.split("|");
-      aId = parts[0] || null;
-      aName = parts[1] || null;
+      aId = parts[0];
+      aName = parts[1];
     }
-    tasksState.tasksUiOptions?.onCommitTaskField(task.id, { assigneeId: aId, assigneeName: aName });
+    tasksUiOptions?.onCommitTaskField(task.id, { assigneeId: aId, assigneeName: aName });
   });
 
   // Due Date Change
@@ -195,7 +191,7 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
         badge.remove();
       }
     }
-    tasksState.tasksUiOptions?.onCommitTaskField(task.id, { dueDate: due });
+    tasksUiOptions?.onCommitTaskField(task.id, { dueDate: due });
   });
 
   const titleInput = row.querySelector<HTMLInputElement>(".reminders-task-title-input");
@@ -203,11 +199,11 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
     tasksState.currentSelectedTaskId = task.id;
   });
   titleInput?.addEventListener("input", (e) => {
-    tasksState.tasksUiOptions?.onLiveUpdateTaskField(task.id, { title: (e.target as HTMLInputElement).value });
+    tasksUiOptions?.onLiveUpdateTaskField(task.id, { title: (e.target as HTMLInputElement).value });
   });
   titleInput?.addEventListener("blur", () => {
     const trimmed = titleInput.value.trim() || "Untitled Task";
-    tasksState.tasksUiOptions?.onCommitTaskField(task.id, { title: trimmed }, { immediateFlush: true });
+    tasksUiOptions?.onCommitTaskField(task.id, { title: trimmed }, { immediateFlush: true });
   });
 
   // Subtask events
@@ -217,12 +213,12 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
     stItem.querySelector(".task-subtask-check")?.addEventListener("click", (e) => {
       e.stopPropagation();
       tasksState.currentSelectedTaskId = task.id;
-      tasksState.tasksUiOptions?.onToggleSubtask(task.id, sId);
+      tasksUiOptions?.onToggleSubtask(task.id, sId);
     });
     stItem.querySelector(".task-subtask-del")?.addEventListener("click", (e) => {
       e.stopPropagation();
       tasksState.currentSelectedTaskId = task.id;
-      tasksState.tasksUiOptions?.onDeleteSubtask(task.id, sId);
+      tasksUiOptions?.onDeleteSubtask(task.id, sId);
     });
 
     const subInput = stItem.querySelector<HTMLInputElement>(".task-subtask-text-input");
@@ -230,7 +226,7 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
       tasksState.currentSelectedTaskId = task.id;
     });
     subInput?.addEventListener("input", (e) => {
-      tasksState.tasksUiOptions?.onLiveUpdateSubtask(task.id, sId, (e.target as HTMLInputElement).value);
+      tasksUiOptions?.onLiveUpdateSubtask(task.id, sId, (e.target as HTMLInputElement).value);
     });
     subInput?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
@@ -253,7 +249,7 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
       const text = subtaskAddInput.value.trim();
       if (text) {
         tasksState.currentSelectedTaskId = task.id;
-        tasksState.tasksUiOptions?.onAddSubtask(task.id, text);
+        tasksUiOptions?.onAddSubtask(task.id, text);
         subtaskAddInput.value = "";
         setTimeout(() => {
           const taskRow = document.querySelector(`.reminders-task-row[data-task-id="${task.id}"]`);
@@ -279,12 +275,12 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
 
     noteTextarea.addEventListener("input", () => {
       resizeNote();
-      tasksState.tasksUiOptions?.onLiveUpdateTaskField(task.id, { note: noteTextarea.value });
+      tasksUiOptions?.onLiveUpdateTaskField(task.id, { note: noteTextarea.value });
     });
 
     noteTextarea.addEventListener("blur", () => {
       const trimmed = noteTextarea.value.trim() || null;
-      tasksState.tasksUiOptions?.onCommitTaskField(task.id, { note: trimmed }, { immediateFlush: true });
+      tasksUiOptions?.onCommitTaskField(task.id, { note: trimmed }, { immediateFlush: true });
     });
   }
 
@@ -351,7 +347,7 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
   });
 
   row.addEventListener("drop", (e) => {
-    if (!tasksState.draggedTaskId || tasksState.draggedTaskId === task.id || !tasksState.tasksUiOptions) return;
+    if (!tasksState.draggedTaskId || tasksState.draggedTaskId === task.id || !tasksUiOptions) return;
     e.preventDefault();
     e.stopPropagation();
     row.classList.remove("drag-over-top", "drag-over-bottom");
@@ -369,7 +365,7 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
     }
 
     tasksState.currentSelectedTaskId = tasksState.draggedTaskId;
-    tasksState.tasksUiOptions.onReorderTasks(tasksState.draggedTaskId, task.id, insertAfter, inheritedChanges);
+    tasksUiOptions.onReorderTasks(tasksState.draggedTaskId, task.id, insertAfter, inheritedChanges);
   });
 
   if (!canEdit) {
@@ -406,14 +402,15 @@ export function renderGroupSection(group: {
   defaultSongId?: string;
   defaultStage?: ProjectTaskStage;
 }): HTMLElement {
-  const songs = tasksState.tasksUiOptions?.getSongs() || [];
+  const tasksUiOptions = tasksState.tasksUiOptions;
+  const songs = tasksUiOptions ? tasksUiOptions.getSongs() : [];
   const section = document.createElement("div");
   section.className = `reminders-group-section ${tasksState.tasksCollapsedGroups.has(group.id) ? "collapsed" : ""}`;
   section.dataset.groupId = group.id;
 
   const iconKey = group.songRef?.icon || group.iconKey || "music";
   const colorHex = group.songRef?.color || group.colorHex || "#f43f5e";
-  const iconSvg = (iconKey && SONG_ICONS[iconKey]?.svg) || group.iconSvg || SONG_ICONS.music?.svg || "";
+  const iconSvg = SONG_ICONS[iconKey]?.svg || group.iconSvg || SONG_ICONS.music.svg;
 
   const header = document.createElement("div");
   header.className = "reminders-group-header";
@@ -470,8 +467,8 @@ export function renderGroupSection(group: {
       popover.querySelectorAll<HTMLButtonElement>(".song-customizer-icon-item").forEach((iBtn) => {
         iBtn.addEventListener("click", () => {
           const chosenKey = iBtn.dataset.iconKey;
-          if (chosenKey && group.songRef && tasksState.tasksUiOptions) {
-            tasksState.tasksUiOptions.onUpdateSongCustomization(group.songRef.id, { icon: chosenKey });
+          if (chosenKey && group.songRef && tasksUiOptions) {
+            tasksUiOptions.onUpdateSongCustomization(group.songRef.id, { icon: chosenKey });
           }
         });
       });
@@ -479,8 +476,8 @@ export function renderGroupSection(group: {
       popover.querySelectorAll<HTMLButtonElement>(".song-customizer-color-dot").forEach((cBtn) => {
         cBtn.addEventListener("click", () => {
           const chosenHex = cBtn.dataset.colorHex;
-          if (chosenHex && group.songRef && tasksState.tasksUiOptions) {
-            tasksState.tasksUiOptions.onUpdateSongCustomization(group.songRef.id, { color: chosenHex });
+          if (chosenHex && group.songRef && tasksUiOptions) {
+            tasksUiOptions.onUpdateSongCustomization(group.songRef.id, { color: chosenHex });
           }
         });
       });
@@ -524,13 +521,13 @@ export function renderGroupSection(group: {
     if (e.key === "Enter") {
       e.preventDefault();
       const val = quickInput.value.trim();
-      if (val && tasksState.tasksUiOptions) {
+      if (val && tasksUiOptions) {
         let songTitle: string | undefined;
         if (group.defaultSongId && songs) {
           const s = songs.find((x) => x.id === group.defaultSongId);
           songTitle = s?.title;
         }
-        tasksState.tasksUiOptions.onCreateTask({
+        tasksUiOptions.onCreateTask({
           title: val,
           songId: group.defaultSongId,
           songTitle,
@@ -556,7 +553,7 @@ export function renderGroupSection(group: {
   });
 
   section.addEventListener("drop", (e) => {
-    if (!tasksState.draggedTaskId || !tasksState.tasksUiOptions) return;
+    if (!tasksState.draggedTaskId || !tasksUiOptions) return;
     e.preventDefault();
     section.classList.remove("drag-over");
 
@@ -579,7 +576,7 @@ export function renderGroupSection(group: {
     }
 
     tasksState.currentSelectedTaskId = tasksState.draggedTaskId;
-    tasksState.tasksUiOptions.onMoveTaskToGroup(tasksState.draggedTaskId, { songId, songTitle, stage });
+    tasksUiOptions.onMoveTaskToGroup(tasksState.draggedTaskId, { songId, songTitle, stage });
   });
 
   section.appendChild(header);
@@ -619,7 +616,7 @@ export function renderTasksIntoList(
         songRef: s,
         iconKey,
         colorHex: color,
-        iconSvg: (iconKey && SONG_ICONS[iconKey]?.svg) || SONG_ICONS.music?.svg || "",
+        iconSvg: SONG_ICONS[iconKey]?.svg || SONG_ICONS.music.svg,
         tasks: sTasks,
         defaultSongId: s.id
       });
@@ -631,7 +628,7 @@ export function renderTasksIntoList(
       title: "General Tasks",
       iconKey: "tag",
       colorHex: "#94a3b8",
-      iconSvg: SONG_ICONS.tag?.svg || "",
+      iconSvg: SONG_ICONS.tag.svg,
       tasks: unassignedTasks,
       defaultSongId: ""
     });

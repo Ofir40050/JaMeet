@@ -14,11 +14,7 @@ export type {
   TaskCollaboratorOption,
   CreateTaskData,
   TaskFieldUpdate,
-  TasksUiOptions,
-  TaskFilterType,
-  TasksViewMode,
-  TasksGroupingType,
-  TasksStatusType
+  TasksUiOptions
 } from "./tasksTypes";
 
 export { SONG_ICONS, SONG_COLORS, STAGE_CONFIG } from "./tasksConstants";
