@@ -2421,7 +2421,13 @@ let remoteAudioCtx: AudioContext | undefined;
 let remoteVoiceGain: GainNode | undefined;
 let remoteMusicGain: GainNode | undefined;
 let remoteMasterGain: GainNode | undefined;
+let remoteVoiceIsStereo = false;
 let remoteVoicePanner: StereoPannerNode | undefined;
+let remoteVoiceMeterSplitter: ChannelSplitterNode | undefined;
+let remoteVoiceSplitter: ChannelSplitterNode | undefined;
+let remoteVoiceLeftGain: GainNode | undefined;
+let remoteVoiceRightGain: GainNode | undefined;
+let remoteVoiceMerger: ChannelMergerNode | undefined;
 let remoteMusicSplitter: ChannelSplitterNode | undefined;
 let remoteMusicLeftGain: GainNode | undefined;
 let remoteMusicRightGain: GainNode | undefined;
@@ -2453,8 +2459,16 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
     remoteLimiter = remoteAudioCtx.createDynamicsCompressor();
 
     // Panning & Balance Stages:
-    // Remote Voice: Constant Power Mono-to-Stereo Panner
+    // Remote Voice:
+    // Mono: Constant Power Mono-to-Stereo Panner + Meter Splitter
     remoteVoicePanner = remoteAudioCtx.createStereoPanner();
+    remoteVoiceMeterSplitter = remoteAudioCtx.createChannelSplitter(2);
+
+    // Stereo: True Stereo Balance (discrete L/R attenuation without crossfeed)
+    remoteVoiceSplitter = remoteAudioCtx.createChannelSplitter(2);
+    remoteVoiceLeftGain = remoteAudioCtx.createGain();
+    remoteVoiceRightGain = remoteAudioCtx.createGain();
+    remoteVoiceMerger = remoteAudioCtx.createChannelMerger(2);
 
     // Remote Music: True Stereo Balance (discrete L/R attenuation without crossfeed)
     remoteMusicSplitter = remoteAudioCtx.createChannelSplitter(2);
@@ -2467,12 +2481,7 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
     remoteMusicLeftGain.connect(remoteMusicMerger, 0, 0);
     remoteMusicRightGain.connect(remoteMusicMerger, 0, 1);
 
-    // Default bypass connections before mixer FX routing runs
-    remoteVoiceGain.connect(remoteVoicePanner);
-    remoteMusicGain.connect(remoteMusicSplitter);
-
     // Live Analysers for Real Level Metering (Stereo Measurement Taps)
-    const voiceMeterSplitter = remoteAudioCtx.createChannelSplitter(2);
     remoteVoiceAnalyserL = remoteAudioCtx.createAnalyser();
     remoteVoiceAnalyserL.fftSize = 256;
     remoteVoiceAnalyserR = remoteAudioCtx.createAnalyser();
@@ -2496,16 +2505,9 @@ async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
     remoteLimiter.attack.setValueAtTime(0.001, remoteAudioCtx.currentTime); // Minimum practical attack (1ms) supported by Web Audio DynamicsCompressorNode
     remoteLimiter.release.setValueAtTime(0.05, remoteAudioCtx.currentTime); // Fast release (50ms) to minimize pumping
 
-    // Audio Graph Static Routing:
-    // Panner / Balance -> Master
-    remoteVoicePanner.connect(remoteMasterGain);
+    // Audio Graph Static Routing for Music:
+    remoteMusicGain.connect(remoteMusicSplitter);
     remoteMusicMerger.connect(remoteMasterGain);
-
-    // Measurement Taps (Measurement-only, not connected to output):
-    remoteVoicePanner.connect(voiceMeterSplitter);
-    voiceMeterSplitter.connect(remoteVoiceAnalyserL, 0);
-    voiceMeterSplitter.connect(remoteVoiceAnalyserR, 1);
-
     remoteMusicLeftGain.connect(remoteMusicAnalyserL);
     remoteMusicRightGain.connect(remoteMusicAnalyserR);
 
@@ -2635,10 +2637,18 @@ async function refreshRemoteAudio(): Promise<void> {
   // Reconcile Remote Voice
   if (latestVoiceTracks.length > 0) {
     const voiceTrack = latestVoiceTracks[0];
+    const settingsCount = voiceTrack.getSettings?.()?.channelCount;
+    if (typeof settingsCount === 'number' && settingsCount > 0) {
+      remoteVoiceIsStereo = settingsCount > 1;
+    }
+
     if (!remoteVoiceSourceNode || remoteVoiceSourceNode.mediaStream.getAudioTracks()[0] !== voiceTrack) {
       try { remoteVoiceSourceNode?.disconnect(); } catch {}
       const voiceStream = new MediaStream([voiceTrack]);
       remoteVoiceSourceNode = ctx.createMediaStreamSource(voiceStream);
+      if (typeof settingsCount !== 'number' || settingsCount <= 0) {
+        remoteVoiceIsStereo = remoteVoiceSourceNode.channelCount > 1;
+      }
       if (remoteVoiceGain) remoteVoiceSourceNode.connect(remoteVoiceGain);
       void startRemoteVoiceBridge(ctx, remoteVoiceSourceNode);
 
@@ -2651,6 +2661,7 @@ async function refreshRemoteAudio(): Promise<void> {
       });
     }
   } else {
+    remoteVoiceIsStereo = false;
     stopRemoteVoiceBridge();
     try { remoteVoiceSourceNode?.disconnect(); } catch {}
     remoteVoiceSourceNode = undefined;
@@ -2798,10 +2809,19 @@ async function leaveSession(endedMessage?: string): Promise<void> {
     } catch {}
   }
   remoteAudioCtx = undefined;
-  remoteVoiceGain = undefined;
-  remoteMusicGain = undefined;
-  remoteMasterGain = undefined;
+  remoteVoiceIsStereo = false;
+  try { remoteVoicePanner?.disconnect(); } catch {}
   remoteVoicePanner = undefined;
+  try { remoteVoiceMeterSplitter?.disconnect(); } catch {}
+  remoteVoiceMeterSplitter = undefined;
+  try { remoteVoiceSplitter?.disconnect(); } catch {}
+  remoteVoiceSplitter = undefined;
+  try { remoteVoiceLeftGain?.disconnect(); } catch {}
+  remoteVoiceLeftGain = undefined;
+  try { remoteVoiceRightGain?.disconnect(); } catch {}
+  remoteVoiceRightGain = undefined;
+  try { remoteVoiceMerger?.disconnect(); } catch {}
+  remoteVoiceMerger = undefined;
   try { remoteMusicSplitter?.disconnect(); } catch {}
   remoteMusicSplitter = undefined;
   try { remoteMusicLeftGain?.disconnect(); } catch {}
@@ -5242,6 +5262,7 @@ signaling.on('peer:ready', (payload: { media: MediaMetadata; identity?: Particip
 });
 signaling.on('peer:disconnected', () => setCallStatus('Musician reconnecting…'));
 signaling.on('peer:left', () => {
+  remoteVoiceIsStereo = false;
   rtc.resetPeer();
   for (const [, item] of remoteAudioTracks) {
     item.track.onended = null;
@@ -13285,12 +13306,20 @@ function applyMixerAudioRouting(): void {
     if (remoteMusicGain) remoteMusicGain.gain.setValueAtTime(effectiveRemoteMusicVol, now);
     if (remoteMasterGain) remoteMasterGain.gain.setValueAtTime(masterVol, now);
 
-    // Real Stereo Panning (-1.0 Left to +1.0 Right)
-    // Real Stereo Panning (Mono Voice) & Stereo Balance (Stereo Music)
-    if (remoteVoicePanner && remoteVoiceCh) {
-      const voicePan = typeof remoteVoiceCh.pan === 'number' && !isNaN(remoteVoiceCh.pan) ? remoteVoiceCh.pan : 0;
-      remoteVoicePanner.pan.setValueAtTime(voicePan, now);
+    // Real Stereo Panning (Mono Voice) & Stereo Balance (Stereo Voice & Stereo Music)
+    const voicePan = typeof remoteVoiceCh?.pan === 'number' && !isNaN(remoteVoiceCh.pan) ? remoteVoiceCh.pan : 0;
+    if (remoteVoiceIsStereo) {
+      if (remoteVoiceLeftGain && remoteVoiceRightGain) {
+        const { left, right } = getStereoBalanceGains(voicePan);
+        remoteVoiceLeftGain.gain.setValueAtTime(left, now);
+        remoteVoiceRightGain.gain.setValueAtTime(right, now);
+      }
+    } else {
+      if (remoteVoicePanner) {
+        remoteVoicePanner.pan.setValueAtTime(voicePan, now);
+      }
     }
+
     if (remoteMusicLeftGain && remoteMusicRightGain && remoteMusicCh) {
       const musicPan = typeof remoteMusicCh.pan === 'number' && !isNaN(remoteMusicCh.pan) ? remoteMusicCh.pan : 0;
       const { left, right } = getStereoBalanceGains(musicPan);
@@ -13298,16 +13327,23 @@ function applyMixerAudioRouting(): void {
       remoteMusicRightGain.gain.setValueAtTime(right, now);
     }
 
-    // Dynamic Channel FX Routing: Remote Voice (rebuild topology only when fx array changes)
-    if (remoteVoiceGain && remoteVoicePanner) {
+    // Dynamic Channel FX Routing: Remote Voice (rebuild topology when fx array or mono/stereo mode changes)
+    if (remoteVoiceGain && (remoteVoicePanner || (remoteVoiceSplitter && remoteVoiceMerger))) {
       const voiceFx = (remoteVoiceCh?.fx || []).filter((f) => Boolean(f) && (f === 'Chan EQ' || f === 'Compressor'));
-      const voiceFxKey = voiceFx.join('|');
+      const voiceFxKey = `${remoteVoiceIsStereo ? 'stereo' : 'mono'}|${voiceFx.join('|')}`;
       if (voiceFxKey !== lastConnectedVoiceFx) {
         try { remoteVoiceGain.disconnect(); } catch {}
         for (const node of remoteVoiceFxNodes) {
           try { node.disconnect(); } catch {}
         }
         remoteVoiceFxNodes = [];
+
+        try { remoteVoicePanner?.disconnect(); } catch {}
+        try { remoteVoiceMeterSplitter?.disconnect(); } catch {}
+        try { remoteVoiceMerger?.disconnect(); } catch {}
+        try { remoteVoiceSplitter?.disconnect(); } catch {}
+        try { remoteVoiceLeftGain?.disconnect(); } catch {}
+        try { remoteVoiceRightGain?.disconnect(); } catch {}
 
         let currentVoiceSource: AudioNode = remoteVoiceGain;
         for (const fxName of voiceFx) {
@@ -13340,7 +13376,24 @@ function applyMixerAudioRouting(): void {
             remoteVoiceFxNodes.push(compressorNode);
           }
         }
-        currentVoiceSource.connect(remoteVoicePanner);
+
+        if (remoteVoiceIsStereo && remoteVoiceSplitter && remoteVoiceLeftGain && remoteVoiceRightGain && remoteVoiceMerger && remoteVoiceAnalyserL && remoteVoiceAnalyserR && remoteMasterGain) {
+          currentVoiceSource.connect(remoteVoiceSplitter);
+          remoteVoiceSplitter.connect(remoteVoiceLeftGain, 0, 0);
+          remoteVoiceSplitter.connect(remoteVoiceRightGain, 1, 0);
+          remoteVoiceLeftGain.connect(remoteVoiceMerger, 0, 0);
+          remoteVoiceRightGain.connect(remoteVoiceMerger, 0, 1);
+          remoteVoiceMerger.connect(remoteMasterGain);
+          remoteVoiceLeftGain.connect(remoteVoiceAnalyserL);
+          remoteVoiceRightGain.connect(remoteVoiceAnalyserR);
+        } else if (remoteVoicePanner && remoteVoiceMeterSplitter && remoteVoiceAnalyserL && remoteVoiceAnalyserR && remoteMasterGain) {
+          currentVoiceSource.connect(remoteVoicePanner);
+          remoteVoicePanner.connect(remoteMasterGain);
+          remoteVoicePanner.connect(remoteVoiceMeterSplitter);
+          remoteVoiceMeterSplitter.connect(remoteVoiceAnalyserL, 0);
+          remoteVoiceMeterSplitter.connect(remoteVoiceAnalyserR, 1);
+        }
+
         lastConnectedVoiceFx = voiceFxKey;
       }
     }
