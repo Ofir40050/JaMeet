@@ -1,7 +1,6 @@
 import type { Preferences, VoiceInputConfig } from '../core/preferences';
 import type { VideoQuality, PerformanceMode } from '@jameet/shared';
 import { deviceError } from './deviceError';
-import { parseSessionError } from '../sessions/setup/sessionErrorParser';
 import { getCachedRunningApps } from './runningApplicationsController';
 
 export interface MediaSettingsBindingsOptions {
@@ -32,13 +31,13 @@ export function initMediaSettingsBindings(options: MediaSettingsBindingsOptions)
     document.getElementById(id)?.addEventListener('click', () => {
       void options.onTestSpeakers()
         .then(() => options.onSetMessage('setup-status', 'Speaker test complete.'))
-        .catch((error) => options.onShowSessionError(parseSessionError(error)));
+        .catch((error) => options.onShowSessionError(error));
     });
   }
   for (const id of ['microphone-test', 'in-call-microphone-test']) {
     document.getElementById(id)?.addEventListener('click', () => {
       void options.onTestMicrophone()
-        .catch((error) => options.onShowSessionError(parseSessionError(error)));
+        .catch((error) => options.onShowSessionError(error));
     });
   }
 
