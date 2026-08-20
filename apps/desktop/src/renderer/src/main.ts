@@ -20,7 +20,7 @@ import { icons } from './icons';
 import { presenter } from './presenter';
 import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor, findSectionCard, findTimelineBlocks, findTimelineBlock } from './htmlSecurity';
 import { initActivityHistory, renderProjectActivities } from './activity';
-import { initSessionChat, resetChatUi, setSessionChatOpen, setOnChatOpenCallback } from './chat';
+import { initSessionChat, resetChatUi, setSessionChatOpen, isSessionChatOpen, setOnChatOpenCallback } from './chat';
 import { startRemoteVoiceBridge, stopRemoteVoiceBridge } from './remoteVoiceBridge';
 import { logger } from './logger';
 import './style.css';
@@ -3358,15 +3358,23 @@ presenter.setActionHandler(async (action) => {
     }
     case 'toggle-workspace':
     case 'open-workspace':
-      await presenter.showMainWindow();
-      $('session-presenter-banner')?.classList.remove('hidden');
-      setSessionWorkspaceOpen(true);
+      if (!sessionWorkspaceOpen) {
+        await presenter.showMainWindow();
+        $('session-presenter-banner')?.classList.remove('hidden');
+        setSessionWorkspaceOpen(true);
+      } else {
+        setSessionWorkspaceOpen(false);
+      }
       break;
     case 'toggle-chat':
     case 'open-chat':
-      await presenter.showMainWindow();
-      $('session-presenter-banner')?.classList.remove('hidden');
-      setSessionChatOpen(true);
+      if (!isSessionChatOpen()) {
+        await presenter.showMainWindow();
+        $('session-presenter-banner')?.classList.remove('hidden');
+        setSessionChatOpen(true);
+      } else {
+        setSessionChatOpen(false);
+      }
       break;
     case 'toggle-mixer':
     case 'open-mixer':
@@ -3411,12 +3419,25 @@ presenter.setActionHandler(async (action) => {
       $('session-presenter-banner')?.classList.remove('hidden');
       $<HTMLDialogElement>('remote-mixer-dialog')?.showModal();
       break;
-    case 'open-audio-settings':
-      await presenter.showMainWindow();
-      $('session-presenter-banner')?.classList.remove('hidden');
-      void enumerateAndPopulate();
-      openSettings('audio');
+    case 'toggle-settings':
+    case 'toggle-audio-settings':
+    case 'open-audio-settings': {
+      const isSettingsOpen = !$('settings-view')?.classList.contains('hidden') || !$('in-call-audio-modal')?.classList.contains('hidden');
+      if (!isSettingsOpen) {
+        await presenter.showMainWindow();
+        $('session-presenter-banner')?.classList.remove('hidden');
+        void enumerateAndPopulate();
+        openSettings('audio');
+      } else {
+        if (!$('in-call-audio-modal')?.classList.contains('hidden')) {
+          closeInCallAudioModal();
+        }
+        if (!$('settings-view')?.classList.contains('hidden')) {
+          showView(lastActiveViewBeforeSettings || 'call-view');
+        }
+      }
       break;
+    }
     case 'toggle-floating-video':
       await presenter.toggleRemoteVideoPiP();
       break;

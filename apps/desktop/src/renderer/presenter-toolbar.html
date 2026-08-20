@@ -417,8 +417,8 @@
     document.getElementById('btn-mic')?.addEventListener('click', () => sendAction('toggle-mic'));
     document.getElementById('btn-cam')?.addEventListener('click', () => sendAction('toggle-cam'));
     document.getElementById('btn-pause')?.addEventListener('click', () => sendAction('toggle-pause'));
-    document.getElementById('btn-workspace')?.addEventListener('click', () => sendAction('open-workspace'));
-    document.getElementById('btn-chat')?.addEventListener('click', () => sendAction('open-chat'));
+    document.getElementById('btn-workspace')?.addEventListener('click', () => sendAction('toggle-workspace'));
+    document.getElementById('btn-chat')?.addEventListener('click', () => sendAction('toggle-chat'));
     document.getElementById('btn-mixer')?.addEventListener('click', () => sendAction('toggle-mixer'));
     document.getElementById('btn-show-app')?.addEventListener('click', () => sendAction('show-main-window'));
     document.getElementById('btn-stop')?.addEventListener('click', () => sendAction('stop-share'));
@@ -443,7 +443,7 @@
 
     document.getElementById('item-workspace')?.addEventListener('click', () => {
       moreMenu?.classList.add('hidden');
-      sendAction('open-workspace');
+      sendAction('toggle-workspace');
     });
 
     document.getElementById('item-layout')?.addEventListener('click', () => {
@@ -463,7 +463,7 @@
 
     document.getElementById('item-audio-settings')?.addEventListener('click', () => {
       moreMenu?.classList.add('hidden');
-      sendAction('open-audio-settings');
+      sendAction('toggle-audio-settings');
     });
 
     document.getElementById('item-toggle-video')?.addEventListener('click', () => {
