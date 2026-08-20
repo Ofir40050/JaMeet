@@ -177,24 +177,61 @@ export class WebRtcSession {
           }
           return 'mono';
         }
-        return 'mono';
+
+        // Active non-Opus audio codec: inspect channels
+        if (typeof codecStat.channels === 'number') {
+          if (codecStat.channels === 1) return 'mono';
+          if (codecStat.channels > 1) return 'stereo';
+        }
+
+        const payloadType = codecStat.payloadType ?? inboundAudioStat.payloadType;
+        if (typeof payloadType === 'number') {
+          const remoteSdp = this.pc.currentRemoteDescription?.sdp || this.pc.remoteDescription?.sdp;
+          if (remoteSdp) {
+            const mediaSection = extractMediaSectionByMid(remoteSdp, mid);
+            if (mediaSection) {
+              const lines = mediaSection.split(/\r?\n/);
+              for (const line of lines) {
+                const rtpMatch = line.match(new RegExp(`^a=rtpmap:${payloadType}\\s+[^/]+/\\d+(?:/(\\d+))?$`, 'i'));
+                if (rtpMatch) {
+                  const ch = rtpMatch[1] ? parseInt(rtpMatch[1], 10) : 1;
+                  if (ch === 1) return 'mono';
+                  if (ch > 1) return 'stereo';
+                }
+              }
+            }
+          }
+        }
+
+        return 'unknown';
       } else if (typeof inboundAudioStat.payloadType === 'number') {
+        const payloadType = inboundAudioStat.payloadType;
         const remoteSdp = this.pc.currentRemoteDescription?.sdp || this.pc.remoteDescription?.sdp;
         if (remoteSdp) {
           const mediaSection = extractMediaSectionByMid(remoteSdp, mid);
           if (mediaSection) {
             const lines = mediaSection.split(/\r?\n/);
             const isOpus = lines.some((l) => {
-              const match = l.match(new RegExp(`^a=rtpmap:${inboundAudioStat.payloadType}\\s+opus/48000(?:/2)?$`, 'i'));
+              const match = l.match(new RegExp(`^a=rtpmap:${payloadType}\\s+opus/48000(?:/2)?$`, 'i'));
               return Boolean(match);
             });
             if (isOpus) {
-              const fmtpLine = lines.find((l) => l.startsWith(`a=fmtp:${inboundAudioStat.payloadType} `) || l.startsWith(`a=fmtp:${inboundAudioStat.payloadType}:`));
+              const fmtpLine = lines.find((l) => l.startsWith(`a=fmtp:${payloadType} `) || l.startsWith(`a=fmtp:${payloadType}:`));
               if (fmtpLine) {
                 const fmtpText = fmtpLine.slice(fmtpLine.indexOf(' ') + 1);
                 return parseSpropStereo(fmtpText) ? 'stereo' : 'mono';
               }
               return 'mono';
+            }
+
+            // Non-Opus codec in media section
+            for (const line of lines) {
+              const rtpMatch = line.match(new RegExp(`^a=rtpmap:${payloadType}\\s+[^/]+/\\d+(?:/(\\d+))?$`, 'i'));
+              if (rtpMatch) {
+                const ch = rtpMatch[1] ? parseInt(rtpMatch[1], 10) : 1;
+                if (ch === 1) return 'mono';
+                if (ch > 1) return 'stereo';
+              }
             }
           }
         }
