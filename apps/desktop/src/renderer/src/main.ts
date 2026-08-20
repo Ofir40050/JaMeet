@@ -22,6 +22,11 @@ import {
   getEditingAvatarUrl,
   setEditingAvatarUrl
 } from './profileUi';
+import {
+  initSettingsUi,
+  switchSettingsSection,
+  type SettingsSection
+} from './settingsUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -118,6 +123,7 @@ initRecentSessions({
 initProfileUi({
   getUser: () => auth.getUser()
 });
+initSettingsUi();
 let myIdentity: ParticipantIdentity | null = null;
 let peerIdentity: ParticipantIdentity | null = null;
 let hostIdentity: ParticipantIdentity | null = null;
@@ -3639,7 +3645,7 @@ function switchAuthViewTab(tab: 'login' | 'register'): void {
 
 let lastActiveViewBeforeSettings = 'home-view';
 
-function openSettings(section: 'general' | 'audio' | 'video' | 'screenshare' | 'account' = 'account'): void {
+function openSettings(section: SettingsSection = 'account'): void {
   closeAccountMenu();
   const currentActive = views.find((v) => !$(v)?.classList.contains('hidden') && v !== 'settings-view');
   if (currentActive) {
@@ -3654,27 +3660,6 @@ function openSettings(section: 'general' | 'audio' | 'video' | 'screenshare' | '
 
   switchSettingsSection(section);
   showView('settings-view');
-}
-
-function switchSettingsSection(section: 'general' | 'audio' | 'video' | 'screenshare' | 'account'): void {
-  const sections = ['general', 'audio', 'video', 'screenshare', 'account'] as const;
-  for (const s of sections) {
-    const isCur = s === section;
-    const navItem = document.querySelector(`.settings-nav-item[data-settings-tab="${s}"]`);
-    navItem?.classList.toggle('active', isCur);
-    $(`settings-panel-${s}`)?.classList.toggle('hidden', !isCur);
-  }
-  const crumbText =
-    section === 'account'
-      ? 'Account Profile'
-      : section === 'audio'
-        ? 'Audio & Hardware'
-        : section === 'video'
-          ? 'Video & Camera'
-          : section === 'screenshare'
-            ? 'Screen Sharing'
-            : 'General Preferences';
-  setText('settings-view-crumb', crumbText);
 }
 
 function openAuthDialog(tab: 'login' | 'register' = 'login'): void {
@@ -3711,13 +3696,7 @@ $('account-menu-logout-btn')?.addEventListener('click', async () => {
   showView('home-view');
 });
 
-// Settings navigation listeners
-document.querySelectorAll<HTMLButtonElement>('.settings-nav-item').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const tab = btn.dataset.settingsTab as any;
-    if (tab) switchSettingsSection(tab);
-  });
-});
+// Settings back & done listeners
 $('btn-settings-back')?.addEventListener('click', () => showView(lastActiveViewBeforeSettings || 'home-view'));
 $('btn-settings-done')?.addEventListener('click', () => showView(lastActiveViewBeforeSettings || 'home-view'));
 
