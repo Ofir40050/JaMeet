@@ -267,12 +267,27 @@ describe('LocalAudioSourceManager Multi-Voice Input', () => {
     await manager.acquireVoiceMic(1, 'device-mic-1', 'speech', { inputGain: 1.0, channelRoute: 'all' });
     await manager.acquireVoiceMic(2, 'device-mic-2', 'speech', { inputGain: 1.0, channelRoute: 'all' });
 
+    const mic1Panner = (manager as any).voiceMics.get(1)?.pannerNode as MockPannerNode;
+    const mic2Panner = (manager as any).voiceMics.get(2)?.pannerNode as MockPannerNode;
+
+    expect(mic1Panner).toBeDefined();
+    expect(mic2Panner).toBeDefined();
+
     await manager.setVoiceMicPan(1, -0.75);
     await manager.setVoiceMicPan(2, 0.6);
 
-    // Update Mic 2 pan and verify Mic 1 is unchanged
-    await manager.setVoiceMicPan(2, 0.0);
-    expect(async () => manager.setVoiceMicPan(1, -0.5)).not.toThrow();
+    expect(mic1Panner.pan.value).toBe(-0.75);
+    expect(mic2Panner.pan.value).toBe(0.6);
+
+    // Change Mic 2 pan again and explicitly verify Mic 1 pan remains unchanged
+    await manager.setVoiceMicPan(2, 0.2);
+    expect(mic2Panner.pan.value).toBe(0.2);
+    expect(mic1Panner.pan.value).toBe(-0.75);
+
+    // Change Mic 1 pan and explicitly verify Mic 2 pan remains unchanged
+    await manager.setVoiceMicPan(1, 0.45);
+    expect(mic1Panner.pan.value).toBe(0.45);
+    expect(mic2Panner.pan.value).toBe(0.2);
   });
 
   it('keeps FX routing identity and channel IDs distinct (you-mic for Mic 1, you-mic-N for Mic N)', async () => {
