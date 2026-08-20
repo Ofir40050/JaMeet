@@ -40,6 +40,10 @@ import {
   hideWaitingBanner
 } from './sessions/waitingRoomUi';
 import {
+  initProjectsListController,
+  loadProjects
+} from './projects/projectsListController';
+import {
   initProjectsListUi,
   renderProjectsGrid
 } from './projects/projectsListUi';
@@ -64,8 +68,67 @@ import {
   handleUpdateCollaboratorRole,
   handleRemoveCollaborator
 } from './projects/projectCollaboratorsController';
+import {
+  initProjectViewController,
+  renderProjectView
+} from './projects/projectViewController';
+import {
+  initProjectOpenController,
+  openProjectView
+} from './projects/projectOpenController';
 import { initDialogUi } from './core/dialogUi';
 import { applyWorkspacePermissionsPresentation } from './workspace/workspacePermissionsUi';
+import {
+  getWorkspaceContextGen,
+  isWorkspaceContextGenCurrent,
+  resetWorkspaceGenerations,
+  getLyricsEditGen,
+  getLyricsSaveGen,
+  incrementLyricsEditGen,
+  incrementLyricsSaveGen,
+  setLyricsSaveGen,
+  getNotesEditGen,
+  getNotesSaveGen,
+  incrementNotesEditGen,
+  incrementNotesSaveGen,
+  setNotesSaveGen,
+  getStructureEditGen,
+  getStructureSaveGen,
+  incrementStructureEditGen,
+  incrementStructureSaveGen,
+  setStructureSaveGen,
+  getTasksEditGen,
+  getTasksSaveGen,
+  incrementTasksEditGen,
+  incrementTasksSaveGen,
+  setTasksSaveGen
+} from './workspace/workspaceGenerationState';
+import {
+  initProfileController,
+  handleSaveProfile
+} from './auth/profileController';
+import {
+  initAuthController,
+  handleLogin,
+  handleRegister,
+  handleLogout
+} from './auth/authController';
+import {
+  handleScheduledSessionNotificationClick
+} from './sessions/scheduledNotificationUi';
+import {
+  initLyricsController,
+  handleLyricsInput,
+  handleLyricsDocTitleChange
+} from './workspace/lyricsController';
+import {
+  initNotesController,
+  handleNotesChange
+} from './workspace/notesController';
+import {
+  initStructureController,
+  handleStructureSectionChange
+} from './workspace/structureController';
 import {
   reconcileNotesWorkspace,
   type NotesStateValues,
@@ -225,20 +288,9 @@ export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
 const views = ['home-view', 'project-view', 'all-sessions-view', 'auth-view', 'setup-view', 'waiting-view', 'call-view', 'settings-view'] as const;
 const scheduledNotifications = new ScheduledNotificationManager();
 scheduledNotifications.onSessionClick((sessionId) => {
-  const callView = $('call-view');
-  if (callView?.classList.contains('active')) return;
-  showView('home-view');
-  const sessionItem = document.querySelector<HTMLElement>(`.scheduled-session-item[data-session-id="${sessionId}"]`);
-  if (sessionItem) {
-    sessionItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    sessionItem.classList.add('is-highlighted');
-    setTimeout(() => {
-      sessionItem.classList.remove('is-highlighted');
-    }, 2500);
-  } else {
-    const section = $('scheduled-sessions-section');
-    section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  handleScheduledSessionNotificationClick(sessionId, {
+    onNavigateHome: () => showView('home-view')
+  });
 });
 
 logger.initGlobalErrorHandling();
@@ -265,6 +317,11 @@ initRecentSessions({
     showView('home-view');
   }
 });
+initProfileController({
+  onUpdateProfile: async (payload) => {
+    await auth.updateProfile(payload);
+  }
+});
 initProfileUi({
   getUser: () => auth.getUser(),
   onOpenProfile: () => openSettings('account'),
@@ -273,57 +330,59 @@ initProfileUi({
   onOpenSignIn: () => openAuthView('login'),
   onOpenRegister: () => openAuthView('register'),
   onLogout: async () => {
-    await auth.logout();
+    await handleLogout();
     showView('home-view');
   },
-  onSaveProfile: async (formValues) => {
-    try {
-      const payload: UpdateProfileRequest = {
-        displayName: formValues.displayName,
-        role: formValues.role,
-        location: formValues.location,
-        primaryDaw: formValues.primaryDaw,
-        genres: formValues.genres,
-        bio: formValues.bio,
-        socialHandle: formValues.socialHandle,
-        avatarColor: getEditingAvatarColor(),
-        avatarUrl: getEditingAvatarUrl() || '',
-        currentPassword: formValues.currentPassword,
-        newPassword: formValues.newPassword
-      };
-
-      await auth.updateProfile(payload);
-      showProfileFeedback('✓ Profile updated successfully!', 'success');
-      clearProfilePasswordInputs();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to update profile.';
-      showProfileFeedback(msg, 'error');
-    }
+  onSaveProfile: (formValues) => {
+    void handleSaveProfile(formValues);
   }
 });
 initSettingsUi({
   onCloseSettings: () => showView(lastActiveViewBeforeSettings || 'home-view')
 });
+initAuthController({
+  onLoginAuth: async (credentials) => {
+    await auth.login(credentials);
+  },
+  onRegisterAuth: async (values) => {
+    await auth.register(values);
+  },
+  onLogoutAuth: async () => {
+    await auth.logout();
+  },
+  getPendingJoinCode: () => pendingJoinCode,
+  clearPendingJoinCode: () => {
+    pendingJoinCode = '';
+  },
+  onJoinStudio: (code) => {
+    void prepareStudio({ type: 'join', code });
+  },
+  onNavigateHome: () => {
+    showView('home-view');
+  }
+});
 initAuthUi({
   onOpenSignIn: () => openAuthView('login'),
   onOpenRegister: () => openAuthView('register'),
   onNavigateHome: () => showView('home-view'),
-  onLogout: async () => {
-    await auth.logout();
+  onLogout: () => {
+    void handleLogout();
   },
-  onLogin: async ({ identifier, password }) => {
-    await auth.login({ usernameOrEmail: identifier, password });
-    if (pendingJoinCode) {
-      const code = pendingJoinCode;
-      pendingJoinCode = '';
-      void prepareStudio({ type: 'join', code });
-    } else {
-      showView('home-view');
-    }
+  onLogin: (credentials) => {
+    void handleLogin(credentials);
   },
-  onRegister: async (values) => {
-    await auth.register(values);
-    showView('home-view');
+  onRegister: (values) => {
+    void handleRegister(values);
+  }
+});
+initLyricsController({
+  getActiveProject: () => activeProject,
+  getActiveLyricsDoc: () => getActiveLyricsDoc(),
+  onIncrementLyricsEditGen: () => {
+    incrementLyricsEditGen();
+  },
+  onSaveLyricsWorkspace: async (content, docId, title) => {
+    await saveLyricsWorkspace(content, docId, title);
   }
 });
 initLyricsUi({
@@ -331,34 +390,10 @@ initLyricsUi({
   canEdit: () => canUserEditProject(),
   getActiveLyricsDoc: () => getActiveLyricsDoc(),
   onLyricsInput: (newHtml) => {
-    if (!activeProject) return;
-    const activeDoc = getActiveLyricsDoc();
-    activeDoc.content = newHtml;
-    activeDoc.updatedAt = Date.now();
-    if (activeProject.workspace?.lyrics) {
-      activeProject.workspace.lyrics.content = newHtml;
-    }
-
-    lyricsEditGen++;
-    setLyricsStatus('saving');
-
-    if (lyricsSaveTimeout) clearTimeout(lyricsSaveTimeout);
-    lyricsSaveTimeout = setTimeout(() => {
-      lyricsSaveTimeout = null;
-      void saveLyricsWorkspace(newHtml, activeDoc.id, activeDoc.title);
-    }, 350);
+    handleLyricsInput(newHtml);
   },
   onDocTitleChange: (docId, newTitle) => {
-    const activeDoc = getActiveLyricsDoc();
-    activeDoc.title = newTitle;
-    renderLyricsDocTabs(activeDoc);
-    lyricsEditGen++;
-    setLyricsStatus('saving');
-    if (lyricsSaveTimeout) clearTimeout(lyricsSaveTimeout);
-    lyricsSaveTimeout = setTimeout(() => {
-      lyricsSaveTimeout = null;
-      void saveLyricsWorkspace(activeDoc.content, activeDoc.id, newTitle);
-    }, 400);
+    handleLyricsDocTitleChange(docId, newTitle);
   },
   onSwitchDoc: (docId) => {
     switchActiveLyricsDoc(docId);
@@ -368,6 +403,12 @@ initLyricsUi({
   },
   onDeleteDoc: (docId) => {
     deleteLyricsDoc(docId);
+  }
+});
+initStructureController({
+  getSections: () => getStructureSections(),
+  onDebounceSaveStructure: () => {
+    debounceSaveStructure();
   }
 });
 initStructureUi({
@@ -386,54 +427,75 @@ initStructureUi({
     deleteStructureSection(sectionId);
   },
   onSectionChange: (sectionId, changes) => {
-    const sections = getStructureSections();
-    const target = sections.find((s) => s.id === sectionId);
-    if (target) {
-      if (changes.name !== undefined) target.name = changes.name;
-      if (changes.bars !== undefined) target.bars = changes.bars;
-      if (changes.note !== undefined) target.note = changes.note;
-      target.updatedAt = Date.now();
-    }
-    debounceSaveStructure();
+    handleStructureSectionChange(sectionId, changes);
+  }
+});
+initNotesController({
+  canUserEditProject: () => canUserEditProject(),
+  getActiveProject: () => activeProject,
+  getActiveSong: () => getActiveSong(),
+  onIncrementNotesEditGen: () => {
+    incrementNotesEditGen();
+  },
+  onSaveNotesWorkspace: async (content, bpm, key) => {
+    await saveNotesWorkspace(content, bpm, key);
   }
 });
 initNotesUi({
   canEdit: () => canUserEditProject(),
   onNotesChange: (values) => {
-    if (!activeProject || !canUserEditProject()) return;
-    if (!activeProject.workspace?.notes) {
-      activeProject.workspace = activeProject.workspace || {
-        lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: 0 }], content: '', updatedAt: 0 },
-        notes: { revision: 1, content: '', updatedAt: 0 }
-      };
-      if (!activeProject.workspace.notes) {
-        activeProject.workspace.notes = { revision: 1, content: '', updatedAt: 0 };
-      }
-    }
-    activeProject.workspace.notes.content = values.content;
-    activeProject.workspace.notes.bpm = values.bpm;
-    activeProject.workspace.notes.key = values.key;
-
-    const activeSong = getActiveSong();
-    if (activeSong.notes) {
-      activeSong.notes.content = values.content;
-      activeSong.notes.bpm = values.bpm;
-      activeSong.notes.key = values.key;
-      activeSong.notes.updatedAt = Date.now();
-    }
-
-    notesEditGen++;
-    setNotesStatus('saving');
-    if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
-    notesSaveTimeout = setTimeout(() => {
-      notesSaveTimeout = null;
-      void saveNotesWorkspace(values.content, values.bpm, values.key);
-    }, 350);
+    handleNotesChange(values);
+  }
+});
+initProjectsListController({
+  getAuthToken: () => auth.getToken(),
+  getUser: () => auth.getUser(),
+  onProjectsLoaded: (projects) => {
+    projectsList = projects;
   }
 });
 initProjectsListUi({
   onOpenProject: (projectId) => {
     void openProjectView(projectId);
+  }
+});
+initProjectViewController({
+  getProject: () => activeProject,
+  getUser: () => auth.getUser(),
+  renderCollaborators: () => {
+    renderProjectCollaboratorsView();
+  },
+  applyWorkspacePermissions: () => {
+    applyWorkspacePermissions();
+  }
+});
+initProjectOpenController({
+  getAuthToken: () => auth.getToken(),
+  onUnauthenticated: () => {
+    showView('auth-view');
+  },
+  onResetWorkspaceGenerations: () => resetWorkspaceGenerations(),
+  isContextGenCurrent: (gen) => isWorkspaceContextGenCurrent(gen),
+  onProjectLoaded: (project, projectId) => {
+    activeProject = project;
+    activeProjectId = projectId;
+  },
+  onNavigateToProjectView: () => {
+    showView('project-view');
+  },
+  onResetProjectTabs: () => {
+    resetProjectTabs();
+  },
+  onRenderProjectView: () => {
+    renderProjectView();
+  },
+  onSyncWorkspaceInputs: (forceAll) => {
+    syncWorkspaceInputsFromProject(forceAll);
+  },
+  onJoinSignalingRoom: (projectId, token) => {
+    void signaling
+      .joinProjectWorkspace(projectId, token)
+      .catch((e) => console.warn('[Signaling] Failed to join project workspace socket room:', e));
   }
 });
 initProjectSessionSummaryUi();
@@ -2231,23 +2293,22 @@ async function initializeActiveCall(ack: MeetingAck): Promise<void> {
     sessionProjectId = ack.projectId;
     const t = auth.getToken();
     if (t) {
-      resetWorkspaceGenerations();
-      const loadContextGen = currentWorkspaceContextGen;
+      const loadContextGen = resetWorkspaceGenerations();
       void projectsApi.fetchProject(t, ack.projectId).then((p) => {
-        if (loadContextGen !== currentWorkspaceContextGen) return;
+        if (loadContextGen !== getWorkspaceContextGen()) return;
         activeProject = p;
         activeProjectId = p.id;
         setText('session-workspace-project-name', p.name);
         syncWorkspaceInputsFromProject(true);
         void signaling.joinProjectWorkspace(p.id, t).then((joinRes) => {
-          if (joinRes?.ok && joinRes.workspace && activeProject && activeProject.id === p.id && loadContextGen === currentWorkspaceContextGen) {
+          if (joinRes?.ok && joinRes.workspace && activeProject && activeProject.id === p.id && loadContextGen === getWorkspaceContextGen()) {
             activeProject.workspace = joinRes.workspace;
             syncWorkspaceInputsFromProject(true);
           }
         });
         $('toggle-session-workspace')?.classList.remove('hidden');
       }).catch(() => {
-        if (loadContextGen !== currentWorkspaceContextGen) return;
+        if (loadContextGen !== getWorkspaceContextGen()) return;
         $('toggle-session-workspace')?.classList.add('hidden');
       });
     } else {
@@ -4323,84 +4384,9 @@ void enumerateAndPopulate().then(() => {
 
 // ======= PROJECTS SYSTEM =======
 
-async function loadProjects(): Promise<void> {
-  const token = auth.getToken();
-  if (!token) {
-    projectsList = [];
-    renderProjectsGrid(projectsList, auth.getUser());
-    return;
-  }
-  try {
-    projectsList = await projectsApi.fetchProjects(token);
-  } catch (err) {
-    console.warn('[Projects] Failed to load projects:', err);
-    projectsList = [];
-  } finally {
-    renderProjectsGrid(projectsList, auth.getUser());
-  }
-}
-
-function resetWorkspaceGenerations(): void {
-  currentWorkspaceContextGen++;
-  lyricsEditGen = 0;
-  lyricsSaveGen = 0;
-  notesEditGen = 0;
-  notesSaveGen = 0;
-  structureEditGen = 0;
-  structureSaveGen = 0;
-  tasksEditGen = 0;
-  tasksSaveGen = 0;
-}
-
-async function openProjectView(projectId: string): Promise<void> {
-  const token = auth.getToken();
-  if (!token) {
-    showView('auth-view');
-    return;
-  }
-  resetWorkspaceGenerations();
-  const loadContextGen = currentWorkspaceContextGen;
-  try {
-    const project = await projectsApi.fetchProject(token, projectId);
-    if (loadContextGen !== currentWorkspaceContextGen) return;
-    activeProject = project;
-    activeProjectId = projectId;
-    showView('project-view');
-    resetProjectTabs();
-    renderProjectView();
-    syncWorkspaceInputsFromProject(true);
-
-    void signaling.joinProjectWorkspace(projectId, token).catch((e) =>
-      console.warn('[Signaling] Failed to join project workspace socket room:', e)
-    );
-  } catch (err) {
-    if (loadContextGen !== currentWorkspaceContextGen) return;
-    console.error('Failed to open project:', err);
-    alert(`Could not open project: ${err instanceof Error ? err.message : 'Unknown error'}`);
-  }
-}
-
 function resetProjectTabs(): void {
   isSongStudioOpen = false;
   resetProjectTabsUi();
-}
-
-function renderProjectView(): void {
-  if (!activeProject) return;
-  const p = activeProject;
-  const user = auth.getUser();
-
-  renderProjectHeader(p, user);
-
-  // Collaborators
-  renderProjectCollaboratorsView();
-
-  // Sessions
-  resetProjectSessionsPage();
-  renderProjectSessions();
-
-  // Enforce workspace edit/view permissions across UI
-  applyWorkspacePermissions();
 }
 
 function renderProjectCollaboratorsView(): void {
@@ -4429,17 +4415,6 @@ function openDeleteSongModal(song: ProjectSongItem): void {
 let lyricsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 let notesSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 let sessionWorkspaceOpen = false;
-
-// Generation counters for stale save response protection
-let currentWorkspaceContextGen = 0;
-let lyricsEditGen = 0;
-let lyricsSaveGen = 0;
-let notesEditGen = 0;
-let notesSaveGen = 0;
-let structureEditGen = 0;
-let structureSaveGen = 0;
-let tasksEditGen = 0;
-let tasksSaveGen = 0;
 
 // Snapshot of last confirmed server state for 3-way merging
 let lastSyncedLyrics = '';
@@ -4963,9 +4938,9 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
   }
   const activeSong = getActiveSong();
   const targetProjectId = activeProject.id;
-  const targetContextGen = currentWorkspaceContextGen;
-  const targetEditGen = lyricsEditGen;
-  const targetSaveGen = ++lyricsSaveGen;
+  const targetContextGen = getWorkspaceContextGen();
+  const targetEditGen = getLyricsEditGen();
+  const targetSaveGen = incrementLyricsSaveGen();
   const baseRevision = activeSong.lyrics?.revision ?? 1;
 
   try {
@@ -5010,9 +4985,9 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
       }
     }
     const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === currentWorkspaceContextGen) &&
-      (targetSaveGen === lyricsSaveGen) &&
-      (targetEditGen === lyricsEditGen);
+      (targetContextGen === getWorkspaceContextGen()) &&
+      (targetSaveGen === getLyricsSaveGen()) &&
+      (targetEditGen === getLyricsEditGen());
     if (res?.ok && res.workspace && activeProject) {
       applyAuthoritativeWorkspaceUpdate('lyrics', res.workspace);
       if (res.project?.activities) {
@@ -5031,9 +5006,9 @@ async function saveLyricsWorkspace(content: string, documentId?: string, title?:
   } catch (err) {
     console.error('Failed to save lyrics document:', err);
     const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === currentWorkspaceContextGen) &&
-      (targetSaveGen === lyricsSaveGen) &&
-      (targetEditGen === lyricsEditGen);
+      (targetContextGen === getWorkspaceContextGen()) &&
+      (targetSaveGen === getLyricsSaveGen()) &&
+      (targetEditGen === getLyricsEditGen());
     if (isLatest) {
       setLyricsStatus('unsaved');
     }
@@ -5049,9 +5024,9 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
   }
   const activeSong = getActiveSong();
   const targetProjectId = activeProject.id;
-  const targetContextGen = currentWorkspaceContextGen;
-  const targetEditGen = notesEditGen;
-  const targetSaveGen = ++notesSaveGen;
+  const targetContextGen = getWorkspaceContextGen();
+  const targetEditGen = getNotesEditGen();
+  const targetSaveGen = incrementNotesSaveGen();
   const baseRevision = activeSong.notes?.revision ?? 1;
 
   if (activeSong.notes) {
@@ -5086,9 +5061,9 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
       }
     }
     const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === currentWorkspaceContextGen) &&
-      (targetSaveGen === notesSaveGen) &&
-      (targetEditGen === notesEditGen);
+      (targetContextGen === getWorkspaceContextGen()) &&
+      (targetSaveGen === getNotesSaveGen()) &&
+      (targetEditGen === getNotesEditGen());
     if (!isLatest) return;
 
     if (res?.ok && res.workspace && activeProject) {
@@ -5164,9 +5139,9 @@ async function saveNotesWorkspace(content: string, bpm: string, key: string): Pr
   } catch (err) {
     console.error('Failed to save notes:', err);
     const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === currentWorkspaceContextGen) &&
-      (targetSaveGen === notesSaveGen) &&
-      (targetEditGen === notesEditGen);
+      (targetContextGen === getWorkspaceContextGen()) &&
+      (targetSaveGen === getNotesSaveGen()) &&
+      (targetEditGen === getNotesEditGen());
     if (isLatest) {
       setNotesStatus('unsaved');
     }
@@ -5214,7 +5189,7 @@ function reorderStructureSectionToPosition(
 
 function debounceSaveStructure(): void {
   if (!canUserEditProject()) return;
-  structureEditGen++;
+  incrementStructureEditGen();
   setStructureStatus('saving');
   if (structureSaveTimeout) clearTimeout(structureSaveTimeout);
   structureSaveTimeout = setTimeout(() => {
@@ -5232,9 +5207,9 @@ async function saveStructureWorkspace(): Promise<void> {
   }
   const activeSong = getActiveSong();
   const targetProjectId = activeProject.id;
-  const targetContextGen = currentWorkspaceContextGen;
-  const targetEditGen = structureEditGen;
-  const targetSaveGen = ++structureSaveGen;
+  const targetContextGen = getWorkspaceContextGen();
+  const targetEditGen = getStructureEditGen();
+  const targetSaveGen = incrementStructureSaveGen();
   const baseRevision = activeSong.structure?.revision ?? 1;
 
   try {
@@ -5266,9 +5241,9 @@ async function saveStructureWorkspace(): Promise<void> {
       }
     }
     const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === currentWorkspaceContextGen) &&
-      (targetSaveGen === structureSaveGen) &&
-      (targetEditGen === structureEditGen);
+      (targetContextGen === getWorkspaceContextGen()) &&
+      (targetSaveGen === getStructureSaveGen()) &&
+      (targetEditGen === getStructureEditGen());
     if (!isLatest) return;
 
     if (res?.ok && res.workspace && activeProject) {
@@ -5287,9 +5262,9 @@ async function saveStructureWorkspace(): Promise<void> {
   } catch (err) {
     console.error('Failed to save structure workspace:', err);
     const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === currentWorkspaceContextGen) &&
-      (targetSaveGen === structureSaveGen) &&
-      (targetEditGen === structureEditGen);
+      (targetContextGen === getWorkspaceContextGen()) &&
+      (targetSaveGen === getStructureSaveGen()) &&
+      (targetEditGen === getStructureEditGen());
     if (isLatest) {
       setStructureStatus('unsaved');
     }
@@ -5735,7 +5710,7 @@ function getProjectTasks(): ProjectTaskItem[] {
 }
 
 function debounceSaveTasks(): void {
-  tasksEditGen++;
+  incrementTasksEditGen();
   setTasksStatus('saving');
   if (tasksSaveTimeout) clearTimeout(tasksSaveTimeout);
   tasksSaveTimeout = setTimeout(() => {
@@ -5787,9 +5762,9 @@ async function saveTasksWorkspace(): Promise<void> {
     return;
   }
   const targetProjectId = activeProject.id;
-  const targetContextGen = currentWorkspaceContextGen;
-  const targetEditGen = tasksEditGen;
-  const targetSaveGen = ++tasksSaveGen;
+  const targetContextGen = getWorkspaceContextGen();
+  const targetEditGen = getTasksEditGen();
+  const targetSaveGen = incrementTasksSaveGen();
   const baseRevision = activeProject.workspace?.tasks?.revision ?? 1;
   const tasks = getProjectTasks().map((t) => ({
     id: t.id,
@@ -5834,9 +5809,9 @@ async function saveTasksWorkspace(): Promise<void> {
     }
 
     const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === currentWorkspaceContextGen) &&
-      (targetSaveGen === tasksSaveGen) &&
-      (targetEditGen === tasksEditGen);
+      (targetContextGen === getWorkspaceContextGen()) &&
+      (targetSaveGen === getTasksSaveGen()) &&
+      (targetEditGen === getTasksEditGen());
     if (!isLatest) return;
 
     if (res?.ok && res.workspace && activeProject) {
@@ -5856,9 +5831,9 @@ async function saveTasksWorkspace(): Promise<void> {
   } catch (err) {
     console.error('Failed to save tasks workspace:', err);
     const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === currentWorkspaceContextGen) &&
-      (targetSaveGen === tasksSaveGen) &&
-      (targetEditGen === tasksEditGen);
+      (targetContextGen === getWorkspaceContextGen()) &&
+      (targetSaveGen === getTasksSaveGen()) &&
+      (targetEditGen === getTasksEditGen());
     if (isLatest) {
       setTasksStatus('unsaved');
     }
