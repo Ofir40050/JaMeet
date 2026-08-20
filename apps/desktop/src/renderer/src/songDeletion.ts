@@ -48,7 +48,7 @@ export function computeSongDeletion(
       songs: [initSong],
       nextActiveSongId: 'song-1',
       wasActive,
-      shouldSwitchActiveSong: true
+      shouldSwitchActiveSong: wasActive
     };
   }
 
