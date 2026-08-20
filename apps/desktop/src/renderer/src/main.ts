@@ -368,12 +368,8 @@ initAuthUi({
   onLogout: () => {
     void handleLogout();
   },
-  onLogin: (credentials) => {
-    void handleLogin(credentials);
-  },
-  onRegister: (values) => {
-    void handleRegister(values);
-  }
+  onLogin: (credentials) => handleLogin(credentials),
+  onRegister: (values) => handleRegister(values)
 });
 initLyricsController({
   getActiveProject: () => activeProject,
