@@ -513,8 +513,10 @@ initProjectRenameUi({
 });
 initProjectCollaboratorModalUi({
   onAddCollaborator: async ({ usernameOrEmail, role }) => {
-    setAddCollaboratorError('');
     await handleAddCollaborator(usernameOrEmail, role, {
+      onBeforeRequest: () => {
+        setAddCollaboratorError('');
+      },
       onSuccess: () => {
         closeAddCollaboratorModal();
       },

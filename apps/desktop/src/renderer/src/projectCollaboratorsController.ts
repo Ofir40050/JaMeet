@@ -19,6 +19,7 @@ export async function handleAddCollaborator(
   usernameOrEmail: string,
   role: ProjectRole,
   callbacks?: {
+    onBeforeRequest?: () => void;
     onSuccess?: () => void;
     onError?: (errorMessage: string) => void;
   }
@@ -29,6 +30,7 @@ export async function handleAddCollaborator(
   if (!token || !project) return;
 
   try {
+    callbacks?.onBeforeRequest?.();
     const updated = await projectsApi.addCollaborator(token, project.id, usernameOrEmail, role);
     controllerOptions.onProjectUpdated(updated);
     controllerOptions.onRefreshProjectView();
