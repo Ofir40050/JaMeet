@@ -1,0 +1,51 @@
+/* Stats Modal Metrics */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.stats-metrics-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stats-metric-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.stats-metric-row:last-child {
+  border-bottom: none;
+}
+
+.metric-label {
+  color: var(--text-muted);
+}
+
+.metric-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.metric-value.highlight {
+  color: var(--accent-primary);
+}
+
+.metric-value.accent {
+  color: var(--text-main);
+}
+
+.metric-value.pill-ok {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+}

@@ -1,0 +1,9 @@
+/* Responsive Overrides */
+@media (max-width: 800px) {
+  .setup-grid {
+    grid-template-columns: 1fr;
+  }
+  .home-cards {
+    grid-template-columns: 1fr;
+  }
+}
