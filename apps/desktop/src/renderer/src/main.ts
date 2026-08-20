@@ -2809,6 +2809,9 @@ async function leaveSession(endedMessage?: string): Promise<void> {
     } catch {}
   }
   remoteAudioCtx = undefined;
+  remoteVoiceGain = undefined;
+  remoteMusicGain = undefined;
+  remoteMasterGain = undefined;
   remoteVoiceIsStereo = false;
   try { remoteVoicePanner?.disconnect(); } catch {}
   remoteVoicePanner = undefined;
