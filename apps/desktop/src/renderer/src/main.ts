@@ -1371,8 +1371,7 @@ function effectiveMusicBitrate(): number { return getEffectiveMusicBitrate(prefs
 
 async function refreshRunningApps(): Promise<void> {
   await refreshRunningAppsHelper({
-    getPreferences: () => prefs,
-    onUpdatePreferences: () => savePreferences()
+    getPreferences: () => prefs
   });
 }
 

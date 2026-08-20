@@ -38,7 +38,6 @@ export function updateAppIconBadge(pid: number | undefined): void {
 
 export interface RefreshRunningAppsOptions {
   getPreferences: () => Preferences;
-  onUpdatePreferences?: (updates: Partial<Preferences>) => void;
 }
 
 export async function refreshRunningApps(options: RefreshRunningAppsOptions): Promise<void> {
@@ -93,7 +92,6 @@ export async function refreshRunningApps(options: RefreshRunningAppsOptions): Pr
         select.value = String(defaultApp.pid);
         prefs.musicAppPid = defaultApp.pid;
         prefs.musicAppName = defaultApp.name;
-        options.onUpdatePreferences?.({ musicAppPid: defaultApp.pid, musicAppName: defaultApp.name });
       }
     }
   }
