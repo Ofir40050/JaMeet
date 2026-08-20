@@ -49,6 +49,11 @@ import {
   createProjectSessionCard
 } from './projectSessionsUi';
 import { renderSessionSummaryModal } from './projectSessionSummaryUi';
+import {
+  updateProjectSessionsCounter,
+  renderProjectSessionsEmptyState,
+  renderProjectSessionsPagination
+} from './projectSessionsListUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -4303,11 +4308,6 @@ function renderProjectSessions(): void {
   const listOverview = $('project-sessions-list');
   const listFull = $('project-sessions-full-list');
   const emptyEl = $('project-sessions-empty');
-  const paginationEl = $('project-sessions-pagination');
-  const paginationInfoEl = $('project-sessions-pagination-info');
-  const pageBadgeEl = $('project-sessions-page-badge');
-  const btnPrev = $<HTMLButtonElement>('btn-sessions-prev-page');
-  const btnNext = $<HTMLButtonElement>('btn-sessions-next-page');
 
   const sessions = activeProject.sessions || [];
 
@@ -4356,7 +4356,7 @@ function renderProjectSessions(): void {
     }
 
     // Update counter badge
-    setText('project-sessions-counter-badge', `${filtered.length}`);
+    updateProjectSessionsCounter(filtered.length);
 
     const totalFiltered = filtered.length;
     const totalPages = Math.max(1, Math.ceil(totalFiltered / SESSIONS_PER_PAGE));
@@ -4367,17 +4367,7 @@ function renderProjectSessions(): void {
     const paginated = filtered.slice(startIndex, startIndex + SESSIONS_PER_PAGE);
 
     if (!filtered.length) {
-      if (paginationEl) paginationEl.classList.add('hidden');
-      listFull.innerHTML = `
-        <div class="projects-empty" style="padding: 24px 0; text-align: center;">
-          <p style="margin: 0 0 4px; font-size: 12.5px; color: #cbd5e1; font-weight: 500;">
-            ${sessions.length === 0 ? 'No session history in this project yet.' : 'No sessions matching your filter.'}
-          </p>
-          <p style="margin: 0; font-size: 11px; color: #64748b;">
-            ${sessions.length === 0 ? 'Click Start Session to launch your first studio session.' : 'Try adjusting your search query or filter.'}
-          </p>
-        </div>
-      `;
+      renderProjectSessionsEmptyState(listFull, sessions.length > 0);
     } else {
       listFull.replaceChildren();
       for (const session of paginated) {
@@ -4395,27 +4385,13 @@ function renderProjectSessions(): void {
       }
 
       // Update Pagination UI
-      if (paginationEl) {
-        if (totalFiltered <= SESSIONS_PER_PAGE) {
-          paginationEl.classList.add('hidden');
-        } else {
-          paginationEl.classList.remove('hidden');
-          const startNum = startIndex + 1;
-          const endNum = Math.min(startIndex + SESSIONS_PER_PAGE, totalFiltered);
-          if (paginationInfoEl) {
-            paginationInfoEl.textContent = `Showing ${startNum}–${endNum} of ${totalFiltered}`;
-          }
-          if (pageBadgeEl) {
-            pageBadgeEl.textContent = `Page ${currentProjectSessionsPage} of ${totalPages}`;
-          }
-          if (btnPrev) {
-            btnPrev.disabled = currentProjectSessionsPage <= 1;
-          }
-          if (btnNext) {
-            btnNext.disabled = currentProjectSessionsPage >= totalPages;
-          }
-        }
-      }
+      renderProjectSessionsPagination({
+        totalFiltered,
+        pageSize: SESSIONS_PER_PAGE,
+        currentPage: currentProjectSessionsPage,
+        totalPages,
+        startIndex
+      });
     }
   }
 }
