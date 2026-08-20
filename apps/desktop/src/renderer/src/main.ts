@@ -85,6 +85,11 @@ import {
   setDeleteProjectError,
   setDeleteProjectBusy
 } from './projectDeleteUi';
+import {
+  initProjectSongDeleteUi,
+  renderDeleteSongModal,
+  closeDeleteSongModal
+} from './projectSongDeleteUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -295,6 +300,53 @@ initProjectDeleteUi({
     } finally {
       setDeleteProjectBusy(false);
     }
+  }
+});
+initProjectSongDeleteUi({
+  getSongTitle: () => (songPendingDeletion ? songPendingDeletion.title || 'Untitled Song' : undefined),
+  onCancel: () => {
+    songPendingDeletion = null;
+  },
+  onConfirmDelete: async () => {
+    if (!activeProject?.workspace || !songPendingDeletion || !canUserEditProject()) return;
+    const songToDelete = songPendingDeletion;
+    const ws = activeProject.workspace;
+    const songs = ws.songs || [];
+
+    const idx = songs.findIndex((s) => s.id === songToDelete.id);
+    if (idx !== -1) {
+      songs.splice(idx, 1);
+    }
+
+    // If no songs left, create a fresh initial song
+    if (songs.length === 0) {
+      const now = Date.now();
+      const initSong: ProjectSongItem = {
+        id: 'song-1',
+        title: 'Song 1',
+        order: 0,
+        lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now },
+        notes: { revision: 1, content: '• ', bpm: '120 BPM', key: 'C Major', updatedAt: now },
+        structure: { revision: 1, sections: [], updatedAt: now },
+        createdAt: now,
+        updatedAt: now
+      };
+      songs.push(initSong);
+    }
+
+    // If the deleted song was the active song, switch to another song
+    if (ws.activeSongId === songToDelete.id) {
+      const nextSong = songs[Math.max(0, idx - 1)] || songs[0];
+      switchActiveSong(nextSong.id);
+    }
+
+    closeDeleteSongModal();
+    songPendingDeletion = null;
+
+    renderProjectSongsSelector();
+    renderProjectOverviewSongsList();
+    applyWorkspacePermissions();
+    void saveSongsWorkspace();
   }
 });
 let myIdentity: ParticipantIdentity | null = null;
@@ -4675,114 +4727,8 @@ let songPendingDeletion: ProjectSongItem | null = null;
 function openDeleteSongModal(song: ProjectSongItem): void {
   if (!activeProject || !canUserEditProject()) return;
   songPendingDeletion = song;
-
-  const sTitle = song.title || 'Untitled Song';
-  const targetPhrase = `delete ${sTitle}`;
-  setText('delete-song-name-confirm', sTitle);
-  setText('delete-song-phrase-target', targetPhrase);
-
-  const confirmInput = $<HTMLInputElement>('delete-song-confirm-input');
-  if (confirmInput) {
-    confirmInput.value = '';
-    confirmInput.placeholder = `Type "${targetPhrase}"`;
-    confirmInput.classList.remove('is-matched');
-  }
-
-  const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-song');
-  if (confirmBtn) {
-    confirmBtn.disabled = true;
-    confirmBtn.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/></svg>
-      <span>Delete Track</span>
-    `;
-  }
-
-  const errEl = $('delete-song-error');
-  if (errEl) {
-    errEl.textContent = '';
-    errEl.style.display = 'none';
-  }
-
-  $('delete-song-modal')?.classList.remove('hidden');
-  setTimeout(() => confirmInput?.focus(), 50);
+  renderDeleteSongModal(song.title);
 }
-
-$('delete-song-confirm-input')?.addEventListener('input', (e) => {
-  if (!songPendingDeletion) return;
-  const inputEl = e.target as HTMLInputElement;
-  const val = inputEl.value.trim().toLowerCase();
-  const sTitle = (songPendingDeletion.title || '').trim().toLowerCase();
-  const targetA = `delete ${sTitle}`;
-  const targetB = `delete - ${sTitle}`;
-  const targetC = `delete "${sTitle}"`;
-  const isMatch = val === targetA || val === targetB || val === targetC || val === 'delete' || val === sTitle;
-
-  inputEl.classList.toggle('is-matched', isMatch);
-  const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-song');
-  if (confirmBtn) {
-    confirmBtn.disabled = !isMatch;
-  }
-});
-
-$('delete-song-confirm-input')?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-song');
-    if (confirmBtn && !confirmBtn.disabled) {
-      confirmBtn.click();
-    }
-  }
-});
-
-$('btn-close-delete-song')?.addEventListener('click', () => {
-  $('delete-song-modal')?.classList.add('hidden');
-  songPendingDeletion = null;
-});
-$('btn-cancel-delete-song')?.addEventListener('click', () => {
-  $('delete-song-modal')?.classList.add('hidden');
-  songPendingDeletion = null;
-});
-
-$('btn-confirm-delete-song')?.addEventListener('click', async () => {
-  if (!activeProject?.workspace || !songPendingDeletion || !canUserEditProject()) return;
-  const songToDelete = songPendingDeletion;
-  const ws = activeProject.workspace;
-  const songs = ws.songs || [];
-
-  const idx = songs.findIndex((s) => s.id === songToDelete.id);
-  if (idx !== -1) {
-    songs.splice(idx, 1);
-  }
-
-  // If no songs left, create a fresh initial song
-  if (songs.length === 0) {
-    const now = Date.now();
-    const initSong: ProjectSongItem = {
-      id: 'song-1',
-      title: 'Song 1',
-      order: 0,
-      lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now },
-      notes: { revision: 1, content: '• ', bpm: '120 BPM', key: 'C Major', updatedAt: now },
-      structure: { revision: 1, sections: [], updatedAt: now },
-      createdAt: now,
-      updatedAt: now
-    };
-    songs.push(initSong);
-  }
-
-  // If the deleted song was the active song, switch to another song
-  if (ws.activeSongId === songToDelete.id) {
-    const nextSong = songs[Math.max(0, idx - 1)] || songs[0];
-    switchActiveSong(nextSong.id);
-  }
-
-  $('delete-song-modal')?.classList.add('hidden');
-  songPendingDeletion = null;
-
-  renderProjectSongsSelector();
-  renderProjectOverviewSongsList();
-  applyWorkspacePermissions();
-  void saveSongsWorkspace();
-});
 
 // Close modals on overlay click
 for (const modalId of ['new-project-modal', 'rename-project-modal', 'add-collab-modal', 'delete-project-modal', 'delete-song-modal']) {
