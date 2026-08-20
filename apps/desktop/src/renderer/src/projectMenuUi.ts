@@ -1,7 +1,12 @@
 import { $ } from './dom';
 
+export interface ProjectMenuUiOptions {
+  onArchiveProject?: () => Promise<void> | void;
+}
+
 let isProjectMenuOpen = false;
 let isInitialized = false;
+let menuOptions: ProjectMenuUiOptions = {};
 
 export function closeProjectMenu(): void {
   if (isProjectMenuOpen) {
@@ -27,7 +32,8 @@ export function toggleProjectMenu(e?: Event): void {
   }
 }
 
-export function initProjectMenuUi(): void {
+export function initProjectMenuUi(options: ProjectMenuUiOptions = {}): void {
+  menuOptions = options;
   if (isInitialized) return;
   isInitialized = true;
 
@@ -35,7 +41,12 @@ export function initProjectMenuUi(): void {
     toggleProjectMenu(e);
   });
 
+  $('btn-project-archive')?.addEventListener('click', () => {
+    void menuOptions.onArchiveProject?.();
+  });
+
   document.addEventListener('click', () => {
     closeProjectMenu();
   });
 }
+

@@ -240,7 +240,25 @@ initProjectSessionsListUi({
     renderProjectSessions();
   }
 });
-initProjectMenuUi();
+initProjectMenuUi({
+  onArchiveProject: async () => {
+    if (!activeProject) return;
+    closeProjectMenu();
+    const token = auth.getToken();
+    if (!token) return;
+    try {
+      if (activeProject.archived) {
+        activeProject = await projectsApi.unarchiveProject(token, activeProject.id);
+      } else {
+        activeProject = await projectsApi.archiveProject(token, activeProject.id);
+      }
+      renderProjectView();
+      void loadProjects();
+    } catch (err) {
+      console.error('Failed to archive/unarchive project:', err);
+    }
+  }
+});
 initProjectRenameUi({
   onTriggerRename: () => {
     if (!activeProject) return;
@@ -4618,26 +4636,6 @@ async function removeProjectCollaborator(targetUserId: string): Promise<void> {
     console.error('Failed to remove collaborator:', err);
   }
 }
-
-// --- Project Event Listeners ---
-
-$('btn-project-archive')?.addEventListener('click', async () => {
-  if (!activeProject) return;
-  closeProjectMenu();
-  const token = auth.getToken();
-  if (!token) return;
-  try {
-    if (activeProject.archived) {
-      activeProject = await projectsApi.unarchiveProject(token, activeProject.id);
-    } else {
-      activeProject = await projectsApi.archiveProject(token, activeProject.id);
-    }
-    renderProjectView();
-    void loadProjects();
-  } catch (err) {
-    console.error('Failed to archive/unarchive project:', err);
-  }
-});
 
 // Delete Song Modal Handlers
 let songPendingDeletion: ProjectSongItem | null = null;
