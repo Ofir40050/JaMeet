@@ -60,6 +60,19 @@ export function clearNotesSaveTimeout(): void {
   }
 }
 
+export function debounceSaveNotesRetry(content: string, bpm: string, key: string): void {
+  if (notesSaveTimeout) {
+    clearTimeout(notesSaveTimeout);
+  }
+  if (persistenceOptions) {
+    persistenceOptions.setNotesStatus('saving');
+  }
+  notesSaveTimeout = setTimeout(() => {
+    notesSaveTimeout = null;
+    void saveNotesWorkspace(content, bpm, key);
+  }, 350);
+}
+
 export async function saveNotesWorkspace(
   content: string,
   bpm: string,
@@ -86,7 +99,7 @@ export async function saveNotesWorkspace(
     activeSong.notes.content = content;
     activeSong.notes.bpm = bpm;
     activeSong.notes.key = key;
-    activeSong.notes.updatedAt = Date.now();
+    activeSong.updatedAt = Date.now();
   }
   if (activeProject.workspace?.notes) {
     activeProject.workspace.notes.content = content;

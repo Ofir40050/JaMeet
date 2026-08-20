@@ -166,6 +166,7 @@ import {
 import {
   initNotesPersistence,
   saveNotesWorkspace,
+  debounceSaveNotesRetry,
   hasNotesSaveTimeout,
   clearNotesSaveTimeout
 } from './workspace/notes/notesPersistence';
@@ -541,8 +542,8 @@ initWorkspaceRealtimeSync({
   onSyncNotesControls: (values) => {
     syncNotesControls(values);
   },
-  onSaveNotesWorkspace: (content, bpm, key) => {
-    return saveNotesWorkspace(content, bpm, key);
+  onScheduleNotesSaveRetry: (content, bpm, key) => {
+    debounceSaveNotesRetry(content, bpm, key);
   },
   getStructureStatus: () => getStructureStatus(),
   setStructureStatus: (status) => {

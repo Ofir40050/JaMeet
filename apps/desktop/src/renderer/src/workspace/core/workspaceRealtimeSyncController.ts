@@ -33,7 +33,7 @@ export interface WorkspaceRealtimeSyncOptions {
   setNotesStatus: (status: 'saved' | 'saving' | 'unsaved') => void;
   hasNotesSaveTimeout: () => boolean;
   onSyncNotesControls: (values: { content?: string; bpm?: string; key?: string }) => void;
-  onSaveNotesWorkspace: (content: string, bpm: string, key: string) => Promise<void>;
+  onScheduleNotesSaveRetry: (content: string, bpm: string, key: string) => void;
   getStructureStatus: () => 'saved' | 'saving' | 'unsaved';
   setStructureStatus: (status: 'saved' | 'saving' | 'unsaved') => void;
   hasStructureSaveTimeout: () => boolean;
@@ -43,8 +43,6 @@ export interface WorkspaceRealtimeSyncOptions {
   hasTasksSaveTimeout: () => boolean;
   onRenderTasksWorkspace: () => void;
 }
-
-let realtimeNotesSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 
 export function initWorkspaceRealtimeSync(options: WorkspaceRealtimeSyncOptions): void {
   options.signaling.on('project:workspace:synced', (data: {
@@ -176,16 +174,11 @@ export function initWorkspaceRealtimeSync(options: WorkspaceRealtimeSyncOptions)
           reconciliation.key !== incomingNotesKey;
 
         if (hasLocalRemainingChanges) {
-          if (realtimeNotesSaveTimeout) clearTimeout(realtimeNotesSaveTimeout);
-          options.setNotesStatus('saving');
-          realtimeNotesSaveTimeout = setTimeout(() => {
-            realtimeNotesSaveTimeout = null;
-            void options.onSaveNotesWorkspace(
-              reconciliation.content,
-              reconciliation.bpm,
-              reconciliation.key
-            );
-          }, 350);
+          options.onScheduleNotesSaveRetry(
+            reconciliation.content,
+            reconciliation.bpm,
+            reconciliation.key
+          );
         } else {
           options.setNotesStatus('saved');
         }
