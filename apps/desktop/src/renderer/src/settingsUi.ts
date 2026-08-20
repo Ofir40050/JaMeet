@@ -1,6 +1,11 @@
-import { setText } from './dom';
+import { $, setText } from './dom';
 
 export type SettingsSection = 'general' | 'audio' | 'video' | 'screenshare' | 'account';
+
+export interface SettingsUiOptions {
+  onSectionChange?: (section: SettingsSection) => void;
+  onCloseSettings?: () => void;
+}
 
 export function switchSettingsSection(section: SettingsSection): void {
   const sections: readonly SettingsSection[] = ['general', 'audio', 'video', 'screenshare', 'account'];
@@ -24,8 +29,14 @@ export function switchSettingsSection(section: SettingsSection): void {
 }
 
 let listenersBound = false;
+let settingsOptions: SettingsUiOptions = {};
 
-export function initSettingsUi(onSectionChange?: (section: SettingsSection) => void): void {
+export function initSettingsUi(options: SettingsUiOptions | ((section: SettingsSection) => void) = {}): void {
+  if (typeof options === 'function') {
+    settingsOptions = { onSectionChange: options };
+  } else {
+    settingsOptions = options;
+  }
   if (listenersBound) return;
   listenersBound = true;
 
@@ -34,8 +45,16 @@ export function initSettingsUi(onSectionChange?: (section: SettingsSection) => v
       const tab = btn.dataset.settingsTab as SettingsSection | undefined;
       if (tab) {
         switchSettingsSection(tab);
-        onSectionChange?.(tab);
+        settingsOptions.onSectionChange?.(tab);
       }
     });
   });
+
+  const handleClose = () => {
+    settingsOptions.onCloseSettings?.();
+  };
+
+  $('btn-settings-back')?.addEventListener('click', handleClose);
+  $('btn-settings-done')?.addEventListener('click', handleClose);
 }
+

@@ -212,7 +212,9 @@ initProfileUi({
     showView('home-view');
   }
 });
-initSettingsUi();
+initSettingsUi({
+  onCloseSettings: () => showView(lastActiveViewBeforeSettings || 'home-view')
+});
 initAuthUi({
   onOpenSignIn: () => openAuthView('login'),
   onOpenRegister: () => openAuthView('register'),
@@ -3967,10 +3969,6 @@ function openAuthDialog(tab: 'login' | 'register' = 'login'): void {
 
 // Navigation & Avatar menu listeners
 $('home-view-profile-btn')?.addEventListener('click', () => openSettings('account'));
-
-// Settings back & done listeners
-$('btn-settings-back')?.addEventListener('click', () => showView(lastActiveViewBeforeSettings || 'home-view'));
-$('btn-settings-done')?.addEventListener('click', () => showView(lastActiveViewBeforeSettings || 'home-view'));
 
 for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="settings-default-mode"]')) {
   radio.addEventListener('change', () => {
