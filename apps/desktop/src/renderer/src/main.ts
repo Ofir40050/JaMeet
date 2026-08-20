@@ -66,6 +66,13 @@ import {
   initProjectMenuUi,
   closeProjectMenu
 } from './projectMenuUi';
+import {
+  initProjectRenameUi,
+  openRenameProjectModal,
+  closeRenameProjectModal,
+  setRenameProjectError,
+  setRenameProjectBusy
+} from './projectRenameUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -200,6 +207,38 @@ initProjectSessionsListUi({
   }
 });
 initProjectMenuUi();
+initProjectRenameUi({
+  onTriggerRename: () => {
+    if (!activeProject) return;
+    closeProjectMenu();
+    openRenameProjectModal(activeProject.name, activeProject.description || '');
+  },
+  onSave: async ({ name, description }) => {
+    if (!activeProject) return;
+    if (!name) {
+      setRenameProjectError('Project name cannot be empty.');
+      return;
+    }
+    const token = auth.getToken();
+    if (!token) {
+      setRenameProjectError('You must be signed in to edit projects.');
+      return;
+    }
+    setRenameProjectBusy(true);
+    try {
+      setRenameProjectError('');
+      const updated = await projectsApi.updateProject(token, activeProject.id, { name, description });
+      activeProject = updated;
+      renderProjectView();
+      void loadProjects();
+      closeRenameProjectModal();
+    } catch (err) {
+      setRenameProjectError(err instanceof Error ? err.message : 'Failed to update project.');
+    } finally {
+      setRenameProjectBusy(false);
+    }
+  }
+});
 let myIdentity: ParticipantIdentity | null = null;
 let peerIdentity: ParticipantIdentity | null = null;
 let hostIdentity: ParticipantIdentity | null = null;
@@ -4552,50 +4591,6 @@ $('btn-sessions-tab-start')?.addEventListener('click', async () => {
   await flushAllWorkspacePendingSaves();
   activeProjectId = activeProject.id;
   await prepareStudio({ type: 'create' });
-});
-
-const openRenameProjectModal = () => {
-  if (!activeProject) return;
-  closeProjectMenu();
-  $<HTMLInputElement>('rename-project-name').value = activeProject.name;
-  $<HTMLTextAreaElement>('rename-project-desc').value = activeProject.description || '';
-  setText('rename-project-error', '');
-  $('rename-project-modal')?.classList.remove('hidden');
-  $<HTMLInputElement>('rename-project-name')?.focus();
-};
-
-$('btn-project-rename')?.addEventListener('click', openRenameProjectModal);
-$('project-title')?.addEventListener('dblclick', openRenameProjectModal);
-$('project-view-name-crumb')?.addEventListener('dblclick', openRenameProjectModal);
-$('btn-close-rename-project')?.addEventListener('click', () => $('rename-project-modal')?.classList.add('hidden'));
-$('btn-cancel-rename-project')?.addEventListener('click', () => $('rename-project-modal')?.classList.add('hidden'));
-$('btn-save-rename-project')?.addEventListener('click', async () => {
-  if (!activeProject) return;
-  const name = $<HTMLInputElement>('rename-project-name')?.value.trim();
-  const desc = $<HTMLTextAreaElement>('rename-project-desc')?.value.trim();
-  if (!name) { setText('rename-project-error', 'Project name cannot be empty.'); return; }
-  const token = auth.getToken();
-  if (!token) { setText('rename-project-error', 'You must be signed in to edit projects.'); return; }
-  const saveBtn = $<HTMLButtonElement>('btn-save-rename-project');
-  if (saveBtn) {
-    saveBtn.disabled = true;
-    saveBtn.textContent = 'Saving…';
-  }
-  try {
-    setText('rename-project-error', '');
-    const updated = await projectsApi.updateProject(token, activeProject.id, { name, description: desc || '' });
-    activeProject = updated;
-    renderProjectView();
-    void loadProjects();
-    $('rename-project-modal')?.classList.add('hidden');
-  } catch (err) {
-    setText('rename-project-error', err instanceof Error ? err.message : 'Failed to update project.');
-  } finally {
-    if (saveBtn) {
-      saveBtn.disabled = false;
-      saveBtn.textContent = 'Save Changes';
-    }
-  }
 });
 
 $('btn-project-archive')?.addEventListener('click', async () => {
