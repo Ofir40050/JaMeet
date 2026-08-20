@@ -6,6 +6,47 @@ import { SignalingClient } from './signaling';
 import { lowerQuality, VIDEO_QUALITY } from './videoQuality';
 import { logger } from './logger';
 
+function parseSpropStereo(fmtpText: string): boolean {
+  const params = fmtpText.split(';').map((p) => p.trim());
+  for (const param of params) {
+    const [key, val] = param.split('=', 2);
+    if (key?.trim().toLowerCase() === 'sprop-stereo') {
+      return val?.trim() === '1';
+    }
+  }
+  return false;
+}
+
+function extractMediaSection(sdp: string, targetMid?: string | null, targetIndex?: number): string | null {
+  const lines = sdp.split(/\r?\n/);
+  const sections: string[][] = [];
+  let currentSection: string[] | null = null;
+
+  for (const line of lines) {
+    if (line.startsWith('m=')) {
+      if (currentSection) sections.push(currentSection);
+      currentSection = [line];
+    } else if (currentSection) {
+      currentSection.push(line);
+    }
+  }
+  if (currentSection) sections.push(currentSection);
+
+  if (targetMid) {
+    for (const sec of sections) {
+      if (sec.some((l) => l.trim() === `a=mid:${targetMid}`)) {
+        return sec.join('\n');
+      }
+    }
+  }
+
+  if (typeof targetIndex === 'number' && targetIndex >= 0 && targetIndex < sections.length) {
+    return sections[targetIndex].join('\n');
+  }
+
+  return null;
+}
+
 export class WebRtcSession {
   private pc?: RTCPeerConnection;
   private code = '';
@@ -67,30 +108,54 @@ export class WebRtcSession {
   setVideoTrack(track: MediaStreamTrack | undefined): void { this.videoTrack = track; }
 
   isVoiceStereo(): boolean {
-    const sdp = this.pc?.currentRemoteDescription?.sdp || this.pc?.remoteDescription?.sdp || this.pc?.currentLocalDescription?.sdp || this.pc?.localDescription?.sdp;
-    if (sdp) {
-      const lines = sdp.split(/\r?\n/);
-      const opusPayloads = new Set<string>();
-      for (const line of lines) {
-        const match = line.match(/^a=rtpmap:(\d+)\s+opus\/48000(?:\/2)?$/i);
-        if (match?.[1]) opusPayloads.add(match[1]);
+    const voiceTransceiver = this.audioTransceivers.get('voice') ??
+      (this.pc?.getTransceivers() ?? []).find((t) => this.audioPurpose.get(t)?.id === 'voice');
+
+    if (!voiceTransceiver) {
+      return false;
+    }
+
+    // 1. Prefer receiver getParameters().codecs sdpFmtpLine if available on the Voice receiver
+    try {
+      const receiverCodecs = voiceTransceiver.receiver?.getParameters?.()?.codecs;
+      if (receiverCodecs && receiverCodecs.length > 0) {
+        for (const codec of receiverCodecs) {
+          if (codec.mimeType?.toLowerCase() === 'audio/opus' && codec.sdpFmtpLine) {
+            if (parseSpropStereo(codec.sdpFmtpLine)) {
+              return true;
+            }
+          }
+        }
       }
-      for (const line of lines) {
-        for (const payload of opusPayloads) {
-          if (line.startsWith(`a=fmtp:${payload} `) || line.startsWith(`a=fmtp:${payload}:`)) {
-            const fmtp = line.slice(line.indexOf(' ') + 1);
-            const params = fmtp.split(';').map((p) => p.trim());
-            for (const param of params) {
-              const [key, val] = param.split('=', 2);
-              if (key?.trim().toLowerCase() === 'stereo') {
-                return val?.trim() === '1';
+    } catch {}
+
+    // 2. Inspect specifically the Voice transceiver media section in the incoming remoteDescription SDP
+    const remoteSdp = this.pc?.currentRemoteDescription?.sdp || this.pc?.remoteDescription?.sdp;
+    if (remoteSdp) {
+      const mid = voiceTransceiver.mid;
+      const mediaSection = extractMediaSection(remoteSdp, mid, 0);
+      if (mediaSection) {
+        const lines = mediaSection.split(/\r?\n/);
+        const opusPayloads = new Set<string>();
+        for (const line of lines) {
+          const match = line.match(/^a=rtpmap:(\d+)\s+opus\/48000(?:\/2)?$/i);
+          if (match?.[1]) opusPayloads.add(match[1]);
+        }
+        for (const line of lines) {
+          for (const payload of opusPayloads) {
+            if (line.startsWith(`a=fmtp:${payload} `) || line.startsWith(`a=fmtp:${payload}:`)) {
+              const fmtp = line.slice(line.indexOf(' ') + 1);
+              if (parseSpropStereo(fmtp)) {
+                return true;
               }
             }
           }
         }
       }
     }
-    return this.sessionMode() === 'music';
+
+    // Conservative default to mono when no reliable sender-side sprop-stereo=1 is found
+    return false;
   }
 
   private sessionMode(): AudioMode { return this.localMode === 'music' || this.remoteMode === 'music' || Boolean(this.audio.music) || this.remoteHasMusic ? 'music' : 'talk'; }
