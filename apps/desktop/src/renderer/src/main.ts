@@ -102,6 +102,10 @@ import {
   closeShortcutsModal,
   isShortcutsModalOpen
 } from './callShortcutsUi';
+import {
+  initGuestJoinUi,
+  closeGuestJoinDialog
+} from './guestJoinUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -387,6 +391,21 @@ initProjectCreateUi({
   }
 });
 initCallShortcutsUi();
+initGuestJoinUi({
+  onOpenSignIn: () => {
+    openAuthView('login');
+  },
+  onConfirmGuest: (rawName) => {
+    const name = rawName || 'Guest Musician';
+    auth.setGuestName(name);
+    closeGuestJoinDialog();
+    if (pendingJoinCode) {
+      const code = pendingJoinCode;
+      pendingJoinCode = '';
+      void prepareStudio({ type: 'join', code });
+    }
+  }
+});
 let myIdentity: ParticipantIdentity | null = null;
 let peerIdentity: ParticipantIdentity | null = null;
 let hostIdentity: ParticipantIdentity | null = null;
@@ -4062,30 +4081,6 @@ $('btn-view-submit-register')?.addEventListener('click', async () => {
   }
 });
 
-$<HTMLInputElement>('guest-name-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-confirm-guest-join')?.click(); });
-$<HTMLInputElement>('guest-name-input')?.addEventListener('input', (e) => {
-  const val = (e.currentTarget as HTMLInputElement).value.trim();
-  const avatar = $('guest-avatar-preview');
-  if (avatar) {
-    if (val) {
-      avatar.textContent = val[0]?.toUpperCase() ?? '';
-    } else {
-      avatar.innerHTML = icons.user({ size: 22 });
-    }
-  }
-});
-
-// Guest modal sign in redirect
-$('link-guest-to-login')?.addEventListener('click', (e) => {
-  e.preventDefault();
-  $<HTMLDialogElement>('guest-join-dialog')?.close();
-  openAuthView('login');
-});
-$('btn-guest-modal-signin')?.addEventListener('click', () => {
-  $<HTMLDialogElement>('guest-join-dialog')?.close();
-  openAuthView('login');
-});
-
 $('btn-auth-logout')?.addEventListener('click', async () => {
   await auth.logout();
   $<HTMLDialogElement>('auth-dialog')?.close();
@@ -4185,18 +4180,6 @@ $('btn-profile-save')?.addEventListener('click', async () => {
 });
 
 let pendingJoinCode = '';
-
-$('btn-confirm-guest-join')?.addEventListener('click', () => {
-  const input = $<HTMLInputElement>('guest-name-input');
-  const name = input?.value.trim() || 'Guest Musician';
-  auth.setGuestName(name);
-  $<HTMLDialogElement>('guest-join-dialog')?.close();
-  if (pendingJoinCode) {
-    const code = pendingJoinCode;
-    pendingJoinCode = '';
-    void prepareStudio({ type: 'join', code });
-  }
-});
 
 auth.onStateChange((user, guestName) => updateAuthUi(user, guestName || ''));
 
