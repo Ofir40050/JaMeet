@@ -651,8 +651,6 @@ export function initSongsUi(options: SongsUiOptions): void {
   // New Song Modal Controls
   const closeNewSongModal = () => {
     $('new-song-modal')?.classList.add('hidden');
-    const err = $('new-song-error');
-    if (err) err.classList.add('hidden');
   };
 
   $('btn-close-new-song-modal')?.addEventListener('click', closeNewSongModal);
@@ -672,7 +670,6 @@ export function initSongsUi(options: SongsUiOptions): void {
     }
     songsUiOptions.onCreateSong(title);
     closeNewSongModal();
-    if (input) input.value = '';
   });
 
   $('input-new-song-title')?.addEventListener('keydown', (e) => {
