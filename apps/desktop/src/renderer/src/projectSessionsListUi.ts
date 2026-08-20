@@ -8,6 +8,43 @@ export interface ProjectSessionsPaginationInfo {
   startIndex: number;
 }
 
+export interface ProjectSessionsListUiOptions {
+  onSearchChange?: (query: string) => void;
+  onFilterChange?: (filter: string) => void;
+  onPrevPage?: () => void;
+  onNextPage?: () => void;
+}
+
+let listOptions: ProjectSessionsListUiOptions = {};
+let isInitialized = false;
+
+export function initProjectSessionsListUi(options: ProjectSessionsListUiOptions = {}): void {
+  listOptions = options;
+  if (isInitialized) return;
+  isInitialized = true;
+
+  $('project-sessions-search-input')?.addEventListener('input', (e) => {
+    const query = (e.target as HTMLInputElement).value;
+    listOptions.onSearchChange?.(query);
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.sessions-filter-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const filter = btn.dataset.filter || 'all';
+      document.querySelectorAll('.sessions-filter-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      listOptions.onFilterChange?.(filter);
+    });
+  });
+
+  $('btn-sessions-prev-page')?.addEventListener('click', () => {
+    listOptions.onPrevPage?.();
+  });
+
+  $('btn-sessions-next-page')?.addEventListener('click', () => {
+    listOptions.onNextPage?.();
+  });
+}
+
 export function updateProjectSessionsCounter(filteredCount: number): void {
   setText('project-sessions-counter-badge', String(filteredCount));
 }

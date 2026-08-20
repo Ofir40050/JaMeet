@@ -53,6 +53,7 @@ import {
   initProjectSessionSummaryUi
 } from './projectSessionSummaryUi';
 import {
+  initProjectSessionsListUi,
   updateProjectSessionsCounter,
   renderProjectSessionsEmptyState,
   renderProjectSessionsPagination
@@ -174,6 +175,28 @@ initProjectSessionSummaryUi({
 initProjectTabsUi({
   onSelectOverview: () => {
     renderProjectOverviewSongsList();
+  }
+});
+initProjectSessionsListUi({
+  onSearchChange: (query) => {
+    currentProjectSessionsSearch = query;
+    currentProjectSessionsPage = 1;
+    renderProjectSessions();
+  },
+  onFilterChange: (filter) => {
+    currentProjectSessionsFilter = (filter as any) || 'all';
+    currentProjectSessionsPage = 1;
+    renderProjectSessions();
+  },
+  onPrevPage: () => {
+    if (currentProjectSessionsPage > 1) {
+      currentProjectSessionsPage--;
+      renderProjectSessions();
+    }
+  },
+  onNextPage: () => {
+    currentProjectSessionsPage++;
+    renderProjectSessions();
   }
 });
 initProjectMenuUi();
@@ -4529,33 +4552,6 @@ $('btn-sessions-tab-start')?.addEventListener('click', async () => {
   await flushAllWorkspacePendingSaves();
   activeProjectId = activeProject.id;
   await prepareStudio({ type: 'create' });
-});
-
-$('project-sessions-search-input')?.addEventListener('input', (e) => {
-  currentProjectSessionsSearch = (e.target as HTMLInputElement).value;
-  currentProjectSessionsPage = 1;
-  renderProjectSessions();
-});
-
-document.querySelectorAll<HTMLButtonElement>('.sessions-filter-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    currentProjectSessionsFilter = (btn.dataset.filter as any) || 'all';
-    currentProjectSessionsPage = 1;
-    document.querySelectorAll('.sessions-filter-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    renderProjectSessions();
-  });
-});
-
-$('btn-sessions-prev-page')?.addEventListener('click', () => {
-  if (currentProjectSessionsPage > 1) {
-    currentProjectSessionsPage--;
-    renderProjectSessions();
-  }
-});
-
-$('btn-sessions-next-page')?.addEventListener('click', () => {
-  currentProjectSessionsPage++;
-  renderProjectSessions();
 });
 
 const openRenameProjectModal = () => {
