@@ -123,9 +123,7 @@ import {
   getStructureStatus,
   setStructureStatus,
   applyStructurePermissions,
-  focusStructureSection,
-  SECTION_TYPE_LABELS,
-  SECTION_TYPE_DEFAULT_BARS
+  focusStructureSection
 } from './structureUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
@@ -340,7 +338,15 @@ initStructureUi({
   onDeleteSection: (sectionId) => {
     deleteStructureSection(sectionId);
   },
-  onSectionChange: () => {
+  onSectionChange: (sectionId, changes) => {
+    const sections = getStructureSections();
+    const target = sections.find((s) => s.id === sectionId);
+    if (target) {
+      if (changes.name !== undefined) target.name = changes.name;
+      if (changes.bars !== undefined) target.bars = changes.bars;
+      if (changes.note !== undefined) target.note = changes.note;
+      target.updatedAt = Date.now();
+    }
     debounceSaveStructure();
   }
 });
@@ -6474,11 +6480,39 @@ async function saveStructureWorkspace(): Promise<void> {
   }
 }
 
+const SECTION_TYPE_DEFAULT_BARS: Record<string, number> = {
+  'intro': 8,
+  'verse': 16,
+  'pre-chorus': 8,
+  'chorus': 16,
+  'post-chorus': 8,
+  'hook': 8,
+  'bridge': 8,
+  'breakdown': 8,
+  'solo': 8,
+  'outro': 8,
+  'custom': 8
+};
+
+const SECTION_TYPE_DEFAULT_NAMES: Record<string, string> = {
+  'intro': 'Intro',
+  'verse': 'Verse',
+  'pre-chorus': 'Pre-Chorus',
+  'chorus': 'Chorus',
+  'post-chorus': 'Post-Chorus',
+  'hook': 'Hook',
+  'bridge': 'Bridge',
+  'breakdown': 'Breakdown',
+  'solo': 'Solo',
+  'outro': 'Outro',
+  'custom': 'Custom'
+};
+
 function addStructureSection(type: string): void {
   if (!canUserEditProject()) return;
   const sections = getStructureSections();
   const sameTypeCount = sections.filter((s) => s.type === type).length;
-  const baseLabel = SECTION_TYPE_LABELS[type] || 'Section';
+  const baseLabel = SECTION_TYPE_DEFAULT_NAMES[type] || 'Section';
   const name = sameTypeCount === 0 && (type === 'intro' || type === 'bridge' || type === 'outro' || type === 'hook')
     ? baseLabel
     : `${baseLabel} ${sameTypeCount + 1}`;

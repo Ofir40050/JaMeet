@@ -16,6 +16,12 @@ export interface StructureSectionItem {
   updatedAt?: number;
 }
 
+export interface StructureSectionChange {
+  name?: string;
+  bars?: number;
+  note?: string;
+}
+
 export const SECTION_TYPE_LABELS: Record<string, string> = {
   'intro': 'Intro',
   'verse': 'Verse',
@@ -30,20 +36,6 @@ export const SECTION_TYPE_LABELS: Record<string, string> = {
   'custom': 'Custom'
 };
 
-export const SECTION_TYPE_DEFAULT_BARS: Record<string, number> = {
-  'intro': 8,
-  'verse': 16,
-  'pre-chorus': 8,
-  'chorus': 16,
-  'post-chorus': 8,
-  'hook': 8,
-  'bridge': 8,
-  'breakdown': 8,
-  'solo': 8,
-  'outro': 8,
-  'custom': 8
-};
-
 export interface StructureUiOptions {
   getSections: () => StructureSectionItem[];
   canEdit: () => boolean;
@@ -51,7 +43,7 @@ export interface StructureUiOptions {
   onReorderSection: (sourceId: string, targetId: string, position: 'before' | 'after') => void;
   onDuplicateSection: (sectionId: string) => void;
   onDeleteSection: (sectionId: string) => void;
-  onSectionChange: (section: StructureSectionItem) => void;
+  onSectionChange: (sectionId: string, changes: StructureSectionChange) => void;
 }
 
 let structureOptions: StructureUiOptions | null = null;
@@ -339,14 +331,13 @@ export function renderStructureWorkspace(providedSections?: StructureSectionItem
       // Inline Edit Name
       const nameInput = card.querySelector<HTMLInputElement>('.section-name-input');
       nameInput?.addEventListener('input', (e) => {
-        sec.name = (e.target as HTMLInputElement).value;
-        sec.updatedAt = Date.now();
+        const newName = (e.target as HTMLInputElement).value;
         // Update timeline title live
         findTimelineBlocks(sec.id).forEach((block) => {
           const blockName = block.querySelector('.timeline-block-name');
-          if (blockName) blockName.textContent = sec.name || SECTION_TYPE_LABELS[sec.type] || 'Section';
+          if (blockName) blockName.textContent = newName || SECTION_TYPE_LABELS[sec.type] || 'Section';
         });
-        structureOptions?.onSectionChange(sec);
+        structureOptions?.onSectionChange(sec.id, { name: newName });
       });
 
       // Interactive Bar Selector (Common Presets + Custom)
@@ -354,17 +345,19 @@ export function renderStructureWorkspace(providedSections?: StructureSectionItem
       const customBarsInput = card.querySelector<HTMLInputElement>('.section-bars-custom-input');
 
       const applyBarsChange = (val: number | undefined) => {
-        sec.bars = val && val > 0 ? val : 8;
-        sec.updatedAt = Date.now();
+        const newBars = val && val > 0 ? val : 8;
 
         const currentSections = structureOptions ? structureOptions.getSections() : sections;
-        const currentTotalBars = currentSections.reduce((sum, s) => sum + (Number(s.bars) || 8), 0) || 1;
+        const currentTotalBars = currentSections.reduce((sum, s) => {
+          const b = s.id === sec.id ? newBars : (Number(s.bars) || 8);
+          return sum + b;
+        }, 0) || 1;
         setText('structure-summary-bars', `${currentTotalBars} Total Bars`);
         setText('session-structure-summary', `${currentSections.length} ${currentSections.length === 1 ? 'Section' : 'Sections'} · ${currentTotalBars} Bars`);
 
         // Update all timeline blocks proportionally
         currentSections.forEach((s) => {
-          const sBars = Number(s.bars) || 8;
+          const sBars = s.id === sec.id ? newBars : (Number(s.bars) || 8);
           const sPercent = ((sBars / currentTotalBars) * 100).toFixed(2);
           findTimelineBlocks(s.id).forEach((block) => {
             const blockBars = block.querySelector('.timeline-block-bars');
@@ -375,7 +368,7 @@ export function renderStructureWorkspace(providedSections?: StructureSectionItem
           });
         });
 
-        structureOptions?.onSectionChange(sec);
+        structureOptions?.onSectionChange(sec.id, { bars: newBars });
       };
 
       barsSelect?.addEventListener('change', () => {
@@ -400,9 +393,8 @@ export function renderStructureWorkspace(providedSections?: StructureSectionItem
       // Inline Edit Note
       const noteInput = card.querySelector<HTMLInputElement>('.section-note-input');
       noteInput?.addEventListener('input', (e) => {
-        sec.note = (e.target as HTMLInputElement).value;
-        sec.updatedAt = Date.now();
-        structureOptions?.onSectionChange(sec);
+        const newNote = (e.target as HTMLInputElement).value;
+        structureOptions?.onSectionChange(sec.id, { note: newNote });
       });
 
       // Duplicate
