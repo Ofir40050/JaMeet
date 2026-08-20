@@ -44,6 +44,8 @@ export async function startRemoteVoiceBridge(
   sourceNode: MediaStreamAudioSourceNode
 ): Promise<void> {
   const requestId = ++bridgeSessionId;
+  let nativeStarted = false;
+  let activated = false;
 
   if (typeof window === 'undefined' || !window.jameet?.remoteVoiceBridge) {
     return;
@@ -57,6 +59,7 @@ export async function startRemoteVoiceBridge(
     if (requestId !== bridgeSessionId || !bridgeOk) {
       return;
     }
+    nativeStarted = true;
 
     if (!registeredAudioContexts.has(ctx)) {
       const workletUrl = getWorkletProcessorUrl();
@@ -100,9 +103,17 @@ export async function startRemoteVoiceBridge(
     sourceNode.connect(workletNode);
     activeWorkletNode = workletNode;
     activeSourceNode = sourceNode;
+    activated = true;
   } catch (err) {
     if (requestId === bridgeSessionId) {
       console.warn('[JaMeetRemote] Could not start remote voice bridge worklet:', err);
+    }
+  } finally {
+    if (nativeStarted && !activated && requestId === bridgeSessionId) {
+      teardownActiveBridgeNode();
+      if (typeof window !== 'undefined' && window.jameet?.remoteVoiceBridge) {
+        void window.jameet.remoteVoiceBridge.stop();
+      }
     }
   }
 }
