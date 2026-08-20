@@ -1,0 +1,199 @@
+      <!-- Project Menu Dropdown -->
+      <div id="project-menu-dropdown" class="project-menu-dropdown hidden">
+        <button id="btn-project-rename" type="button" class="project-menu-item">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>
+          <span>Rename Project</span>
+        </button>
+        <button id="btn-project-archive" type="button" class="project-menu-item">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
+          <span>Archive Project</span>
+        </button>
+        <div class="project-menu-divider"></div>
+        <button id="btn-project-delete" type="button" class="project-menu-item project-menu-danger">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+          <span>Delete Permanently</span>
+        </button>
+      </div>
+
+      <!-- New Project Modal -->
+      <div id="new-project-modal" class="modal-overlay hidden">
+        <div class="modal-card modal-project">
+          <div class="modal-header">
+            <div class="modal-title-with-icon">
+              <span class="modal-title-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+              </span>
+              <h3>New Project</h3>
+            </div>
+            <button id="btn-close-new-project" type="button" class="modal-close-btn" aria-label="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div class="field-group">
+              <label for="new-project-name">Project Name</label>
+              <input id="new-project-name" type="text" class="custom-input project-name-input" placeholder="Project name" maxlength="60" autofocus autocomplete="off" />
+            </div>
+            <div class="field-group">
+              <label for="new-project-desc" class="flex-between">
+                <span>Description</span>
+                <span class="optional-label">Optional</span>
+              </label>
+              <input id="new-project-desc" type="text" class="custom-input" placeholder="Add a description (optional)" maxlength="300" autocomplete="off" />
+            </div>
+            <p id="new-project-error" class="message error" role="alert"></p>
+          </div>
+          <div class="modal-footer">
+            <button id="btn-cancel-new-project" type="button" class="secondary">Cancel</button>
+            <button id="btn-create-project" type="button" class="primary">Create Project</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rename Project Modal -->
+      <div id="rename-project-modal" class="modal-overlay hidden">
+        <div class="modal-card modal-project">
+          <div class="modal-header">
+            <h3>Rename Project</h3>
+            <button id="btn-close-rename-project" type="button" class="modal-close-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div class="field-group">
+              <label for="rename-project-name">Project Name</label>
+              <input id="rename-project-name" type="text" class="custom-input" placeholder="Project name" maxlength="60" />
+            </div>
+            <div class="field-group">
+              <label for="rename-project-desc">Description <span class="optional-label">(optional)</span></label>
+              <input id="rename-project-desc" type="text" class="custom-input" placeholder="Add a description (optional)" maxlength="300" />
+            </div>
+            <p id="rename-project-error" class="message error" role="alert"></p>
+          </div>
+          <div class="modal-footer">
+            <button id="btn-cancel-rename-project" type="button" class="secondary">Cancel</button>
+            <button id="btn-save-rename-project" type="button" class="primary">Save Changes</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add Collaborator Modal -->
+      <div id="add-collab-modal" class="modal-overlay hidden">
+        <div class="modal-card modal-project">
+          <div class="modal-header">
+            <h3>Add Collaborator</h3>
+            <button id="btn-close-add-collab" type="button" class="modal-close-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div class="field-group">
+              <label for="add-collab-username">JaMeet Username or Email</label>
+              <input id="add-collab-username" type="text" class="custom-input" placeholder="Enter their JaMeet username or email" />
+              <span class="field-hint">Only registered JaMeet users can be added as collaborators.</span>
+            </div>
+            <div class="field-group">
+              <label for="add-collab-role">Permission Level</label>
+              <select id="add-collab-role" class="custom-input" title="Permission Level">
+                <option value="editor" selected>Editor (Can edit lyrics, tasks, structure &amp; notes)</option>
+                <option value="viewer">Viewer (View &amp; listen only)</option>
+              </select>
+            </div>
+            <p id="add-collab-error" class="message error" role="alert"></p>
+          </div>
+          <div class="modal-footer">
+            <button id="btn-cancel-add-collab" type="button" class="secondary">Cancel</button>
+            <button id="btn-confirm-add-collab" type="button" class="primary">Add Member</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delete Confirmation Modal -->
+      <div id="delete-project-modal" class="modal-overlay hidden">
+        <div class="modal-card modal-project modal-delete-card">
+          <div class="modal-header modal-delete-header">
+            <div class="modal-delete-header-wrap">
+              <span class="modal-delete-icon-badge">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+              </span>
+              <div>
+                <h3 class="modal-delete-title">Delete Project</h3>
+                <p class="modal-delete-subtitle">Permanent & irreversible action</p>
+              </div>
+            </div>
+            <button id="btn-close-delete-project" type="button" class="modal-close-btn" aria-label="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+          <div class="modal-body modal-delete-body">
+            <div class="modal-danger-banner">
+              <span class="danger-banner-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </span>
+              <div class="danger-banner-content">
+                <strong class="danger-banner-heading">Warning: Irreversible Action</strong>
+                <p class="danger-banner-text">This will permanently delete <strong id="delete-project-name-confirm"></strong> and all its lyrics, notes, structure, tasks, and creative history. This action <strong>cannot be undone</strong>.</p>
+              </div>
+            </div>
+            <div class="delete-confirmation-prompt">
+              <label for="delete-project-confirm-input" class="delete-prompt-label">
+                To confirm, type <span id="delete-phrase-target" class="delete-target-phrase">delete</span> below:
+              </label>
+              <input id="delete-project-confirm-input" type="text" class="custom-input delete-phrase-input" placeholder="Type confirmation phrase here…" autocomplete="off" />
+            </div>
+            <div id="delete-project-error" class="modal-error" style="display: none; color: #ef4444; font-size: 12px; margin-top: -4px;"></div>
+          </div>
+          <div class="modal-footer modal-delete-footer">
+            <button id="btn-cancel-delete-project" type="button" class="btn-modal-cancel">Cancel</button>
+            <button id="btn-confirm-delete-project" type="button" class="btn-modal-delete-danger" disabled>
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/></svg>
+              <span>Delete Project</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delete Track Confirmation Modal -->
+      <div id="delete-song-modal" class="modal-overlay hidden">
+        <div class="modal-card modal-project modal-delete-card">
+          <div class="modal-header modal-delete-header">
+            <div class="modal-delete-header-wrap">
+              <span class="modal-delete-icon-badge">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+              </span>
+              <div>
+                <h3 class="modal-delete-title">Delete Track</h3>
+                <p class="modal-delete-subtitle">Permanent &amp; irreversible action</p>
+              </div>
+            </div>
+            <button id="btn-close-delete-song" type="button" class="modal-close-btn" aria-label="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+          <div class="modal-body modal-delete-body">
+            <div class="modal-danger-banner">
+              <span class="danger-banner-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </span>
+              <div class="danger-banner-content">
+                <strong class="danger-banner-heading">Warning: Irreversible Action</strong>
+                <p class="danger-banner-text">This will permanently delete <strong id="delete-song-name-confirm"></strong> and its lyrics, notes, and structure. This action <strong>cannot be undone</strong>.</p>
+              </div>
+            </div>
+            <div class="delete-confirmation-prompt">
+              <label for="delete-song-confirm-input" class="delete-prompt-label">
+                To confirm, type <span id="delete-song-phrase-target" class="delete-target-phrase">delete</span> below:
+              </label>
+              <input id="delete-song-confirm-input" type="text" class="custom-input delete-phrase-input" placeholder="Type confirmation phrase here…" autocomplete="off" />
+            </div>
+            <div id="delete-song-error" class="modal-error" style="display: none; color: #ef4444; font-size: 12px; margin-top: -4px;"></div>
+          </div>
+          <div class="modal-footer modal-delete-footer">
+            <button id="btn-cancel-delete-song" type="button" class="btn-modal-cancel">Cancel</button>
+            <button id="btn-confirm-delete-song" type="button" class="btn-modal-delete-danger" disabled>
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/></svg>
+              <span>Delete Track</span>
+            </button>
+          </div>
+        </div>
+      </div>

@@ -1,0 +1,28 @@
+
+      <!-- STUDIO SESSION ACCESS & ERROR MODAL -->
+      <div id="session-error-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="session-error-title">
+        <div class="modal-card modal-session-error">
+          <div class="modal-header session-error-header">
+            <div class="modal-title-with-icon">
+              <span id="session-error-icon" class="modal-icon-badge error-icon-badge">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+              </span>
+              <h3 id="session-error-title">Unable to Start Session</h3>
+            </div>
+            <button id="btn-close-session-error" type="button" class="modal-close-btn" aria-label="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+          <div class="modal-body session-error-body">
+            <p id="session-error-message" class="session-error-desc"></p>
+            <div id="session-error-detail-box" class="session-error-detail-box hidden">
+              <span class="detail-badge">Notice</span>
+              <span id="session-error-detail-text"></span>
+            </div>
+          </div>
+          <div class="modal-footer session-error-footer">
+            <button id="btn-session-error-dismiss" type="button" class="ghost">Close</button>
+            <button id="btn-session-error-action" type="button" class="primary">Sign In / Continue</button>
+          </div>
+        </div>
+      </div>

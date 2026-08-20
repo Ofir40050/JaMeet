@@ -1,0 +1,62 @@
+
+      <!-- 8. GUEST JOIN PROMPT MODAL -->
+      <dialog id="guest-join-dialog" class="studio-dialog guest-dialog">
+        <form method="dialog" class="dialog-content auth-dialog-content">
+          <div class="dialog-head">
+            <div class="dialog-title-wrap">
+              <span class="dialog-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+              </span>
+              <div>
+                <h2>Join Session</h2>
+                <p class="dialog-subtitle-top">Choose how you would like to connect to this JaMeet session.</p>
+              </div>
+            </div>
+            <button value="cancel" class="dialog-close" aria-label="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+
+          <div class="dialog-body">
+            <div class="guest-preview-row">
+              <div id="guest-avatar-preview" class="guest-avatar-preview">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+              </div>
+              <div class="guest-preview-info">
+                <strong>Join as Guest</strong>
+                <span>Quick entry with a temporary display name. No password required.</span>
+              </div>
+            </div>
+
+            <div class="auth-form-group mt-3">
+              <label for="guest-name-input">
+                <span class="label-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                </span>
+                <span>Display Name</span>
+              </label>
+              <input id="guest-name-input" class="custom-input auth-input" placeholder="e.g. Alex (Guest)" />
+            </div>
+
+            <div class="guest-actions mt-4">
+              <button id="btn-confirm-guest-join" type="button" class="primary large w-full glow btn-auth-submit">
+                <span>Continue to Session as Guest</span>
+                <span class="btn-arrow">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </span>
+              </button>
+            </div>
+
+            <div class="auth-divider">
+              <span>OR</span>
+            </div>
+
+            <button id="btn-guest-modal-signin" type="button" class="secondary w-full btn-auth-guest">
+              <span class="btn-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/></svg>
+              </span>
+              <span>Sign In with JaMeet Account</span>
+            </button>
+          </div>
+        </form>
+      </dialog>

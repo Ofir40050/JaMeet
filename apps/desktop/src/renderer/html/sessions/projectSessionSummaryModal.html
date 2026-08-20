@@ -1,0 +1,40 @@
+      <!-- PROJECT SESSION SUMMARY MODAL -->
+      <div id="project-session-summary-modal" class="modal-overlay hidden" aria-hidden="true">
+        <div class="modal-card modal-project">
+          <div class="modal-header">
+            <div>
+              <h3 id="session-summary-title">Solo Studio Session</h3>
+              <div id="session-summary-meta" class="modal-subtitle-meta">
+                <span id="session-summary-code" class="modal-code-pill">8ZQ5WDY3</span>
+                <span class="meta-dot">·</span>
+                <span id="session-summary-time">Aug 17, 2026, 10:05 PM</span>
+                <span class="meta-dot">·</span>
+                <span id="session-summary-duration">&lt; 1m</span>
+              </div>
+            </div>
+            <button id="btn-close-session-summary" type="button" class="modal-close-btn" aria-label="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+
+          <div class="modal-body">
+            <div class="modal-summary-section">
+              <div class="modal-summary-section-heading">Participants</div>
+              <div id="session-summary-participants" class="modal-participants-clean"></div>
+            </div>
+
+            <div class="modal-summary-section">
+              <div class="modal-summary-section-heading">Changes in this session</div>
+              <div id="session-summary-activities" class="modal-activities-list"></div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button id="btn-session-summary-copy" type="button" class="secondary">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+              <span>Copy Code</span>
+            </button>
+            <button id="btn-close-session-summary-footer" type="button" class="primary">Done</button>
+          </div>
+        </div>
+      </div>

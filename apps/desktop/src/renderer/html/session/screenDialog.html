@@ -1,0 +1,93 @@
+
+      <!-- 5. SCREEN & DAW SHARE DIALOG (ZOOM STYLE) -->
+      <dialog id="screen-dialog" class="studio-dialog screen-dialog-lg">
+        <form method="dialog" class="dialog-content">
+          <div class="dialog-head">
+            <div class="dialog-title-wrap">
+              <span class="dialog-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+              </span>
+              <div>
+                <h2>Share Screen or DAW Window</h2>
+                <p class="dialog-subtitle-top">Select an entire display or a dedicated music application window.</p>
+              </div>
+            </div>
+            <button value="cancel" class="dialog-close" aria-label="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+          
+          <!-- Category Tabs -->
+          <div class="screen-dialog-tabs">
+            <button type="button" id="tab-btn-apps" class="screen-tab-btn active">
+              <span class="btn-icon-inner">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
+              </span>
+              <span>Applications & DAWs</span>
+              <span id="apps-count-badge" class="tab-count-badge">0</span>
+            </button>
+            <button type="button" id="tab-btn-screens" class="screen-tab-btn">
+              <span class="btn-icon-inner">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+              </span>
+              <span>Entire Displays</span>
+              <span id="screens-count-badge" class="tab-count-badge">0</span>
+            </button>
+          </div>
+
+          <div class="dialog-body screen-picker-body">
+            <!-- Sharing Preset Optimization Options -->
+            <div class="screen-options-bar">
+              <span class="sub-field-label">Optimize for:</span>
+              <div class="share-preset-pills">
+                <label class="share-preset-pill">
+                  <input type="radio" name="share-preset" value="detail" checked />
+                  <span class="btn-icon-inner">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
+                  </span>
+                  <span>Crisp DAW Timeline & Text (High Detail)</span>
+                </label>
+                <label class="share-preset-pill">
+                  <input type="radio" name="share-preset" value="motion" />
+                  <span class="btn-icon-inner">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.934a.5.5 0 0 0-.777-.416L16 11"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>
+                  </span>
+                  <span>Smooth Motion (30 FPS)</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Apps & DAWs Section -->
+            <div id="section-apps" class="screen-source-section">
+              <div class="section-subhead">
+                <span class="section-icon-mini">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                </span>
+                <span>RECORDING & MUSIC APPLICATIONS</span>
+              </div>
+              <div id="screen-daw-grid" class="screen-grid daw-grid"></div>
+
+              <div class="section-subhead mt-3">
+                <span class="section-icon-mini">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 4v4"/><path d="M2 8h20"/><circle cx="6" cy="6" r=".5"/></svg>
+                </span>
+                <span>OTHER WINDOWS</span>
+              </div>
+              <div id="screen-apps-grid" class="screen-grid"></div>
+            </div>
+
+            <!-- Screens Section -->
+            <div id="section-screens" class="screen-source-section hidden">
+              <div class="section-subhead">
+                <span class="section-icon-mini">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+                </span>
+                <span>CONNECTED DISPLAYS</span>
+              </div>
+              <div id="screen-displays-grid" class="screen-grid displays-grid"></div>
+            </div>
+
+            <p id="screen-status" class="message"></p>
+          </div>
+        </form>
+      </dialog>

@@ -1,0 +1,249 @@
+
+      <!-- 1.5 DEDICATED FULL AUTHENTICATION VIEW -->
+      <section id="auth-view" class="view hidden">
+        <header class="settings-topbar">
+          <div class="settings-topbar-inner">
+            <div class="topbar-left">
+              <div class="home-brand-lockup">
+                <img src="/logo.png" class="home-brand-icon" alt="" />
+                <span class="home-brand-wordmark">JaMeet</span>
+                <span class="home-brand-badge">Beta</span>
+              </div>
+              <span class="crumb-sep">/</span>
+              <span class="crumb" id="auth-view-crumb">Account</span>
+            </div>
+            <div class="topbar-right">
+              <button id="btn-auth-view-back" type="button" class="btn-project-back-pill" title="Back to Home">
+                <span class="btn-back-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                </span>
+                <span>Back</span>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div class="auth-view-container">
+          <div class="auth-view-card">
+
+
+
+            <!-- Sign In Form Panel -->
+            <div id="view-panel-login" class="auth-view-panel">
+              <div class="auth-panel-heading">
+                <h2>Sign In</h2>
+                <p class="auth-sub">Sign in to your account to start jamming.</p>
+              </div>
+
+              <div class="auth-form-group">
+                <label for="view-login-identifier">
+                  <span class="label-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+                  </span>
+                  <span>Username or Email</span>
+                </label>
+                <input id="view-login-identifier" class="custom-input auth-input" placeholder="Username or email" autocomplete="username" />
+              </div>
+
+              <div class="auth-form-group">
+                <label for="view-login-password">
+                  <span class="label-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  </span>
+                  <span>Password</span>
+                </label>
+                <input id="view-login-password" type="password" class="custom-input auth-input" placeholder="••••••••" autocomplete="current-password" />
+              </div>
+
+              <div id="view-login-error" class="auth-error-banner hidden"></div>
+              
+              <div class="auth-actions mt-4">
+                <button id="btn-view-submit-login" type="button" class="primary large w-full glow btn-auth-submit">
+                  <span>Sign In</span>
+                  <span class="btn-arrow">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                  </span>
+                </button>
+              </div>
+
+              <div class="auth-footer-links">
+                <span>Don't have an account? <a href="#" id="view-link-to-register">Create Account</a></span>
+              </div>
+            </div>
+
+            <!-- Create Account Form Panel -->
+            <div id="view-panel-register" class="auth-view-panel hidden">
+              <div class="auth-panel-heading">
+                <h2>Create Account</h2>
+                <p class="auth-sub">Create your account to host and join sessions.</p>
+              </div>
+
+              <div class="auth-form-group">
+                <label for="view-reg-display-name">
+                  <span class="label-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                  </span>
+                  <span>Display Name</span>
+                </label>
+                <input id="view-reg-display-name" class="custom-input auth-input" placeholder="Artist name" />
+              </div>
+
+              <div class="auth-form-group">
+                <label for="view-reg-username">
+                  <span class="label-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><circle cx="7" cy="7" r=".5" fill="currentColor"/></svg>
+                  </span>
+                  <span>Username</span>
+                </label>
+                <input id="view-reg-username" class="custom-input auth-input" placeholder="handle" autocomplete="username" />
+              </div>
+
+              <div class="auth-form-group">
+                <label for="view-reg-phone-number">
+                  <span class="label-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                  </span>
+                  <span>Phone Number</span>
+                </label>
+                <div class="auth-phone-input-wrap">
+                  <select id="view-reg-phone-code" class="custom-select auth-phone-code-select" aria-label="Country Code">
+                    <option value="+54">🇦🇷 AR (+54)</option>
+                    <option value="+61">🇦🇺 AU (+61)</option>
+                    <option value="+43">🇦🇹 AT (+43)</option>
+                    <option value="+973">🇧🇭 BH (+973)</option>
+                    <option value="+32">🇧🇪 BE (+32)</option>
+                    <option value="+55">🇧🇷 BR (+55)</option>
+                    <option value="+1-ca">🇨🇦 CA (+1)</option>
+                    <option value="+56">🇨🇱 CL (+56)</option>
+                    <option value="+86">🇨🇳 CN (+86)</option>
+                    <option value="+57">🇨🇴 CO (+57)</option>
+                    <option value="+420">🇨🇿 CZ (+420)</option>
+                    <option value="+45">🇩🇰 DK (+45)</option>
+                    <option value="+20">🇪🇬 EG (+20)</option>
+                    <option value="+358">🇫🇮 FI (+358)</option>
+                    <option value="+33">🇫🇷 FR (+33)</option>
+                    <option value="+49">🇩🇪 DE (+49)</option>
+                    <option value="+30">🇬🇷 GR (+30)</option>
+                    <option value="+852">🇭🇰 HK (+852)</option>
+                    <option value="+36">🇭🇺 HU (+36)</option>
+                    <option value="+91">🇮🇳 IN (+91)</option>
+                    <option value="+62">🇮🇩 ID (+62)</option>
+                    <option value="+353">🇮🇪 IE (+353)</option>
+                    <option value="+972">🇮🇱 IL (+972)</option>
+                    <option value="+39">🇮🇹 IT (+39)</option>
+                    <option value="+81">🇯🇵 JP (+81)</option>
+                    <option value="+962">🇯🇴 JO (+962)</option>
+                    <option value="+254">🇰🇪 KE (+254)</option>
+                    <option value="+965">🇰🇼 KW (+965)</option>
+                    <option value="+961">🇱🇧 LB (+961)</option>
+                    <option value="+60">🇲🇾 MY (+60)</option>
+                    <option value="+52">🇲🇽 MX (+52)</option>
+                    <option value="+212">🇲🇦 MA (+212)</option>
+                    <option value="+31">🇳🇱 NL (+31)</option>
+                    <option value="+64">🇳🇿 NZ (+64)</option>
+                    <option value="+234">🇳🇬 NG (+234)</option>
+                    <option value="+47">🇳🇴 NO (+47)</option>
+                    <option value="+968">🇴🇲 OM (+968)</option>
+                    <option value="+51">🇵🇪 PE (+51)</option>
+                    <option value="+63">🇵🇭 PH (+63)</option>
+                    <option value="+48">🇵🇱 PL (+48)</option>
+                    <option value="+351">🇵🇹 PT (+351)</option>
+                    <option value="+974">🇶🇦 QA (+974)</option>
+                    <option value="+40">🇷🇴 RO (+40)</option>
+                    <option value="+7">🇷🇺 RU (+7)</option>
+                    <option value="+966">🇸🇦 SA (+966)</option>
+                    <option value="+65">🇸🇬 SG (+65)</option>
+                    <option value="+27">🇿🇦 ZA (+27)</option>
+                    <option value="+82">🇰🇷 KR (+82)</option>
+                    <option value="+34">🇪🇸 ES (+34)</option>
+                    <option value="+46">🇸🇪 SE (+46)</option>
+                    <option value="+41">🇨🇭 CH (+41)</option>
+                    <option value="+886">🇹🇼 TW (+886)</option>
+                    <option value="+66">🇹🇭 TH (+66)</option>
+                    <option value="+90">🇹🇷 TR (+90)</option>
+                    <option value="+971">🇦🇪 AE (+971)</option>
+                    <option value="+380">🇺🇦 UA (+380)</option>
+                    <option value="+44">🇬🇧 UK (+44)</option>
+                    <option value="+1" selected>🇺🇸 US (+1)</option>
+                    <option value="+84">🇻🇳 VN (+84)</option>
+                  </select>
+                  <input id="view-reg-phone-number" type="tel" class="custom-input auth-input auth-phone-number-input" placeholder="(555) 000-0000" autocomplete="tel-national" />
+                </div>
+              </div>
+
+              <div class="auth-form-row-2">
+                <div class="auth-form-group">
+                  <label for="view-reg-email">
+                    <span class="label-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                    </span>
+                    <span>Email</span>
+                  </label>
+                  <input id="view-reg-email" type="email" class="custom-input auth-input" placeholder="name@email.com" autocomplete="email" />
+                </div>
+                <div class="auth-form-group">
+                  <label for="view-reg-email-confirm">
+                    <span class="label-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                    </span>
+                    <span>Confirm Email</span>
+                  </label>
+                  <input id="view-reg-email-confirm" type="email" class="custom-input auth-input" placeholder="name@email.com" autocomplete="email" />
+                </div>
+              </div>
+
+              <div class="auth-form-row-2">
+                <div class="auth-form-group">
+                  <label for="view-reg-password">
+                    <span class="label-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </span>
+                    <span>Password</span>
+                  </label>
+                  <input id="view-reg-password" type="password" class="custom-input auth-input" placeholder="••••••••" autocomplete="new-password" />
+                  <span class="auth-input-hint">Min. 8 characters</span>
+                </div>
+                <div class="auth-form-group">
+                  <label for="view-reg-password-confirm">
+                    <span class="label-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </span>
+                    <span>Confirm Password</span>
+                  </label>
+                  <input id="view-reg-password-confirm" type="password" class="custom-input auth-input" placeholder="••••••••" autocomplete="new-password" />
+                  <span class="auth-input-hint">Re-enter password</span>
+                </div>
+              </div>
+
+              <!-- Password Strength Meter -->
+              <div id="password-strength-wrap" class="password-strength-wrap hidden">
+                <div class="strength-header">
+                  <span class="strength-label">Password strength:</span>
+                  <span id="strength-text" class="strength-status">Weak</span>
+                </div>
+                <div class="strength-meter-bars">
+                  <div class="strength-bar" id="strength-bar-1"></div>
+                  <div class="strength-bar" id="strength-bar-2"></div>
+                  <div class="strength-bar" id="strength-bar-3"></div>
+                  <div class="strength-bar" id="strength-bar-4"></div>
+                </div>
+              </div>
+
+              <div id="view-reg-error" class="auth-error-banner hidden"></div>
+
+              <div class="auth-actions mt-4">
+                <button id="btn-view-submit-register" type="button" class="primary large w-full glow btn-auth-submit">
+                  <span>Create Account</span>
+                  <span class="btn-arrow">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                  </span>
+                </button>
+              </div>
+
+              <div class="auth-footer-links">
+                <span>Already have an account? <a href="#" id="view-link-to-login">Sign In</a></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>

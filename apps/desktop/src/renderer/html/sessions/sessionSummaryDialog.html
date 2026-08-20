@@ -1,0 +1,62 @@
+
+      <!-- FACTUAL SESSION SUMMARY DIALOG -->
+      <dialog id="session-summary-dialog" class="studio-dialog summary-dialog">
+        <div class="dialog-content summary-dialog-content">
+          <div class="dialog-head">
+            <div class="dialog-title-wrap">
+              <span class="dialog-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </span>
+              <div>
+                <h2>Session Summary</h2>
+                <p id="summary-dialog-subtitle" class="dialog-subtitle-top">Verified activity from this studio session.</p>
+              </div>
+            </div>
+            <button id="btn-close-summary-dialog" type="button" class="dialog-close" aria-label="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+
+          <div class="dialog-body summary-dialog-body">
+            <!-- Header Key Facts -->
+            <div class="summary-key-facts">
+              <div class="summary-fact-pill">
+                <span class="fact-label">ROOM CODE</span>
+                <span id="summary-room-code" class="fact-value font-mono">--------</span>
+              </div>
+              <div class="summary-fact-pill">
+                <span class="fact-label">DURATION</span>
+                <span id="summary-duration" class="fact-value">0 min</span>
+              </div>
+              <div class="summary-fact-pill">
+                <span class="fact-label">SESSION TIME</span>
+                <span id="summary-time-range" class="fact-value">-- : --</span>
+              </div>
+              <div id="summary-project-pill" class="summary-fact-pill hidden">
+                <span class="fact-label">PROJECT</span>
+                <span id="summary-project-name" class="fact-value">--</span>
+              </div>
+            </div>
+
+            <!-- Verified Participants Section -->
+            <div class="summary-section">
+              <h3 class="summary-section-title">Verified Participants</h3>
+              <div id="summary-participants-list" class="summary-participants-list"></div>
+            </div>
+
+            <!-- Verified In-Session Activity Timeline -->
+            <div class="summary-section">
+              <div class="summary-section-header">
+                <h3 class="summary-section-title">Verified Workspace Activity</h3>
+                <span id="summary-chat-count-badge" class="badge-count mini">0 chat messages</span>
+              </div>
+              <div id="summary-events-timeline" class="summary-events-timeline"></div>
+              <p id="summary-empty-state" class="summary-empty-msg hidden">No workspace mutations occurred during this session.</p>
+            </div>
+
+            <div class="guest-actions mt-4">
+              <button id="btn-done-summary-dialog" type="button" class="primary btn-guest-join">Close</button>
+            </div>
+          </div>
+        </div>
+      </dialog>

@@ -1,0 +1,814 @@
+
+      <!-- 3. ACTIVE SESSION VIEW -->
+      <section id="call-view" class="view hidden">
+        <header class="call-topbar">
+          <!-- FAR-LEFT CORNER CALL TIMER -->
+          <div class="call-corner-left-timer" title="Session Duration">
+            <span class="status-dot"></span>
+            <span id="call-status">00:00</span>
+          </div>
+
+          <div class="call-topbar-inner">
+            <div class="call-topbar-left">
+              <div class="home-brand-lockup">
+                <img src="/logo.png" alt="JaMeet" class="home-brand-icon" />
+                <span class="home-brand-wordmark">JaMeet</span>
+                <span class="home-brand-badge">Beta</span>
+              </div>
+            </div>
+
+            <div class="call-topbar-center">
+              <!-- Voice Input Live Meter Pill -->
+              <div id="voice-in-indicator" class="topbar-channel-pill voice-pill" title="Live Voice Input">
+                <span class="channel-dot"></span>
+                <span class="channel-tag">VOICE</span>
+                <div id="call-topbar-mics-bar" class="topbar-mics-cluster"></div>
+              </div>
+
+              <!-- Music Input Live Meter Pill -->
+              <div id="music-in-indicator" class="topbar-channel-pill music-pill" title="Live Music / DAW Input">
+                <span class="channel-dot"></span>
+                <span class="channel-tag">MUSIC</span>
+                <div class="topbar-meter-unit">
+                  <div class="topbar-meter-track">
+                    <div id="topbar-music-meter" class="meter-fill"></div>
+                    <i class="clip"></i>
+                  </div>
+                  <output id="topbar-music-db" class="topbar-db-num">−60 dB</output>
+                </div>
+              </div>
+            </div>
+
+            <div class="call-topbar-right">
+              <button id="call-user-btn" type="button" class="btn-topbar-account" title="Account Menu" aria-label="Account Menu" aria-haspopup="true">
+                <span id="call-avatar-badge" class="topbar-account-avatar">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </span>
+                <span class="topbar-account-chevron">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m6 9 6 6 6-6"/></svg>
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <!-- FAR-RIGHT CORNER GROUP (CODE, COPY, LOCK) -->
+          <div class="call-corner-group">
+            <div class="topbar-session-group">
+              <span id="call-code" class="topbar-code-badge" title="Session Code"></span>
+              <button id="copy-invite" type="button" class="btn-topbar-copy" title="Copy Invite Link">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+              </button>
+            </div>
+            <button id="btn-lock-session" type="button" class="btn-topbar-lock hidden" title="Lock Session (Prevent new participants from joining)">
+              <span id="lock-icon-unlocked" class="lock-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+              </span>
+              <span id="lock-icon-locked" class="lock-icon hidden">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </span>
+            </button>
+          </div>
+        </header>
+
+        <!-- HOST WAITING ROOM NOTIFICATION BANNER -->
+        <div id="waiting-room-banner" class="waiting-room-banner hidden">
+          <div class="waiting-banner-left">
+            <span class="waiting-banner-dot"></span>
+            <span id="waiting-banner-text" class="waiting-banner-text">1 participant in waiting room</span>
+          </div>
+          <div id="waiting-banner-list" class="waiting-banner-list"></div>
+        </div>
+
+        <!-- SESSION WORKSPACE: 2-TILE GRID OR MAIN STAGE + CAMERAS -->
+        <div id="session-workspace" class="session-workspace">
+          <!-- IN-SESSION PRESENTER MODE RESTORATION BANNER -->
+          <div id="session-presenter-banner" class="session-presenter-banner hidden">
+            <div class="presenter-banner-info">
+              <span class="presenter-banner-dot"></span>
+              <span class="presenter-banner-text">You are sharing your screen</span>
+            </div>
+            <button id="btn-return-presenter" type="button" class="btn-return-presenter" title="Switch back to Presenter Mode">
+              <span>Return to Presenter Mode</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+            </button>
+          </div>
+
+          <!-- DISCREET STAGE VIEW SELECTOR -->
+          <div id="session-view-selector" class="session-view-selector">
+            <button id="session-view-btn" type="button" class="btn-session-view" title="Change Stage View Layout" aria-haspopup="true" aria-expanded="false">
+              <span class="view-btn-icon" id="session-view-btn-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+              </span>
+            </button>
+            <div id="session-view-menu" class="session-view-menu hidden" role="menu"></div>
+          </div>
+
+          <!-- MAIN SHARED DAW / SCREEN STAGE (Shown when screen sharing is active) -->
+          <div id="stage-tile" class="stage-tile hidden">
+            <video id="stage-video" autoplay playsinline></video>
+            <div class="stage-header-overlay">
+              <div class="stage-info-pill">
+                <span class="stage-live-dot"></span>
+                <span id="stage-title-text" class="stage-title-text">Sharing Screen</span>
+              </div>
+              <button id="stage-stop-share-btn" type="button" class="btn-stage-stop-share hidden">
+                <span class="btn-icon-inner">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="16" height="16" x="4" y="4" rx="2"/></svg>
+                </span>
+                <span>Stop Sharing</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- DUAL CAMERA GRID (Becomes compact camera strip when stage is active) -->
+          <div id="video-grid" class="video-grid">
+            <!-- REMOTE MUSICIAN TILE -->
+            <article id="remote-tile" class="video-tile remote-tile">
+              <video id="remote-video" autoplay muted playsinline></video>
+              <div id="remote-placeholder" class="video-placeholder">
+                <div class="spinner"></div>
+                <span>Waiting for Musician to connect…</span>
+              </div>
+              <div class="tile-badge-wrap">
+                <span id="remote-user-label" class="tile-label"><span class="badge-icon" id="remote-user-icon"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg></span> <span id="remote-user-name">Musician</span></span>
+                <button id="btn-remove-participant" type="button" class="btn-tile-action btn-remove-participant hidden" title="Remove participant from session">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" x2="22" y1="11" y2="11"/></svg>
+                  <span id="btn-remove-participant-label">Remove</span>
+                </button>
+              </div>
+            </article>
+
+            <!-- LOCAL PRODUCER TILE -->
+            <article id="local-tile" class="video-tile local-tile">
+              <video id="local-video" autoplay muted playsinline></video>
+              <div id="local-placeholder" class="video-placeholder hidden">
+                <div class="placeholder-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M10.66 6H14a2 2 0 0 1 2 2v3.34l1 1L22 8v8"/><path d="M16 16v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+                </div>
+                <span>Camera off</span>
+              </div>
+              <div class="tile-badge-wrap">
+                <span id="local-user-label" class="tile-label"><span class="badge-icon" id="local-user-icon"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.269a4 4 0 0 1-3.854 2.937H8.707a4 4 0 0 1-3.854-2.937L2.02 6.02a.5.5 0 0 1 .798-.52l4.276 3.664a1 1 0 0 0 1.516-.294z"/></svg></span> <span id="local-user-name">You</span></span>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <audio id="remote-voice-audio" autoplay></audio>
+        <audio id="remote-music-audio" autoplay></audio>
+
+        <!-- BOTTOM STUDIO CONTROL DOCK -->
+        <footer class="bottombar">
+          <div class="bar-left">
+            <button id="toggle-mic" class="tool-btn active" type="button" title="Mute / Unmute Microphone (M)">
+              <span class="tool-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+              </span>
+            </button>
+            <button id="toggle-camera" class="tool-btn active" type="button" title="Turn Camera On / Off (V)">
+              <span class="tool-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.934a.5.5 0 0 0-.777-.416L16 11"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>
+              </span>
+            </button>
+            <button id="toggle-screen" class="tool-btn" type="button" title="Share Screen (S)">
+              <span class="tool-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+              </span>
+            </button>
+          </div>
+          <div class="bar-center">
+            <div class="audio-mode-selector">
+              <button id="mode-talk-btn" class="mode-pill" type="button" title="Talk Mode (T)">Talk Mode</button>
+              <button id="mode-music-btn" class="mode-pill active" type="button" title="Music Mode (T)">Music Mode</button>
+            </div>
+          </div>
+          <div class="bar-right">
+            <button id="toggle-session-chat" class="tool-btn ghost" type="button" title="Session Chat (C)">
+              <span class="tool-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              </span>
+              <span id="chat-unread-badge" class="chat-unread-badge hidden">0</span>
+            </button>
+            <button id="toggle-session-mixer" class="tool-btn ghost" type="button" title="Studio Mixer Console (X)">
+              <span class="tool-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
+              </span>
+            </button>
+            <button id="toggle-session-workspace" class="tool-btn ghost hidden" type="button" title="Project Workspace (W)">
+              <span class="tool-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+              </span>
+            </button>
+            <button id="call-shortcuts-btn" class="tool-btn ghost" type="button" title="Keyboard Shortcuts (?)">
+              <span class="tool-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>
+              </span>
+            </button>
+            <button id="call-stats-btn" class="tool-btn ghost" type="button" title="Network &amp; Audio Diagnostics">
+              <span class="tool-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>
+              </span>
+            </button>
+            <button id="open-settings" class="tool-btn ghost" type="button" title="Audio Settings">
+              <span class="tool-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+              </span>
+            </button>
+            <button id="leave-call" class="danger" type="button" title="Leave Session">
+              <span class="tool-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+              </span>
+            </button>
+          </div>
+        </footer>
+
+        <!-- TALKBACK / PUSH-TO-TALK HUD -->
+        <div id="push-to-talk-hud" class="push-to-talk-hud hidden">
+          <span class="ptt-beacon"></span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+          <span>TALKBACK LIVE</span>
+        </div>
+
+        <!-- STUDIO MULTITRACK MIXER MODAL (LOGIC PRO STYLE) -->
+        <div id="session-studio-mixer-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+          <div class="modal-card studio-mixer-modal-card">
+            <!-- Mixer Top Control Bar -->
+            <div class="studio-mixer-topbar">
+              <div class="mixer-brand-group">
+                <h3 class="mixer-main-title">Studio Console Mixer</h3>
+              </div>
+
+              <div class="mixer-topbar-actions">
+                <button id="btn-close-studio-mixer" type="button" class="modal-close-btn" aria-label="Close Mixer">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Mixer Channel Strips Viewport -->
+            <div class="studio-mixer-viewport">
+              <div id="mixer-channels-rack" class="mixer-channels-rack">
+                <!-- Dynamically populated Logic Pro channel strips -->
+              </div>
+            </div>
+
+            <!-- FX INSERT POPUP -->
+            <div id="mixer-fx-picker-popover" class="mixer-popover hidden">
+              <div class="mixer-popover-header">
+                <span>Audio FX Plugins</span>
+                <button id="btn-close-fx-popover" type="button" class="popover-close-btn">&times;</button>
+              </div>
+              <div class="mixer-popover-list">
+                <button type="button" class="fx-option" data-fx="Chan EQ"><span class="fx-dot eq"></span> Channel EQ</button>
+                <button type="button" class="fx-option" data-fx="Compressor"><span class="fx-dot dyn"></span> Compressor</button>
+                <button type="button" class="fx-option remove-fx" data-fx="remove"><span class="fx-dot rmv"></span> (Clear Slot)</button>
+              </div>
+            </div>
+
+            <!-- ICON PICKER POPUP -->
+            <div id="mixer-icon-picker-popover" class="mixer-popover hidden">
+              <div class="mixer-popover-header">
+                <span>Channel Icon &amp; Color</span>
+                <button id="btn-close-icon-popover" type="button" class="popover-close-btn">&times;</button>
+              </div>
+              <div class="mixer-icon-grid">
+                <button type="button" class="icon-option" data-icon="mic" title="Microphone / Vocal">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="currentColor" stroke-width="2" fill="none"/><line x1="12" x2="12" y1="19" y2="22" stroke="currentColor" stroke-width="2"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="waves" title="Audio Stream">
+                  <svg viewBox="0 0 24 24" width="20" height="20"><rect x="2" y="8" width="2.5" height="8" rx="1.2" fill="currentColor"></rect><rect x="6.5" y="5" width="2.5" height="14" rx="1.2" fill="currentColor"></rect><rect x="11" y="2" width="2.5" height="20" rx="1.2" fill="currentColor"></rect><rect x="15.5" y="4" width="2.5" height="16" rx="1.2" fill="currentColor"></rect><rect x="20" y="8" width="2.5" height="8" rx="1.2" fill="currentColor"></rect></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="headphones" title="Headphones / Monitor">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="speaker" title="Speaker / Monitor Out">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="2" fill="none"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="guitar" title="Guitar / Bass">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 5-3 3"/><path d="m14 10 2 2"/><path d="M15 15a4 4 0 1 1-5.66-5.66l5.66 5.66Z"/><circle cx="10" cy="14" r="1.5" fill="currentColor"/><path d="m18 2 4 4-2 2-4-4Z"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="piano" title="Piano / Keys">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 4v10"/><path d="M10 4v10"/><path d="M14 4v10"/><path d="M18 4v10"/><path d="M2 14h20"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="drums" title="Drums / Percussion">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="8" rx="9" ry="4"/><path d="M3 8v8c0 2.2 4 4 9 4s9-1.8 9-4V8"/><path d="m6 6 6 5 6-5"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="synth" title="Synth / Hardware">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="screen" title="Screen / App Capture">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="fx" title="Audio FX / Reverb">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="m12 2 2.4 7.2L21.6 12l-7.2 2.4L12 21.6l-2.4-7.2L2.4 12l7.2-2.4Z"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="crown" title="Master / Bus">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="m2 4 4 12h12l4-12-6 5-4-7-4 7-6-5Z"/><rect x="4" y="18" width="16" height="2" rx="1"/></svg>
+                </button>
+                <button type="button" class="icon-option" data-icon="radio" title="Broadcast Stream">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>
+                </button>
+              </div>
+              <div class="mixer-color-row">
+                <span class="mixer-color-swatch" data-color="#3b82f6" style="background:#3b82f6;" title="Blue"></span>
+                <span class="mixer-color-swatch" data-color="#22c55e" style="background:#22c55e;" title="Green"></span>
+                <span class="mixer-color-swatch" data-color="#f59e0b" style="background:#f59e0b;" title="Amber"></span>
+                <span class="mixer-color-swatch" data-color="#ef4444" style="background:#ef4444;" title="Red"></span>
+                <span class="mixer-color-swatch" data-color="#a855f7" style="background:#a855f7;" title="Purple"></span>
+                <span class="mixer-color-swatch" data-color="#ec4899" style="background:#ec4899;" title="Pink"></span>
+                <span class="mixer-color-swatch" data-color="#06b6d4" style="background:#06b6d4;" title="Cyan"></span>
+                <span class="mixer-color-swatch" data-color="#64748b" style="background:#64748b;" title="Slate"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+
+        <!-- IN-SESSION PROJECT WORKSPACE DRAWER / DOCKED STUDIO PANEL -->
+        <!-- IN-SESSION PROJECT WORKSPACE DRAWER / DOCKED STUDIO PANEL -->
+        <aside id="session-workspace-drawer" class="session-workspace-drawer hidden">
+          <!-- Left Edge Drag Resize Handle -->
+          <div id="session-workspace-resize-handle" class="workspace-resize-handle" title="Drag to resize studio panel"></div>
+
+          <!-- Studio Panel Header -->
+          <div class="drawer-header">
+            <div class="drawer-title-group">
+              <span class="drawer-tag">WORKSPACE</span>
+              <h4 id="session-workspace-project-name" class="drawer-project-title">Project Workspace</h4>
+            </div>
+            <div class="drawer-header-actions">
+              <span id="session-workspace-status-badge" class="workspace-status-badge">
+                <span class="status-dot"></span>
+                <span id="session-workspace-status-text">Saved</span>
+              </span>
+              <button id="btn-close-session-workspace" type="button" class="drawer-close-btn" title="Close Workspace">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Studio Segmented Navigation Tabs (Matching Project View) -->
+          <div class="drawer-tabs">
+            <button id="drawer-tab-lyrics" type="button" class="drawer-tab-btn active" data-drawer-tab="lyrics">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+              <span>Lyrics</span>
+            </button>
+            <button id="drawer-tab-structure" type="button" class="drawer-tab-btn" data-drawer-tab="structure">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+              <span>Structure</span>
+            </button>
+            <button id="drawer-tab-notes" type="button" class="drawer-tab-btn" data-drawer-tab="notes">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v5a1 1 0 0 0 1 1h5"/></svg>
+              <span>Notes</span>
+            </button>
+            <button id="drawer-tab-tasks" type="button" class="drawer-tab-btn" data-drawer-tab="tasks">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
+              <span>Tasks</span>
+            </button>
+          </div>
+
+          <!-- Drawer Track / Song Selector Bar -->
+          <div id="session-drawer-song-bar" class="drawer-song-bar">
+            <span class="drawer-song-label">TRACK:</span>
+            <div class="drawer-song-select-wrap">
+              <select id="session-workspace-song-select" class="custom-select drawer-song-select" title="Switch Active Track"></select>
+            </div>
+            <button id="btn-session-new-song" type="button" class="btn-drawer-new-song" title="Add Track / Song to Project">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+            </button>
+          </div>
+
+
+          <!-- Drawer Panel: Lyrics -->
+          <div id="drawer-panel-lyrics" class="drawer-panel">
+
+            <!-- Row 1: Rich Google Docs-Style Text Formatting Toolbar -->
+            <div class="drawer-formatting-toolbar">
+              <div class="drawer-toolbar-group">
+                <button id="btn-session-doc-undo" type="button" class="drawer-toolbar-btn" title="Undo (Ctrl+Z)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                </button>
+                <button id="btn-session-doc-redo" type="button" class="drawer-toolbar-btn" title="Redo (Ctrl+Y)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
+                </button>
+              </div>
+              <div class="drawer-toolbar-divider"></div>
+              <!-- Document Zoom (50% to 200%) -->
+              <div class="drawer-toolbar-group zoom-group">
+                <select id="select-session-doc-zoom" class="drawer-toolbar-select doc-zoom-select" title="Zoom">
+                  <option value="50">50%</option>
+                  <option value="75">75%</option>
+                  <option value="90">90%</option>
+                  <option value="100" selected>100%</option>
+                  <option value="125">125%</option>
+                  <option value="150">150%</option>
+                  <option value="175">175%</option>
+                  <option value="200">200%</option>
+                </select>
+              </div>
+              <div class="drawer-toolbar-divider"></div>
+              <div class="drawer-toolbar-group">
+                <select id="select-session-doc-heading" class="drawer-toolbar-select font-style-select" title="Text Style">
+                  <option value="p">Normal Text</option>
+                  <option value="h1">Song Title (H1)</option>
+                  <option value="h2">Section Header (H2)</option>
+                  <option value="h3">Sub-Section (H3)</option>
+                  <option value="verse">Verse Label</option>
+                  <option value="chorus">Chorus Label</option>
+                  <option value="bridge">Bridge Label</option>
+                </select>
+
+                <select id="select-session-doc-font" class="drawer-toolbar-select font-family-select" title="Font Family">
+                  <optgroup label="Modern Sans">
+                    <option value="'Assistant', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" selected>Assistant (Default)</option>
+                    <option value="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">Studio Sans</option>
+                    <option value="'Inter', sans-serif">Inter</option>
+                    <option value="'Poppins', sans-serif">Poppins</option>
+                    <option value="'Montserrat', sans-serif">Montserrat</option>
+                    <option value="'Outfit', sans-serif">Outfit</option>
+                    <option value="'Open Sans', sans-serif">Open Sans</option>
+                    <option value="'Rubik', sans-serif">Rubik</option>
+                    <option value="'Heebo', sans-serif">Heebo</option>
+                  </optgroup>
+                  <optgroup label="Serif & Songbook">
+                    <option value="Georgia, Cambria, 'Times New Roman', serif">Songbook Serif (Georgia)</option>
+                    <option value="'Playfair Display', Georgia, serif">Playfair Display</option>
+                    <option value="'EB Garamond', serif">EB Garamond</option>
+                    <option value="'Lora', Georgia, serif">Lora</option>
+                    <option value="'Merriweather', serif">Merriweather</option>
+                    <option value="'Cinzel', serif">Cinzel Epic</option>
+                  </optgroup>
+                  <optgroup label="Handwriting & Script">
+                    <option value="'Caveat', cursive">Caveat (Handwritten)</option>
+                    <option value="'Dancing Script', cursive">Dancing Script</option>
+                  </optgroup>
+                  <optgroup label="Monospace & Chords">
+                    <option value="'JetBrains Mono', Monaco, Menlo, Consolas, monospace">JetBrains Mono</option>
+                    <option value="'Roboto Mono', monospace">Roboto Mono</option>
+                    <option value="'Courier New', Courier, monospace">Courier Typewriter</option>
+                  </optgroup>
+                </select>
+
+                <select id="select-session-doc-fontsize" class="drawer-toolbar-select font-size-select" title="Font Size">
+                  <option value="9pt">9</option>
+                  <option value="10pt">10</option>
+                  <option value="11pt" selected>11</option>
+                  <option value="12pt">12</option>
+                  <option value="14pt">14</option>
+                  <option value="16pt">16</option>
+                  <option value="18pt">18</option>
+                  <option value="20pt">20</option>
+                  <option value="24pt">24</option>
+                  <option value="28pt">28</option>
+                  <option value="32pt">32</option>
+                  <option value="36pt">36</option>
+                </select>
+              </div>
+              <div class="drawer-toolbar-divider"></div>
+              <div class="drawer-toolbar-group">
+                <button id="btn-session-doc-bold" type="button" class="drawer-toolbar-btn" title="Bold (Ctrl+B)"><b>B</b></button>
+                <button id="btn-session-doc-italic" type="button" class="drawer-toolbar-btn" title="Italic (Ctrl+I)"><i>I</i></button>
+                <button id="btn-session-doc-underline" type="button" class="drawer-toolbar-btn" title="Underline (Ctrl+U)"><u>U</u></button>
+                <button id="btn-session-doc-strike" type="button" class="drawer-toolbar-btn" title="Strikethrough"><s>S</s></button>
+              </div>
+              <div class="drawer-toolbar-divider"></div>
+              <div class="drawer-toolbar-group">
+                <button id="btn-session-doc-align-left" type="button" class="drawer-toolbar-btn" title="Align Left">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="21" x2="3" y1="6" y2="6"/><line x1="15" x2="3" y1="12" y2="12"/><line x1="17" x2="3" y1="18" y2="18"/></svg>
+                </button>
+                <button id="btn-session-doc-align-center" type="button" class="drawer-toolbar-btn" title="Align Center">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="21" x2="3" y1="6" y2="6"/><line x1="18" x2="6" y1="12" y2="12"/><line x1="21" x2="3" y1="18" y2="18"/></svg>
+                </button>
+                <button id="btn-session-doc-align-right" type="button" class="drawer-toolbar-btn" title="Align Right">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="21" x2="3" y1="6" y2="6"/><line x1="21" x2="9" y1="12" y2="12"/><line x1="21" x2="7" y1="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Row 3: Musician Song Sections Bar -->
+            <div class="lyrics-section-helpers-bar drawer-section-helpers-bar">
+              <div class="sections-buttons-wrap">
+                <button type="button" class="btn-section-insert" data-section="Verse 1">Verse 1</button>
+                <button type="button" class="btn-section-insert" data-section="Verse 2">Verse 2</button>
+                <button type="button" class="btn-section-insert" data-section="Pre-Chorus">Pre-Chorus</button>
+                <button type="button" class="btn-section-insert" data-section="Chorus">Chorus</button>
+                <button type="button" class="btn-section-insert" data-section="Bridge">Bridge</button>
+                <button type="button" class="btn-section-insert" data-section="Hook">Hook</button>
+                <button type="button" class="btn-section-insert" data-section="Intro">Intro</button>
+                <button type="button" class="btn-section-insert" data-section="Outro">Outro</button>
+              </div>
+            </div>
+
+            <!-- Row 4: Real Document Page Sheet Canvas Viewport (White Paper Sheet) -->
+            <div class="lyrics-sheet-viewport drawer-lyrics-viewport" id="session-lyrics-viewport">
+              <div class="lyrics-canvas-wrapper drawer-lyrics-canvas-wrapper">
+                <div class="lyrics-document-canvas drawer-lyrics-document-canvas">
+                  
+                  <!-- Dynamic Page Sheet Layer (Clean White US Letter Paper) -->
+                  <div class="lyrics-pages-background drawer-lyrics-pages-bg">
+                    <div class="lyrics-page-sheet drawer-lyrics-page-sheet" data-page="1"></div>
+                  </div>
+
+                  <!-- Document Content Layer (Editor) -->
+                  <div class="lyrics-document-content-layer drawer-lyrics-content-layer">
+                    <div
+                      id="session-lyrics-editor"
+                      class="lyrics-document-editor drawer-lyrics-editor"
+                      contenteditable="true"
+                      spellcheck="false"
+                      data-placeholder="Start writing lyrics, verses, choruses, and vocal arrangements here…"
+                    ></div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+            <!-- Lyrics Footer Stats -->
+            <div class="drawer-lyrics-footer">
+              <span id="session-lyrics-stats-text" class="drawer-lyrics-stats-text">0 Words · 0 Lines</span>
+            </div>
+          </div>
+
+          <!-- Drawer Panel: Structure -->
+          <div id="drawer-panel-structure" class="drawer-panel hidden">
+            <div class="drawer-structure-header">
+              <div class="drawer-structure-stats">
+                <span id="session-structure-summary" class="workspace-stats-pill mini">0 Sections · 0 Bars</span>
+              </div>
+              <div class="drawer-insert-palette">
+                <button type="button" class="btn-drawer-add-sec type-intro" data-section-type="intro">+ Intro</button>
+                <button type="button" class="btn-drawer-add-sec type-verse" data-section-type="verse">+ Verse</button>
+                <button type="button" class="btn-drawer-add-sec type-pre-chorus" data-section-type="pre-chorus">+ Pre-Ch</button>
+                <button type="button" class="btn-drawer-add-sec type-chorus" data-section-type="chorus">+ Chorus</button>
+                <button type="button" class="btn-drawer-add-sec type-bridge" data-section-type="bridge">+ Bridge</button>
+                <button type="button" class="btn-drawer-add-sec type-outro" data-section-type="outro">+ Outro</button>
+              </div>
+            </div>
+            <!-- Arrangement Timeline Ribbon -->
+            <div class="drawer-structure-timeline-container">
+              <div id="session-structure-timeline" class="drawer-structure-timeline"></div>
+            </div>
+            <!-- Arrangement Sections List -->
+            <div id="session-structure-sections-list" class="drawer-structure-list"></div>
+          </div>
+
+          <!-- Drawer Panel: Notes -->
+          <div id="drawer-panel-notes" class="drawer-panel hidden">
+            <!-- 1. Notes Header & Meta Chips: BPM & Musical Key (Aligned to the Left, Exactly Same Size as Real Notes) -->
+            <div class="drawer-notes-header-bar">
+              <div class="notes-meta-chips-group">
+                <div class="notes-chip-field">
+                  <span class="chip-label">TEMPO</span>
+                  <input id="session-notes-bpm" type="text" class="custom-input notes-chip-input" placeholder="120 BPM" maxlength="12" />
+                </div>
+                <div class="notes-chip-field">
+                  <span class="chip-label">KEY</span>
+                  <div class="notes-chip-dual-wrap">
+                    <select id="session-notes-key-root" class="notes-chip-select notes-key-root-select" aria-label="Key Root Note" title="Root Note">
+                      <option value="">—</option>
+                      <option value="C">C</option>
+                      <option value="C#">C♯</option>
+                      <option value="D">D</option>
+                      <option value="Eb">E♭</option>
+                      <option value="E">E</option>
+                      <option value="F">F</option>
+                      <option value="F#">F♯</option>
+                      <option value="G">G</option>
+                      <option value="Ab">A♭</option>
+                      <option value="A">A</option>
+                      <option value="Bb">B♭</option>
+                      <option value="B">B</option>
+                    </select>
+                    <select id="session-notes-key-mode" class="notes-chip-select notes-key-mode-select" aria-label="Key Mode" title="Key Mode (Major / Minor)">
+                      <option value="Major">Major</option>
+                      <option value="Minor">Minor</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Focused Studio Notebook Writing Area -->
+            <div class="drawer-notes-section">
+              <div class="drawer-notes-editor-wrap">
+                <textarea
+                  id="session-notes-input"
+                  class="workspace-textarea drawer-textarea notes-textarea"
+                  placeholder="• Type production notes, arrangement feedback, mix revisions, reference links, and reminders here…"
+                  spellcheck="false"
+                ></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Drawer Panel: Tasks (Full-Featured 1:1 Matching Project Tasks) -->
+          <div id="drawer-panel-tasks" class="drawer-panel hidden">
+            <div class="project-panel-card tasks-studio-card drawer-tasks-studio-card">
+              
+              <!-- 1. Apple Reminders / Studio Pro Header Bar -->
+              <div class="reminders-header-bar">
+                <div class="reminders-header-top">
+                  <div class="reminders-title-wrap">
+                    <h2 class="reminders-main-title">Production Tasks</h2>
+                  </div>
+                  <span id="session-tasks-hero-counter" class="reminders-hero-counter">0</span>
+                </div>
+
+                <div class="reminders-header-sub">
+                  <div class="reminders-sub-left">
+                    <span id="session-tasks-completed-summary" class="reminders-completed-label">0 Completed</span>
+                    <span class="reminders-dot-sep">•</span>
+                    <button type="button" id="session-btn-tasks-toggle-completed" class="reminders-text-btn">Hide</button>
+                  </div>
+                  
+                  <div class="reminders-sub-right">
+                    <div class="reminders-search-wrap">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                      <input id="session-tasks-search-input" type="text" class="reminders-search-input" placeholder="Search tasks..." />
+                    </div>
+
+                    <div class="tasks-filter-select-wrap">
+                      <select id="session-tasks-group-by" class="tasks-filter-select" title="Group Tasks By">
+                        <option value="song">Group: By Track</option>
+                        <option value="stage">Group: By Stage</option>
+                        <option value="status">Group: By Status</option>
+                        <option value="none">Flat List</option>
+                      </select>
+                    </div>
+
+                    <div class="tasks-filter-select-wrap">
+                      <select id="session-tasks-filter-stage" class="tasks-filter-select" title="Filter by Stage">
+                        <option value="all">All Stages</option>
+                        <option value="writing">Writing</option>
+                        <option value="recording">Recording</option>
+                        <option value="arrangement">Arrangement</option>
+                        <option value="mix">Mix</option>
+                        <option value="mastering">Mastering</option>
+                        <option value="revisions">Revisions</option>
+                        <option value="general">General</option>
+                      </select>
+                    </div>
+
+                    <div class="tasks-filter-select-wrap">
+                      <select id="session-tasks-filter-song" class="tasks-filter-select" title="Filter by Track">
+                        <option value="all">All Tracks</option>
+                      </select>
+                    </div>
+
+                    <div class="tasks-view-switcher">
+                      <button type="button" id="session-btn-tasks-view-list" class="btn-view-toggle active" title="List View">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+                        <span>List</span>
+                      </button>
+                      <button type="button" id="session-btn-tasks-view-board" class="btn-view-toggle" title="Kanban Board View">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+                        <span>Board</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. Fast Task Creation Bar -->
+              <div class="tasks-create-bar">
+                <form id="session-form-create-task" class="tasks-create-form">
+                  <div class="task-create-input-wrap">
+                    <span class="task-create-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="16"/><line x1="8" x2="16" y1="12" y2="12"/></svg>
+                    </span>
+                    <input id="session-task-new-title" type="text" class="task-create-input" placeholder="New task..." maxlength="150" required />
+                  </div>
+                  
+                  <div class="task-create-controls">
+                    <div class="task-create-meta-item">
+                      <select id="session-task-new-song" class="task-select-song" title="Link to track">
+                        <option value="">All Tracks</option>
+                      </select>
+                    </div>
+
+                    <div class="task-create-meta-item">
+                      <select id="session-task-new-stage" class="task-select-stage" title="Production Stage">
+                        <option value="general">Stage: General</option>
+                        <option value="writing">Writing</option>
+                        <option value="recording">Recording</option>
+                        <option value="arrangement">Arrangement</option>
+                        <option value="mix">Mix</option>
+                        <option value="mastering">Mastering</option>
+                        <option value="revisions">Revisions</option>
+                      </select>
+                    </div>
+
+                    <div class="task-create-meta-item">
+                      <select id="session-task-new-assignee" class="task-select-assignee" title="Assign to collaborator">
+                        <option value="">Unassigned</option>
+                      </select>
+                    </div>
+
+                    <div class="task-create-meta-item">
+                      <input id="session-task-new-duedate" type="date" class="task-date-picker" title="Due date (optional)" />
+                    </div>
+
+                    <button type="submit" class="btn-primary btn-add-task">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                      <span>Add</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <!-- 3. Tasks Viewport: Grouped List & Kanban Board & Empty State -->
+              <div class="tasks-viewport">
+                <!-- Grouped List View Container -->
+                <div id="session-tasks-list" class="reminders-groups-container">
+                  <!-- Rendered dynamically by main.ts -->
+                </div>
+
+                <!-- Kanban Board Container -->
+                <div id="session-tasks-board" class="tasks-board hidden">
+                  <!-- Column: To Do -->
+                  <div class="board-column" data-status="todo">
+                    <div class="board-column-header">
+                      <div class="board-col-title-wrap">
+                        <span class="board-col-dot dot-todo"></span>
+                        <span class="board-col-title">To Do</span>
+                      </div>
+                      <span class="board-col-count" id="session-board-count-todo">0</span>
+                    </div>
+                    <div class="board-column-cards" id="session-board-cards-todo"></div>
+                  </div>
+
+                  <!-- Column: In Progress -->
+                  <div class="board-column" data-status="in_progress">
+                    <div class="board-column-header">
+                      <div class="board-col-title-wrap">
+                        <span class="board-col-dot dot-in_progress"></span>
+                        <span class="board-col-title">In Progress</span>
+                      </div>
+                      <span class="board-col-count" id="session-board-count-in_progress">0</span>
+                    </div>
+                    <div class="board-column-cards" id="session-board-cards-in_progress"></div>
+                  </div>
+
+                  <!-- Column: Done -->
+                  <div class="board-column" data-status="done">
+                    <div class="board-column-header">
+                      <div class="board-col-title-wrap">
+                        <span class="board-col-dot dot-done"></span>
+                        <span class="board-col-title">Done</span>
+                      </div>
+                      <span class="board-col-count" id="session-board-count-done">0</span>
+                    </div>
+                    <div class="board-column-cards" id="session-board-cards-done"></div>
+                  </div>
+                </div>
+
+                <!-- Empty State -->
+                <div id="session-tasks-empty" class="tasks-empty-state">
+                  <div class="tasks-empty-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
+                  </div>
+                  <h4>No tasks in this view</h4>
+                  <p>Add a task using the bar above or adjust filters to see tasks.</p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </aside>
+
+        <!-- IN-SESSION CHAT PANEL -->
+        <aside id="session-chat-panel" class="session-chat-panel hidden">
+          <div class="chat-panel-header">
+            <div class="chat-header-title-group">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <h4 class="chat-panel-title">Session Chat</h4>
+            </div>
+            <button id="btn-close-session-chat" type="button" class="chat-close-btn" title="Close Chat">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+
+          <div id="session-chat-messages" class="session-chat-messages">
+            <div id="chat-empty-state" class="chat-empty-state">
+              <span>No messages yet</span>
+            </div>
+          </div>
+
+          <form id="session-chat-form" class="session-chat-form">
+            <div class="chat-input-wrapper">
+              <textarea
+                id="session-chat-input"
+                class="chat-input"
+                placeholder="תרשום הודעה..."
+                rows="1"
+                maxlength="2000"
+              ></textarea>
+              <button id="btn-session-chat-send" type="submit" class="btn-chat-send" title="Send message">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              </button>
+            </div>
+          </form>
+        </aside>
+      </section>
