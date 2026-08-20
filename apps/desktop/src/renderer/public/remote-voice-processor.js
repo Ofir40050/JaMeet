@@ -19,7 +19,7 @@ class JaMeetRemoteVoiceProcessor extends AudioWorkletProcessor {
 
   process(inputs) {
     if (!this.active) {
-      return true;
+      return false;
     }
 
     const input = inputs[0];

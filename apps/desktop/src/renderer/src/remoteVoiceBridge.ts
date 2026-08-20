@@ -22,6 +22,23 @@ function getWorkletProcessorUrl(): string {
   return './remote-voice-processor.js';
 }
 
+function teardownActiveBridgeNode(): void {
+  if (activeSourceNode && activeWorkletNode) {
+    try {
+      activeSourceNode.disconnect(activeWorkletNode);
+    } catch {}
+  }
+  if (activeWorkletNode) {
+    try {
+      activeWorkletNode.port.postMessage({ type: 'stop' });
+      activeWorkletNode.disconnect();
+    } catch {}
+    activeWorkletNode.port.onmessage = null;
+    activeWorkletNode = null;
+  }
+  activeSourceNode = null;
+}
+
 export async function startRemoteVoiceBridge(
   ctx: AudioContext,
   sourceNode: MediaStreamAudioSourceNode
@@ -50,15 +67,7 @@ export async function startRemoteVoiceBridge(
       registeredAudioContexts.add(ctx);
     }
 
-    if (activeWorkletNode) {
-      try {
-        activeWorkletNode.port.postMessage({ type: 'stop' });
-        activeWorkletNode.disconnect();
-      } catch {}
-      activeWorkletNode.port.onmessage = null;
-      activeWorkletNode = null;
-      activeSourceNode = null;
-    }
+    teardownActiveBridgeNode();
 
     if (requestId !== bridgeSessionId) {
       return;
@@ -102,15 +111,7 @@ export function stopRemoteVoiceBridge(): void {
   // Invalidate all pending start requests immediately
   ++bridgeSessionId;
 
-  if (activeWorkletNode) {
-    try {
-      activeWorkletNode.port.postMessage({ type: 'stop' });
-      activeWorkletNode.disconnect();
-    } catch {}
-    activeWorkletNode.port.onmessage = null;
-    activeWorkletNode = null;
-  }
-  activeSourceNode = null;
+  teardownActiveBridgeNode();
 
   if (typeof window !== 'undefined' && window.jameet?.remoteVoiceBridge) {
     void window.jameet.remoteVoiceBridge.stop();
