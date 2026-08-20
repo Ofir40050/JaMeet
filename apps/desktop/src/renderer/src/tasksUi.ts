@@ -995,7 +995,6 @@ export function renderTasksWorkspace(): void {
     });
     titleInput?.addEventListener('blur', () => {
       const trimmed = titleInput.value.trim() || 'Untitled Task';
-      titleInput.value = trimmed;
       tasksUiOptions?.onCommitTaskField(task.id, { title: trimmed }, { immediateFlush: true });
     });
 
