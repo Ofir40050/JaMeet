@@ -48,7 +48,10 @@ import {
   renderProjectsGrid
 } from './projects/core/projectsListUi';
 import { renderProjectHeader } from './projects/header/projectHeaderUi';
-import { renderProjectCollaborators } from './projects/collaborators/projectCollaboratorsUi';
+import {
+  initProjectCollaboratorsViewController,
+  renderProjectCollaboratorsView
+} from './projects/collaborators/projectCollaboratorsViewController';
 import {
   createOverviewSessionItem,
   createProjectSessionCard
@@ -77,7 +80,12 @@ import {
   openProjectView
 } from './projects/core/projectOpenController';
 import { initDialogUi } from './core/dialogUi';
-import { applyWorkspacePermissionsPresentation } from './workspace/core/workspacePermissionsUi';
+import {
+  initWorkspacePermissionsController,
+  canUserEditProject,
+  isProjectOwner,
+  applyWorkspacePermissions
+} from './workspace/core/workspacePermissionsController';
 import {
   getWorkspaceContextGen,
   isWorkspaceContextGenCurrent,
@@ -130,14 +138,46 @@ import {
   handleStructureSectionChange
 } from './workspace/structure/structureController';
 import {
+  getActiveSongState
+} from './songs/state/songState';
+import {
+  mutateCreateSong
+} from './songs/state/songCreation';
+import {
+  mutateDuplicateSong
+} from './songs/state/songDuplication';
+import {
+  mutateReorderSongs
+} from './songs/state/songReorder';
+import {
+  mutateRenameSong,
+  mutateToggleArchiveSong,
+  mutateSongCustomization
+} from './songs/state/songMetadata';
+import {
+  initSongStudioUi,
+  openSongStudio as openSongStudioUiView,
+  closeSongStudio,
+  isSongStudioVisible,
+  setIsSongStudioVisible,
+  getCurrentSongStudioTab,
+  type SongStudioTab
+} from './songs/studio/songStudioUi';
+import {
+  initSongDeleteController,
+  openDeleteSongModal,
+  getSongPendingDeletion,
+  clearSongPendingDeletion
+} from './songs/delete/songDeleteController';
+import {
+  initDeepLinkController,
+  handleDeepLink
+} from './sessions/join/deepLinkController';
+import {
   reconcileNotesWorkspace,
   type NotesStateValues,
   type NotesReconciliationResult
 } from './workspace/notes/notesReconciliation';
-import {
-  canUserEditProject as checkCanUserEditProject,
-  isProjectOwner as checkIsProjectOwner
-} from './projects/core/projectAccess';
 import {
   switchProjectTab,
   resetProjectTabsUi,
@@ -297,6 +337,46 @@ logger.initGlobalErrorHandling();
 logger.info('renderer_startup', 'JaMeet renderer application initialized', { participantId });
 
 const auth = new AuthManager(signalingUrl);
+initWorkspacePermissionsController({
+  getProject: () => activeProject,
+  getUser: () => auth.getUser()
+});
+initProjectCollaboratorsViewController({
+  getProject: () => activeProject,
+  getUser: () => auth.getUser()
+});
+initSongDeleteController({
+  canEdit: () => canUserEditProject(),
+  hasActiveProject: () => Boolean(activeProject)
+});
+initSongStudioUi({
+  getProjectName: () => activeProject?.name,
+  onRenderHeader: () => {
+    renderSongStudioHeader();
+  },
+  onApplyPermissions: () => {
+    applyWorkspacePermissions();
+  },
+  onSwitchTabToOverview: () => {
+    switchProjectTab('overview');
+  },
+  onRenderOverviewSongsList: () => {
+    renderProjectOverviewSongsList();
+  }
+});
+initDeepLinkController({
+  isInCall: () => inCall,
+  getUser: () => auth.getUser(),
+  onSetPendingJoinCode: (code) => {
+    pendingJoinCode = code;
+  },
+  onOpenAuthView: (mode) => {
+    openAuthView(mode);
+  },
+  onPrepareStudio: async (options) => {
+    await prepareStudio(options);
+  }
+});
 initScheduledSessions({
   getToken: () => auth.getToken(),
   notificationManager: scheduledNotifications,
@@ -609,16 +689,17 @@ initProjectDeleteUi({
 });
 
 initProjectSongDeleteUi({
-  getSongTitle: () => (songPendingDeletion ? songPendingDeletion.title : undefined),
+  getSongTitle: () => getSongPendingDeletion()?.title,
   onCancel: () => {
-    songPendingDeletion = null;
+    clearSongPendingDeletion();
   },
   onConfirmDelete: async () => {
-    if (!activeProject?.workspace || !songPendingDeletion || !canUserEditProject()) return;
+    const pending = getSongPendingDeletion();
+    if (!activeProject?.workspace || !pending || !canUserEditProject()) return;
     const result = computeSongDeletion(
       activeProject.workspace.songs || [],
       activeProject.workspace.activeSongId,
-      songPendingDeletion.id,
+      pending.id,
       'Song 1'
     );
 
@@ -628,7 +709,7 @@ initProjectSongDeleteUi({
     }
 
     closeDeleteSongModal();
-    songPendingDeletion = null;
+    clearSongPendingDeletion();
 
     renderProjectSongsSelector();
     renderProjectOverviewSongsList();
@@ -4344,28 +4425,6 @@ window.addEventListener('beforeunload', () => {
   void musicMeter.stop();
 });
 
-async function handleDeepLink(url: string): Promise<void> {
-  const callView = $('call-view');
-  const waitingView = $('waiting-view');
-  if (inCall || callView?.classList.contains('active') || waitingView?.classList.contains('active')) {
-    // If JaMeet is already in an active session or waiting room,
-    // do not interrupt, leave, replace, or restart the current session.
-    return;
-  }
-  const code = normalizeMeetingCode(url);
-  if (meetingCodeSchema.safeParse(code).success) {
-    const joinInput = $<HTMLInputElement>('join-input');
-    if (joinInput) {
-      joinInput.value = code;
-    }
-    if (!auth.getUser()) {
-      pendingJoinCode = code;
-      openAuthView('login');
-    } else {
-      await prepareStudio({ type: 'join', code });
-    }
-  }
-}
 const desktopBridge = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
 desktopBridge?.onDeepLink?.((url) => void handleDeepLink(url));
 void desktopBridge?.getInitialDeepLink?.().then((url) => { if (url) void handleDeepLink(url); });
@@ -4381,28 +4440,8 @@ void enumerateAndPopulate().then(() => {
 // ======= PROJECTS SYSTEM =======
 
 function resetProjectTabs(): void {
-  isSongStudioOpen = false;
+  setIsSongStudioVisible(false);
   resetProjectTabsUi();
-}
-
-function renderProjectCollaboratorsView(): void {
-  renderProjectCollaborators(activeProject, auth.getUser(), {
-    onUpdateRole: (userId, targetRole) => {
-      void handleUpdateCollaboratorRole(userId, targetRole);
-    },
-    onRemoveCollaborator: (userId) => {
-      void handleRemoveCollaborator(userId);
-    }
-  });
-}
-
-// Delete Song Modal Handlers
-let songPendingDeletion: ProjectSongItem | null = null;
-
-function openDeleteSongModal(song: ProjectSongItem): void {
-  if (!activeProject || !canUserEditProject()) return;
-  songPendingDeletion = song;
-  renderDeleteSongModal(song.title);
 }
 
 // ========================================================
@@ -4418,125 +4457,18 @@ let lastSyncedNotes = '';
 let lastSyncedNotesBpm = '';
 let lastSyncedNotesKey = '';
 
-function canUserEditProject(): boolean {
-  return checkCanUserEditProject(activeProject, auth.getUser());
-}
-
-function applyWorkspacePermissions(): void {
-  const user = auth.getUser();
-  const canEdit = checkCanUserEditProject(activeProject, user);
-  const isOwner = checkIsProjectOwner(activeProject, user);
-  applyWorkspacePermissionsPresentation({ canEdit, isOwner });
-}
-
 // ========================================================
 // PROJECT WORKSPACE: MULTI-SONG TRACKS ARCHITECTURE
 // ========================================================
 function getActiveSong(): ProjectSongItem {
-  const now = Date.now();
-  if (!activeProject) {
-    return {
-      id: 'song-1',
-      title: 'Song 1',
-      order: 0,
-      lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: 0 }], content: '', updatedAt: 0 },
-      notes: { revision: 1, content: '', updatedAt: 0 },
-      structure: { revision: 1, sections: [], updatedAt: 0 },
-      createdAt: 0,
-      updatedAt: 0
-    };
-  }
-
-  if (!activeProject.workspace) {
-    activeProject.workspace = {
-      activeSongId: 'song-1',
-      songs: [],
-      lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now },
-      notes: { revision: 1, content: '', updatedAt: now },
-      structure: { revision: 1, sections: [], updatedAt: now },
-      tasks: { revision: 1, tasks: [], updatedAt: now }
-    };
-  }
-
-  const ws = activeProject.workspace;
-  if (!ws.songs || !Array.isArray(ws.songs) || ws.songs.length === 0) {
-    const initialSong: ProjectSongItem = {
-      id: 'song-1',
-      title: activeProject.name ? activeProject.name : 'Song 1',
-      order: 0,
-      lyrics: ws.lyrics || { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now },
-      notes: ws.notes || { revision: 1, content: '', updatedAt: now },
-      structure: ws.structure || { revision: 1, sections: [], updatedAt: now },
-      createdAt: now,
-      updatedAt: now
-    };
-    ws.songs = [initialSong];
-    ws.activeSongId = 'song-1';
-  }
-
-  const activeId = ws.activeSongId || ws.songs[0].id;
-  const song = ws.songs.find((s) => s && s.id === activeId) || ws.songs[0];
-  ws.activeSongId = song.id;
-
-  // Mirror active song's data to top-level workspace for seamless subsystem compatibility
-  ws.lyrics = song.lyrics;
-  ws.notes = song.notes;
-  ws.structure = song.structure;
-
-  return song;
+  return getActiveSongState(activeProject);
 }
 
-let isSongStudioOpen = false;
-let currentSongStudioTab: 'lyrics' | 'structure' | 'notes' = 'lyrics';
-
-function openSongStudio(songId?: string, targetTab: 'lyrics' | 'structure' | 'notes' = 'lyrics'): void {
+function openSongStudio(songId?: string, targetTab: SongStudioTab = 'lyrics'): void {
   if (songId && activeProject?.workspace && activeProject.workspace.activeSongId !== songId) {
     switchActiveSong(songId);
   }
-  isSongStudioOpen = true;
-  currentSongStudioTab = targetTab;
-
-  // 1. Hide main project tabs bar and non-song-studio panels
-  $('project-main-tabs-bar')?.classList.add('hidden');
-  document.querySelectorAll<HTMLElement>('.project-tab-panel').forEach((p) => {
-    if (!p.closest('#project-song-studio-view')) {
-      p.classList.add('hidden');
-    }
-  });
-
-  // 2. Show Song Studio View
-  const studioView = $('project-song-studio-view');
-  studioView?.classList.remove('hidden');
-
-  // 3. Update breadcrumb project name and active song title / quick switch
-  setText('song-nav-project-name', activeProject?.name || 'Project Overview');
-  renderSongStudioHeader();
-
-  // 4. Activate tab
-  document.querySelectorAll<HTMLButtonElement>('.song-studio-tab-btn').forEach((b) => {
-    b.classList.toggle('active', b.dataset.songTab === targetTab);
-  });
-  $('project-panel-lyrics')?.classList.toggle('hidden', targetTab !== 'lyrics');
-  $('project-panel-structure')?.classList.toggle('hidden', targetTab !== 'structure');
-  $('project-panel-notes')?.classList.toggle('hidden', targetTab !== 'notes');
-
-  if (targetTab === 'lyrics') {
-    setTimeout(() => updateLyricsDocumentPagination(), 20);
-  }
-
-  applyWorkspacePermissions();
-}
-
-function closeSongStudio(): void {
-  isSongStudioOpen = false;
-  $('project-song-studio-view')?.classList.add('hidden');
-  $('project-main-tabs-bar')?.classList.remove('hidden');
-
-  // Set project tabs to overview
-  switchProjectTab('overview');
-
-  applyWorkspacePermissions();
-  renderProjectOverviewSongsList();
+  openSongStudioUiView(targetTab);
 }
 
 function switchActiveSong(songId: string): void {
@@ -4576,53 +4508,8 @@ function switchActiveSong(songId: string): void {
 
 function createNewSong(title: string, autoOpenStudio: boolean = false): void {
   if (!activeProject || !canUserEditProject()) return;
-  const ws = activeProject.workspace || { songs: [] };
-  if (!ws.songs || !Array.isArray(ws.songs)) {
-    ws.songs = [];
-  }
-  const songs = ws.songs;
-  const now = Date.now();
-
-  if (songs.length === 0) {
-    const initSong: ProjectSongItem = {
-      id: 'song-1',
-      title: activeProject.name ? activeProject.name : 'Song 1',
-      order: 0,
-      lyrics: ws.lyrics || { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now },
-      notes: ws.notes || { revision: 1, content: '• ', bpm: '120 BPM', key: 'C Major', updatedAt: now },
-      structure: ws.structure || { revision: 1, sections: [], updatedAt: now },
-      createdAt: now,
-      updatedAt: now
-    };
-    songs.push(initSong);
-  }
-
   const newId = `song_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const cleanTitle = title.trim() || `Song ${songs.length + 1}`;
-
-  const newSong: ProjectSongItem = {
-    id: newId,
-    title: cleanTitle,
-    order: songs.length,
-    lyrics: {
-      revision: 1,
-      activeDocumentId: 'doc-main',
-      documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }],
-      content: '',
-      updatedAt: now
-    },
-    notes: { revision: 1, content: '• ', bpm: '120 BPM', key: 'C Major', updatedAt: now },
-    structure: { revision: 1, sections: [], updatedAt: now },
-    createdAt: now,
-    updatedAt: now
-  };
-
-  songs.push(newSong);
-  ws.songs = songs;
-  ws.activeSongId = newId;
-  ws.lyrics = newSong.lyrics;
-  ws.notes = newSong.notes;
-  ws.structure = newSong.structure;
+  mutateCreateSong(activeProject, title, newId);
 
   syncWorkspaceInputsFromProject(true);
   void saveSongsWorkspace();
@@ -4636,31 +4523,9 @@ function createNewSong(title: string, autoOpenStudio: boolean = false): void {
 
 function duplicateSong(songId: string): void {
   if (!activeProject?.workspace?.songs) return;
-  const ws = activeProject.workspace;
-  const source = ws.songs.find((s) => s.id === songId);
-  if (!source) return;
-
   const newId = `song_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const now = Date.now();
-  const copySong: ProjectSongItem = {
-    id: newId,
-    title: `${source.title} (Copy)`,
-    order: ws.songs.length,
-    lyrics: JSON.parse(JSON.stringify(source.lyrics)),
-    notes: JSON.parse(JSON.stringify(source.notes)),
-    structure: JSON.parse(JSON.stringify(source.structure)),
-    createdAt: now,
-    updatedAt: now
-  };
-  copySong.lyrics.revision = 1;
-  copySong.notes.revision = 1;
-  copySong.structure.revision = 1;
-
-  ws.songs.push(copySong);
-  ws.activeSongId = newId;
-  ws.lyrics = copySong.lyrics;
-  ws.notes = copySong.notes;
-  ws.structure = copySong.structure;
+  const result = mutateDuplicateSong(activeProject, songId, newId);
+  if (!result) return;
 
   syncWorkspaceInputsFromProject(true);
   void saveSongsWorkspace();
@@ -4689,14 +4554,8 @@ function deleteSong(songId: string): void {
 
 function reorderSongs(sourceId: string, targetId: string): void {
   if (!activeProject?.workspace?.songs) return;
-  const songs = activeProject.workspace.songs;
-  const fromIdx = songs.findIndex((s) => s && s.id === sourceId);
-  const toIdx = songs.findIndex((s) => s && s.id === targetId);
-  if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
-
-  const [moved] = songs.splice(fromIdx, 1);
-  songs.splice(toIdx, 0, moved);
-  songs.forEach((s, i) => { s.order = i; });
+  const changed = mutateReorderSongs(activeProject, sourceId, targetId);
+  if (!changed) return;
 
   renderProjectSongsSelector();
   void saveSongsWorkspace();
@@ -4704,17 +4563,15 @@ function reorderSongs(sourceId: string, targetId: string): void {
 
 function renameSong(songId: string, newTitle: string): void {
   if (!activeProject?.workspace?.songs || !canUserEditProject()) return;
-  const song = activeProject.workspace.songs.find((s) => s.id === songId);
-  if (!song) return;
-  song.title = newTitle;
+  const changed = mutateRenameSong(activeProject, songId, newTitle);
+  if (!changed) return;
   void saveSongsWorkspace();
 }
 
 function toggleArchiveSong(songId: string, isArchived: boolean): void {
   if (!activeProject?.workspace?.songs || !canUserEditProject()) return;
-  const song = activeProject.workspace.songs.find((s) => s.id === songId);
-  if (!song) return;
-  song.archived = isArchived;
+  const changed = mutateToggleArchiveSong(activeProject, songId, isArchived);
+  if (!changed) return;
   renderProjectSongsSelector();
   renderProjectOverviewSongsList();
   void saveSongsWorkspace();
@@ -6101,12 +5958,8 @@ function updateSubtaskTitle(taskId: string, subtaskId: string, title: string): v
 
 function updateSongCustomization(songId: string, changes: { icon?: string; color?: string }): void {
   if (!activeProject?.workspace?.songs) return;
-  const song = activeProject.workspace.songs.find((s) => s.id === songId);
-  if (!song) return;
-
-  if (changes.icon) song.icon = changes.icon;
-  if (changes.color) song.color = changes.color;
-  song.updatedAt = Date.now();
+  const changed = mutateSongCustomization(activeProject, songId, changes);
+  if (!changed) return;
 
   void saveSongsWorkspace();
   renderTasksWorkspace();
