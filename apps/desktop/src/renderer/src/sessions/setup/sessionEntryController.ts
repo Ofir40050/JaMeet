@@ -68,14 +68,13 @@ export async function enterSession(options: SessionEntryControllerOptions): Prom
     const guestName = options.getGuestName() || undefined;
     const waitingRoomEnabled = $<HTMLInputElement>('setup-waiting-room')?.checked ?? false;
     const participantId = options.getParticipantId();
-    const metadata = options.getMetadata();
     const activeProjectId = options.getActiveProjectId();
 
     let ack: MeetingAck =
       pending.type === 'create'
         ? await options.onSignalingCreate(
             participantId,
-            metadata,
+            options.getMetadata(),
             token,
             guestName,
             activeProjectId,
@@ -84,7 +83,7 @@ export async function enterSession(options: SessionEntryControllerOptions): Prom
         : await options.onSignalingJoin(
             pending.code,
             participantId,
-            metadata,
+            options.getMetadata(),
             token,
             guestName
           );
@@ -95,7 +94,7 @@ export async function enterSession(options: SessionEntryControllerOptions): Prom
         pending.type === 'create'
           ? await options.onSignalingCreate(
               participantId,
-              metadata,
+              options.getMetadata(),
               token,
               guestName,
               activeProjectId,
@@ -104,7 +103,7 @@ export async function enterSession(options: SessionEntryControllerOptions): Prom
           : await options.onSignalingJoin(
               pending.code,
               participantId,
-              metadata,
+              options.getMetadata(),
               token,
               guestName
             );
