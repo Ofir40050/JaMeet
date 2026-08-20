@@ -188,12 +188,8 @@ export function syncNotesControls(
   if (values.content !== undefined) {
     const projectNotesInput = $<HTMLTextAreaElement>('project-notes-input');
     const sessionNotesInput = $<HTMLTextAreaElement>('session-notes-input');
-    if (projectNotesInput && (force || document.activeElement !== projectNotesInput)) {
-      applyTextareaUpdatePreservingCursor(projectNotesInput, values.content);
-    }
-    if (sessionNotesInput && (force || document.activeElement !== sessionNotesInput)) {
-      applyTextareaUpdatePreservingCursor(sessionNotesInput, values.content);
-    }
+    if (projectNotesInput) applyTextareaUpdatePreservingCursor(projectNotesInput, values.content);
+    if (sessionNotesInput) applyTextareaUpdatePreservingCursor(sessionNotesInput, values.content);
   }
 
   if (values.bpm !== undefined) {
