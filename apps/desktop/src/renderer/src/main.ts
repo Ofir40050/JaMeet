@@ -256,6 +256,10 @@ initAuthUi({
     } else {
       showView('home-view');
     }
+  },
+  onRegister: async (values) => {
+    await auth.register(values);
+    showView('home-view');
   }
 });
 initProjectsListUi({
@@ -4012,93 +4016,6 @@ for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="set
     void syncAllVoiceMics(prefs.mode);
   });
 }
-
-// Dedicated Auth View actions
-
-$('btn-view-submit-register')?.addEventListener('click', async () => {
-  const submitBtn = $<HTMLButtonElement>('btn-view-submit-register');
-  const displayName = $<HTMLInputElement>('view-reg-display-name')?.value.trim();
-  const username = $<HTMLInputElement>('view-reg-username')?.value.trim();
-  const phoneCode = $<HTMLSelectElement>('view-reg-phone-code')?.value?.replace('-ca', '') || '+1';
-  const rawPhone = $<HTMLInputElement>('view-reg-phone-number')?.value.trim();
-  const phoneNumber = rawPhone ? `${phoneCode} ${rawPhone}` : undefined;
-  const email = $<HTMLInputElement>('view-reg-email')?.value.trim();
-  const emailConfirm = $<HTMLInputElement>('view-reg-email-confirm')?.value.trim();
-  const password = $<HTMLInputElement>('view-reg-password')?.value;
-  const passwordConfirm = $<HTMLInputElement>('view-reg-password-confirm')?.value;
-
-  const missing: string[] = [];
-  if (!displayName) missing.push('view-reg-display-name');
-  if (!username) missing.push('view-reg-username');
-  if (!email) missing.push('view-reg-email');
-  if (!emailConfirm) missing.push('view-reg-email-confirm');
-  if (!password) missing.push('view-reg-password');
-  if (!passwordConfirm) missing.push('view-reg-password-confirm');
-
-  if (missing.length > 0) {
-    showAuthFormError('view-reg-error', 'Please fill out all registration fields.', missing);
-    $<HTMLInputElement>(missing[0])?.focus();
-    return;
-  }
-  if (!/^[a-zA-Z0-9 .'-]+$/.test(displayName!)) {
-    showAuthFormError('view-reg-error', 'Display Name must contain only English letters and numbers.', ['view-reg-display-name']);
-    $<HTMLInputElement>('view-reg-display-name')?.focus();
-    return;
-  }
-  if (!/^[a-zA-Z0-9_]+$/.test(username!)) {
-    showAuthFormError('view-reg-error', 'Username must contain only English letters, numbers, and underscores.', ['view-reg-username']);
-    $<HTMLInputElement>('view-reg-username')?.focus();
-    return;
-  }
-  if (username!.length < 3) {
-    showAuthFormError('view-reg-error', 'Username must be at least 3 characters long.', ['view-reg-username']);
-    $<HTMLInputElement>('view-reg-username')?.focus();
-    return;
-  }
-  if (email && !email.includes('@')) {
-    showAuthFormError('view-reg-error', 'Please enter a valid email address.', ['view-reg-email']);
-    $<HTMLInputElement>('view-reg-email')?.focus();
-    return;
-  }
-  if (email!.toLowerCase() !== emailConfirm!.toLowerCase()) {
-    showAuthFormError('view-reg-error', 'Email addresses do not match.', ['view-reg-email-confirm']);
-    $<HTMLInputElement>('view-reg-email-confirm')?.focus();
-    return;
-  }
-  if (password !== passwordConfirm) {
-    showAuthFormError('view-reg-error', 'Passwords do not match.', ['view-reg-password-confirm']);
-    $<HTMLInputElement>('view-reg-password-confirm')?.focus();
-    return;
-  }
-  if (password!.length < 8) {
-    showAuthFormError('view-reg-error', 'Password must be at least 8 characters long.', ['view-reg-password']);
-    $<HTMLInputElement>('view-reg-password')?.focus();
-    return;
-  }
-
-  clearAuthFormError('view-reg-error', ['view-reg-display-name', 'view-reg-username', 'view-reg-email', 'view-reg-email-confirm', 'view-reg-password', 'view-reg-password-confirm']);
-
-  const originalHtml = submitBtn ? submitBtn.innerHTML : '<span>Create Account</span>';
-  try {
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span>Creating Account…</span>';
-    }
-    await auth.register({ displayName: displayName!, username: username!, email: email!, password: password!, phoneNumber });
-    showView('home-view');
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Registration failed.';
-    const invalidIds: string[] = [];
-    if (msg.toLowerCase().includes('username')) invalidIds.push('view-reg-username');
-    if (msg.toLowerCase().includes('email')) invalidIds.push('view-reg-email');
-    showAuthFormError('view-reg-error', msg, invalidIds);
-  } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = originalHtml;
-    }
-  }
-});
 
 let pendingJoinCode = '';
 
