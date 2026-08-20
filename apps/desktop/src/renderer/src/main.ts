@@ -73,6 +73,11 @@ import {
   setRenameProjectError,
   setRenameProjectBusy
 } from './projectRenameUi';
+import {
+  initProjectCollaboratorModalUi,
+  closeAddCollaboratorModal,
+  setAddCollaboratorError
+} from './projectCollaboratorModalUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -236,6 +241,21 @@ initProjectRenameUi({
       setRenameProjectError(err instanceof Error ? err.message : 'Failed to update project.');
     } finally {
       setRenameProjectBusy(false);
+    }
+  }
+});
+initProjectCollaboratorModalUi({
+  onAddCollaborator: async ({ usernameOrEmail, role }) => {
+    if (!activeProject) return;
+    const token = auth.getToken();
+    if (!token) return;
+    try {
+      setAddCollaboratorError('');
+      activeProject = await projectsApi.addCollaborator(token, activeProject.id, usernameOrEmail, role);
+      renderProjectView();
+      closeAddCollaboratorModal();
+    } catch (err) {
+      setAddCollaboratorError(err instanceof Error ? err.message : 'Failed to add collaborator.');
     }
   }
 });
@@ -4706,38 +4726,6 @@ $('btn-confirm-delete-project')?.addEventListener('click', async () => {
       confirmBtn.disabled = false;
       confirmBtn.textContent = 'Delete Project';
     }
-  }
-});
-
-// Add Collaborator
-const openAddCollabModal = () => {
-  const input = $<HTMLInputElement>('add-collab-username');
-  if (input) input.value = '';
-  const roleSelect = $<HTMLSelectElement>('add-collab-role');
-  if (roleSelect) roleSelect.value = 'editor';
-  setText('add-collab-error', '');
-  $('add-collab-modal')?.classList.remove('hidden');
-  input?.focus();
-};
-$('btn-project-add-collab')?.addEventListener('click', openAddCollabModal);
-$('btn-project-add-collab-tab')?.addEventListener('click', openAddCollabModal);
-
-$('btn-close-add-collab')?.addEventListener('click', () => $('add-collab-modal')?.classList.add('hidden'));
-$('btn-cancel-add-collab')?.addEventListener('click', () => $('add-collab-modal')?.classList.add('hidden'));
-$('btn-confirm-add-collab')?.addEventListener('click', async () => {
-  if (!activeProject) return;
-  const usernameOrEmail = $<HTMLInputElement>('add-collab-username')?.value.trim();
-  if (!usernameOrEmail) { setText('add-collab-error', 'Please enter a username or email.'); return; }
-  const role = $<HTMLSelectElement>('add-collab-role')?.value || 'editor';
-  const token = auth.getToken();
-  if (!token) return;
-  try {
-    setText('add-collab-error', '');
-    activeProject = await projectsApi.addCollaborator(token, activeProject.id, usernameOrEmail, role);
-    renderProjectView();
-    $('add-collab-modal')?.classList.add('hidden');
-  } catch (err) {
-    setText('add-collab-error', err instanceof Error ? err.message : 'Failed to add collaborator.');
   }
 });
 
