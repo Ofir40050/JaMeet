@@ -131,6 +131,7 @@ export interface AuthUiOptions {
   onOpenSignIn?: () => void;
   onOpenRegister?: () => void;
   onNavigateHome?: () => void;
+  onLogout?: () => Promise<void> | void;
 }
 
 let listenersBound = false;
@@ -161,6 +162,12 @@ export function initAuthUi(options: AuthUiOptions = {}): void {
     authOptions.onNavigateHome?.();
   });
   $('btn-view-reg-as-guest')?.addEventListener('click', () => {
+    authOptions.onNavigateHome?.();
+  });
+
+  $('btn-auth-logout')?.addEventListener('click', async () => {
+    await authOptions.onLogout?.();
+    $<HTMLDialogElement>('auth-dialog')?.close();
     authOptions.onNavigateHome?.();
   });
 

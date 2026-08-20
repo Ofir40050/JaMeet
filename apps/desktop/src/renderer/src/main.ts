@@ -243,7 +243,10 @@ initSettingsUi({
 initAuthUi({
   onOpenSignIn: () => openAuthView('login'),
   onOpenRegister: () => openAuthView('register'),
-  onNavigateHome: () => showView('home-view')
+  onNavigateHome: () => showView('home-view'),
+  onLogout: async () => {
+    await auth.logout();
+  }
 });
 initProjectsListUi({
   onOpenProject: (projectId) => {
@@ -4124,12 +4127,6 @@ $('btn-view-submit-register')?.addEventListener('click', async () => {
       submitBtn.innerHTML = originalHtml;
     }
   }
-});
-
-$('btn-auth-logout')?.addEventListener('click', async () => {
-  await auth.logout();
-  $<HTMLDialogElement>('auth-dialog')?.close();
-  showView('home-view');
 });
 
 let pendingJoinCode = '';
