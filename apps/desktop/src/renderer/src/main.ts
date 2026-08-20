@@ -1184,12 +1184,6 @@ initLyricsUi({
     deleteLyricsDoc(docId);
   }
 });
-initStructureController({
-  getSections: () => getStructureSections(),
-  onDebounceSaveStructure: () => {
-    debounceSaveStructure();
-  }
-});
 initStructureUi({
   getSections: () => getStructureSections(),
   canEdit: () => canUserEditProject(),
