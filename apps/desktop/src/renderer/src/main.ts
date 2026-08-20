@@ -96,6 +96,12 @@ import {
   setNewProjectError,
   setNewProjectBusy
 } from './projectCreateUi';
+import {
+  initCallShortcutsUi,
+  toggleShortcutsModal,
+  closeShortcutsModal,
+  isShortcutsModalOpen
+} from './callShortcutsUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -380,6 +386,7 @@ initProjectCreateUi({
     }
   }
 });
+initCallShortcutsUi();
 let myIdentity: ParticipantIdentity | null = null;
 let peerIdentity: ParticipantIdentity | null = null;
 let hostIdentity: ParticipantIdentity | null = null;
@@ -3374,33 +3381,11 @@ function isTypingContext(target: EventTarget | null): boolean {
   return false;
 }
 
-function toggleShortcutsModal(show?: boolean): void {
-  const modal = $('call-shortcuts-modal');
-  if (!modal) return;
-  const shouldOpen = show !== undefined ? show : modal.classList.contains('hidden');
-  modal.classList.toggle('hidden', !shouldOpen);
-}
-
-$('call-shortcuts-btn')?.addEventListener('click', () => {
-  toggleShortcutsModal();
-});
-
-$('btn-close-shortcuts-modal')?.addEventListener('click', () => {
-  toggleShortcutsModal(false);
-});
-
-$('call-shortcuts-modal')?.addEventListener('click', (e) => {
-  if (e.target === $('call-shortcuts-modal')) {
-    toggleShortcutsModal(false);
-  }
-});
-
 window.addEventListener('keydown', (e) => {
   // Always handle Escape
   if (e.key === 'Escape') {
-    const shortcutsModal = $('call-shortcuts-modal');
-    if (shortcutsModal && !shortcutsModal.classList.contains('hidden')) {
-      toggleShortcutsModal(false);
+    if (isShortcutsModalOpen()) {
+      closeShortcutsModal();
       return;
     }
     document.querySelectorAll<HTMLDialogElement>('dialog[open]').forEach((d) => d.close());
