@@ -30,6 +30,7 @@ let remoteVoiceProducerProcess: import('child_process').ChildProcess | null = nu
 let isRemoteVoiceProducerDraining = false;
 let pendingRemoteVoicePcmPacket: Buffer | null = null;
 let remoteVoiceRouteGeneration = 0;
+let remoteVoiceBridgeStartupId = 0;
 
 const JAMEET_PRODUCER_MAGIC = 0x4A4D5250;
 const JAMEET_CMD_WRITE_FRAMES = 1;
@@ -37,6 +38,7 @@ const JAMEET_CMD_SET_ACTIVE = 2;
 const JAMEET_CMD_STOP = 3;
 
 function stopRemoteVoiceProducer(): void {
+  remoteVoiceBridgeStartupId++;
   remoteVoiceRouteGeneration++;
   pendingRemoteVoicePcmPacket = null;
   isRemoteVoiceProducerDraining = false;
@@ -1429,11 +1431,18 @@ function getDesktopAppPlatform(): string {
     ipcMain.handle('start-remote-voice-bridge', async (event) => {
       if (!isTrustedSender(event)) return false;
       if (process.platform !== 'darwin' && process.platform !== 'win32') return false;
+
+      const requestId = ++remoteVoiceBridgeStartupId;
+
       if (remoteVoiceProducerProcess && !remoteVoiceProducerProcess.killed) return true;
 
       const { spawn, execSync } = await import('child_process');
       const { join } = await import('path');
       const { existsSync, chmodSync } = await import('fs');
+
+      if (requestId !== remoteVoiceBridgeStartupId) return false;
+      if (remoteVoiceProducerProcess && !remoteVoiceProducerProcess.killed) return true;
+
       const binPath = getNativeBinaryPath('jameet-remote-producer');
       const srcPath = join(__dirname, '../../src/main/bridge/jameet-remote-producer.c');
       const bridgeDir = join(__dirname, '../../src/main/bridge');
@@ -1448,14 +1457,32 @@ function getDesktopAppPlatform(): string {
         }
       }
 
+      if (requestId !== remoteVoiceBridgeStartupId) return false;
+
       if (!existsSync(binPath)) {
         console.error(`jameet-remote-producer binary not found: ${binPath}`);
         return false;
       }
       try { chmodSync(binPath, 0o755); } catch {}
 
+      if (requestId !== remoteVoiceBridgeStartupId) return false;
+
       try {
         const child = spawn(binPath, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+        if (requestId !== remoteVoiceBridgeStartupId) {
+          try {
+            if (!child.killed) child.kill('SIGTERM');
+          } catch {}
+          return false;
+        }
+
+        if (remoteVoiceProducerProcess && remoteVoiceProducerProcess !== child) {
+          try {
+            if (!remoteVoiceProducerProcess.killed) remoteVoiceProducerProcess.kill('SIGTERM');
+          } catch {}
+        }
+
         remoteVoiceProducerProcess = child;
         remoteVoiceRouteGeneration++;
         isRemoteVoiceProducerDraining = false;
@@ -1484,7 +1511,9 @@ function getDesktopAppPlatform(): string {
 
         return true;
       } catch (err) {
-        console.error('[JaMeetProducer] Spawn error:', err);
+        if (requestId === remoteVoiceBridgeStartupId) {
+          console.error('[JaMeetProducer] Spawn error:', err);
+        }
         return false;
       }
     });
