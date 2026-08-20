@@ -16,7 +16,6 @@ import {
   updateProfileLivePreview,
   switchProfileSubtab,
   showProfileFeedback,
-  toggleAccountMenu,
   closeAccountMenu,
   getEditingAvatarColor,
   setEditingAvatarColor,
@@ -3692,23 +3691,6 @@ $('nav-btn-signin')?.addEventListener('click', () => openAuthView('login'));
 $('nav-btn-register')?.addEventListener('click', () => openAuthView('register'));
 $('hero-btn-signin')?.addEventListener('click', () => openAuthView('login'));
 $('hero-btn-register')?.addEventListener('click', () => openAuthView('register'));
-
-$('nav-profile-pill')?.addEventListener('click', (e) => {
-  e.stopPropagation();
-  toggleAccountMenu($('nav-profile-pill'));
-});
-$('project-user-btn')?.addEventListener('click', (e) => {
-  e.stopPropagation();
-  toggleAccountMenu($('project-user-btn'));
-});
-$('setup-user-btn')?.addEventListener('click', (e) => {
-  e.stopPropagation();
-  toggleAccountMenu($('setup-user-btn'));
-});
-$('call-user-btn')?.addEventListener('click', (e) => {
-  e.stopPropagation();
-  toggleAccountMenu($('call-user-btn'));
-});
 $('home-view-profile-btn')?.addEventListener('click', () => openSettings('account'));
 
 // Account Menu action buttons
@@ -3727,27 +3709,6 @@ $('account-menu-logout-btn')?.addEventListener('click', async () => {
   closeAccountMenu();
   await auth.logout();
   showView('home-view');
-});
-
-// Close account menu on click-outside or Escape
-document.addEventListener('click', (e) => {
-  const menu = $('account-menu');
-  if (!menu || menu.classList.contains('hidden')) return;
-  const target = e.target as HTMLElement;
-  if (
-    !menu.contains(target) &&
-    !target.closest('#nav-profile-pill') &&
-    !target.closest('#project-user-btn') &&
-    !target.closest('#setup-user-btn') &&
-    !target.closest('#call-user-btn')
-  ) {
-    closeAccountMenu();
-  }
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    closeAccountMenu();
-  }
 });
 
 // Settings navigation listeners

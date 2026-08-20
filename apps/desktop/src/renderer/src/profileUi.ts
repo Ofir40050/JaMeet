@@ -242,7 +242,7 @@ export function initProfileUi(opts: ProfileUiOptions): void {
     showProfileFeedback('Photo removed. Click "Save Profile Changes" to apply.', 'info');
   });
 
-  // Account Menu Triggers
+  // Account Menu Triggers (4 entry points)
   $('nav-profile-pill')?.addEventListener('click', (e) => {
     e.stopPropagation();
     toggleAccountMenu($('nav-profile-pill'));
@@ -251,18 +251,25 @@ export function initProfileUi(opts: ProfileUiOptions): void {
     e.stopPropagation();
     toggleAccountMenu($('project-user-btn'));
   });
+  $('setup-user-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleAccountMenu($('setup-user-btn'));
+  });
   $('call-user-btn')?.addEventListener('click', (e) => {
     e.stopPropagation();
     toggleAccountMenu($('call-user-btn'));
   });
 
-  // Dismiss account menu on outside click or Escape
+  // Close account menu on click-outside or Escape
   document.addEventListener('click', (e) => {
+    const menu = $('account-menu');
+    if (!menu || menu.classList.contains('hidden')) return;
     const target = e.target as HTMLElement;
     if (
-      !target.closest('#account-menu') &&
+      !menu.contains(target) &&
       !target.closest('#nav-profile-pill') &&
       !target.closest('#project-user-btn') &&
+      !target.closest('#setup-user-btn') &&
       !target.closest('#call-user-btn')
     ) {
       closeAccountMenu();
