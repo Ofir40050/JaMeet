@@ -61,6 +61,10 @@ import {
   switchProjectTab,
   initProjectTabsUi
 } from './projectTabsUi';
+import {
+  initProjectMenuUi,
+  closeProjectMenu
+} from './projectMenuUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -172,6 +176,7 @@ initProjectTabsUi({
     renderProjectOverviewSongsList();
   }
 });
+initProjectMenuUi();
 let myIdentity: ParticipantIdentity | null = null;
 let peerIdentity: ParticipantIdentity | null = null;
 let hostIdentity: ParticipantIdentity | null = null;
@@ -4553,35 +4558,9 @@ $('btn-sessions-next-page')?.addEventListener('click', () => {
   renderProjectSessions();
 });
 
-// Project Menu
-let projectMenuOpen = false;
-$('btn-project-menu')?.addEventListener('click', (e) => {
-  e.stopPropagation();
-  const dropdown = $('project-menu-dropdown');
-  if (!dropdown) return;
-  projectMenuOpen = !projectMenuOpen;
-  dropdown.classList.toggle('hidden', !projectMenuOpen);
-  if (projectMenuOpen) {
-    const btn = $('btn-project-menu');
-    if (btn) {
-      const rect = btn.getBoundingClientRect();
-      dropdown.style.top = `${rect.bottom + 6}px`;
-      dropdown.style.right = `${window.innerWidth - rect.right}px`;
-      dropdown.style.left = 'auto';
-    }
-  }
-});
-document.addEventListener('click', () => {
-  if (projectMenuOpen) {
-    $('project-menu-dropdown')?.classList.add('hidden');
-    projectMenuOpen = false;
-  }
-});
-
 const openRenameProjectModal = () => {
   if (!activeProject) return;
-  $('project-menu-dropdown')?.classList.add('hidden');
-  projectMenuOpen = false;
+  closeProjectMenu();
   $<HTMLInputElement>('rename-project-name').value = activeProject.name;
   $<HTMLTextAreaElement>('rename-project-desc').value = activeProject.description || '';
   setText('rename-project-error', '');
@@ -4625,8 +4604,7 @@ $('btn-save-rename-project')?.addEventListener('click', async () => {
 
 $('btn-project-archive')?.addEventListener('click', async () => {
   if (!activeProject) return;
-  $('project-menu-dropdown')?.classList.add('hidden');
-  projectMenuOpen = false;
+  closeProjectMenu();
   const token = auth.getToken();
   if (!token) return;
   try {
@@ -4644,8 +4622,7 @@ $('btn-project-archive')?.addEventListener('click', async () => {
 
 $('btn-project-delete')?.addEventListener('click', () => {
   if (!activeProject) return;
-  $('project-menu-dropdown')?.classList.add('hidden');
-  projectMenuOpen = false;
+  closeProjectMenu();
   
   const targetPhrase = `delete ${activeProject.name}`;
   setText('delete-project-name-confirm', activeProject.name);
