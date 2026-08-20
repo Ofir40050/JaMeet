@@ -1,0 +1,1034 @@
+import type { ChannelEqBandConfig, ChannelEqConfig } from './types';
+import { BAND_COLORS, BAND_TYPE_NAMES } from './constants';
+import { getChannelEqConfig, setChannelEqConfig } from './config';
+import type { ChannelEqDspInstance } from './dspInstance';
+
+// ========================================================
+// CHANNEL EQ PLUGIN MODAL UI & INTERACTIVE GRAPH CONTROLLER
+// ========================================================
+
+interface ChannelEqModalTarget {
+  channelId: string;
+  slotIndex: number;
+  channelName: string;
+  channelColor: string;
+  dsp: ChannelEqDspInstance | null;
+  onConfigChange: () => void;
+}
+
+export class ChannelEqPluginModal {
+  private modalEl: HTMLElement | null = null;
+  private canvasEl: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
+  private currentTarget: ChannelEqModalTarget | null = null;
+
+  private selectedBandId = 4; // Default to Mid Band (Band 4)
+  private hoveredBandId: number | null = null;
+  private isDragging = false;
+  private dragBandId: number | null = null;
+  private dragStartY = 0;
+  private dragStartVal = 0;
+
+  private rtaEnabled = true;
+  private animFrameId: number | null = null;
+
+  private readonly NUM_POINTS = 512;
+  private readonly freqs = new Float32Array(512);
+  private readonly dbCurve = new Float32Array(512);
+  private readonly rtaBuffer = new Uint8Array(1024);
+
+  constructor() {
+    // Generate 512 logarithmic frequency points from 20 Hz to 20000 Hz
+    const minLog = Math.log10(20);
+    const maxLog = Math.log10(20000);
+    for (let i = 0; i < this.NUM_POINTS; i++) {
+      const logF = minLog + (i / (this.NUM_POINTS - 1)) * (maxLog - minLog);
+      this.freqs[i] = Math.pow(10, logF);
+    }
+  }
+
+  private freqToX(freq: number, width: number): number {
+    const minLog = Math.log10(20);
+    const maxLog = Math.log10(20000);
+    const logF = Math.log10(Math.max(20, Math.min(20000, freq)));
+    return ((logF - minLog) / (maxLog - minLog)) * width;
+  }
+
+  private xToFreq(x: number, width: number): number {
+    const minLog = Math.log10(20);
+    const maxLog = Math.log10(20000);
+    const norm = Math.max(0, Math.min(1, x / width));
+    return Math.pow(10, minLog + norm * (maxLog - minLog));
+  }
+
+  private dbToY(db: number, height: number): number {
+    // +24 dB is top (y=0), -24 dB is bottom (y=height), 0 dB is center (y=height/2)
+    const norm = (24 - db) / 48; // 0 for +24, 0.5 for 0, 1.0 for -24
+    return Math.max(0, Math.min(height, norm * height));
+  }
+
+  private yToDb(y: number, height: number): number {
+    const norm = y / height;
+    return Math.max(-24, Math.min(24, 24 - norm * 48));
+  }
+
+  open(
+    channelId: string,
+    slotIndex: number,
+    channelName: string,
+    channelColor: string,
+    dspGetter: () => ChannelEqDspInstance | undefined,
+    onConfigChange: () => void
+  ): void {
+    const dsp = dspGetter() || null;
+
+    this.currentTarget = {
+      channelId,
+      slotIndex,
+      channelName,
+      channelColor,
+      dsp,
+      onConfigChange
+    };
+
+    this.ensureModalMarkup();
+    this.updateHeaderVisuals();
+    this.renderBandControls();
+    this.showModal();
+    this.startVisualizer();
+  }
+
+  close(): void {
+    this.stopVisualizer();
+    if (this.modalEl) {
+      this.modalEl.classList.add('hidden');
+    }
+    this.currentTarget = null;
+    this.isDragging = false;
+    this.dragBandId = null;
+  }
+
+  isOpen(): boolean {
+    return this.currentTarget !== null && !this.modalEl?.classList.contains('hidden');
+  }
+
+  private ensureModalMarkup(): void {
+    if (this.modalEl) return;
+
+    let el = document.getElementById('channel-eq-plugin-modal');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'channel-eq-plugin-modal';
+      el.className = 'channel-eq-modal hidden';
+      document.body.appendChild(el);
+    }
+    this.modalEl = el;
+
+    this.modalEl.innerHTML = `
+      <div class="channel-eq-dialog" role="dialog" aria-label="Channel EQ Plugin">
+        <!-- Top Bar -->
+        <div class="channel-eq-header">
+          <div class="channel-eq-title-group">
+            <span class="channel-eq-icon-badge">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/>
+                <circle cx="4" cy="12" r="2"/><circle cx="12" cy="10" r="2"/><circle cx="20" cy="14" r="2"/>
+              </svg>
+            </span>
+            <div class="channel-eq-titles">
+              <div class="channel-eq-main-title">
+                <span class="channel-eq-track-name">Track</span>
+                <span class="channel-eq-slot-badge">Slot 1 - Channel EQ</span>
+              </div>
+              <div class="channel-eq-sub-title">7-Band Precision Audio Filter &amp; Spectrum Visualizer</div>
+            </div>
+          </div>
+
+          <div class="channel-eq-header-actions">
+            <button type="button" id="btn-eq-rta-toggle" class="btn-eq-tool active" title="Toggle Real-Time Spectrum Analyzer">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2 12h3v8H2v-8Zm6-6h3v14H8V6Zm6-4h3v18h-3V2Zm6 9h3v9h-3v-9Z"/></svg>
+              <span>RTA</span>
+            </button>
+            <button type="button" id="btn-eq-flat" class="btn-eq-tool" title="Reset All Bands to 0 dB Flat">
+              <span>Flat</span>
+            </button>
+            <button type="button" id="btn-eq-global-bypass" class="btn-eq-bypass" title="Master EQ Bypass (Bypass all bands)">
+              <span class="eq-power-dot"></span>
+              <span>Bypass</span>
+            </button>
+            <button type="button" id="btn-close-channel-eq" class="eq-close-btn" aria-label="Close Channel EQ">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Central Display Viewport -->
+        <div class="channel-eq-display-viewport">
+          <canvas id="channel-eq-canvas" class="channel-eq-canvas"></canvas>
+          <div id="channel-eq-readout-pill" class="channel-eq-readout-pill hidden"></div>
+          <div id="channel-eq-bypass-overlay" class="channel-eq-bypass-overlay hidden">
+            <span>MASTER EQ BYPASSED</span>
+          </div>
+        </div>
+
+        <!-- Bottom 7-Band Parameter Strip -->
+        <div id="channel-eq-bands-rack" class="channel-eq-bands-rack"></div>
+
+        <!-- Footer Bar -->
+        <div class="channel-eq-footer">
+          <div id="channel-eq-status-hint" class="channel-eq-status-hint">
+            Drag band handles to adjust Freq &amp; Gain &bull; Scroll wheel modifies Q &bull; Double-click resets band
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.canvasEl = this.modalEl.querySelector<HTMLCanvasElement>('#channel-eq-canvas');
+    if (this.canvasEl) {
+      this.ctx = this.canvasEl.getContext('2d');
+    }
+
+    this.bindEvents();
+  }
+
+  private updateHeaderVisuals(): void {
+    if (!this.modalEl || !this.currentTarget) return;
+
+    const trackNameEl = this.modalEl.querySelector<HTMLElement>('.channel-eq-track-name');
+    const slotBadgeEl = this.modalEl.querySelector<HTMLElement>('.channel-eq-slot-badge');
+    const bypassBtn = this.modalEl.querySelector<HTMLButtonElement>('#btn-eq-global-bypass');
+    const rtaBtn = this.modalEl.querySelector<HTMLButtonElement>('#btn-eq-rta-toggle');
+    const bypassOverlay = this.modalEl.querySelector<HTMLElement>('#channel-eq-bypass-overlay');
+
+    const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+
+    if (trackNameEl) {
+      trackNameEl.textContent = this.currentTarget.channelName;
+      trackNameEl.style.color = this.currentTarget.channelColor || '#38bdf8';
+    }
+
+    if (slotBadgeEl) {
+      slotBadgeEl.textContent = `Slot ${this.currentTarget.slotIndex + 1} - Channel EQ`;
+    }
+
+    if (bypassBtn) {
+      if (config.globalBypass) {
+        bypassBtn.classList.add('is-bypassed');
+      } else {
+        bypassBtn.classList.remove('is-bypassed');
+      }
+    }
+
+    if (bypassOverlay) {
+      if (config.globalBypass) {
+        bypassOverlay.classList.remove('hidden');
+      } else {
+        bypassOverlay.classList.add('hidden');
+      }
+    }
+
+    if (rtaBtn) {
+      if (this.rtaEnabled) {
+        rtaBtn.classList.add('active');
+      } else {
+        rtaBtn.classList.remove('active');
+      }
+    }
+  }
+
+  private renderBandControls(): void {
+    if (!this.modalEl || !this.currentTarget) return;
+    const rack = this.modalEl.querySelector<HTMLElement>('#channel-eq-bands-rack');
+    if (!rack) return;
+
+    const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+    rack.innerHTML = '';
+
+    config.bands.forEach((band) => {
+      const isSelected = band.id === this.selectedBandId;
+      const isHP = band.type === 'highpass';
+      const isLP = band.type === 'lowpass';
+      const isShelf = band.type === 'lowshelf' || band.type === 'highshelf';
+      const hasGain = !isHP && !isLP;
+      const hasQ = !isShelf;
+
+      const bandColor = BAND_COLORS[band.id] || '#38bdf8';
+      const typeLabel = isHP ? 'HPF' : isLP ? 'LPF' : band.type === 'lowshelf' ? 'Low Shelf' : band.type === 'highshelf' ? 'High Shelf' : `Bell ${band.id - 2}`;
+
+      const card = document.createElement('div');
+      card.className = `eq-band-card ${isSelected ? 'selected' : ''} ${band.enabled ? '' : 'is-disabled'}`;
+      card.dataset.bandId = String(band.id);
+
+      card.innerHTML = `
+        <div class="eq-band-header">
+          <div class="eq-band-badge" style="background: ${bandColor}20; color: ${bandColor}; border-color: ${bandColor}60;">
+            ${band.id}
+          </div>
+          <span class="eq-band-type-label">${typeLabel}</span>
+          <button type="button" class="eq-band-power-btn ${band.enabled ? 'active' : ''}" title="${band.enabled ? 'Bypass Band' : 'Enable Band'}">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 2a1 1 0 0 1 1 1v8a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1Zm6.364 4.05a1 1 0 0 1 1.414 1.414A9 9 0 1 1 4.222 7.464a1 1 0 0 1 1.414-1.414 7 7 0 1 0 12.728 0Z"/></svg>
+          </button>
+        </div>
+
+        <div class="eq-band-params">
+          <!-- Frequency -->
+          <div class="eq-param-row" data-param="frequency">
+            <span class="eq-param-label">FREQ</span>
+            <div class="eq-param-scrubber" title="Drag up/down or double click to edit">${this.formatFrequency(band.frequency)}</div>
+          </div>
+
+          <!-- Gain -->
+          <div class="eq-param-row ${hasGain ? '' : 'disabled'}" data-param="gain">
+            <span class="eq-param-label">GAIN</span>
+            <div class="eq-param-scrubber" title="${hasGain ? 'Drag up/down or double click to edit' : 'Gain is fixed for cut filters'}">
+              ${hasGain ? this.formatGain(band.gain) : '--'}
+            </div>
+          </div>
+
+          <!-- Q Factor -->
+          <div class="eq-param-row ${hasQ ? '' : 'disabled'}" data-param="q">
+            <span class="eq-param-label">Q</span>
+            <div class="eq-param-scrubber" title="${hasQ ? 'Drag up/down or double click to edit' : 'Q factor is fixed for shelf filters'}">${hasQ ? band.q.toFixed(2) : '--'}</div>
+          </div>
+        </div>
+      `;
+
+      // Select band on click
+      card.addEventListener('pointerdown', (e) => {
+        if ((e.target as HTMLElement).closest('.eq-band-power-btn') || (e.target as HTMLElement).closest('.eq-param-scrubber')) return;
+        this.selectedBandId = band.id;
+        this.renderBandControls();
+      });
+
+      // Band Power / Bypass toggle
+      const pwrBtn = card.querySelector('.eq-band-power-btn');
+      pwrBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleBandEnabled(band.id);
+      });
+
+      // Interactive parameter scrubbers
+      const scrubbers = card.querySelectorAll<HTMLElement>('.eq-param-row:not(.disabled) .eq-param-scrubber');
+      scrubbers.forEach((scrubber) => {
+        const paramRow = scrubber.closest<HTMLElement>('.eq-param-row');
+        const paramName = paramRow?.dataset.param as 'frequency' | 'gain' | 'q';
+        if (!paramName) return;
+
+        scrubber.addEventListener('pointerdown', (pe) => {
+          pe.preventDefault();
+          pe.stopPropagation();
+          this.selectedBandId = band.id;
+          scrubber.setPointerCapture(pe.pointerId);
+          this.dragStartY = pe.clientY;
+          this.dragStartVal = band[paramName];
+
+          const onPointerMove = (me: PointerEvent) => {
+            const deltaY = this.dragStartY - me.clientY;
+            let newVal = this.dragStartVal;
+
+            if (paramName === 'frequency') {
+              const multiplier = Math.pow(1.015, deltaY);
+              newVal = Math.max(20, Math.min(20000, this.dragStartVal * multiplier));
+            } else if (paramName === 'gain') {
+              newVal = Math.max(-24, Math.min(24, this.dragStartVal + deltaY * 0.2));
+            } else if (paramName === 'q') {
+              newVal = Math.max(0.1, Math.min(10.0, this.dragStartVal + deltaY * 0.03));
+            }
+
+            this.updateBandValue(band.id, paramName, newVal);
+            this.updateScrubberReadout(card, band.id);
+          };
+
+          const onPointerUp = (me: PointerEvent) => {
+            try { scrubber.releasePointerCapture(me.pointerId); } catch {}
+            scrubber.removeEventListener('pointermove', onPointerMove);
+            scrubber.removeEventListener('pointerup', onPointerUp);
+            scrubber.removeEventListener('pointercancel', onPointerUp);
+            this.renderBandControls();
+          };
+
+          scrubber.addEventListener('pointermove', onPointerMove);
+          scrubber.addEventListener('pointerup', onPointerUp);
+          scrubber.addEventListener('pointercancel', onPointerUp);
+        });
+
+        // Double click for direct text edit
+        scrubber.addEventListener('dblclick', (de) => {
+          de.stopPropagation();
+          this.startInlineScrubberEdit(scrubber, band.id, paramName);
+        });
+
+        // Wheel scroll for precision stepping
+        scrubber.addEventListener('wheel', (we) => {
+          we.preventDefault();
+          we.stopPropagation();
+          const stepDir = we.deltaY < 0 ? 1 : -1;
+          let curVal = band[paramName];
+          if (paramName === 'frequency') {
+            curVal = Math.max(20, Math.min(20000, curVal * (stepDir > 0 ? 1.05 : 0.95)));
+          } else if (paramName === 'gain') {
+            curVal = Math.max(-24, Math.min(24, curVal + stepDir * 0.5));
+          } else if (paramName === 'q') {
+            curVal = Math.max(0.1, Math.min(10.0, curVal + stepDir * 0.05));
+          }
+          this.updateBandValue(band.id, paramName, curVal);
+          this.renderBandControls();
+        }, { passive: false });
+      });
+
+      rack.appendChild(card);
+    });
+  }
+
+  private updateScrubberReadout(card: HTMLElement, bandId: number): void {
+    if (!this.currentTarget) return;
+    const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+    const band = config.bands.find((b) => b.id === bandId);
+    if (!band) return;
+
+    const freqEl = card.querySelector<HTMLElement>('[data-param="frequency"] .eq-param-scrubber');
+    const gainEl = card.querySelector<HTMLElement>('[data-param="gain"] .eq-param-scrubber');
+    const qEl = card.querySelector<HTMLElement>('[data-param="q"] .eq-param-scrubber');
+
+    if (freqEl) freqEl.textContent = this.formatFrequency(band.frequency);
+    if (gainEl && band.type !== 'highpass' && band.type !== 'lowpass') {
+      gainEl.textContent = this.formatGain(band.gain);
+    }
+    if (qEl && band.type !== 'lowshelf' && band.type !== 'highshelf') {
+      qEl.textContent = band.q.toFixed(2);
+    }
+  }
+
+  private startInlineScrubberEdit(scrubberEl: HTMLElement, bandId: number, param: 'frequency' | 'gain' | 'q'): void {
+    if (!this.currentTarget) return;
+    const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+    const band = config.bands.find((b) => b.id === bandId);
+    if (!band) return;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'eq-param-inline-input';
+    input.value = param === 'frequency'
+      ? String(Math.round(band.frequency))
+      : param === 'gain'
+      ? band.gain.toFixed(1)
+      : band.q.toFixed(2);
+
+    let committed = false;
+    const commit = () => {
+      if (committed) return;
+      committed = true;
+      const raw = parseFloat(input.value);
+      if (!isNaN(raw)) {
+        let val = raw;
+        if (param === 'frequency') val = Math.max(20, Math.min(20000, val));
+        else if (param === 'gain') val = Math.max(-24, Math.min(24, val));
+        else if (param === 'q') val = Math.max(0.1, Math.min(10.0, val));
+        this.updateBandValue(bandId, param, val);
+      }
+      this.renderBandControls();
+    };
+
+    input.addEventListener('keydown', (ke) => {
+      if (ke.key === 'Enter') {
+        ke.preventDefault();
+        commit();
+      } else if (ke.key === 'Escape') {
+        ke.preventDefault();
+        committed = true;
+        this.renderBandControls();
+      }
+    });
+    input.addEventListener('blur', commit);
+
+    scrubberEl.replaceWith(input);
+    input.focus();
+    input.select();
+  }
+
+  private toggleBandEnabled(bandId: number): void {
+    if (!this.currentTarget) return;
+    const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+    const band = config.bands.find((b) => b.id === bandId);
+    if (!band) return;
+
+    band.enabled = !band.enabled;
+    setChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex, config);
+
+    if (this.currentTarget.dsp) {
+      this.currentTarget.dsp.setBandEnabled(bandId, band.enabled);
+    }
+    this.currentTarget.onConfigChange();
+    this.renderBandControls();
+  }
+
+  private updateBandValue(bandId: number, param: 'frequency' | 'gain' | 'q', value: number): void {
+    if (!this.currentTarget) return;
+    const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+    const band = config.bands.find((b) => b.id === bandId);
+    if (!band) return;
+
+    if (param === 'frequency') band.frequency = Math.max(20, Math.min(20000, value));
+    else if (param === 'gain') band.gain = Math.max(-24, Math.min(24, value));
+    else if (param === 'q') band.q = Math.max(0.1, Math.min(10.0, value));
+
+    setChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex, config);
+
+    if (this.currentTarget.dsp) {
+      this.currentTarget.dsp.updateBandParam(bandId, { [param]: band[param] }, false);
+    }
+    this.currentTarget.onConfigChange();
+  }
+
+  private formatFrequency(hz: number): string {
+    if (hz >= 1000) {
+      const khz = hz / 1000;
+      return khz >= 10 ? `${khz.toFixed(1)} kHz` : `${khz.toFixed(2)} kHz`;
+    }
+    return `${Math.round(hz)} Hz`;
+  }
+
+  private formatGain(db: number): string {
+    const rounded = Math.round(db * 10) / 10;
+    if (rounded > 0) return `+${rounded.toFixed(1)} dB`;
+    return `${rounded.toFixed(1)} dB`;
+  }
+
+  private bindEvents(): void {
+    if (!this.modalEl || !this.canvasEl) return;
+
+    // Close button & backdrop
+    this.modalEl.querySelector('#btn-close-channel-eq')?.addEventListener('click', () => this.close());
+    this.modalEl.addEventListener('click', (e) => {
+      if (e.target === this.modalEl) this.close();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.isOpen()) {
+        this.close();
+      }
+    });
+
+    // Global Bypass Button
+    this.modalEl.querySelector('#btn-eq-global-bypass')?.addEventListener('click', () => {
+      if (!this.currentTarget) return;
+      const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+      config.globalBypass = !config.globalBypass;
+      setChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex, config);
+
+      if (this.currentTarget.dsp) {
+        this.currentTarget.dsp.setGlobalBypass(config.globalBypass);
+      }
+      this.currentTarget.onConfigChange();
+      this.updateHeaderVisuals();
+    });
+
+    // Flat Reset Button (True Flat: disables HP & LP cuts, sets shelf/bell gains to 0 dB, enables bands 2-6)
+    this.modalEl.querySelector('#btn-eq-flat')?.addEventListener('click', () => {
+      if (!this.currentTarget) return;
+      const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+      config.globalBypass = false;
+      config.bands.forEach((b) => {
+        if (b.type === 'highpass' || b.type === 'lowpass') {
+          b.enabled = false;
+        } else {
+          b.enabled = true;
+          b.gain = 0.0;
+        }
+      });
+      setChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex, config);
+
+      if (this.currentTarget.dsp) {
+        this.currentTarget.dsp.setGlobalBypass(false);
+        config.bands.forEach((b) => {
+          this.currentTarget!.dsp!.setBandEnabled(b.id, b.enabled);
+          if (b.type !== 'highpass' && b.type !== 'lowpass') {
+            this.currentTarget!.dsp!.updateBandParam(b.id, { gain: 0.0 }, true);
+          }
+        });
+      }
+      this.currentTarget.onConfigChange();
+      this.updateHeaderVisuals();
+      this.renderBandControls();
+    });
+
+    // RTA Toggle Button
+    this.modalEl.querySelector('#btn-eq-rta-toggle')?.addEventListener('click', () => {
+      this.rtaEnabled = !this.rtaEnabled;
+      this.updateHeaderVisuals();
+    });
+
+    // Canvas Direct Graph Dragging & Wheel Interaction
+    const canvas = this.canvasEl;
+    const readoutPill = this.modalEl.querySelector<HTMLElement>('#channel-eq-readout-pill');
+
+    const updateReadoutPill = (band: ChannelEqBandConfig, clientX: number, clientY: number) => {
+      if (!readoutPill) return;
+      const bandColor = BAND_COLORS[band.id] || '#38bdf8';
+      const hasGain = band.type !== 'highpass' && band.type !== 'lowpass';
+      const hasQ = band.type !== 'lowshelf' && band.type !== 'highshelf';
+      readoutPill.innerHTML = `
+        <span style="color: ${bandColor}; font-weight: 700;">Band ${band.id} (${BAND_TYPE_NAMES[band.type]})</span> &bull; 
+        <span>${this.formatFrequency(band.frequency)}</span>
+        ${hasGain ? ` &bull; <span>${this.formatGain(band.gain)}</span>` : ''}
+        ${hasQ ? ` &bull; <span>Q ${band.q.toFixed(2)}</span>` : ''}
+      `;
+      const rect = canvas.getBoundingClientRect();
+      const left = Math.max(10, Math.min(rect.width - 240, clientX - rect.left - 120));
+      const top = Math.max(10, Math.min(rect.height - 40, clientY - rect.top - 46));
+      readoutPill.style.left = `${left}px`;
+      readoutPill.style.top = `${top}px`;
+      readoutPill.classList.remove('hidden');
+    };
+
+    const hideReadoutPill = () => {
+      if (readoutPill) readoutPill.classList.add('hidden');
+    };
+
+    const getPointerBandHandle = (e: PointerEvent): ChannelEqBandConfig | null => {
+      if (!this.currentTarget) return null;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const width = rect.width;
+      const height = rect.height;
+
+      const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+      const HANDLE_RADIUS = 16;
+
+      for (let i = config.bands.length - 1; i >= 0; i--) {
+        const band = config.bands[i]!;
+        const hx = this.freqToX(band.frequency, width);
+        const hy = (band.type === 'highpass' || band.type === 'lowpass')
+          ? this.dbToY(0, height)
+          : this.dbToY(band.gain, height);
+
+        const dist = Math.hypot(x - hx, y - hy);
+        if (dist <= HANDLE_RADIUS) {
+          return band;
+        }
+      }
+      return null;
+    };
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (this.isDragging) return;
+      const targetBand = getPointerBandHandle(e);
+      if (targetBand) {
+        this.hoveredBandId = targetBand.id;
+        canvas.style.cursor = targetBand.type === 'highpass' || targetBand.type === 'lowpass' ? 'ew-resize' : 'move';
+      } else {
+        this.hoveredBandId = null;
+        canvas.style.cursor = 'default';
+      }
+    });
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (!this.currentTarget) return;
+      const rect = canvas.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+
+      const targetBand = getPointerBandHandle(e);
+      if (targetBand) {
+        this.isDragging = true;
+        this.dragBandId = targetBand.id;
+        this.selectedBandId = targetBand.id;
+        canvas.setPointerCapture(e.pointerId);
+        updateReadoutPill(targetBand, e.clientX, e.clientY);
+        this.renderBandControls();
+      } else {
+        // Clicking on canvas selects the closest band
+        const x = e.clientX - rect.left;
+        const clickedFreq = this.xToFreq(x, width);
+        const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+
+        let closestBand = config.bands[0]!;
+        let minDiff = Math.abs(Math.log10(clickedFreq) - Math.log10(closestBand.frequency));
+
+        for (const b of config.bands) {
+          const diff = Math.abs(Math.log10(clickedFreq) - Math.log10(b.frequency));
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestBand = b;
+          }
+        }
+
+        this.selectedBandId = closestBand.id;
+        this.renderBandControls();
+      }
+
+      const onGraphPointerMove = (me: PointerEvent) => {
+        if (!this.isDragging || !this.currentTarget || !this.dragBandId) return;
+        const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+        const band = config.bands.find((b) => b.id === this.dragBandId);
+        if (!band) return;
+
+        const mx = me.clientX - rect.left;
+        const my = me.clientY - rect.top;
+
+        const newFreq = this.xToFreq(mx, width);
+        band.frequency = Math.max(20, Math.min(20000, newFreq));
+
+        if (band.type !== 'highpass' && band.type !== 'lowpass') {
+          const newDb = this.yToDb(my, height);
+          band.gain = Math.max(-24, Math.min(24, Math.round(newDb * 10) / 10));
+        }
+
+        setChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex, config);
+
+        if (this.currentTarget.dsp) {
+          this.currentTarget.dsp.updateBandParam(band.id, { frequency: band.frequency, gain: band.gain }, false);
+        }
+        this.currentTarget.onConfigChange();
+        updateReadoutPill(band, me.clientX, me.clientY);
+        this.renderBandControls();
+      };
+
+      const onGraphPointerUp = (me: PointerEvent) => {
+        this.isDragging = false;
+        this.dragBandId = null;
+        hideReadoutPill();
+        try { canvas.releasePointerCapture(me.pointerId); } catch {}
+        canvas.removeEventListener('pointermove', onGraphPointerMove);
+        canvas.removeEventListener('pointerup', onGraphPointerUp);
+        canvas.removeEventListener('pointercancel', onGraphPointerUp);
+      };
+
+      canvas.addEventListener('pointermove', onGraphPointerMove);
+      canvas.addEventListener('pointerup', onGraphPointerUp);
+      canvas.addEventListener('pointercancel', onGraphPointerUp);
+    });
+
+    // Mouse wheel over graph adjusts Q of selected band (only for HP, Bell, and LP bands)
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (!this.currentTarget) return;
+      const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+      const band = config.bands.find((b) => b.id === this.selectedBandId);
+      if (!band || band.type === 'lowshelf' || band.type === 'highshelf') return;
+
+      const delta = e.deltaY < 0 ? 0.08 : -0.08;
+      band.q = Math.max(0.1, Math.min(10.0, Math.round((band.q + delta) * 100) / 100));
+
+      setChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex, config);
+
+      if (this.currentTarget.dsp) {
+        this.currentTarget.dsp.updateBandParam(band.id, { q: band.q }, false);
+      }
+      this.currentTarget.onConfigChange();
+      updateReadoutPill(band, e.clientX, e.clientY);
+      this.renderBandControls();
+
+      // Fade out pill after 1 second of wheel inactivity
+      setTimeout(() => {
+        if (!this.isDragging) hideReadoutPill();
+      }, 1200);
+    }, { passive: false });
+
+    // Double click resets selected band gain
+    canvas.addEventListener('dblclick', (e) => {
+      const targetBand = getPointerBandHandle(e);
+      if (targetBand && targetBand.type !== 'highpass' && targetBand.type !== 'lowpass') {
+        targetBand.gain = 0.0;
+        if (this.currentTarget) {
+          const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+          setChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex, config);
+          if (this.currentTarget.dsp) {
+            this.currentTarget.dsp.updateBandParam(targetBand.id, { gain: 0.0 }, true);
+          }
+          this.currentTarget.onConfigChange();
+          this.renderBandControls();
+        }
+      }
+    });
+  }
+
+  private showModal(): void {
+    if (!this.modalEl) return;
+    this.modalEl.classList.remove('hidden');
+  }
+
+  private startVisualizer(): void {
+    this.stopVisualizer();
+    const renderFrame = () => {
+      this.draw();
+      if (this.isOpen()) {
+        this.animFrameId = requestAnimationFrame(renderFrame);
+      }
+    };
+    this.animFrameId = requestAnimationFrame(renderFrame);
+  }
+
+  private stopVisualizer(): void {
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
+    }
+  }
+
+  private draw(): void {
+    if (!this.canvasEl || !this.ctx || !this.currentTarget) return;
+    const canvas = this.canvasEl;
+    const ctx = this.ctx;
+
+    // Handle high-DPI retina display resolution
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const width = rect.width;
+    const height = rect.height;
+
+    if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+    }
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    // 1. Draw Background Grid
+    this.drawGrid(ctx, width, height);
+
+    // 2. Draw Real-Time Spectrum Analyzer (RTA)
+    if (this.rtaEnabled && this.currentTarget.dsp) {
+      this.drawSpectrum(ctx, width, height);
+    }
+
+    // 3. Draw DSP-Accurate Frequency Response Curve
+    this.drawResponseCurve(ctx, width, height);
+
+    // 4. Draw Interactive 7-Band Handles
+    this.drawBandHandles(ctx, width, height);
+
+    ctx.restore();
+  }
+
+  private drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+    ctx.lineWidth = 1;
+    ctx.font = '10px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
+    ctx.fillStyle = '#64748b';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+
+    // Horizontal dB lines (+24, +18, +12, +6, 0, -6, -12, -18, -24)
+    const dbLines = [24, 18, 12, 6, 0, -6, -12, -18, -24];
+    dbLines.forEach((db) => {
+      const y = Math.round(this.dbToY(db, height)) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+
+      if (db === 0) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+        ctx.lineWidth = 1.5;
+      } else {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+        ctx.lineWidth = 1;
+      }
+      ctx.stroke();
+
+      // Right-aligned dB label
+      ctx.save();
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = db === 0 ? '#cbd5e1' : '#64748b';
+      ctx.fillText(`${db > 0 ? `+${db}` : db}`, width - 8, y);
+      ctx.restore();
+    });
+
+    // Vertical Frequency lines (20 Hz - 20 kHz log scale)
+    const majorFreqs = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+    const minorFreqs = [30, 40, 60, 70, 80, 90, 300, 400, 600, 700, 800, 900, 3000, 4000, 6000, 7000, 8000, 9000];
+
+    // Minor lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.lineWidth = 1;
+    minorFreqs.forEach((f) => {
+      const x = Math.round(this.freqToX(f, width)) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    });
+
+    // Major lines with text
+    majorFreqs.forEach((f) => {
+      const x = Math.round(this.freqToX(f, width)) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height - 16);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      const label = f >= 1000 ? `${f / 1000}k` : `${f}`;
+      ctx.fillStyle = '#64748b';
+      ctx.fillText(label, x, height - 4);
+    });
+  }
+
+  private drawSpectrum(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+    if (!this.currentTarget?.dsp) return;
+
+    this.currentTarget.dsp.getAnalyserByteFrequencyData(this.rtaBuffer);
+    const bufferLen = this.rtaBuffer.length;
+    const sampleRate = this.currentTarget.dsp.audioCtx.sampleRate || 48000;
+    const nyquist = sampleRate / 2;
+
+    ctx.beginPath();
+    let hasDrawnFirst = false;
+
+    for (let i = 0; i < this.NUM_POINTS; i += 2) {
+      const freq = this.freqs[i]!;
+      if (freq > nyquist) break;
+
+      const binIndex = Math.round((freq / nyquist) * bufferLen);
+      const byteVal = this.rtaBuffer[Math.min(bufferLen - 1, binIndex)] || 0;
+      const normalized = byteVal / 255; // 0 to 1
+
+      // Map normalized amplitude to height (0 = bottom, 1 = top - 10)
+      const x = this.freqToX(freq, width);
+      const y = height - (normalized * (height * 0.85));
+
+      if (!hasDrawnFirst) {
+        ctx.moveTo(x, y);
+        hasDrawnFirst = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+
+    ctx.lineTo(width, height);
+    ctx.lineTo(0, height);
+    ctx.closePath();
+
+    const spectrumGrad = ctx.createLinearGradient(0, 0, 0, height);
+    spectrumGrad.addColorStop(0, 'rgba(56, 189, 248, 0.18)');
+    spectrumGrad.addColorStop(0.7, 'rgba(56, 189, 248, 0.06)');
+    spectrumGrad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+    ctx.fillStyle = spectrumGrad;
+    ctx.fill();
+  }
+
+  private drawResponseCurve(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+    if (!this.currentTarget) return;
+
+    if (this.currentTarget.dsp) {
+      this.currentTarget.dsp.getCombinedFrequencyResponse(this.freqs, this.dbCurve);
+    } else {
+      this.dbCurve.fill(0);
+    }
+
+    const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+    const isBypassed = config.globalBypass;
+    const zeroY = this.dbToY(0, height);
+
+    // 1. Shaded Area Under the Curve to 0 dB Line
+    ctx.beginPath();
+    ctx.moveTo(this.freqToX(this.freqs[0]!, width), zeroY);
+
+    for (let i = 0; i < this.NUM_POINTS; i++) {
+      const x = this.freqToX(this.freqs[i]!, width);
+      const y = this.dbToY(this.dbCurve[i]!, height);
+      ctx.lineTo(x, y);
+    }
+
+    ctx.lineTo(this.freqToX(this.freqs[this.NUM_POINTS - 1]!, width), zeroY);
+    ctx.closePath();
+
+    const fillGrad = ctx.createLinearGradient(0, 0, 0, height);
+    if (isBypassed) {
+      fillGrad.addColorStop(0, 'rgba(148, 163, 184, 0.05)');
+      fillGrad.addColorStop(1, 'rgba(148, 163, 184, 0.0)');
+    } else {
+      fillGrad.addColorStop(0, 'rgba(56, 189, 248, 0.16)');
+      fillGrad.addColorStop(0.5, 'rgba(56, 189, 248, 0.08)');
+      fillGrad.addColorStop(1, 'rgba(56, 189, 248, 0.02)');
+    }
+    ctx.fillStyle = fillGrad;
+    ctx.fill();
+
+    // 2. Crisp Precision Stroke (Restrained DAW curve without decorative blur)
+    ctx.beginPath();
+    for (let i = 0; i < this.NUM_POINTS; i++) {
+      const x = this.freqToX(this.freqs[i]!, width);
+      const y = this.dbToY(this.dbCurve[i]!, height);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+
+    if (isBypassed) {
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+    } else {
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  private drawBandHandles(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+    if (!this.currentTarget) return;
+    const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+
+    config.bands.forEach((band) => {
+      const x = this.freqToX(band.frequency, width);
+      const y = (band.type === 'highpass' || band.type === 'lowpass')
+        ? this.dbToY(0, height)
+        : this.dbToY(band.gain, height);
+
+      const isSelected = band.id === this.selectedBandId;
+      const isHovered = band.id === this.hoveredBandId;
+      const bandColor = BAND_COLORS[band.id] || '#38bdf8';
+      const radius = isSelected ? 12 : isHovered ? 11 : 9;
+
+      // Selection Ring
+      if (isSelected) {
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 4, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      // Main Handle Circle
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+
+      if (band.enabled) {
+        ctx.fillStyle = bandColor;
+      } else {
+        ctx.fillStyle = '#475569';
+      }
+      ctx.fill();
+
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = isSelected ? '#ffffff' : 'rgba(0, 0, 0, 0.8)';
+      ctx.stroke();
+
+      // Band Number
+      ctx.font = 'bold 9.5px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(band.id), x, y + 0.5);
+    });
+  }
+}
+
+export const channelEqPluginModal = new ChannelEqPluginModal();
+
+export function openChannelEqPlugin(
+  channelId: string,
+  slotIndex: number,
+  channelName: string,
+  channelColor: string,
+  dspGetter: () => ChannelEqDspInstance | undefined,
+  onConfigChange: () => void
+): void {
+  channelEqPluginModal.open(channelId, slotIndex, channelName, channelColor, dspGetter, onConfigChange);
+}
