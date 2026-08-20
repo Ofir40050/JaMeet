@@ -45,13 +45,13 @@ export function createDefaultChannelEqConfig(): ChannelEqConfig {
   return {
     globalBypass: false,
     bands: [
-      { id: 1, type: 'highpass', frequency: 80, gain: 0, q: 0.707, enabled: true },
+      { id: 1, type: 'highpass', frequency: 80, gain: 0, q: 0.707, enabled: false },
       { id: 2, type: 'lowshelf', frequency: 200, gain: 0, q: 0.707, enabled: true },
       { id: 3, type: 'peaking', frequency: 500, gain: 0, q: 1.0, enabled: true },
       { id: 4, type: 'peaking', frequency: 2000, gain: 0, q: 1.0, enabled: true },
       { id: 5, type: 'peaking', frequency: 5000, gain: 0, q: 1.0, enabled: true },
       { id: 6, type: 'highshelf', frequency: 10000, gain: 0, q: 0.707, enabled: true },
-      { id: 7, type: 'lowpass', frequency: 18000, gain: 0, q: 0.707, enabled: true }
+      { id: 7, type: 'lowpass', frequency: 18000, gain: 0, q: 0.707, enabled: false }
     ]
   };
 }
@@ -323,6 +323,15 @@ export class ChannelEqDspInstance {
     try {
       this.analyserNode.getByteFrequencyData(output);
     } catch {}
+  }
+
+  /**
+   * Disconnects only the external output connection of the plugin instance.
+   * Internal dry, wet, filter, and analyzer routing remains completely intact.
+   */
+  disconnectExternal(): void {
+    if (this.isDisposed) return;
+    try { this.outputNode.disconnect(); } catch {}
   }
 
   dispose(): void {
@@ -631,7 +640,9 @@ class ChannelEqPluginModal {
       const isSelected = band.id === this.selectedBandId;
       const isHP = band.type === 'highpass';
       const isLP = band.type === 'lowpass';
+      const isShelf = band.type === 'lowshelf' || band.type === 'highshelf';
       const hasGain = !isHP && !isLP;
+      const hasQ = !isShelf;
 
       const bandColor = BAND_COLORS[band.id] || '#38bdf8';
       const typeLabel = isHP ? 'HPF' : isLP ? 'LPF' : band.type === 'lowshelf' ? 'Low Shelf' : band.type === 'highshelf' ? 'High Shelf' : `Bell ${band.id - 2}`;
@@ -667,9 +678,9 @@ class ChannelEqPluginModal {
           </div>
 
           <!-- Q Factor -->
-          <div class="eq-param-row" data-param="q">
+          <div class="eq-param-row ${hasQ ? '' : 'disabled'}" data-param="q">
             <span class="eq-param-label">Q</span>
-            <div class="eq-param-scrubber" title="Drag up/down or double click to edit">${band.q.toFixed(2)}</div>
+            <div class="eq-param-scrubber" title="${hasQ ? 'Drag up/down or double click to edit' : 'Q factor is fixed for shelf filters'}">${hasQ ? band.q.toFixed(2) : '--'}</div>
           </div>
         </div>
       `;
@@ -775,7 +786,9 @@ class ChannelEqPluginModal {
     if (gainEl && band.type !== 'highpass' && band.type !== 'lowpass') {
       gainEl.textContent = this.formatGain(band.gain);
     }
-    if (qEl) qEl.textContent = band.q.toFixed(2);
+    if (qEl && band.type !== 'lowshelf' && band.type !== 'highshelf') {
+      qEl.textContent = band.q.toFixed(2);
+    }
   }
 
   private startInlineScrubberEdit(scrubberEl: HTMLElement, bandId: number, param: 'frequency' | 'gain' | 'q'): void {
@@ -902,23 +915,32 @@ class ChannelEqPluginModal {
       this.updateHeaderVisuals();
     });
 
-    // Flat Reset Button
+    // Flat Reset Button (True Flat: disables HP & LP cuts, sets shelf/bell gains to 0 dB, enables bands 2-6)
     this.modalEl.querySelector('#btn-eq-flat')?.addEventListener('click', () => {
       if (!this.currentTarget) return;
       const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+      config.globalBypass = false;
       config.bands.forEach((b) => {
-        if (b.type === 'peaking' || b.type === 'lowshelf' || b.type === 'highshelf') {
+        if (b.type === 'highpass' || b.type === 'lowpass') {
+          b.enabled = false;
+        } else {
+          b.enabled = true;
           b.gain = 0.0;
         }
       });
       setChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex, config);
 
       if (this.currentTarget.dsp) {
+        this.currentTarget.dsp.setGlobalBypass(false);
         config.bands.forEach((b) => {
-          this.currentTarget!.dsp!.updateBandParam(b.id, { gain: b.gain }, true);
+          this.currentTarget!.dsp!.setBandEnabled(b.id, b.enabled);
+          if (b.type !== 'highpass' && b.type !== 'lowpass') {
+            this.currentTarget!.dsp!.updateBandParam(b.id, { gain: 0.0 }, true);
+          }
         });
       }
       this.currentTarget.onConfigChange();
+      this.updateHeaderVisuals();
       this.renderBandControls();
     });
 
@@ -936,11 +958,12 @@ class ChannelEqPluginModal {
       if (!readoutPill) return;
       const bandColor = BAND_COLORS[band.id] || '#38bdf8';
       const hasGain = band.type !== 'highpass' && band.type !== 'lowpass';
+      const hasQ = band.type !== 'lowshelf' && band.type !== 'highshelf';
       readoutPill.innerHTML = `
         <span style="color: ${bandColor}; font-weight: 700;">Band ${band.id} (${BAND_TYPE_NAMES[band.type]})</span> &bull; 
         <span>${this.formatFrequency(band.frequency)}</span>
         ${hasGain ? ` &bull; <span>${this.formatGain(band.gain)}</span>` : ''}
-        &bull; <span>Q ${band.q.toFixed(2)}</span>
+        ${hasQ ? ` &bull; <span>Q ${band.q.toFixed(2)}</span>` : ''}
       `;
       const rect = canvas.getBoundingClientRect();
       const left = Math.max(10, Math.min(rect.width - 240, clientX - rect.left - 120));
@@ -1069,13 +1092,13 @@ class ChannelEqPluginModal {
       canvas.addEventListener('pointercancel', onGraphPointerUp);
     });
 
-    // Mouse wheel over graph adjusts Q of selected band
+    // Mouse wheel over graph adjusts Q of selected band (only for HP, Bell, and LP bands)
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       if (!this.currentTarget) return;
       const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
       const band = config.bands.find((b) => b.id === this.selectedBandId);
-      if (!band) return;
+      if (!band || band.type === 'lowshelf' || band.type === 'highshelf') return;
 
       const delta = e.deltaY < 0 ? 0.08 : -0.08;
       band.q = Math.max(0.1, Math.min(10.0, Math.round((band.q + delta) * 100) / 100));

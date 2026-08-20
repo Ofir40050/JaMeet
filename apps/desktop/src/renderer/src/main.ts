@@ -12660,24 +12660,26 @@ function loadSavedStudioMixerConfig(): PersistentStudioMixerMap {
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const map = parsed as PersistentStudioMixerMap;
-      // Restore Channel EQ configurations
-      for (const [channelId, chData] of Object.entries(map)) {
-        if (chData && chData.eq && typeof chData.eq === 'object') {
-          for (const [slotStr, eqConf] of Object.entries(chData.eq)) {
-            const slotIdx = parseInt(slotStr, 10);
-            if (!isNaN(slotIdx) && eqConf && Array.isArray(eqConf.bands)) {
-              setChannelEqConfig(channelId, slotIdx, eqConf);
-            }
-          }
-        }
-      }
-      return map;
+      return parsed as PersistentStudioMixerMap;
     }
   } catch (err) {
     logger.warn('mixer_storage', 'Failed to load persistent studio mixer configuration', {}, err);
   }
   return {};
+}
+
+function hydrateStudioMixerEqPersistence(): void {
+  const map = loadSavedStudioMixerConfig();
+  for (const [channelId, chData] of Object.entries(map)) {
+    if (chData && chData.eq && typeof chData.eq === 'object') {
+      for (const [slotStr, eqConf] of Object.entries(chData.eq)) {
+        const slotIdx = parseInt(slotStr, 10);
+        if (!isNaN(slotIdx) && eqConf && Array.isArray(eqConf.bands)) {
+          setChannelEqConfig(channelId, slotIdx, eqConf);
+        }
+      }
+    }
+  }
 }
 
 let mixerSaveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -12866,6 +12868,7 @@ function syncMixerChannelsWithVoiceInputs(): void {
   }
 }
 
+hydrateStudioMixerEqPersistence();
 syncMixerChannelsWithVoiceInputs();
 function faderTopPercentToDb(pct: number): number {
   if (pct >= 98.5) return -Infinity;
@@ -13434,7 +13437,7 @@ function applyMixerAudioRouting(): void {
             const eqDsp = channelEqDspRegistry.getOrCreate('remote-voice', i, remoteAudioCtx);
             currentVoiceSource.connect(eqDsp.inputNode);
             currentVoiceSource = eqDsp.outputNode;
-            remoteVoiceFxNodes.push(eqDsp.inputNode, eqDsp.outputNode);
+            remoteVoiceFxNodes.push(eqDsp.outputNode);
           } else if (fxName === 'Compressor') {
             channelEqDspRegistry.remove('remote-voice', i);
             const compressorNode = remoteAudioCtx.createDynamicsCompressor();
@@ -13491,7 +13494,7 @@ function applyMixerAudioRouting(): void {
             const eqDsp = channelEqDspRegistry.getOrCreate('remote-music', i, remoteAudioCtx);
             currentMusicSource.connect(eqDsp.inputNode);
             currentMusicSource = eqDsp.outputNode;
-            remoteMusicFxNodes.push(eqDsp.inputNode, eqDsp.outputNode);
+            remoteMusicFxNodes.push(eqDsp.outputNode);
           } else if (fxName === 'Compressor') {
             channelEqDspRegistry.remove('remote-music', i);
             const compressorNode = remoteAudioCtx.createDynamicsCompressor();

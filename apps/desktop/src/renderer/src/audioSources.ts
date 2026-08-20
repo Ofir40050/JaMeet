@@ -1238,7 +1238,7 @@ export class LocalAudioSourceManager {
         const eqDsp = channelEqDspRegistry.getOrCreate(channelId, i, ctx);
         currentSource.connect(eqDsp.inputNode);
         currentSource = eqDsp.outputNode;
-        mic.fxNodes.push(eqDsp.inputNode, eqDsp.outputNode);
+        mic.fxNodes.push(eqDsp.outputNode);
       } else if (fxName === 'Compressor') {
         channelEqDspRegistry.remove(channelId, i);
         const compressorNode = ctx.createDynamicsCompressor();
@@ -1299,7 +1299,7 @@ export class LocalAudioSourceManager {
         const eqDsp = channelEqDspRegistry.getOrCreate(channelId, i, ctx);
         currentSource.connect(eqDsp.inputNode);
         currentSource = eqDsp.outputNode;
-        this.musicFxNodes.push(eqDsp.inputNode, eqDsp.outputNode);
+        this.musicFxNodes.push(eqDsp.outputNode);
       } else if (fxName === 'Compressor') {
         channelEqDspRegistry.remove(channelId, i);
         const compressorNode = ctx.createDynamicsCompressor();
