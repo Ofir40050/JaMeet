@@ -4458,10 +4458,6 @@ function renderStudioMixer(): void {
           mic.gain = 1.0;
           if (micIdx === 1) prefs.inputGain = 1.0;
           savePreferences();
-          const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
-          if (desktopApi?.setSystemInputVolume && micIdx === 1) {
-            void desktopApi.setSystemInputVolume(1.0);
-          }
         }
       }
       renderStudioMixer();
@@ -4540,10 +4536,6 @@ function renderStudioMixer(): void {
           mic.gain = gainVal;
           if (micIdx === 1) prefs.inputGain = gainVal;
           savePreferences();
-          const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
-          if (desktopApi?.setSystemInputVolume && micIdx === 1) {
-            void desktopApi.setSystemInputVolume(Math.min(1.0, gainVal));
-          }
         }
       }
       applyMixerAudioRouting();
@@ -4622,10 +4614,6 @@ function renderStudioMixer(): void {
           mic.gain = 1.0;
           if (micIdx === 1) prefs.inputGain = 1.0;
           savePreferences();
-          const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
-          if (desktopApi?.setSystemInputVolume && micIdx === 1) {
-            void desktopApi.setSystemInputVolume(1.0);
-          }
         }
       }
       applyMixerAudioRouting();
@@ -4651,10 +4639,6 @@ function renderStudioMixer(): void {
           mic.gain = gainVal;
           if (micIdx === 1) prefs.inputGain = gainVal;
           savePreferences();
-          const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
-          if (desktopApi?.setSystemInputVolume && micIdx === 1) {
-            void desktopApi.setSystemInputVolume(Math.min(1.0, gainVal));
-          }
         }
       }
       applyMixerAudioRouting();
