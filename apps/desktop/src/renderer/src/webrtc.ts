@@ -65,6 +65,7 @@ export class WebRtcSession {
 
   private voiceStereo = false;
   private inboundStatsTimer?: number;
+  private voiceStatsQuerySeq = 0;
 
   constructor(
     private readonly signaling: SignalingClient,
@@ -111,7 +112,11 @@ export class WebRtcSession {
   }
 
   async updateVoiceStereoFromInboundStats(): Promise<boolean> {
-    const result = await this.queryInboundVoiceStereo();
+    const seq = ++this.voiceStatsQuerySeq;
+    const result = await this.queryInboundVoiceStereo(seq);
+    if (seq !== this.voiceStatsQuerySeq) {
+      return this.voiceStereo;
+    }
     if (result === 'unknown') {
       return this.voiceStereo;
     }
@@ -123,18 +128,19 @@ export class WebRtcSession {
     return this.voiceStereo;
   }
 
-  private async queryInboundVoiceStereo(): Promise<'mono' | 'stereo' | 'unknown'> {
+  private async queryInboundVoiceStereo(seq: number): Promise<'mono' | 'stereo' | 'unknown'> {
     const voiceTransceiver = this.audioTransceivers.get('voice') ??
       (this.pc?.getTransceivers() ?? []).find((t) => this.audioPurpose.get(t)?.id === 'voice');
 
     const mid = voiceTransceiver?.mid;
-    if (!voiceTransceiver || !mid || !this.pc) {
+    if (!voiceTransceiver || !mid || !this.pc || seq !== this.voiceStatsQuerySeq) {
       return 'unknown';
     }
 
+    const pc = this.pc;
     try {
-      const statsReport = await (voiceTransceiver.receiver?.getStats?.() ?? this.pc.getStats());
-      if (!statsReport) return 'unknown';
+      const statsReport = await (voiceTransceiver.receiver?.getStats?.() ?? pc.getStats());
+      if (!statsReport || seq !== this.voiceStatsQuerySeq || this.pc !== pc) return 'unknown';
 
       let inboundAudioStat: any = null;
       for (const stat of statsReport.values()) {
@@ -262,6 +268,12 @@ export class WebRtcSession {
 
   private ensurePeer(): RTCPeerConnection {
     if (this.pc && this.pc.signalingState !== 'closed') return this.pc;
+    this.voiceStatsQuerySeq++;
+    const hadStereo = this.voiceStereo;
+    this.voiceStereo = false;
+    if (hadStereo) {
+      this.onVoiceStereoChange?.(false);
+    }
     const policy = import.meta.env.VITE_ICE_TRANSPORT_POLICY === 'relay' ? 'relay' : 'all';
     const pc = new RTCPeerConnection({ iceServers: this.iceServers, iceTransportPolicy: policy });
     this.pc = pc;
@@ -528,6 +540,7 @@ export class WebRtcSession {
     if (this.disconnectTimer) window.clearTimeout(this.disconnectTimer);
     this.disconnectTimer = undefined;
     this.stopInboundStatsPolling();
+    this.voiceStatsQuerySeq++;
     const hadStereo = this.voiceStereo;
     this.voiceStereo = false;
     if (hadStereo) {
