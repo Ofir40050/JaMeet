@@ -1,5 +1,5 @@
-import * as projectsApi from '../projects/projects';
-import { setScheduledApiBase } from '../sessions/scheduledApi';
+import * as projectsApi from '../projects/core/projects';
+import { setScheduledApiBase } from '../sessions/scheduled/scheduledApi';
 
 const DEFAULT_PROD_SIGNALING_URL = 'https://jameet-jwi8.onrender.com';
 const DEFAULT_DEV_SIGNALING_URL = 'http://localhost:3000';

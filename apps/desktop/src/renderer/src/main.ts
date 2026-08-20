@@ -1,14 +1,14 @@
 import type { AudioMode, MediaMetadata, MeetingAck, PerformanceMode, VideoQuality, ParticipantIdentity, UserProfile, UpdateProfileRequest, Project, ProjectSessionItem, SessionHistoryItem, ProjectTaskItem, ProjectTaskStatus, ProjectTaskStage, ProjectTaskSubtask, ProjectActivityItem, ProjectActivityType, SessionChatMessage, WaitingParticipantItem, ScheduledSession } from '@jameet/shared';
-import * as projectsApi from './projects/projects';
+import * as projectsApi from './projects/core/projects';
 import {
   initScheduledSessions,
   loadScheduledSessions
-} from './sessions/scheduledSessions';
+} from './sessions/scheduled/scheduledSessions';
 import {
   initRecentSessions,
   loadRecentSessions
-} from './sessions/recentSessions';
-import { initSessionStats } from './sessions/sessionStats';
+} from './sessions/recent/recentSessions';
+import { initSessionStats } from './sessions/call/sessionStats';
 import {
   initProfileUi,
   applyAvatarToElement,
@@ -22,12 +22,12 @@ import {
   getEditingAvatarUrl,
   setEditingAvatarUrl,
   clearProfilePasswordInputs
-} from './auth/profileUi';
+} from './auth/profile/profileUi';
 import {
   initSettingsUi,
   switchSettingsSection,
   type SettingsSection
-} from './auth/settingsUi';
+} from './auth/settings/settingsUi';
 import {
   initAuthUi,
   switchAuthViewTab,
@@ -38,46 +38,46 @@ import {
   initWaitingRoomUi,
   renderWaitingBanner,
   hideWaitingBanner
-} from './sessions/waitingRoomUi';
+} from './sessions/call/waitingRoomUi';
 import {
   initProjectsListController,
   loadProjects
-} from './projects/projectsListController';
+} from './projects/core/projectsListController';
 import {
   initProjectsListUi,
   renderProjectsGrid
-} from './projects/projectsListUi';
-import { renderProjectHeader } from './projects/projectHeaderUi';
-import { renderProjectCollaborators } from './projects/projectCollaboratorsUi';
+} from './projects/core/projectsListUi';
+import { renderProjectHeader } from './projects/header/projectHeaderUi';
+import { renderProjectCollaborators } from './projects/collaborators/projectCollaboratorsUi';
 import {
   createOverviewSessionItem,
   createProjectSessionCard
-} from './projects/projectSessionsUi';
+} from './projects/sessions/projectSessionsUi';
 import {
   renderSessionSummaryModal,
   initProjectSessionSummaryUi
-} from './projects/projectSessionSummaryUi';
+} from './projects/sessions/projectSessionSummaryUi';
 import {
   initProjectSessionsListUi,
   renderProjectSessions,
   resetProjectSessionsPage
-} from './projects/projectSessionsListUi';
+} from './projects/sessions/projectSessionsListUi';
 import {
   initProjectCollaboratorsController,
   handleAddCollaborator,
   handleUpdateCollaboratorRole,
   handleRemoveCollaborator
-} from './projects/projectCollaboratorsController';
+} from './projects/collaborators/projectCollaboratorsController';
 import {
   initProjectViewController,
   renderProjectView
-} from './projects/projectViewController';
+} from './projects/core/projectViewController';
 import {
   initProjectOpenController,
   openProjectView
-} from './projects/projectOpenController';
+} from './projects/core/projectOpenController';
 import { initDialogUi } from './core/dialogUi';
-import { applyWorkspacePermissionsPresentation } from './workspace/workspacePermissionsUi';
+import { applyWorkspacePermissionsPresentation } from './workspace/core/workspacePermissionsUi';
 import {
   getWorkspaceContextGen,
   isWorkspaceContextGenCurrent,
@@ -102,11 +102,11 @@ import {
   incrementTasksEditGen,
   incrementTasksSaveGen,
   setTasksSaveGen
-} from './workspace/workspaceGenerationState';
+} from './workspace/core/workspaceGenerationState';
 import {
   initProfileController,
   handleSaveProfile
-} from './auth/profileController';
+} from './auth/profile/profileController';
 import {
   initAuthController,
   handleLogin,
@@ -115,58 +115,58 @@ import {
 } from './auth/authController';
 import {
   handleScheduledSessionNotificationClick
-} from './sessions/scheduledNotificationUi';
+} from './sessions/scheduled/scheduledNotificationUi';
 import {
   initLyricsController,
   handleLyricsInput,
   handleLyricsDocTitleChange
-} from './workspace/lyricsController';
+} from './workspace/lyrics/lyricsController';
 import {
   initNotesController,
   handleNotesChange
-} from './workspace/notesController';
+} from './workspace/notes/notesController';
 import {
   initStructureController,
   handleStructureSectionChange
-} from './workspace/structureController';
+} from './workspace/structure/structureController';
 import {
   reconcileNotesWorkspace,
   type NotesStateValues,
   type NotesReconciliationResult
-} from './workspace/notesReconciliation';
+} from './workspace/notes/notesReconciliation';
 import {
   canUserEditProject as checkCanUserEditProject,
   isProjectOwner as checkIsProjectOwner
-} from './projects/projectAccess';
+} from './projects/core/projectAccess';
 import {
   switchProjectTab,
   resetProjectTabsUi,
   initProjectTabsUi
-} from './projects/projectTabsUi';
+} from './projects/navigation/projectTabsUi';
 import {
   initProjectMenuUi
-} from './projects/projectMenuUi';
+} from './projects/navigation/projectMenuUi';
 import {
   initProjectRenameController,
   handleTriggerRename,
   handleSaveRename
-} from './projects/projectRenameController';
+} from './projects/rename/projectRenameController';
 import {
   initProjectRenameUi
-} from './projects/projectRenameUi';
+} from './projects/rename/projectRenameUi';
 import {
   initProjectCollaboratorModalUi,
   closeAddCollaboratorModal,
   setAddCollaboratorError
-} from './projects/projectCollaboratorModalUi';
+} from './projects/collaborators/projectCollaboratorModalUi';
 import {
   initProjectDeleteController,
   handleTriggerDelete,
   handleConfirmDelete
-} from './projects/projectDeleteController';
+} from './projects/delete/projectDeleteController';
 import {
   initProjectDeleteUi
-} from './projects/projectDeleteUi';
+} from './projects/delete/projectDeleteUi';
 import {
   initProjectSongDeleteUi,
   renderDeleteSongModal,
@@ -178,25 +178,25 @@ import {
 import {
   initProjectArchiveController,
   handleArchiveProject
-} from './projects/projectArchiveController';
+} from './projects/archive/projectArchiveController';
 import {
   initProjectCreateController,
   handleCreateProject
-} from './projects/projectCreateController';
+} from './projects/create/projectCreateController';
 import {
   initProjectCreateUi
-} from './projects/projectCreateUi';
+} from './projects/create/projectCreateUi';
 import {
   initCallShortcutsUi,
   toggleShortcutsModal,
   closeShortcutsModal,
   isShortcutsModalOpen
-} from './sessions/callShortcutsUi';
+} from './sessions/call/callShortcutsUi';
 import {
   initGuestJoinUi,
   closeGuestJoinDialog
 } from './auth/guestJoinUi';
-import { initProjectNavigationUi } from './projects/projectNavigationUi';
+import { initProjectNavigationUi } from './projects/navigation/projectNavigationUi';
 import {
   initLyricsUi,
   getLyricsStatus,
@@ -204,21 +204,21 @@ import {
   renderLyricsDocTabs,
   updateLyricsDocumentPagination,
   updateLyricsStatsFromHtml
-} from './workspace/lyricsUi';
+} from './workspace/lyrics/lyricsUi';
 import {
   initStructureUi,
   renderStructureWorkspace,
   getStructureStatus,
   setStructureStatus,
   focusStructureSection
-} from './workspace/structureUi';
+} from './workspace/structure/structureUi';
 import {
   initNotesUi,
   getNotesStatus,
   setNotesStatus,
   syncNotesControls,
   getNotesFieldValues
-} from './workspace/notesUi';
+} from './workspace/notes/notesUi';
 import {
   initTasksUi,
   renderTasksWorkspace,
@@ -226,7 +226,7 @@ import {
   setTasksStatus,
   type TaskCollaboratorOption,
   type TaskFieldUpdate
-} from './workspace/tasksUi';
+} from './workspace/tasks/tasksUi';
 import {
   initSongsUi,
   renderProjectOverviewSongsList,
@@ -235,7 +235,7 @@ import {
   showSongContextMenu,
   type ReadonlySongItem
 } from './songs/songsUi';
-import { ScheduledNotificationManager } from './sessions/scheduledNotifications';
+import { ScheduledNotificationManager } from './sessions/scheduled/scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './media/audioProfiles';
 import { LocalAudioSourceManager } from './media/audioSources';
@@ -247,8 +247,8 @@ import { cameraConstraints, performanceVideoQuality } from './media/videoQuality
 import { icons } from './core/icons';
 import { presenter } from './media/presenter';
 import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor, findSectionCard, findTimelineBlocks, findTimelineBlock } from './core/htmlSecurity';
-import { initActivityHistory, renderProjectActivities } from './sessions/activity';
-import { initSessionChat, resetChatUi, setSessionChatOpen, isSessionChatOpen, setOnChatOpenCallback } from './sessions/chat';
+import { initActivityHistory, renderProjectActivities } from './sessions/call/activity';
+import { initSessionChat, resetChatUi, setSessionChatOpen, isSessionChatOpen, setOnChatOpenCallback } from './sessions/call/chat';
 import { startRemoteVoiceBridge, stopRemoteVoiceBridge } from './media/remoteVoiceBridge';
 import { logger } from './core/logger';
 import {
@@ -280,7 +280,7 @@ import {
   getActiveSpeaker,
   setActiveSpeaker,
   toggleSessionLayout
-} from './sessions/sessionView';
+} from './sessions/call/sessionView';
 import './style.css';
 
 export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
