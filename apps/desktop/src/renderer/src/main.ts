@@ -57,6 +57,10 @@ import {
   renderProjectSessionsEmptyState,
   renderProjectSessionsPagination
 } from './projectSessionsListUi';
+import {
+  switchProjectTab,
+  initProjectTabsUi
+} from './projectTabsUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -162,6 +166,11 @@ initProjectsListUi({
 });
 initProjectSessionSummaryUi({
   getActiveSessionCode: () => activeSummarySession?.code
+});
+initProjectTabsUi({
+  onSelectOverview: () => {
+    renderProjectOverviewSongsList();
+  }
 });
 let myIdentity: ParticipantIdentity | null = null;
 let peerIdentity: ParticipantIdentity | null = null;
@@ -4245,14 +4254,7 @@ function resetProjectTabs(): void {
   isSongStudioOpen = false;
   $('project-song-studio-view')?.classList.add('hidden');
   $('project-main-tabs-bar')?.classList.remove('hidden');
-  const tabBtns = document.querySelectorAll<HTMLButtonElement>('.project-tab-btn');
-  tabBtns.forEach((b) => b.classList.toggle('active', b.dataset.tab === 'overview'));
-  const panels = document.querySelectorAll<HTMLElement>('.project-tab-panel');
-  panels.forEach((p) => {
-    if (!p.closest('#project-song-studio-view')) {
-      p.classList.toggle('hidden', p.id !== 'project-panel-overview');
-    }
-  });
+  switchProjectTab('overview');
   renderProjectOverviewSongsList();
 }
 
@@ -4419,23 +4421,6 @@ async function removeProjectCollaborator(targetUserId: string): Promise<void> {
     console.error('Failed to remove collaborator:', err);
   }
 }
-
-// --- Tab bar listeners ---
-document.querySelectorAll<HTMLButtonElement>('.project-tab-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const targetTab = btn.dataset.tab;
-    if (!targetTab) return;
-    document.querySelectorAll<HTMLButtonElement>('.project-tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    document.querySelectorAll<HTMLElement>('.project-tab-panel').forEach((panel) => {
-      if (!panel.closest('#project-song-studio-view')) {
-        panel.classList.toggle('hidden', panel.id !== `project-panel-${targetTab}`);
-      }
-    });
-    if (targetTab === 'overview') {
-      renderProjectOverviewSongsList();
-    }
-  });
-});
 
 // --- Project Event Listeners ---
 
@@ -5559,15 +5544,7 @@ function closeSongStudio(): void {
   $('project-main-tabs-bar')?.classList.remove('hidden');
 
   // Set project tabs to overview
-  const tabBtns = document.querySelectorAll<HTMLButtonElement>('.project-tab-btn');
-  tabBtns.forEach((b) => b.classList.toggle('active', b.dataset.tab === 'overview'));
-
-  const panels = document.querySelectorAll<HTMLElement>('.project-tab-panel');
-  panels.forEach((p) => {
-    if (!p.closest('#project-song-studio-view')) {
-      p.classList.toggle('hidden', p.id !== 'project-panel-overview');
-    }
-  });
+  switchProjectTab('overview');
 
   applyWorkspacePermissions();
   renderProjectOverviewSongsList();
