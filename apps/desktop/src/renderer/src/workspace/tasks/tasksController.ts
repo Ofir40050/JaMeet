@@ -259,6 +259,5 @@ export function updateSubtaskTitle(taskId: string, subtaskId: string, title: str
   if (!sub) return;
   sub.title = title;
   task.updatedAt = Date.now();
-  controllerOptions.onRenderTasksWorkspace();
   controllerOptions.onDebounceSaveTasks();
 }
