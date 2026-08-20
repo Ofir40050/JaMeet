@@ -1655,6 +1655,16 @@ function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
           if (otherSlider && otherSlider !== event.currentTarget) otherSlider.value = String(val);
           if (otherValLabel && otherValLabel !== valLabel) otherValLabel.textContent = `${Math.round(val * 100)}%`;
         }
+        if (isPrimary) {
+          for (const otherId of ['input-gain', 'call-input-gain']) {
+            const el = document.querySelector<HTMLInputElement>(`#${otherId}`);
+            if (el) el.value = String(val);
+          }
+          for (const labelId of ['gain-value', 'call-gain-value']) {
+            const el = document.getElementById(labelId);
+            if (el) el.textContent = `${Math.round(val * 100)}%`;
+          }
+        }
         // SYNC WITH STUDIO MIXER
         const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
         const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
@@ -3032,6 +3042,12 @@ for (const id of ['input-gain', 'call-input-gain']) {
       const el = $<HTMLInputElement>(otherId);
       if (el && el !== event.currentTarget) el.value = String(val);
     }
+    for (const prefix of ['', 'call-']) {
+      const slider = document.querySelector<HTMLInputElement>(`#${prefix}gain-1`);
+      const valLabel = document.querySelector<HTMLElement>(`#${prefix}gain-val-1`);
+      if (slider) slider.value = String(val);
+      if (valLabel) valLabel.textContent = `${Math.round(val * 100)}%`;
+    }
     savePreferences();
     
     // SYNC WITH STUDIO MIXER
@@ -3397,6 +3413,7 @@ function saveStudioMixerConfig(immediate = true): void {
           volume: typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0
         };
       } else {
+        const isLocalMic = ch.id.startsWith('you-mic') || ch.id === 'you-mic';
         const eqData: Record<string, ChannelEqConfig> = {};
         if (Array.isArray(ch.fx)) {
           for (let i = 0; i < ch.fx.length; i++) {
@@ -3409,7 +3426,7 @@ function saveStudioMixerConfig(immediate = true): void {
           name: ch.name,
           icon: ch.icon,
           color: ch.color,
-          volume: typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0,
+          volume: isLocalMic ? undefined : (typeof ch.volume === 'number' && !isNaN(ch.volume) ? ch.volume : 1.0),
           pan: typeof ch.pan === 'number' && !isNaN(ch.pan) ? ch.pan : 0,
           fx: Array.isArray(ch.fx) ? [...ch.fx] : [],
           eq: Object.keys(eqData).length > 0 ? eqData : undefined
@@ -3448,7 +3465,7 @@ function syncMixerChannelsWithVoiceInputs(): void {
     const icon = existing?.icon ?? saved?.icon ?? 'mic';
     const rawColor = existing?.color ?? saved?.color ?? DEFAULT_APP_BLUE;
     const color = rawColor === MASTER_GOLD ? DEFAULT_APP_BLUE : rawColor;
-    const volume = existing?.volume ?? saved?.volume ?? (mic.gain ?? 1.0);
+    const volume = mic.gain ?? 1.0;
     const pan = existing?.pan ?? saved?.pan ?? 0;
     const fx = existing?.fx ?? (saved?.fx ? [...saved.fx] : []);
 
@@ -4012,30 +4029,29 @@ function applyMixerAudioRouting(): void {
     const micCh = studioMixerChannels.find((c) => c.id === chId || (mic.id === 1 && c.id === 'you-mic'));
     const isAudible = micCh ? (!micCh.muted && (!hasLocalSolo || micCh.soloed)) : true;
     const isMutedGlobally = muted;
-    const baseVol = micCh ? micCh.volume : (mic.gain ?? 1);
-    const effectiveVol = isAudible && !isMutedGlobally ? baseVol : 0;
+    const gainVal = mic.gain ?? (micCh ? micCh.volume : 1);
+    const effectiveVol = isAudible && !isMutedGlobally ? gainVal : 0;
     const pan = micCh ? (typeof micCh.pan === 'number' && !isNaN(micCh.pan) ? micCh.pan : 0) : 0;
     if (effectiveVol > 0) anyLocalMicActive = true;
     
     if (micCh) {
-      mic.gain = micCh.volume;
-      if (mic.id === 1) prefs.inputGain = micCh.volume;
-      
-      for (const prefix of ['', 'call-']) {
-        const slider = document.querySelector<HTMLInputElement>(`#${prefix}gain-${mic.id}`);
-        const valLabel = document.querySelector<HTMLElement>(`#${prefix}gain-val-${mic.id}`);
-        if (slider) slider.value = String(micCh.volume);
-        if (valLabel) valLabel.textContent = `${Math.round(micCh.volume * 100)}%`;
+      micCh.volume = gainVal;
+    }
+
+    for (const prefix of ['', 'call-']) {
+      const slider = document.querySelector<HTMLInputElement>(`#${prefix}gain-${mic.id}`);
+      const valLabel = document.querySelector<HTMLElement>(`#${prefix}gain-val-${mic.id}`);
+      if (slider) slider.value = String(gainVal);
+      if (valLabel) valLabel.textContent = `${Math.round(gainVal * 100)}%`;
+    }
+    if (mic.id === 1) {
+      for (const otherId of ['input-gain', 'call-input-gain']) {
+        const el = document.querySelector<HTMLInputElement>(`#${otherId}`);
+        if (el) el.value = String(gainVal);
       }
-      if (mic.id === 1) {
-        for (const otherId of ['input-gain', 'call-input-gain']) {
-          const el = document.querySelector<HTMLInputElement>(`#${otherId}`);
-          if (el) el.value = String(micCh.volume);
-        }
-        for (const labelId of ['gain-value', 'call-gain-value']) {
-          const el = document.getElementById(labelId);
-          if (el) el.textContent = `${Math.round(micCh.volume * 100)}%`;
-        }
+      for (const labelId of ['gain-value', 'call-gain-value']) {
+        const el = document.getElementById(labelId);
+        if (el) el.textContent = `${Math.round(gainVal * 100)}%`;
       }
     }
 
@@ -4435,6 +4451,19 @@ function renderStudioMixer(): void {
     const faderValEl = readoutRow.querySelector<HTMLElement>('.mixer-fader-val')!;
     faderValEl.addEventListener('dblclick', () => {
       channel.volume = 1.0;
+      if (channel.id.startsWith('you-mic') || channel.id === 'you-mic') {
+        const micIdx = channel.id === 'you-mic' ? 1 : parseInt(channel.id.replace('you-mic-', ''), 10) || 1;
+        const mic = prefs.voiceInputs.find((m) => m.id === micIdx);
+        if (mic) {
+          mic.gain = 1.0;
+          if (micIdx === 1) prefs.inputGain = 1.0;
+          savePreferences();
+          const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
+          if (desktopApi?.setSystemInputVolume && micIdx === 1) {
+            void desktopApi.setSystemInputVolume(1.0);
+          }
+        }
+      }
       renderStudioMixer();
       applyMixerAudioRouting();
       saveStudioMixerConfig(true);
@@ -4500,9 +4529,23 @@ function renderStudioMixer(): void {
     const setFaderByTopPercent = (pct: number) => {
       const clampedPct = Math.max(2.0, Math.min(98.5, pct));
       const db = faderTopPercentToDb(clampedPct);
-      channel.volume = dbToGain(db);
+      const gainVal = dbToGain(db);
+      channel.volume = gainVal;
       faderCap.style.top = `${clampedPct.toFixed(2)}%`;
       faderValEl.textContent = formatDbText(db);
+      if (channel.id.startsWith('you-mic') || channel.id === 'you-mic') {
+        const micIdx = channel.id === 'you-mic' ? 1 : parseInt(channel.id.replace('you-mic-', ''), 10) || 1;
+        const mic = prefs.voiceInputs.find((m) => m.id === micIdx);
+        if (mic) {
+          mic.gain = gainVal;
+          if (micIdx === 1) prefs.inputGain = gainVal;
+          savePreferences();
+          const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
+          if (desktopApi?.setSystemInputVolume && micIdx === 1) {
+            void desktopApi.setSystemInputVolume(Math.min(1.0, gainVal));
+          }
+        }
+      }
       applyMixerAudioRouting();
     };
 
@@ -4567,32 +4610,53 @@ function renderStudioMixer(): void {
       faderColumn.addEventListener('pointercancel', onTrackPointerUp);
     });
 
-    faderCap.addEventListener('dblclick', (e) => {
+    const handleFaderReset = (e: MouseEvent) => {
       e.stopPropagation();
       channel.volume = 1.0;
       faderCap.style.top = '16%';
       faderValEl.textContent = '0.0';
+      if (channel.id.startsWith('you-mic') || channel.id === 'you-mic') {
+        const micIdx = channel.id === 'you-mic' ? 1 : parseInt(channel.id.replace('you-mic-', ''), 10) || 1;
+        const mic = prefs.voiceInputs.find((m) => m.id === micIdx);
+        if (mic) {
+          mic.gain = 1.0;
+          if (micIdx === 1) prefs.inputGain = 1.0;
+          savePreferences();
+          const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
+          if (desktopApi?.setSystemInputVolume && micIdx === 1) {
+            void desktopApi.setSystemInputVolume(1.0);
+          }
+        }
+      }
       applyMixerAudioRouting();
       saveStudioMixerConfig(true);
-    });
+    };
 
-    faderColumn.addEventListener('dblclick', (e) => {
-      e.stopPropagation();
-      channel.volume = 1.0;
-      faderCap.style.top = '16%';
-      faderValEl.textContent = '0.0';
-      applyMixerAudioRouting();
-      saveStudioMixerConfig(true);
-    });
+    faderCap.addEventListener('dblclick', handleFaderReset);
+    faderColumn.addEventListener('dblclick', handleFaderReset);
 
     faderColumn.addEventListener('wheel', (e) => {
       e.preventDefault();
       const curDb = channel.volume <= 0.0001 ? -60 : 20 * Math.log10(channel.volume);
       const deltaDb = e.deltaY < 0 ? 0.3 : -0.3;
       const newDb = Math.max(-65, Math.min(6.0, curDb + deltaDb));
-      channel.volume = dbToGain(newDb);
+      const gainVal = dbToGain(newDb);
+      channel.volume = gainVal;
       faderCap.style.top = `${dbToFaderTopPercent(newDb).toFixed(2)}%`;
       faderValEl.textContent = formatDbText(newDb);
+      if (channel.id.startsWith('you-mic') || channel.id === 'you-mic') {
+        const micIdx = channel.id === 'you-mic' ? 1 : parseInt(channel.id.replace('you-mic-', ''), 10) || 1;
+        const mic = prefs.voiceInputs.find((m) => m.id === micIdx);
+        if (mic) {
+          mic.gain = gainVal;
+          if (micIdx === 1) prefs.inputGain = gainVal;
+          savePreferences();
+          const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
+          if (desktopApi?.setSystemInputVolume && micIdx === 1) {
+            void desktopApi.setSystemInputVolume(Math.min(1.0, gainVal));
+          }
+        }
+      }
       applyMixerAudioRouting();
       saveStudioMixerConfig(false);
     }, { passive: false });
