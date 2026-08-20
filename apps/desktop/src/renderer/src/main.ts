@@ -81,15 +81,15 @@ import {
   initProjectTabsUi
 } from './projectTabsUi';
 import {
-  initProjectMenuUi,
-  closeProjectMenu
+  initProjectMenuUi
 } from './projectMenuUi';
 import {
-  initProjectRenameUi,
-  openRenameProjectModal,
-  closeRenameProjectModal,
-  setRenameProjectError,
-  setRenameProjectBusy
+  initProjectRenameController,
+  handleTriggerRename,
+  handleSaveRename
+} from './projectRenameController';
+import {
+  initProjectRenameUi
 } from './projectRenameUi';
 import {
   initProjectCollaboratorModalUi,
@@ -97,11 +97,12 @@ import {
   setAddCollaboratorError
 } from './projectCollaboratorModalUi';
 import {
-  initProjectDeleteUi,
-  openDeleteProjectModal,
-  closeDeleteProjectModal,
-  setDeleteProjectError,
-  setDeleteProjectBusy
+  initProjectDeleteController,
+  handleTriggerDelete,
+  handleConfirmDelete
+} from './projectDeleteController';
+import {
+  initProjectDeleteUi
 } from './projectDeleteUi';
 import {
   initProjectSongDeleteUi,
@@ -109,10 +110,18 @@ import {
   closeDeleteSongModal
 } from './projectSongDeleteUi';
 import {
-  initProjectCreateUi,
-  closeNewProjectModal,
-  setNewProjectError,
-  setNewProjectBusy
+  computeSongDeletion
+} from './songDeletion';
+import {
+  initProjectArchiveController,
+  handleArchiveProject
+} from './projectArchiveController';
+import {
+  initProjectCreateController,
+  handleCreateProject
+} from './projectCreateController';
+import {
+  initProjectCreateUi
 } from './projectCreateUi';
 import {
   initCallShortcutsUi,
@@ -460,57 +469,47 @@ initProjectCollaboratorsController({
   }
 });
 initDialogUi();
+initProjectArchiveController({
+  getAuthToken: () => auth.getToken(),
+  getProject: () => activeProject,
+  onProjectUpdated: (updated) => {
+    activeProject = updated;
+  },
+  onRefreshProjectView: () => {
+    renderProjectView();
+  },
+  onRefreshProjectsList: () => {
+    void loadProjects();
+  }
+});
 initProjectMenuUi({
-  onArchiveProject: async () => {
-    if (!activeProject) return;
-    closeProjectMenu();
-    const token = auth.getToken();
-    if (!token) return;
-    try {
-      if (activeProject.archived) {
-        activeProject = await projectsApi.unarchiveProject(token, activeProject.id);
-      } else {
-        activeProject = await projectsApi.archiveProject(token, activeProject.id);
-      }
-      renderProjectView();
-      void loadProjects();
-    } catch (err) {
-      console.error('Failed to archive/unarchive project:', err);
-    }
+  onArchiveProject: () => {
+    void handleArchiveProject();
+  }
+});
+
+initProjectRenameController({
+  getAuthToken: () => auth.getToken(),
+  getProject: () => activeProject,
+  onProjectUpdated: (updated) => {
+    activeProject = updated;
+  },
+  onRefreshProjectView: () => {
+    renderProjectView();
+  },
+  onRefreshProjectsList: () => {
+    void loadProjects();
   }
 });
 initProjectRenameUi({
   onTriggerRename: () => {
-    if (!activeProject) return;
-    closeProjectMenu();
-    openRenameProjectModal(activeProject.name, activeProject.description || '');
+    handleTriggerRename();
   },
-  onSave: async ({ name, description }) => {
-    if (!activeProject) return;
-    if (!name) {
-      setRenameProjectError('Project name cannot be empty.');
-      return;
-    }
-    const token = auth.getToken();
-    if (!token) {
-      setRenameProjectError('You must be signed in to edit projects.');
-      return;
-    }
-    setRenameProjectBusy(true);
-    try {
-      setRenameProjectError('');
-      const updated = await projectsApi.updateProject(token, activeProject.id, { name, description });
-      activeProject = updated;
-      renderProjectView();
-      void loadProjects();
-      closeRenameProjectModal();
-    } catch (err) {
-      setRenameProjectError(err instanceof Error ? err.message : 'Failed to update project.');
-    } finally {
-      setRenameProjectBusy(false);
-    }
+  onSave: (data) => {
+    void handleSaveRename(data);
   }
 });
+
 initProjectCollaboratorModalUi({
   onAddCollaborator: async ({ usernameOrEmail, role }) => {
     await handleAddCollaborator(usernameOrEmail, role, {
@@ -526,37 +525,31 @@ initProjectCollaboratorModalUi({
     });
   }
 });
-initProjectDeleteUi({
-  onTriggerDelete: () => {
-    if (!activeProject) return;
-    closeProjectMenu();
-    openDeleteProjectModal(activeProject.name);
+
+initProjectDeleteController({
+  getAuthToken: () => auth.getToken(),
+  getProject: () => activeProject,
+  onProjectDeleted: () => {
+    activeProject = undefined;
+    activeProjectId = undefined;
   },
-  getProjectName: () => activeProject?.name,
-  onConfirmDelete: async () => {
-    if (!activeProject) return;
-    const token = auth.getToken();
-    if (!token) {
-      setDeleteProjectError('You must be signed in to delete a project.');
-      return;
-    }
-    setDeleteProjectBusy(true);
-    setDeleteProjectError('');
-    try {
-      await projectsApi.deleteProject(token, activeProject.id);
-      closeDeleteProjectModal();
-      activeProject = undefined;
-      activeProjectId = undefined;
-      showView('home-view');
-      await loadProjects();
-    } catch (err: any) {
-      console.error('Failed to delete project:', err);
-      setDeleteProjectError(err?.message || 'Failed to delete project. Make sure you are the project owner.');
-    } finally {
-      setDeleteProjectBusy(false);
-    }
+  onNavigateHome: () => {
+    showView('home-view');
+  },
+  onRefreshProjectsList: async () => {
+    await loadProjects();
   }
 });
+initProjectDeleteUi({
+  onTriggerDelete: () => {
+    handleTriggerDelete();
+  },
+  getProjectName: () => activeProject?.name,
+  onConfirmDelete: () => {
+    void handleConfirmDelete();
+  }
+});
+
 initProjectSongDeleteUi({
   getSongTitle: () => (songPendingDeletion ? songPendingDeletion.title : undefined),
   onCancel: () => {
@@ -564,35 +557,16 @@ initProjectSongDeleteUi({
   },
   onConfirmDelete: async () => {
     if (!activeProject?.workspace || !songPendingDeletion || !canUserEditProject()) return;
-    const songToDelete = songPendingDeletion;
-    const ws = activeProject.workspace;
-    const songs = ws.songs || [];
+    const result = computeSongDeletion(
+      activeProject.workspace.songs || [],
+      activeProject.workspace.activeSongId,
+      songPendingDeletion.id,
+      'Song 1'
+    );
 
-    const idx = songs.findIndex((s) => s.id === songToDelete.id);
-    if (idx !== -1) {
-      songs.splice(idx, 1);
-    }
-
-    // If no songs left, create a fresh initial song
-    if (songs.length === 0) {
-      const now = Date.now();
-      const initSong: ProjectSongItem = {
-        id: 'song-1',
-        title: 'Song 1',
-        order: 0,
-        lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now },
-        notes: { revision: 1, content: '• ', bpm: '120 BPM', key: 'C Major', updatedAt: now },
-        structure: { revision: 1, sections: [], updatedAt: now },
-        createdAt: now,
-        updatedAt: now
-      };
-      songs.push(initSong);
-    }
-
-    // If the deleted song was the active song, switch to another song
-    if (ws.activeSongId === songToDelete.id) {
-      const nextSong = songs[Math.max(0, idx - 1)] || songs[0];
-      switchActiveSong(nextSong.id);
+    activeProject.workspace.songs = result.songs;
+    if (result.shouldSwitchActiveSong && result.nextActiveSongId) {
+      switchActiveSong(result.nextActiveSongId);
     }
 
     closeDeleteSongModal();
@@ -604,29 +578,19 @@ initProjectSongDeleteUi({
     void saveSongsWorkspace();
   }
 });
+
+initProjectCreateController({
+  getAuthToken: () => auth.getToken(),
+  onRefreshProjectsList: async () => {
+    await loadProjects();
+  },
+  onOpenProject: async (projectId) => {
+    await openProjectView(projectId);
+  }
+});
 initProjectCreateUi({
-  onCreateProject: async ({ name, description }) => {
-    const token = auth.getToken();
-    if (!token) {
-      setNewProjectError('Please sign in to your JaMeet account to create projects.');
-      return;
-    }
-    setNewProjectBusy(true);
-    try {
-      setNewProjectError('');
-      const created = await projectsApi.createProject(token, { name, description: description || undefined });
-      closeNewProjectModal();
-      await loadProjects();
-      // Open the newly created project immediately!
-      if (created?.id) {
-        await openProjectView(created.id);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Could not create project. Please try again.';
-      setNewProjectError(msg);
-    } finally {
-      setNewProjectBusy(false);
-    }
+  onCreateProject: (data) => {
+    void handleCreateProject(data);
   }
 });
 initCallShortcutsUi();
