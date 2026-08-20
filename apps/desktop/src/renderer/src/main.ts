@@ -38,6 +38,11 @@ import {
   renderWaitingBanner,
   hideWaitingBanner
 } from './waitingRoomUi';
+import {
+  initProjectsListUi,
+  renderProjectsGrid,
+  createProjectCard
+} from './projectsListUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -136,6 +141,11 @@ initProfileUi({
 });
 initSettingsUi();
 initAuthUi();
+initProjectsListUi({
+  onOpenProject: (projectId) => {
+    void openProjectView(projectId);
+  }
+});
 let myIdentity: ParticipantIdentity | null = null;
 let peerIdentity: ParticipantIdentity | null = null;
 let hostIdentity: ParticipantIdentity | null = null;
@@ -4161,7 +4171,7 @@ async function loadProjects(): Promise<void> {
   const token = auth.getToken();
   if (!token) {
     projectsList = [];
-    renderProjectsGrid();
+    renderProjectsGrid(projectsList, auth.getUser());
     return;
   }
   try {
@@ -4170,71 +4180,7 @@ async function loadProjects(): Promise<void> {
     console.warn('[Projects] Failed to load projects:', err);
     projectsList = [];
   } finally {
-    renderProjectsGrid();
-  }
-}
-
-function renderProjectsGrid(): void {
-  const grid = $('projects-grid');
-  const empty = $('projects-empty');
-  const count = $('projects-count');
-  if (!grid) return;
-
-  if (count) count.textContent = String(projectsList.length);
-
-  if (!projectsList.length) {
-    grid.replaceChildren();
-    grid.classList.add('hidden');
-    empty?.classList.remove('hidden');
-    return;
-  }
-
-  empty?.classList.add('hidden');
-  grid.classList.remove('hidden');
-  grid.replaceChildren();
-
-  const user = auth.getUser();
-
-  for (const project of projectsList) {
-    const card = document.createElement('div');
-    card.className = `project-card${project.archived ? ' archived' : ''}`;
-    card.dataset.projectId = project.id;
-
-    const isOwner = user?.id === project.ownerId;
-    const collabCount = project.collaborators.length;
-    const sessionCount = project.sessionCount || project.sessions?.length || 0;
-    const lastActivity = projectsApi.formatRelativeTime(project.lastActivityAt);
-
-    // Collaborator avatars (show up to 4)
-    let collabAvatarsHtml = '';
-    const showCollabs = project.collaborators.slice(0, 4);
-    for (const c of showCollabs) {
-      const ini = c.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-      const safeBg = safeAvatarColor(c.avatarColor, '#38bdf8');
-      collabAvatarsHtml += `<div class="project-card-avatar" style="background-color: ${safeBg};" title="${escapeHtml(c.displayName)} (@${escapeHtml(c.username)})">${escapeHtml(ini)}</div>`;
-    }
-    if (collabCount > 4) {
-      collabAvatarsHtml += `<div class="project-card-avatar project-card-avatar-overflow">+${collabCount - 4}</div>`;
-    }
-
-    card.innerHTML = `
-      <div class="project-card-header">
-        <h4 class="project-card-title">${escapeHtml(project.name)}</h4>
-        ${project.archived ? `<span class="project-card-pill badge-archived">${icons.archive({ size: 11 })} <span>Archived</span></span>` : ''}
-      </div>
-      <div class="project-card-meta">
-        <div class="project-card-meta-item"><span class="meta-icon">${icons.clock({ size: 13 })}</span> <span>${escapeHtml(lastActivity)}</span></div>
-        <div class="project-card-meta-item"><span class="meta-icon">${icons.headphones({ size: 13 })}</span> <span>${sessionCount} session${sessionCount !== 1 ? 's' : ''}</span></div>
-        ${collabCount > 0 ? `<div class="project-card-meta-item"><span class="meta-icon">${icons.users({ size: 13 })}</span> <span>${collabCount} member${collabCount !== 1 ? 's' : ''}</span></div>` : ''}
-      </div>
-      <div class="project-card-footer">
-        <div class="project-card-collaborators">${collabAvatarsHtml}</div>
-        <span class="project-card-open-hint"><span>Open Project</span> <span class="btn-arrow">${icons.arrowRight({ size: 13 })}</span></span>
-      </div>
-    `;
-
-    card.addEventListener('click', () => void openProjectView(project.id));
-    grid.appendChild(card);
+    renderProjectsGrid(projectsList, auth.getUser());
   }
 }
 
