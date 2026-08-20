@@ -1,0 +1,338 @@
+import type { UserProfile, RegisterRequest, LoginRequest, UpdateProfileRequest, SessionHistoryItem } from '@jameet/shared';
+import { logger } from '../core/logger';
+
+export type AuthStateListener = (user: UserProfile | null, guestName?: string) => void;
+
+async function getClientHeaders(): Promise<Record<string, string>> {
+  try {
+    const api = (typeof window !== 'undefined') ? (window.jameet || window.musiczoom) : undefined;
+    if (api?.getAppInfo) {
+      const info = await api.getAppInfo();
+      if (info && typeof info === 'object') {
+        const version = typeof info.version === 'string' && info.version.trim() ? info.version.trim() : 'Unknown';
+        let platform = typeof info.platform === 'string' && info.platform.trim() ? info.platform.trim() : 'Unknown';
+        if (platform !== 'macOS' && platform !== 'Windows') {
+          platform = 'Unknown';
+        }
+        return {
+          'X-Client-Version': version,
+          'X-Client-Platform': platform
+        };
+      }
+    }
+  } catch {}
+  return {
+    'X-Client-Version': 'Unknown',
+    'X-Client-Platform': 'Unknown'
+  };
+}
+
+export class AuthManager {
+  private serverUrl: string;
+  private currentUser: UserProfile | null = null;
+  private currentToken: string | null = null;
+  private currentGuestName: string = '';
+  private listeners = new Set<AuthStateListener>();
+
+  constructor(serverUrl: string) {
+    this.serverUrl = serverUrl.replace(/\/$/, '');
+  }
+
+  getUser(): UserProfile | null {
+    return this.currentUser;
+  }
+
+  getToken(): string | null {
+    return this.currentToken;
+  }
+
+  getGuestName(): string {
+    return this.currentGuestName;
+  }
+
+  setGuestName(name: string): void {
+    this.currentGuestName = name.trim();
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('jameet_guest_name', this.currentGuestName);
+      }
+    } catch {
+      // ignore
+    }
+    this.notify();
+  }
+
+  onStateChange(listener: AuthStateListener): () => void {
+    this.listeners.add(listener);
+    listener(this.currentUser, this.currentGuestName);
+    return () => this.listeners.delete(listener);
+  }
+
+  private notify(): void {
+    logger.debug('auth_state_changed', 'Authentication state updated', {
+      userId: this.currentUser?.id,
+      isGuest: this.currentUser?.isGuest ?? true,
+      hasUser: Boolean(this.currentUser),
+      guestName: this.currentGuestName ? '[SET]' : undefined
+    });
+    for (const l of this.listeners) {
+      try {
+        l(this.currentUser, this.currentGuestName);
+      } catch (err) {
+        console.error('Error in auth listener:', err);
+      }
+    }
+  }
+
+  private async persistSession(token: string, user: UserProfile): Promise<void> {
+    try {
+      const authApi = (typeof window !== 'undefined') ? (window.jameet?.auth || window.musiczoom?.auth) : undefined;
+      if (authApi?.setSession) {
+        await authApi.setSession({ token, user });
+      }
+    } catch (err) {
+      console.warn('Could not persist session via safeStorage:', err);
+    }
+  }
+
+  private async readPersistedSession(): Promise<{ token?: string; user?: unknown } | null> {
+    try {
+      const authApi = (typeof window !== 'undefined') ? (window.jameet?.auth || window.musiczoom?.auth) : undefined;
+      if (authApi?.getSession) {
+        return await authApi.getSession();
+      }
+    } catch (err) {
+      console.warn('Could not read persisted session from safeStorage:', err);
+    }
+    return null;
+  }
+
+  private async clearPersistedSession(): Promise<void> {
+    try {
+      const authApi = (typeof window !== 'undefined') ? (window.jameet?.auth || window.musiczoom?.auth) : undefined;
+      if (authApi?.clearSession) {
+        await authApi.clearSession();
+      }
+    } catch (err) {
+      console.warn('Could not clear persisted session from safeStorage:', err);
+    }
+  }
+
+  async init(): Promise<void> {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        this.currentGuestName = localStorage.getItem('jameet_guest_name') || localStorage.getItem('musiczoom_guest_name') || '';
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const saved = await this.readPersistedSession();
+      if (saved?.token) {
+        this.currentToken = saved.token;
+        const clientHeaders = await getClientHeaders();
+        let res: Response;
+        try {
+          res = await fetch(`${this.serverUrl}/api/auth/me`, {
+            headers: {
+              Authorization: `Bearer ${saved.token}`,
+              ...clientHeaders
+            }
+          });
+        } catch {
+          // If network is offline, maintain local cached identity
+          if (saved.user && typeof saved.user === 'object') {
+            this.currentUser = saved.user as UserProfile;
+          }
+          this.notify();
+          return;
+        }
+
+        if (res.ok) {
+          const data = (await res.json()) as { ok: boolean; user?: UserProfile };
+          if (data.ok && data.user) {
+            this.currentUser = data.user;
+            logger.info('auth_session_restored', 'Session restored successfully', { userId: data.user.id, username: data.user.username });
+            await this.persistSession(saved.token, data.user);
+          } else {
+            await this.logout();
+          }
+        } else {
+          await this.logout();
+        }
+      }
+    } catch (err) {
+      console.warn('Auth session restoration warning:', err);
+    }
+
+    this.notify();
+  }
+
+  async register(req: RegisterRequest): Promise<UserProfile> {
+    logger.info('auth_register_attempt', 'Attempting user registration', { username: req.username });
+    const clientHeaders = await getClientHeaders();
+    let res: Response;
+    try {
+      res = await fetch(`${this.serverUrl}/api/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...clientHeaders
+        },
+        body: JSON.stringify(req)
+      });
+    } catch (err) {
+      logger.warn('auth_register_failure', 'Registration connection failed', { username: req.username }, err);
+      throw new Error('Unable to connect to the authentication server. Please check your connection.');
+    }
+
+    let data: { ok: boolean; token?: string; user?: UserProfile; message?: string };
+    try {
+      data = (await res.json()) as { ok: boolean; token?: string; user?: UserProfile; message?: string };
+    } catch (err) {
+      logger.warn('auth_register_failure', `Registration response error (HTTP ${res.status})`, { username: req.username }, err);
+      throw new Error(`Server returned status ${res.status}. Registration could not be completed.`);
+    }
+
+    if (!res.ok || !data.ok || !data.token || !data.user) {
+      const errMsg = data.message || 'Registration failed.';
+      logger.warn('auth_register_failure', 'Registration failed', { username: req.username, reason: errMsg });
+      throw new Error(errMsg);
+    }
+
+    this.currentToken = data.token;
+    this.currentUser = data.user;
+    logger.info('auth_register_success', 'User registration successful', { userId: data.user.id, username: data.user.username });
+    await this.persistSession(data.token, data.user);
+    this.notify();
+    return data.user;
+  }
+
+  async login(req: LoginRequest): Promise<UserProfile> {
+    const identifierType = req.usernameOrEmail?.includes('@') ? 'email' : 'username';
+    logger.info('auth_login_attempt', 'Attempting user login', { identifierType });
+    const clientHeaders = await getClientHeaders();
+    let res: Response;
+    try {
+      res = await fetch(`${this.serverUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...clientHeaders
+        },
+        body: JSON.stringify(req)
+      });
+    } catch (err) {
+      logger.warn('auth_login_failure', 'Login connection failed', { identifierType }, err);
+      throw new Error('Unable to connect to the authentication server. Please check your connection.');
+    }
+
+    let data: { ok: boolean; token?: string; user?: UserProfile; message?: string };
+    try {
+      data = (await res.json()) as { ok: boolean; token?: string; user?: UserProfile; message?: string };
+    } catch (err) {
+      logger.warn('auth_login_failure', `Login response error (HTTP ${res.status})`, { identifierType, status: res.status }, err);
+      throw new Error(`Server returned status ${res.status}. Sign in could not be completed.`);
+    }
+
+    if (!res.ok || !data.ok || !data.token || !data.user) {
+      const errMsg = data.message || 'Invalid username or password.';
+      logger.warn('auth_login_failure', 'Login authentication failed', { identifierType, status: res.status, reason: errMsg });
+      throw new Error(errMsg);
+    }
+
+    this.currentToken = data.token;
+    this.currentUser = data.user;
+    logger.info('auth_login_success', 'User login successful', { userId: data.user.id, username: data.user.username });
+    await this.persistSession(data.token, data.user);
+    this.notify();
+    return data.user;
+  }
+
+  async updateProfile(req: UpdateProfileRequest): Promise<UserProfile> {
+    if (!this.currentToken) {
+      throw new Error('You must be signed in to update your profile.');
+    }
+    let res: Response;
+    const clientHeaders = await getClientHeaders();
+    try {
+      res = await fetch(`${this.serverUrl}/api/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.currentToken}`,
+          ...clientHeaders
+        },
+        body: JSON.stringify(req)
+      });
+    } catch {
+      throw new Error('Unable to connect to the server. Please check your connection.');
+    }
+
+    let data: { ok: boolean; user?: UserProfile; token?: string; message?: string };
+    try {
+      data = (await res.json()) as { ok: boolean; user?: UserProfile; token?: string; message?: string };
+    } catch {
+      throw new Error(`Server returned status ${res.status}. Profile update could not be completed.`);
+    }
+
+    if (!res.ok || !data.ok || !data.user) {
+      throw new Error(data.message || 'Profile update failed.');
+    }
+
+    this.currentUser = data.user;
+    if (data.token) {
+      this.currentToken = data.token;
+      await this.persistSession(data.token, data.user);
+    } else {
+      await this.persistSession(this.currentToken, data.user);
+    }
+    this.notify();
+    return data.user;
+  }
+
+  async logout(): Promise<void> {
+    const token = this.currentToken;
+    const hadUser = Boolean(this.currentUser);
+    this.currentToken = null;
+    this.currentUser = null;
+    logger.info('auth_logout', 'User logged out', { wasLoggedIn: hadUser });
+    await this.clearPersistedSession();
+    if (token) {
+      try {
+        await fetch(`${this.serverUrl}/api/auth/logout`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+      } catch {
+        // ignore network failure on logout
+      }
+    }
+    this.notify();
+  }
+
+
+  async getRecentSessions(): Promise<SessionHistoryItem[]> {
+    if (!this.currentToken) return [];
+    try {
+      const res = await fetch(`${this.serverUrl}/api/sessions/history`, {
+        headers: { Authorization: `Bearer ${this.currentToken}` }
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { ok: boolean; sessions?: SessionHistoryItem[] };
+        return data.sessions || [];
+      }
+    } catch (err) {
+      console.warn('Failed to fetch recent sessions:', err);
+    }
+    return [];
+  }
+
+  getEffectiveDisplayName(): string {
+    if (this.currentUser) return this.currentUser.displayName;
+    return this.currentGuestName || 'Guest Musician';
+  }
+}
