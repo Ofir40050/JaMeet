@@ -106,6 +106,7 @@ import {
   initGuestJoinUi,
   closeGuestJoinDialog
 } from './guestJoinUi';
+import { initProjectNavigationUi } from './projectNavigationUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -404,6 +405,28 @@ initGuestJoinUi({
       pendingJoinCode = '';
       void prepareStudio({ type: 'join', code });
     }
+  }
+});
+initProjectNavigationUi({
+  onRefreshProjects: () => {
+    void loadProjects();
+  },
+  onExitProject: async () => {
+    if (activeProject?.workspace) {
+      await flushAllWorkspacePendingSaves();
+    }
+    activeProjectId = undefined;
+    activeProject = undefined;
+    showView('home-view');
+    void loadProjects();
+  },
+  onStartSession: async () => {
+    if (!activeProject) return;
+    if (activeProject.workspace) {
+      await flushAllWorkspacePendingSaves();
+    }
+    activeProjectId = activeProject.id;
+    await prepareStudio({ type: 'create' });
   }
 });
 let myIdentity: ParticipantIdentity | null = null;
@@ -4599,41 +4622,6 @@ async function removeProjectCollaborator(targetUserId: string): Promise<void> {
 }
 
 // --- Project Event Listeners ---
-
-$('btn-refresh-projects')?.addEventListener('click', () => void loadProjects());
-
-$('btn-project-back')?.addEventListener('click', async () => {
-  if (activeProject?.workspace) {
-    await flushAllWorkspacePendingSaves();
-  }
-  activeProjectId = undefined;
-  activeProject = undefined;
-  showView('home-view');
-  void loadProjects();
-});
-$('project-view-home-crumb')?.addEventListener('click', async () => {
-  if (activeProject?.workspace) {
-    await flushAllWorkspacePendingSaves();
-  }
-  activeProjectId = undefined;
-  activeProject = undefined;
-  showView('home-view');
-  void loadProjects();
-});
-
-$('btn-project-start-session')?.addEventListener('click', async () => {
-  if (!activeProject) return;
-  await flushAllWorkspacePendingSaves();
-  activeProjectId = activeProject.id;
-  await prepareStudio({ type: 'create' });
-});
-
-$('btn-sessions-tab-start')?.addEventListener('click', async () => {
-  if (!activeProject) return;
-  await flushAllWorkspacePendingSaves();
-  activeProjectId = activeProject.id;
-  await prepareStudio({ type: 'create' });
-});
 
 $('btn-project-archive')?.addEventListener('click', async () => {
   if (!activeProject) return;
