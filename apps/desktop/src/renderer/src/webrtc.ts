@@ -111,26 +111,30 @@ export class WebRtcSession {
   }
 
   async updateVoiceStereoFromInboundStats(): Promise<boolean> {
-    const currentStereo = await this.queryInboundVoiceStereo();
-    if (this.voiceStereo !== currentStereo) {
-      this.voiceStereo = currentStereo;
+    const result = await this.queryInboundVoiceStereo();
+    if (result === 'unknown') {
+      return this.voiceStereo;
+    }
+    const isStereo = result === 'stereo';
+    if (this.voiceStereo !== isStereo) {
+      this.voiceStereo = isStereo;
       this.onVoiceStereoChange?.(this.voiceStereo);
     }
     return this.voiceStereo;
   }
 
-  private async queryInboundVoiceStereo(): Promise<boolean> {
+  private async queryInboundVoiceStereo(): Promise<'mono' | 'stereo' | 'unknown'> {
     const voiceTransceiver = this.audioTransceivers.get('voice') ??
       (this.pc?.getTransceivers() ?? []).find((t) => this.audioPurpose.get(t)?.id === 'voice');
 
     const mid = voiceTransceiver?.mid;
     if (!voiceTransceiver || !mid || !this.pc) {
-      return false;
+      return 'unknown';
     }
 
     try {
       const statsReport = await (voiceTransceiver.receiver?.getStats?.() ?? this.pc.getStats());
-      if (!statsReport) return false;
+      if (!statsReport) return 'unknown';
 
       let inboundAudioStat: any = null;
       for (const stat of statsReport.values()) {
@@ -143,7 +147,7 @@ export class WebRtcSession {
       }
 
       if (!inboundAudioStat) {
-        return false;
+        return 'unknown';
       }
 
       // Resolve the codecId from the active inbound RTP stream
@@ -154,7 +158,7 @@ export class WebRtcSession {
         const mimeType = (codecStat.mimeType || '').toLowerCase();
         if (mimeType.includes('opus')) {
           if (codecStat.sdpFmtpLine) {
-            return parseSpropStereo(codecStat.sdpFmtpLine);
+            return parseSpropStereo(codecStat.sdpFmtpLine) ? 'stereo' : 'mono';
           }
           const payloadType = codecStat.payloadType ?? inboundAudioStat.payloadType;
           if (typeof payloadType === 'number') {
@@ -166,12 +170,14 @@ export class WebRtcSession {
                 const fmtpLine = lines.find((l) => l.startsWith(`a=fmtp:${payloadType} `) || l.startsWith(`a=fmtp:${payloadType}:`));
                 if (fmtpLine) {
                   const fmtpText = fmtpLine.slice(fmtpLine.indexOf(' ') + 1);
-                  return parseSpropStereo(fmtpText);
+                  return parseSpropStereo(fmtpText) ? 'stereo' : 'mono';
                 }
               }
             }
           }
+          return 'mono';
         }
+        return 'mono';
       } else if (typeof inboundAudioStat.payloadType === 'number') {
         const remoteSdp = this.pc.currentRemoteDescription?.sdp || this.pc.remoteDescription?.sdp;
         if (remoteSdp) {
@@ -186,17 +192,18 @@ export class WebRtcSession {
               const fmtpLine = lines.find((l) => l.startsWith(`a=fmtp:${inboundAudioStat.payloadType} `) || l.startsWith(`a=fmtp:${inboundAudioStat.payloadType}:`));
               if (fmtpLine) {
                 const fmtpText = fmtpLine.slice(fmtpLine.indexOf(' ') + 1);
-                return parseSpropStereo(fmtpText);
+                return parseSpropStereo(fmtpText) ? 'stereo' : 'mono';
               }
+              return 'mono';
             }
           }
         }
       }
     } catch {
-      // Conservative default to mono on stats query failure
+      return 'unknown';
     }
 
-    return false;
+    return 'unknown';
   }
 
   private startInboundStatsPolling(): void {
@@ -484,7 +491,11 @@ export class WebRtcSession {
     if (this.disconnectTimer) window.clearTimeout(this.disconnectTimer);
     this.disconnectTimer = undefined;
     this.stopInboundStatsPolling();
+    const hadStereo = this.voiceStereo;
     this.voiceStereo = false;
+    if (hadStereo) {
+      this.onVoiceStereoChange?.(false);
+    }
     for (const track of this.remoteStream.getTracks()) {
       track.onended = null;
     }
