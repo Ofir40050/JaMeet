@@ -17,7 +17,8 @@ function parseSpropStereo(fmtpText: string): boolean {
   return false;
 }
 
-function extractMediaSection(sdp: string, targetMid?: string | null, targetIndex?: number): string | null {
+function extractMediaSectionByMid(sdp: string, mid: string): string | null {
+  if (!mid) return null;
   const lines = sdp.split(/\r?\n/);
   const sections: string[][] = [];
   let currentSection: string[] | null = null;
@@ -32,16 +33,10 @@ function extractMediaSection(sdp: string, targetMid?: string | null, targetIndex
   }
   if (currentSection) sections.push(currentSection);
 
-  if (targetMid) {
-    for (const sec of sections) {
-      if (sec.some((l) => l.trim() === `a=mid:${targetMid}`)) {
-        return sec.join('\n');
-      }
+  for (const sec of sections) {
+    if (sec.some((l) => l.trim() === `a=mid:${mid}`)) {
+      return sec.join('\n');
     }
-  }
-
-  if (typeof targetIndex === 'number' && targetIndex >= 0 && targetIndex < sections.length) {
-    return sections[targetIndex].join('\n');
   }
 
   return null;
@@ -111,44 +106,51 @@ export class WebRtcSession {
     const voiceTransceiver = this.audioTransceivers.get('voice') ??
       (this.pc?.getTransceivers() ?? []).find((t) => this.audioPurpose.get(t)?.id === 'voice');
 
-    if (!voiceTransceiver) {
+    const mid = voiceTransceiver?.mid;
+    if (!voiceTransceiver || !mid) {
       return false;
     }
 
-    // 1. Prefer receiver getParameters().codecs sdpFmtpLine if available on the Voice receiver
-    try {
-      const receiverCodecs = voiceTransceiver.receiver?.getParameters?.()?.codecs;
-      if (receiverCodecs && receiverCodecs.length > 0) {
-        for (const codec of receiverCodecs) {
-          if (codec.mimeType?.toLowerCase() === 'audio/opus' && codec.sdpFmtpLine) {
-            if (parseSpropStereo(codec.sdpFmtpLine)) {
-              return true;
-            }
-          }
-        }
-      }
-    } catch {}
-
-    // 2. Inspect specifically the Voice transceiver media section in the incoming remoteDescription SDP
     const remoteSdp = this.pc?.currentRemoteDescription?.sdp || this.pc?.remoteDescription?.sdp;
-    if (remoteSdp) {
-      const mid = voiceTransceiver.mid;
-      const mediaSection = extractMediaSection(remoteSdp, mid, 0);
-      if (mediaSection) {
-        const lines = mediaSection.split(/\r?\n/);
-        const opusPayloads = new Set<string>();
-        for (const line of lines) {
-          const match = line.match(/^a=rtpmap:(\d+)\s+opus\/48000(?:\/2)?$/i);
-          if (match?.[1]) opusPayloads.add(match[1]);
-        }
-        for (const line of lines) {
-          for (const payload of opusPayloads) {
-            if (line.startsWith(`a=fmtp:${payload} `) || line.startsWith(`a=fmtp:${payload}:`)) {
-              const fmtp = line.slice(line.indexOf(' ') + 1);
-              if (parseSpropStereo(fmtp)) {
-                return true;
-              }
-            }
+    if (!remoteSdp) {
+      return false;
+    }
+
+    const mediaSection = extractMediaSectionByMid(remoteSdp, mid);
+    if (!mediaSection) {
+      return false;
+    }
+
+    const lines = mediaSection.split(/\r?\n/);
+    const mLine = lines.find((l) => l.startsWith('m=audio '));
+    if (!mLine) {
+      return false;
+    }
+
+    // Extract payload types listed on the m=audio line in order of preference
+    const mParts = mLine.trim().split(/\s+/);
+    const payloadTypes = mParts.slice(3);
+    if (payloadTypes.length === 0) {
+      return false;
+    }
+
+    // Identify which payload type in this Voice media section is Opus
+    for (const pt of payloadTypes) {
+      const isOpus = lines.some((l) => {
+        const match = l.match(new RegExp(`^a=rtpmap:${pt}\\s+opus/48000(?:/2)?$`, 'i'));
+        return Boolean(match);
+      });
+
+      if (isOpus) {
+        // Inspect only the corresponding fmtp parameters for this negotiated Opus payload
+        const fmtpLine = lines.find((l) => {
+          return l.startsWith(`a=fmtp:${pt} `) || l.startsWith(`a=fmtp:${pt}:`);
+        });
+
+        if (fmtpLine) {
+          const fmtpText = fmtpLine.slice(fmtpLine.indexOf(' ') + 1);
+          if (parseSpropStereo(fmtpText)) {
+            return true;
           }
         }
       }
