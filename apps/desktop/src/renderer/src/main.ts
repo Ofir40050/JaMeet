@@ -204,7 +204,11 @@ initProfileUi({
   getUser: () => auth.getUser()
 });
 initSettingsUi();
-initAuthUi();
+initAuthUi({
+  onOpenSignIn: () => openAuthView('login'),
+  onOpenRegister: () => openAuthView('register'),
+  onNavigateHome: () => showView('home-view')
+});
 initProjectsListUi({
   onOpenProject: (projectId) => {
     void openProjectView(projectId);
@@ -3953,10 +3957,6 @@ function openAuthDialog(tab: 'login' | 'register' = 'login'): void {
 }
 
 // Navigation & Avatar menu listeners
-$('nav-btn-signin')?.addEventListener('click', () => openAuthView('login'));
-$('nav-btn-register')?.addEventListener('click', () => openAuthView('register'));
-$('hero-btn-signin')?.addEventListener('click', () => openAuthView('login'));
-$('hero-btn-register')?.addEventListener('click', () => openAuthView('register'));
 $('home-view-profile-btn')?.addEventListener('click', () => openSettings('account'));
 
 // Account Menu action buttons
@@ -3990,9 +3990,6 @@ for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="set
 }
 
 // Dedicated Auth View actions
-$('btn-auth-view-back')?.addEventListener('click', () => showView('home-view'));
-$('btn-view-login-as-guest')?.addEventListener('click', () => showView('home-view'));
-$('btn-view-reg-as-guest')?.addEventListener('click', () => showView('home-view'));
 
 $('btn-view-submit-login')?.addEventListener('click', async () => {
   const submitBtn = $<HTMLButtonElement>('btn-view-submit-login');

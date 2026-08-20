@@ -127,11 +127,42 @@ export function validateRegisterInputsLive(): boolean {
   return true;
 }
 
-let listenersBound = false;
+export interface AuthUiOptions {
+  onOpenSignIn?: () => void;
+  onOpenRegister?: () => void;
+  onNavigateHome?: () => void;
+}
 
-export function initAuthUi(): void {
+let listenersBound = false;
+let authOptions: AuthUiOptions = {};
+
+export function initAuthUi(options: AuthUiOptions = {}): void {
+  authOptions = options;
   if (listenersBound) return;
   listenersBound = true;
+
+  $('nav-btn-signin')?.addEventListener('click', () => {
+    authOptions.onOpenSignIn?.();
+  });
+  $('nav-btn-register')?.addEventListener('click', () => {
+    authOptions.onOpenRegister?.();
+  });
+  $('hero-btn-signin')?.addEventListener('click', () => {
+    authOptions.onOpenSignIn?.();
+  });
+  $('hero-btn-register')?.addEventListener('click', () => {
+    authOptions.onOpenRegister?.();
+  });
+
+  $('btn-auth-view-back')?.addEventListener('click', () => {
+    authOptions.onNavigateHome?.();
+  });
+  $('btn-view-login-as-guest')?.addEventListener('click', () => {
+    authOptions.onNavigateHome?.();
+  });
+  $('btn-view-reg-as-guest')?.addEventListener('click', () => {
+    authOptions.onNavigateHome?.();
+  });
 
   $('view-tab-login')?.addEventListener('click', () => switchAuthViewTab('login'));
   $('view-tab-register')?.addEventListener('click', () => switchAuthViewTab('register'));
