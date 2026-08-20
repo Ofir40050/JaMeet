@@ -10,7 +10,6 @@ import {
 } from './sessions/recent/recentSessions';
 import { initSessionStats } from './sessions/call/sessionStats';
 import {
-  initProfileUi,
   applyAvatarToElement,
   highlightActiveSwatch,
   updateProfileLivePreview,
@@ -29,7 +28,6 @@ import {
   type SettingsSection
 } from './auth/settings/settingsUi';
 import {
-  initAuthUi,
   switchAuthViewTab,
   showAuthFormError,
   clearAuthFormError
@@ -61,7 +59,6 @@ import {
   initProjectSessionSummaryUi
 } from './projects/sessions/projectSessionSummaryUi';
 import {
-  initProjectSessionsListUi,
   renderProjectSessions,
   resetProjectSessionsPage
 } from './projects/sessions/projectSessionsListUi';
@@ -270,6 +267,37 @@ import {
   effectiveVideoQuality,
   buildCurrentStream
 } from './sessions/call/sessionMetadataController';
+import {
+  enterSession as enterSessionController
+} from './sessions/setup/sessionEntryController';
+import {
+  type SessionErrorModalOptions,
+  parseSessionError
+} from './sessions/setup/sessionErrorParser';
+import {
+  showSessionErrorModal
+} from './sessions/setup/sessionErrorUi';
+import {
+  initializeActiveCall as initializeActiveCallController
+} from './sessions/call/activeCallController';
+import {
+  handleSessionProjectWorkspace
+} from './sessions/call/sessionProjectWorkspaceController';
+import {
+  transitionToActiveCallUi
+} from './sessions/call/activeCallUiController';
+import {
+  updateLockUi as updateLockUiHelper
+} from './sessions/call/sessionLockUi';
+import {
+  initProfileUiController
+} from './auth/profile/profileUiController';
+import {
+  initAuthUiController
+} from './auth/authUiController';
+import {
+  initProjectSessionsController
+} from './projects/sessions/projectSessionsController';
 import {
   initSongStudioUi,
   closeSongStudio,
@@ -1078,17 +1106,15 @@ initProfileController({
     await auth.updateProfile(payload);
   }
 });
-initProfileUi({
+initProfileUiController({
   getUser: () => auth.getUser(),
-  onOpenProfile: () => openSettings('account'),
-  onOpenSettings: () => openSettings('general'),
-  onOpenGuestSettings: () => openSettings('general'),
-  onOpenSignIn: () => openAuthView('login'),
-  onOpenRegister: () => openAuthView('register'),
+  onOpenAccountSettings: () => openSettings('account'),
+  onOpenGeneralSettings: () => openSettings('general'),
+  onOpenAuthView: (mode) => openAuthView(mode),
   onLogout: async () => {
     await handleLogout();
-    showView('home-view');
   },
+  onShowHomeView: () => showView('home-view'),
   onSaveProfile: (formValues) => {
     void handleSaveProfile(formValues);
   }
@@ -1117,7 +1143,7 @@ initAuthController({
     showView('home-view');
   }
 });
-initAuthUi({
+initAuthUiController({
   onOpenSignIn: () => openAuthView('login'),
   onOpenRegister: () => openAuthView('register'),
   onNavigateHome: () => showView('home-view'),
@@ -1256,18 +1282,15 @@ initProjectTabsUi({
     renderProjectOverviewSongsList();
   }
 });
-initProjectSessionsListUi({
-  getSessions: () => activeProject?.sessions || [],
+initProjectSessionsController({
+  getProject: () => activeProject,
   formatRelativeTime: (t) => projectsApi.formatRelativeTime(t),
-  onOpenSummary: (session) => {
-    if (activeProject) renderSessionSummaryModal(activeProject, session);
+  onOpenSummary: (project, session) => renderSessionSummaryModal(project, session),
+  onFlushPendingSaves: () => flushAllWorkspacePendingSaves(),
+  onSetActiveProjectId: (id) => {
+    activeProjectId = id;
   },
-  onStartSession: async () => {
-    if (!activeProject) return;
-    await flushAllWorkspacePendingSaves();
-    activeProjectId = activeProject.id;
-    await prepareStudio({ type: 'create' });
-  }
+  onPrepareStudio: (action) => prepareStudio(action)
 });
 initProjectCollaboratorsController({
   getAuthToken: () => auth.getToken(),
@@ -2888,386 +2911,131 @@ async function testMicrophone(): Promise<void> {
 }
 
 async function initializeActiveCall(ack: MeetingAck): Promise<void> {
-  currentCode = ack.code;
-  currentRole = ack.role;
-  currentIceServers = ack.iceServers;
-  myIdentity = ack.identity;
-  hostIdentity = ack.hostIdentity;
-  peerIdentity = ack.peerIdentity ?? null;
-  peerParticipantId = ack.peerParticipantId ?? null;
-  inCall = true;
-  rtc.setVideoTrack(videoTrack);
-  rtc.configure(ack.code, ack.role, ack.iceServers, prefs.mode, effectiveVideoQuality(prefs.cameraQuality), effectiveMusicBitrate(), ack.peerMedia);
-  setText('call-code', ack.code);
-  updateCallMode();
-  updateCameraButtonState();
-  updateLocalPreviews();
-  updateParticipantIdentityUi();
-
-  // Reset Remote Mute state for fresh session
-  remoteMuted = false;
-  setText('remote-mute-button', 'Mute Remote');
-
-  // Reset Studio Mixer Mute & Solo for fresh session
-  studioMixerChannels.forEach((ch) => {
-    ch.muted = false;
-    ch.soloed = false;
-  });
-  if (studioMixerOpen) {
-    renderStudioMixer();
-  }
-  applyMixerAudioRouting();
-
-  // In-Session Workspace Integration
-  if (ack.projectId) {
-    sessionProjectId = ack.projectId;
-    const t = auth.getToken();
-    if (t) {
-      const loadContextGen = resetWorkspaceGenerations();
-      void projectsApi.fetchProject(t, ack.projectId).then((p) => {
-        if (loadContextGen !== getWorkspaceContextGen()) return;
-        activeProject = p;
-        activeProjectId = p.id;
-        setText('session-workspace-project-name', p.name);
-        syncWorkspaceInputsFromProject(true);
-        void signaling.joinProjectWorkspace(p.id, t).then((joinRes) => {
-          if (joinRes?.ok && joinRes.workspace && activeProject && activeProject.id === p.id && loadContextGen === getWorkspaceContextGen()) {
-            activeProject.workspace = joinRes.workspace;
-            syncWorkspaceInputsFromProject(true);
-          }
-        });
-        $('toggle-session-workspace')?.classList.remove('hidden');
-      }).catch(() => {
-        if (loadContextGen !== getWorkspaceContextGen()) return;
-        $('toggle-session-workspace')?.classList.add('hidden');
+  await initializeActiveCallController(ack, {
+    getVideoTrack: () => videoTrack,
+    onSetVideoTrackOnRtc: (track) => rtc.setVideoTrack(track),
+    getAudioMode: () => prefs.mode,
+    getCameraQuality: () => prefs.cameraQuality,
+    getEffectiveVideoQuality: (q) => effectiveVideoQuality(q),
+    getEffectiveMusicBitrate: () => effectiveMusicBitrate(),
+    onConfigureRtc: (code, role, iceServers, mode, quality, bitrate, peerMedia) => {
+      rtc.configure(code, role, iceServers, mode, quality, bitrate, peerMedia);
+    },
+    onSetCurrentCode: (code) => {
+      currentCode = code;
+    },
+    onSetCurrentRole: (role) => {
+      currentRole = role;
+    },
+    onSetCurrentIceServers: (servers) => {
+      currentIceServers = servers;
+    },
+    onSetMyIdentity: (identity) => {
+      myIdentity = identity;
+    },
+    onSetHostIdentity: (identity) => {
+      hostIdentity = identity;
+    },
+    onSetPeerIdentity: (identity) => {
+      peerIdentity = identity;
+    },
+    onSetPeerParticipantId: (id) => {
+      peerParticipantId = id;
+    },
+    onSetInCall: (inCallState) => {
+      inCall = inCallState;
+    },
+    onUpdateCallMode: () => updateCallMode(),
+    onUpdateCameraButtonState: () => updateCameraButtonState(),
+    onUpdateLocalPreviews: () => updateLocalPreviews(),
+    onUpdateParticipantIdentityUi: () => updateParticipantIdentityUi(),
+    onSetRemoteMuted: (muted) => {
+      remoteMuted = muted;
+    },
+    onResetStudioMixerChannels: () => {
+      studioMixerChannels.forEach((ch) => {
+        ch.muted = false;
+        ch.soloed = false;
       });
-    } else {
-      $('toggle-session-workspace')?.classList.add('hidden');
+    },
+    isStudioMixerOpen: () => studioMixerOpen,
+    onRenderStudioMixer: () => renderStudioMixer(),
+    onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
+    onHandleSessionProjectWorkspace: (meetingAck) => {
+      handleSessionProjectWorkspace(meetingAck, {
+        getAuthToken: () => auth.getToken(),
+        onSetSessionProjectId: (id) => {
+          sessionProjectId = id;
+        },
+        onResetWorkspaceGenerations: () => resetWorkspaceGenerations(),
+        getWorkspaceContextGen: () => getWorkspaceContextGen(),
+        onFetchProject: (token, projectId) => projectsApi.fetchProject(token, projectId),
+        getActiveProject: () => activeProject,
+        onSetActiveProject: (p) => {
+          activeProject = p;
+        },
+        onSetActiveProjectId: (id) => {
+          activeProjectId = id;
+        },
+        onSyncWorkspaceInputsFromProject: (force) => syncWorkspaceInputsFromProject(force),
+        onJoinProjectWorkspace: (projectId, token) => signaling.joinProjectWorkspace(projectId, token)
+      });
+    },
+    onTransitionToActiveCallUi: async (meetingAck) => {
+      await transitionToActiveCallUi(meetingAck, {
+        onResetChatUi: () => resetChatUi(),
+        onSetIsSessionLocked: (locked) => setIsSessionLocked(locked),
+        onUpdateLockUi: () => updateLockUi(),
+        onShowCallView: () => showView('call-view'),
+        onStartSessionTimer: () => startSessionTimer(),
+        getPendingPeerMedia: () => pendingPeerMedia,
+        onClearPendingPeerMedia: () => {
+          pendingPeerMedia = undefined;
+        },
+        onPeerReady: (media) => rtc.peerReady(media)
+      });
     }
-  } else {
-    sessionProjectId = undefined;
-    $('toggle-session-workspace')?.classList.add('hidden');
-  }
-
-  resetChatUi();
-  setIsSessionLocked(Boolean(ack.locked));
-  updateLockUi();
-  showView('call-view');
-  startSessionTimer();
-  if (pendingPeerMedia) { await rtc.peerReady(pendingPeerMedia); pendingPeerMedia = undefined; }
-  else if (ack.peerPresent && ack.peerMedia) await rtc.peerReady(ack.peerMedia);
+  });
 }
 
 function updateLockUi(): void {
-  const btn = $('btn-lock-session');
-  if (!btn) return;
-  if (currentRole !== 'host') {
-    btn.classList.add('hidden');
-    return;
-  }
-  const locked = getIsSessionLocked();
-  btn.classList.remove('hidden');
-  btn.classList.toggle('is-locked', locked);
-  $('lock-icon-unlocked')?.classList.toggle('hidden', locked);
-  $('lock-icon-locked')?.classList.toggle('hidden', !locked);
-  setText('btn-lock-session-label', locked ? 'Locked' : 'Lock');
-  btn.title = locked ? 'Unlock Session (Allow participants to join)' : 'Lock Session (Prevent new participants from joining)';
+  updateLockUiHelper({
+    getRole: () => currentRole,
+    getIsLocked: () => getIsSessionLocked()
+  });
 }
-
-interface SessionErrorModalOptions {
-  title: string;
-  message: string;
-  detail?: string;
-  type?: 'error' | 'warning' | 'info';
-  actionLabel?: string;
-  dismissLabel?: string;
-  onAction?: () => void;
-}
-
-function parseSessionError(error: unknown): SessionErrorModalOptions {
-  const raw = error instanceof Error ? error.message : String(error || '');
-  const lower = raw.toLowerCase();
-
-  if (
-    lower.includes('access to jameet') ||
-    lower.includes('access restricted') ||
-    lower.includes('access_denied') ||
-    lower.includes('entitlement') ||
-    lower.includes('does not currently have access') ||
-    lower.includes('not have access') ||
-    lower.includes('permission to access')
-  ) {
-    return {
-      title: 'Session Access Restricted',
-      message: 'Your account does not currently have access to JaMeet sessions.',
-      detail: 'Creating and joining live studio sessions requires verified account access or an active plan. Please sign in or contact studio support.',
-      type: 'warning',
-      actionLabel: 'Sign In / Account',
-      dismissLabel: 'Close',
-      onAction: () => openAuthView('login')
-    };
-  }
-
-  if (lower.includes('beta has ended') || lower.includes('beta_ended')) {
-    return {
-      title: 'JaMeet Beta Has Ended',
-      message: 'The JaMeet public beta period has concluded. An active subscription is now required to create or join live studio sessions.',
-      detail: 'Please sign in to manage your subscription or contact studio support.',
-      type: 'warning',
-      actionLabel: 'Sign In / Account',
-      dismissLabel: 'Close',
-      onAction: () => openAuthView('login')
-    };
-  }
-
-  if (
-    lower.includes('auth_required') ||
-    lower.includes('sign in required') ||
-    lower.includes('authentication required')
-  ) {
-    return {
-      title: 'Sign In Required',
-      message: 'An active JaMeet account is required to create or join studio sessions.',
-      detail: 'Please sign in or create an account to start collaborating with low-latency audio.',
-      type: 'info',
-      actionLabel: 'Sign In',
-      dismissLabel: 'Close',
-      onAction: () => openAuthView('login')
-    };
-  }
-
-  if (
-    lower.includes('xhr poll error') ||
-    lower.includes('websocket') ||
-    lower.includes('polling') ||
-    lower.includes('transport') ||
-    lower.includes('network') ||
-    lower.includes('failed to fetch') ||
-    lower.includes('econnrefused') ||
-    lower.includes('timeout')
-  ) {
-    return {
-      title: 'Server Connection Unavailable',
-      message: 'Could not establish a connection to the JaMeet studio network.',
-      detail: 'Please check your internet connection or try again in a few moments. The studio server may be waking up or temporarily unavailable.',
-      type: 'warning',
-      actionLabel: 'Retry Connection',
-      dismissLabel: 'Close',
-      onAction: () => void enterSession()
-    };
-  }
-
-  if (error instanceof DOMException && error.name === 'NotAllowedError') {
-    return {
-      title: 'Device Access Blocked',
-      message: 'Microphone or camera permissions are required to enter the live session.',
-      detail: 'Please grant microphone and camera permissions in System Settings (Privacy & Security), then try again.',
-      type: 'warning',
-      actionLabel: 'Try Again',
-      dismissLabel: 'Close',
-      onAction: () => void enterSession()
-    };
-  }
-
-  if (error instanceof DOMException && error.name === 'NotFoundError') {
-    return {
-      title: 'Audio Device Not Found',
-      message: 'No connected microphone or audio input device was found.',
-      detail: 'Please plug in your microphone or audio interface and ensure it appears under Voice Microphones.',
-      type: 'error',
-      actionLabel: 'Retry',
-      dismissLabel: 'Close',
-      onAction: () => void enterSession()
-    };
-  }
-
-  return {
-    title: 'Unable to Start Session',
-    message: raw && raw !== 'The selected device could not be opened.' ? raw : 'An unexpected error occurred while preparing your live session.',
-    detail: 'Please check your studio device connections and try entering the session again.',
-    type: 'error',
-    actionLabel: 'Try Again',
-    dismissLabel: 'Close',
-    onAction: () => void enterSession()
-  };
-}
-
-function showSessionErrorModal(options: SessionErrorModalOptions): void {
-  const modal = $('session-error-modal');
-  if (!modal) return;
-
-  setText('session-error-title', options.title);
-  setText('session-error-message', options.message);
-
-  const detailBox = $('session-error-detail-box');
-  if (detailBox) {
-    if (options.detail) {
-      setText('session-error-detail-text', options.detail);
-      detailBox.classList.remove('hidden');
-    } else {
-      detailBox.classList.add('hidden');
-    }
-  }
-
-  const iconBadge = $('session-error-icon');
-  if (iconBadge) {
-    iconBadge.className = `modal-icon-badge ${options.type === 'warning' ? 'warning-icon-badge' : options.type === 'info' ? 'info-icon-badge' : 'error-icon-badge'}`;
-    if (options.type === 'warning') {
-      iconBadge.innerHTML = icons.alertTriangle({ size: 20 });
-    } else if (options.type === 'info') {
-      iconBadge.innerHTML = icons.info({ size: 20 });
-    } else {
-      iconBadge.innerHTML = icons.alertCircle({ size: 20 });
-    }
-  }
-
-  const actionBtn = $('btn-session-error-action');
-  const dismissBtn = $('btn-session-error-dismiss');
-  const closeBtn = $('btn-close-session-error');
-
-  if (dismissBtn) {
-    dismissBtn.textContent = options.dismissLabel || 'Close';
-    dismissBtn.onclick = () => modal.classList.add('hidden');
-  }
-
-  if (closeBtn) {
-    closeBtn.onclick = () => modal.classList.add('hidden');
-  }
-
-  if (actionBtn) {
-    if (options.actionLabel) {
-      actionBtn.textContent = options.actionLabel;
-      actionBtn.classList.remove('hidden');
-      actionBtn.onclick = () => {
-        modal.classList.add('hidden');
-        options.onAction?.();
-      };
-    } else {
-      actionBtn.classList.add('hidden');
-    }
-  }
-
-  modal.classList.remove('hidden');
-}
-
-let isEnteringSession = false;
 
 async function enterSession(): Promise<void> {
-  if (isEnteringSession) return;
-  isEnteringSession = true;
-
-  if (!pending || !audio.primary || (!audioOnly && !videoTrack)) {
-    isEnteringSession = false;
-    showSessionErrorModal({
-      title: 'Studio Setup Required',
-      message: 'Your microphone and session audio devices must be ready before entering.',
-      detail: 'Please check your microphone connection and system audio permissions.',
-      type: 'warning',
-      actionLabel: 'OK'
-    });
-    return;
-  }
-  setBusy(true);
-  try {
-    const token = auth.getToken() || undefined;
-    const guestName = auth.getGuestName() || undefined;
-    const waitingRoomEnabled = $<HTMLInputElement>('setup-waiting-room')?.checked ?? false;
-    let ack: MeetingAck = pending.type === 'create'
-      ? await signaling.create(participantId, metadata(), token, guestName, activeProjectId, waitingRoomEnabled)
-      : await signaling.join(pending.code, participantId, metadata(), token, guestName);
-
-    if (!ack.ok && ack.message === 'Already in a session') {
-      signaling.leave();
-      ack = pending.type === 'create'
-        ? await signaling.create(participantId, metadata(), token, guestName, activeProjectId, waitingRoomEnabled)
-        : await signaling.join(pending.code, participantId, metadata(), token, guestName);
-    }
-
-    if (!ack.ok) {
-      if (ack.code === 'AUTH_REQUIRED') {
-        showSessionErrorModal({
-          title: 'Sign In Required',
-          message: 'An active JaMeet account is required to create or join studio sessions.',
-          detail: 'Please sign in or create an account to start collaborating.',
-          type: 'info',
-          actionLabel: 'Sign In',
-          onAction: () => openAuthView('login')
-        });
-      } else if (ack.code === 'BETA_ENDED') {
-        showSessionErrorModal({
-          title: 'JaMeet Beta Has Ended',
-          message: 'The JaMeet public beta period has concluded. An active subscription is now required to create or join live studio sessions.',
-          detail: 'Please sign in to manage your subscription or contact studio support.',
-          type: 'warning',
-          actionLabel: 'Sign In / Account',
-          onAction: () => openAuthView('login')
-        });
-      } else if (ack.code === 'ACCESS_DENIED') {
-        showSessionErrorModal({
-          title: 'Access Restricted',
-          message: 'Your account does not currently have permission to access JaMeet live sessions.',
-          detail: 'Please check your account plan or contact studio support.',
-          type: 'error',
-          actionLabel: 'Sign In / Account',
-          onAction: () => openAuthView('login')
-        });
-      } else if (ack.code === 'ROOM_FULL') {
-        showSessionErrorModal({
-          title: 'Session is Full',
-          message: 'This session has reached its maximum participant limit.',
-          detail: 'Ask the host to start a new session or try again later.',
-          type: 'warning',
-          actionLabel: 'OK'
-        });
-      } else if (ack.code === 'LOCKED') {
-        showSessionErrorModal({
-          title: 'Session is Locked',
-          message: 'The host has locked this session to prevent new participants from joining.',
-          detail: 'Please contact the session host to unlock the room.',
-          type: 'warning',
-          actionLabel: 'OK'
-        });
-      } else if (ack.code === 'NOT_FOUND') {
-        showSessionErrorModal({
-          title: 'Session Not Found',
-          message: 'The session code is invalid or has already ended.',
-          detail: 'Please verify the session code and try again.',
-          type: 'error',
-          actionLabel: 'OK'
-        });
-      } else {
-        showSessionErrorModal({
-          title: 'Unable to Join Session',
-          message: ack.message || 'An unexpected error occurred while connecting to the studio session.',
-          detail: 'Please check your connection and try again.',
-          type: 'error',
-          actionLabel: 'Retry',
-          onAction: () => void enterSession()
-        });
-      }
-      return;
-    }
-
-    $('session-error-modal')?.classList.add('hidden');
-
-    if (ack.waiting) {
-      currentCode = ack.code;
-      logger.setSessionContext(ack.code);
-      hostIdentity = ack.hostIdentity;
-      myIdentity = ack.identity;
-      setText('waiting-host-name', ack.hostIdentity?.displayName || 'Host Musician');
-      setText('waiting-code', ack.code);
-      showView('waiting-view');
-      return;
-    }
-    logger.setSessionContext(ack.code);
-    await initializeActiveCall(ack);
-  } catch (error) {
-    showSessionErrorModal(parseSessionError(error));
-  } finally {
-    isEnteringSession = false;
-    setBusy(false);
-  }
+  await enterSessionController({
+    getPendingAction: () => pending,
+    hasPrimaryAudio: () => Boolean(audio.primary),
+    isAudioOnly: () => audioOnly,
+    hasVideoTrack: () => Boolean(videoTrack),
+    setBusy: (busy) => setBusy(busy),
+    getAuthToken: () => auth.getToken(),
+    getGuestName: () => auth.getGuestName(),
+    getParticipantId: () => participantId,
+    getMetadata: () => metadata(),
+    getActiveProjectId: () => activeProjectId,
+    onSignalingCreate: (pId, meta, token, guestName, projId, waitingRoom) =>
+      signaling.create(pId, meta, token, guestName, projId, waitingRoom),
+    onSignalingJoin: (code, pId, meta, token, guestName) =>
+      signaling.join(code, pId, meta, token, guestName),
+    onSignalingLeave: () => signaling.leave(),
+    onOpenAuthView: (tab) => openAuthView(tab),
+    onSetCurrentCode: (code) => {
+      currentCode = code;
+    },
+    onSetLoggerSessionContext: (code) => logger.setSessionContext(code),
+    onSetHostIdentity: (identity) => {
+      hostIdentity = identity;
+    },
+    onSetMyIdentity: (identity) => {
+      myIdentity = identity;
+    },
+    onShowWaitingView: () => showView('waiting-view'),
+    onInitializeActiveCall: (ack) => initializeActiveCall(ack)
+  });
 }
 
 function setRemoteStream(stream?: MediaStream): void {
