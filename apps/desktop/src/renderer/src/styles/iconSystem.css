@@ -1,0 +1,226 @@
+/* ==========================================================================
+   HIGH-END SVG ICON SYSTEM & UX POLISH
+   ========================================================================== */
+
+/* Universal SVG Icon Style */
+.ui-icon,
+svg.ui-icon {
+  display: inline-flex;
+  vertical-align: middle;
+  flex-shrink: 0;
+  stroke-width: 2;
+}
+
+/* Button & Pill Icon Sizing and Alignment */
+.btn-icon,
+.btn-icon-inner,
+.btn-back-icon,
+.arrow-icon,
+.btn-arrow,
+.meta-icon,
+.label-icon,
+.section-icon,
+.section-icon-mini,
+.dialog-icon,
+.modal-title-icon,
+.card-icon-mini,
+.tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.btn-icon-inner {
+  margin-right: 6px;
+}
+
+.btn-back-icon {
+  margin-right: 6px;
+  transition: transform 0.15s ease;
+}
+
+.btn-ghost-back:hover .btn-back-icon,
+.btn-project-back-pill:hover .btn-back-icon {
+  transform: translateX(-2px);
+}
+
+.btn-arrow {
+  margin-left: 6px;
+  transition: transform 0.15s ease;
+}
+
+.primary:hover .btn-arrow,
+.btn-hero-auth:hover .btn-arrow,
+.btn-hero-profile:hover .btn-arrow,
+.btn-auth-submit:hover .btn-arrow,
+.project-card:hover .project-card-open-hint .btn-arrow {
+  transform: translateX(2px);
+}
+
+/* Status Pills with Icons */
+.project-status-pill,
+.session-role-pill,
+.collab-role-badge,
+.channel-pill,
+.dialog-card-pill,
+.badge-owner,
+.badge-collab,
+.badge-archived,
+.role-host,
+.role-participant,
+.role-owner,
+.role-collaborator {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  line-height: 1 !important;
+}
+
+.project-status-pill svg,
+.session-role-pill svg,
+.collab-role-badge svg {
+  flex-shrink: 0;
+}
+
+/* Danger Modal Header */
+.modal-danger-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ef4444;
+}
+
+.modal-danger-title h3 {
+  margin: 0;
+  color: inherit;
+}
+
+/* Source Card Icons in Screen/Window Picker */
+.source-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* DAW Badge in Screen/Window Picker */
+.daw-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Project Card Icon */
+.project-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-primary-dim);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.project-card:hover .project-card-icon {
+  background: var(--accent-primary);
+  color: #ffffff;
+}
+
+/* Empty Icons (All Sessions Dedicated View) */
+#all-sessions-empty .empty-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+/* Workspace Placeholders (Lyrics / Notes) */
+.workspace-placeholder-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+/* Topbar user avatar in call */
+.topbar-user-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+/* Setup Avatar Badge */
+.user-avatar-badge-mini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Guest Avatar Preview */
+.guest-avatar-preview {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* Tool Buttons in Call Footer */
+.tool-btn .tool-icon {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Copy Button */
+.btn-topbar-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Project Menu Items with Icons */
+.project-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

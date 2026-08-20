@@ -1,0 +1,959 @@
+/* ========================================================
+   LOGIC PRO STYLE STUDIO MULTITRACK MIXER CONSOLE (BOTTOM DOCKED 75vh DRAWER)
+   ======================================================== */
+#session-studio-mixer-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 5000 !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: stretch !important;
+  padding: 0 !important;
+  background: rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(2px) !important;
+  -webkit-backdrop-filter: blur(2px) !important;
+  pointer-events: auto !important;
+}
+
+#session-studio-mixer-modal.hidden {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+.studio-mixer-modal-card {
+  pointer-events: auto;
+  width: 100vw;
+  max-width: 100vw;
+  min-width: 100vw;
+  height: 75vh;
+  max-height: 75vh;
+  min-height: 75vh;
+  background: #1c1c1e;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -16px 50px rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  animation: mixerDrawerSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes mixerDrawerSlideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.studio-mixer-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
+  background: #161618;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.mixer-brand-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mixer-brand-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  color: var(--accent-primary, #3b82f6);
+}
+
+.mixer-brand-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mixer-main-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: -0.01em;
+}
+
+.mixer-sub-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.mixer-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-mixer-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #f1f5f9;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-mixer-action:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.btn-mixer-action.ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+.btn-mixer-action.ghost:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+}
+
+.studio-mixer-viewport {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0;
+  background: #3e3e40;
+  display: flex;
+  align-items: stretch;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.mixer-channels-rack {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  height: 100%;
+  min-width: 100%;
+  margin: 0;
+  background: #3e3e40;
+}
+
+/* ========================================================
+   AUTHENTIC APPLE LOGIC PRO CONSOLE MIXER
+   ======================================================== */
+
+/* Left Parameter Labels Ruler Column */
+.mixer-labels-column {
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
+  background: #363638;
+  border-right: 1px solid #242426;
+  display: flex;
+  flex-direction: column;
+  padding: 44px 8px 0;
+  box-sizing: border-box;
+  user-select: none;
+  height: 100%;
+}
+
+.mixer-label-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9c9ca4;
+  padding-right: 6px;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+}
+
+.mixer-ruler-scale {
+  flex: 1 1 0;
+  min-height: 140px;
+  position: relative;
+  width: 100%;
+  margin: 0 0 12px;
+}
+
+.mixer-ruler-scale .ruler-num {
+  position: absolute;
+  right: 6px;
+  font-size: 8.5px;
+  font-weight: 700;
+  color: #8c8c94;
+  line-height: 1;
+  transform: translateY(-50%);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", monospace;
+}
+
+.mixer-ruler-scale .ruler-num.num-0 {
+  color: #ffffff;
+  font-weight: 900;
+}
+
+/* Single Channel Strip */
+.mixer-strip {
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
+  background: #505053;
+  border-right: 1px solid #2a2a2d;
+  border-left: 1px solid #5a5a5e;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 44px 6px 0;
+  box-sizing: border-box;
+  position: relative;
+  transition: background 0.15s ease;
+  user-select: none;
+  height: 100%;
+}
+
+.mixer-strip.is-selected {
+  background: #646468;
+}
+
+.mixer-strip.is-remote {
+  background: #464649;
+  border-left: 1px solid #545458;
+  border-right: 1px solid #262629;
+}
+
+.mixer-strip.is-master {
+  background: #3c3c3f;
+}
+
+.mixer-strip.is-dimmed {
+  opacity: 0.35;
+}
+
+/* Mixer Section Divider (Between Local and Remote - Docks Remote Peer to the far right) */
+.mixer-section-divider {
+  margin-left: auto;
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 44px;
+  background: #252528;
+  border-left: 1px solid #1c1c1f;
+  border-right: 1px solid #1c1c1f;
+  box-sizing: border-box;
+  position: relative;
+  user-select: none;
+}
+
+.mixer-section-divider-line {
+  width: 1px;
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.mixer-section-tag {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #a1a1aa;
+  padding: 14px 0;
+  user-select: none;
+}
+
+/* Remote Peer Invisible Alignment Spacers */
+.mixer-remote-spacer-top {
+  height: 88px;
+  min-height: 88px;
+  max-height: 88px;
+  margin-bottom: 12px;
+  width: 100%;
+  pointer-events: none;
+  background: transparent;
+  border: none;
+}
+
+.mixer-remote-spacer-pan {
+  height: 46px;
+  min-height: 46px;
+  max-height: 46px;
+  margin-bottom: 12px;
+  width: 100%;
+  pointer-events: none;
+  background: transparent;
+  border: none;
+}
+
+.mixer-fx-rack {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #363639;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  margin-bottom: 12px;
+  background: #38383b;
+}
+
+.mixer-fx-rack .mixer-cell-btn {
+  width: 100%;
+  height: 22px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: #80808a;
+  font-size: 10.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-sizing: border-box;
+  margin: 0;
+  box-shadow: none;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.mixer-fx-rack .mixer-cell-btn:hover {
+  background: #46464a;
+  color: #ffffff;
+}
+
+.mixer-fx-rack .mixer-cell-btn.btn-fx-active {
+  background: #1e3a5f;
+  color: #60a5fa;
+  font-weight: 700;
+}
+
+.mixer-fx-rack .mixer-cell-btn.btn-fx-empty {
+  background: transparent;
+}
+
+.mixer-fx-rack .mixer-cell-btn.btn-fx-empty:hover {
+  background: #444448;
+}
+
+/* Logic Pro Track Icon (Clean Instrument & Vocal Silhouettes) */
+.mixer-icon-btn {
+  width: 48px;
+  height: 34px;
+  margin: 0 auto 12px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 0;
+  box-sizing: border-box;
+  transition: transform 0.15s ease, filter 0.15s ease, background 0.15s ease;
+}
+
+.mixer-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(1.12);
+  filter: drop-shadow(0 2px 8px currentColor);
+}
+
+.mixer-icon-btn svg {
+  max-width: 32px;
+  max-height: 32px;
+  display: block;
+}
+
+/* Authentic Logic Pro Pan Knob */
+.mixer-pan-placeholder {
+  height: 46px;
+  min-height: 46px;
+  max-height: 46px;
+  margin: 0 0 12px;
+  width: 100%;
+}
+
+.mixer-pan-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin: 0 0 12px;
+}
+
+.mixer-pan-outer-ring {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: #232326;
+  border: 1.5px solid #1a1a1c;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.mixer-pan-cap {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #cbd5e1 0%, #94a3b8 50%, #64748b 100%);
+  border: 1px solid #374151;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  pointer-events: none;
+}
+
+.mixer-pan-cap-text {
+  font-size: 11px;
+  font-weight: 800;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  letter-spacing: -0.02em;
+}
+
+.mixer-pan-cap-notch {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.8px;
+  height: 5px;
+  background: #1e293b;
+  border-radius: 1px;
+  transform-origin: center center;
+  pointer-events: none;
+}
+
+/* Dual Digital Readout Badges */
+.mixer-readout-row {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.mixer-fader-val, .mixer-peak-val {
+  flex: 1;
+  height: 20px;
+  background: #000000;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+}
+
+.mixer-fader-val {
+  cursor: pointer;
+}
+
+.mixer-peak-val.is-clipping {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+}
+
+/* Vertical Fader & VU Meter Section */
+.mixer-fader-area {
+  flex: 1 1 0;
+  min-height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  position: relative;
+  padding: 6px 2px;
+  background: transparent;
+  overflow: visible;
+  margin-bottom: 12px;
+}
+
+.mixer-fader-column {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  width: 38px;
+  cursor: pointer;
+}
+
+/* Left Graduation Tick Lines */
+.fader-graduations {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  pointer-events: none;
+}
+
+.fader-graduations .grad-line {
+  position: absolute;
+  left: 0;
+  width: 4px;
+  height: 1px;
+  background: #888890;
+  transform: translateY(-50%);
+}
+
+.fader-graduations .grad-line.grad-0 {
+  width: 8px;
+  height: 1.5px;
+  background: #ffffff;
+}
+
+.fader-graduations .grad-line.grad-major {
+  width: 6px;
+  background: #b0b0b8;
+}
+
+/* Deep Recessed Groove Track */
+.logic-fader-groove {
+  position: relative;
+  width: 20px;
+  height: 100%;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logic-fader-groove-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 3px;
+  background: #141416;
+  border-left: 1px solid #000000;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.95);
+  transform: translateX(-50%);
+  border-radius: 1.5px;
+  pointer-events: none;
+}
+
+/* Authentic 3D Sculpted Metallic Apple Logic Pro Fader Knob / Cap */
+.logic-fader-cap {
+  position: absolute;
+  left: 50%;
+  width: 18px;
+  height: 28px;
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  background: 
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0px, rgba(255, 255, 255, 0.15) 1px, transparent 1px, transparent 3px),
+    linear-gradient(180deg, #f8f9fa 0%, #d8dbe0 40%, #4b5563 50%, #808896 58%, #e2e8f0 100%);
+  border: 1px solid #374151;
+  box-shadow: -2px 2.5px 5px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  cursor: grab;
+  z-index: 10;
+  box-sizing: border-box;
+  touch-action: none;
+  user-select: none;
+  transition: filter 0.1s ease;
+}
+
+.logic-fader-cap:hover {
+  filter: brightness(1.06);
+}
+
+.logic-fader-cap:active,
+.logic-fader-cap.is-dragging {
+  cursor: grabbing;
+  filter: brightness(0.95);
+}
+
+.logic-fader-cap::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 2px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  border-radius: 1px 0 0 1px;
+}
+
+.logic-fader-cap::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 2px;
+  background: #ffffff;
+  border-top: 1px solid #111827;
+}
+
+/* Middle Scale Numbers Column */
+.mixer-scale-column {
+  position: relative;
+  height: 100%;
+  width: 15px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.mixer-scale-column .scale-num {
+  position: absolute;
+  right: 1px;
+  font-size: 7px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-weight: 700;
+  color: #9c9ca4;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.mixer-scale-column .scale-num.num-0 {
+  color: #ffffff;
+  font-weight: 900;
+}
+
+/* Live Stereo VU Meter */
+.mixer-vu-meter {
+  display: flex;
+  gap: 1px;
+  width: 9px;
+  height: 100%;
+  background: #141416;
+  border: 1px solid #28282b;
+  border-radius: 1px;
+  padding: 1px;
+  box-sizing: border-box;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.vu-bar {
+  flex: 1;
+  background: #18181a;
+  border-radius: 1px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.vu-fill {
+  width: 100%;
+  height: 0%;
+  background: linear-gradient(to top, #22c55e 0%, #eab308 75%, #ef4444 95%);
+  transition: height 0.05s ease;
+  border-radius: 1px;
+}
+
+.mixer-ms-group {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 0 8px;
+  box-sizing: border-box;
+  margin: 0 0 8px;
+}
+
+.btn-mixer-ms {
+  flex: 1;
+  height: 22px;
+  background: #444447;
+  border: 1px solid #363639;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: all 0.12s ease;
+}
+
+.btn-mixer-ms:hover {
+  background: #525256;
+  color: #ffffff;
+}
+
+.btn-mixer-ms.btn-m.active {
+  background: #3b82f6;
+  color: #ffffff;
+  border-color: #60a5fa;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.6);
+}
+
+.btn-mixer-ms.btn-s.active {
+  background: #f59e0b;
+  color: #000000;
+  border-color: #fbbf24;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+/* Bottom Solid Track Color Banner */
+.mixer-strip-bottom-banner {
+  width: calc(100% + 12px);
+  margin-left: -6px;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  padding: 0 4px;
+  box-sizing: border-box;
+}
+
+.mixer-track-name-input {
+  width: calc(100% + 12px) !important;
+  margin-left: -6px !important;
+  margin-right: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  flex-shrink: 0 !important;
+  display: block !important;
+  box-sizing: border-box !important;
+  background: #18181b !important;
+  color: #ffffff !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  text-align: center !important;
+  border: 1px solid #3b82f6 !important;
+  border-radius: 0 !important;
+  outline: none !important;
+  padding: 0 4px !important;
+  line-height: 26px !important;
+  font-family: inherit !important;
+  box-shadow: 0 0 0 1px #3b82f6, inset 0 1px 2px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Popovers for FX and Icon Picking */
+.mixer-popover {
+  position: fixed;
+  z-index: 99999;
+  background: #1f1f22;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.85);
+  width: 220px;
+  overflow: hidden;
+  animation: popoverFadeIn 0.15s ease-out;
+}
+
+.mixer-popover.hidden {
+  display: none !important;
+}
+
+.mixer-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #18181a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.popover-close-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.mixer-popover-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.fx-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: #cbd5e1;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.fx-option:hover {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.fx-option.remove-fx {
+  color: #f87171;
+}
+
+.fx-option.remove-fx:hover {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.fx-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #60a5fa;
+}
+
+.fx-dot.dyn { background: #34d399; }
+.fx-dot.dly { background: #a78bfa; }
+.fx-dot.rev { background: #38bdf8; }
+.fx-dot.ptch { background: #f472b6; }
+.fx-dot.sat { background: #fb923c; }
+.fx-dot.mod { background: #fbbf24; }
+.fx-dot.lim { background: #ef4444; }
+.fx-dot.rmv { background: #f87171; }
+
+.mixer-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 10px;
+}
+
+.icon-option {
+  width: 46px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #252528;
+  border: 1px solid #38383e;
+  border-radius: 6px;
+  color: #38bdf8;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  padding: 0;
+}
+
+.icon-option:hover {
+  background: #323238;
+  border-color: #52525c;
+  transform: scale(1.08);
+  filter: drop-shadow(0 2px 6px currentColor);
+}
+
+.icon-option.active {
+  background: #1e293b;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1.5px #38bdf8;
+}
+
+.icon-option svg {
+  max-width: 30px;
+  max-height: 30px;
+  display: block;
+}
+
+.mixer-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid #2e2e34;
+  background: #18181b;
+}
+
+.mixer-color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.mixer-color-swatch:hover {
+  transform: scale(1.25);
+  border-color: #ffffff;
+}
+
+@keyframes popoverFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

@@ -1,0 +1,1301 @@
+/* ========================================================
+   IN-SESSION PROJECT WORKSPACE DRAWER / DOCKED STUDIO PANEL
+   ======================================================== */
+/* ========================================================
+   IN-SESSION PROJECT WORKSPACE DRAWER / DOCKED STUDIO PANEL
+   ======================================================== */
+.session-workspace-drawer {
+  position: absolute;
+  top: 58px; /* Aligned with top edge of camera tiles (52px topbar + 6px gap) */
+  right: 8px;
+  bottom: 54px; /* Aligned with bottom edge of camera tiles (48px bottombar + 6px gap) */
+  width: var(--session-drawer-width, 540px);
+  min-width: 360px;
+  max-width: min(1400px, calc(100vw - 60px));
+  background: var(--bg-card-solid, #0f131a);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md, 12px);
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.45);
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  gap: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  animation: drawerSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.workspace-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 120;
+  background: transparent;
+  transition: all 0.15s ease;
+}
+
+.workspace-resize-handle::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 36px;
+  border-radius: 1.5px;
+  background: var(--border-medium);
+  transition: all 0.15s ease;
+}
+
+.workspace-resize-handle:hover::before,
+.session-workspace-drawer.is-resizing .workspace-resize-handle::before {
+  background: var(--accent-primary);
+}
+
+/* Real Horizontal Layout Reflow when Workspace Drawer is open */
+#call-view.has-drawer-open .session-workspace,
+.view.has-drawer-open .session-workspace {
+  width: calc(100% - var(--session-drawer-width, 540px)) !important;
+  max-width: calc(100% - var(--session-drawer-width, 540px)) !important;
+  margin-right: var(--session-drawer-width, 540px) !important;
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#call-view.has-drawer-open .remote-audio-controls,
+.view.has-drawer-open .remote-audio-controls {
+  width: calc(100% - var(--session-drawer-width, 540px) - 24px) !important;
+  max-width: calc(100% - var(--session-drawer-width, 540px) - 24px) !important;
+  margin-right: calc(var(--session-drawer-width, 540px) + 12px) !important;
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#call-view.has-drawer-open .session-workspace.stage-mode,
+.view.has-drawer-open .session-workspace.stage-mode {
+  grid-template-columns: 1fr 200px !important;
+  gap: 6px !important;
+}
+
+#call-view.has-drawer-open .session-workspace.stage-mode.screen-view-side-by-side,
+.view.has-drawer-open .session-workspace.stage-mode.screen-view-side-by-side {
+  grid-template-columns: 1.15fr 1fr !important;
+  gap: 6px !important;
+}
+
+@keyframes drawerSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Studio Panel Header */
+.drawer-header {
+  height: 42px;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+.drawer-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.drawer-tag {
+  font-size: 8.5px;
+  font-weight: 700;
+  color: var(--accent-primary, #3b82f6);
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.drawer-project-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.drawer-close-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.drawer-close-btn:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+  border-color: var(--border-medium);
+}
+
+/* Studio Track Selector Bar */
+.drawer-song-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 8px 14px;
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-sizing: border-box;
+}
+
+.drawer-song-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.drawer-song-select-wrap {
+  flex: 0 0 auto;
+  width: 170px;
+  min-width: 0;
+}
+
+.drawer-song-select {
+  width: 100% !important;
+  height: 24px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: #f1f5f9 !important;
+  background: #222222 !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  border-radius: 6px !important;
+  padding: 0 8px !important;
+  cursor: pointer;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.drawer-song-select:hover {
+  background: #282828 !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+.btn-drawer-new-song {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  margin-left: auto;
+  color: var(--accent-primary, #3b82f6);
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.btn-drawer-new-song:hover {
+  background: var(--accent-primary, #3b82f6);
+  border-color: var(--accent-primary, #3b82f6);
+  color: #ffffff;
+}
+
+.btn-drawer-new-song:active {
+  transform: scale(0.95);
+}
+
+
+/* Studio Segmented Navigation Tabs Row (Matching Project View) */
+.drawer-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  background: #181818;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 4px 8px;
+  gap: 4px;
+
+  height: 38px;
+  min-height: 38px;
+  box-sizing: border-box;
+}
+
+.drawer-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  height: 28px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+}
+
+.drawer-tab-btn svg {
+  width: 14px;
+  height: 14px;
+  color: currentColor;
+  flex-shrink: 0;
+}
+
+.drawer-tab-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.drawer-tab-btn.active {
+  color: #60a5fa;
+  font-weight: 600;
+  background: rgba(37, 99, 235, 0.14);
+  border-color: rgba(59, 130, 246, 0.3);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Drawer Panel Content Shell */
+.drawer-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+#drawer-panel-lyrics {
+  padding: 8px 10px 6px;
+  gap: 6px;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden; /* Keep top formatting & section bars fixed while document viewport scrolls */
+  box-sizing: border-box;
+}
+
+#drawer-panel-notes {
+  padding: 8px 10px;
+  gap: 6px;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+#drawer-panel-tasks {
+  padding: 10px 12px;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+/* ========================================================
+   Lyrics In-Session Panel (Google Docs Studio Canvas)
+   ======================================================== */
+.drawer-lyrics-doc-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  min-height: 28px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.drawer-doc-select-wrap {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.drawer-doc-select-icon {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  pointer-events: none;
+  z-index: 2;
+  transition: color 0.15s ease;
+}
+
+.drawer-doc-select-wrap:hover .drawer-doc-select-icon {
+  color: var(--text-secondary);
+}
+
+.drawer-doc-select {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-main);
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 0 22px 0 28px;
+  box-sizing: border-box;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.drawer-doc-select:hover {
+  border-color: var(--border-medium);
+  background: var(--bg-elevated);
+}
+
+.drawer-doc-select:focus {
+  border-color: var(--accent-primary);
+  background: var(--bg-elevated);
+}
+
+.btn-drawer-new-doc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-medium);
+  color: var(--text-main);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 10px;
+  height: 28px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: max-content;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.btn-drawer-new-doc svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+
+.btn-drawer-new-doc:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.btn-drawer-new-doc:hover svg {
+  color: var(--accent-primary);
+}
+
+.btn-drawer-new-doc:active {
+  transform: scale(0.97);
+}
+
+/* Rich Google Docs-Style Text Formatting Toolbar (Wraps to multiple rows if narrow) */
+.drawer-formatting-toolbar {
+  display: flex;
+  align-items: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 4px 6px;
+  height: auto;
+  min-height: 32px;
+  width: 100%;
+  box-sizing: border-box;
+  gap: 4px 6px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.drawer-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+
+.drawer-toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-subtle);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.drawer-toolbar-select {
+  height: 24px;
+  font-size: 11px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  padding: 0 4px;
+  outline: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.drawer-toolbar-select.doc-zoom-select {
+  width: 62px;
+}
+
+.drawer-toolbar-select.font-style-select {
+  width: 105px;
+}
+
+.drawer-toolbar-btn {
+  width: 25px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-xs);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  flex-shrink: 0;
+  user-select: none;
+  padding: 0;
+}
+
+.drawer-toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-main);
+}
+
+.drawer-toolbar-btn.active,
+.drawer-toolbar-btn:active {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.38);
+  color: #93c5fd;
+  font-weight: 700;
+}
+
+/* Musician Songwriting Section Helpers Bar in Drawer (Clean Neutral Dark Style Matching Main Lyrics) */
+.drawer-section-helpers-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  width: 100%;
+  height: 30px;
+  min-height: 30px;
+  max-height: 30px;
+  box-sizing: border-box;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 9;
+}
+
+.drawer-section-helpers-bar::-webkit-scrollbar {
+  height: 3px;
+}
+
+.drawer-section-helpers-bar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+.drawer-section-helpers-bar .sections-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.drawer-section-helpers-bar .sections-buttons-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.drawer-section-helpers-bar .btn-section-insert {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: var(--radius-xs);
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.12s ease;
+}
+
+.drawer-section-helpers-bar .btn-section-insert:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-medium);
+  color: var(--text-main);
+}
+
+/* Google Docs Fixed-Width White Document Sheet View in Drawer (Exact US Letter Dimensions: 816px × 1056px) */
+.drawer-lyrics-viewport {
+  flex: 1;
+  min-height: 240px;
+  overflow-y: auto;
+  overflow-x: auto;
+  background: var(--bg-app, #0c0f16);
+  display: flex;
+  justify-content: safe center;
+  align-items: safe flex-start;
+  padding: 24px 20px 60px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
+  box-sizing: border-box;
+  scroll-behavior: smooth;
+  width: 100%;
+}
+
+.drawer-lyrics-canvas-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: auto;
+  min-width: min-content;
+  min-height: min-content;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.drawer-lyrics-document-canvas {
+  position: relative;
+  width: 816px !important;
+  min-width: 816px !important;
+  display: block;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  transform-origin: top center;
+}
+
+.drawer-lyrics-pages-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 816px !important;
+  pointer-events: none;
+  z-index: 1;
+  box-sizing: border-box;
+}
+
+/* Realistic White US Letter Paper Sheet in Drawer (816px × 1056px) */
+.drawer-lyrics-page-sheet {
+  width: 816px !important;
+  min-width: 816px !important;
+  height: 1056px !important;
+  min-height: 1056px !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border-radius: 2px !important;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.15) !important;
+  padding: 48px 56px 40px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  position: relative !important;
+}
+
+.drawer-lyrics-content-layer {
+  position: relative;
+  z-index: 2;
+  width: 816px !important;
+  max-width: 816px !important;
+  padding: 48px 56px 40px 56px !important;
+  box-sizing: border-box !important;
+}
+
+.drawer-lyrics-editor {
+  outline: none !important;
+  width: 100% !important;
+  min-height: 900px !important;
+  color: #111827 !important;
+  font-family: 'Assistant', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-size: 11pt !important;
+  line-height: 1.65 !important;
+  letter-spacing: 0 !important;
+  word-break: break-word !important;
+  white-space: pre-wrap !important;
+  box-sizing: border-box !important;
+  caret-color: #3b82f6 !important;
+}
+
+.drawer-lyrics-editor:empty:before {
+  content: attr(data-placeholder);
+  color: #94a3b8 !important;
+  font-style: italic;
+  pointer-events: none;
+}
+
+.drawer-lyrics-editor h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a !important;
+  margin: 16px 0 8px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 4px;
+}
+
+.drawer-lyrics-editor h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b !important;
+  margin: 14px 0 6px;
+}
+
+.drawer-lyrics-editor h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569 !important;
+  margin: 10px 0 4px;
+}
+
+.drawer-lyrics-editor blockquote {
+  border-left: 3px solid #3b82f6;
+  margin: 10px 0;
+  padding: 4px 12px;
+  background: #eff6ff;
+  color: #1e3a8a !important;
+  font-style: italic;
+}
+
+.drawer-lyrics-editor ul, .drawer-lyrics-editor ol {
+  padding-left: 20px;
+  margin: 6px 0;
+  color: #111827 !important;
+}
+
+.drawer-lyrics-editor li {
+  margin: 3px 0;
+}
+
+.drawer-lyrics-editor .song-section-tag {
+  display: block;
+  background: transparent;
+  border: none;
+  color: #000000 !important;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 0;
+  margin: 16px 0 4px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.drawer-lyrics-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 4px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.btn-session-section-chip {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0 8px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  user-select: none;
+  transition: all 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-session-section-chip:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-medium);
+  color: var(--text-main);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.btn-session-section-chip:active {
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #93c5fd;
+  transform: translateY(0) scale(0.97);
+  box-shadow: none;
+}
+
+/* Row 4: Lyrics Writing Area (Subtle Neutral Charcoal Surface & Comfortable Padding) */
+.drawer-lyrics-editor-wrap {
+  flex: 1;
+  min-height: 200px;
+  background: #080b10;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 16px 18px 20px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+.drawer-lyrics-editor-wrap:focus-within {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.drawer-lyrics-editor {
+  outline: none;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-main);
+  min-height: 180px;
+  font-family: var(--font-sans);
+  caret-color: var(--accent-primary, #3b82f6);
+}
+
+/* ========================================================
+   Structure In-Session Panel
+   ======================================================== */
+.drawer-structure-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.drawer-structure-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.drawer-structure-stats .workspace-stats-pill {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  padding: 2.5px 8px;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  letter-spacing: 0.02em;
+}
+
+.drawer-insert-palette {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.drawer-insert-palette::-webkit-scrollbar {
+  display: none;
+}
+
+.btn-drawer-add-sec {
+  background: var(--sec-bg, var(--bg-card));
+  border: 1px solid var(--sec-border, var(--border-subtle));
+  color: var(--sec-text, var(--text-secondary));
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0 8px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  user-select: none;
+  transition: all 0.14s ease;
+}
+
+.btn-drawer-add-sec:hover {
+  background: var(--sec-pill-bg, var(--bg-card-hover));
+  border-color: var(--sec-accent, var(--border-medium));
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.btn-drawer-add-sec:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: none;
+}
+
+.drawer-structure-timeline {
+  display: flex !important;
+  align-items: stretch !important;
+  gap: 4px !important;
+  overflow-x: auto !important;
+  scrollbar-width: thin !important;
+  padding: 5px 6px !important;
+  background: #080b10 !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-xs) !important;
+  min-height: 48px !important;
+  height: 48px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+}
+
+.drawer-structure-timeline::-webkit-scrollbar {
+  height: 4px;
+}
+
+.drawer-structure-timeline::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.drawer-structure-timeline .timeline-block {
+  padding: 4px 8px !important;
+  border-radius: var(--radius-xs) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 36px !important;
+  height: 36px !important;
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+  cursor: pointer !important;
+  box-sizing: border-box !important;
+  user-select: none !important;
+  transition: all 0.14s ease !important;
+}
+
+.drawer-structure-timeline .timeline-block:hover {
+  filter: brightness(1.18) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35) !important;
+}
+
+.drawer-structure-timeline .timeline-block.active-section {
+  border-color: #ffffff !important;
+  box-shadow: 0 0 0 1px #ffffff, 0 2px 8px rgba(0, 0, 0, 0.5) !important;
+}
+
+.drawer-structure-timeline .timeline-block-name {
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  line-height: 1.1 !important;
+  letter-spacing: 0.02em !important;
+}
+
+.drawer-structure-timeline .timeline-block-bars {
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  opacity: 0.9 !important;
+  margin-top: 2px !important;
+}
+
+.drawer-structure-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow-y: auto;
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.drawer-section-card {
+  display: grid !important;
+  grid-template-columns: 14px 74px 1fr 70px 24px !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 0 8px !important;
+  border-radius: var(--radius-xs) !important;
+  background: #111620 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-left: 3px solid var(--sec-accent, var(--border-subtle)) !important;
+  font-size: 11.5px !important;
+  min-height: 36px !important;
+  height: 36px !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  overflow: hidden !important;
+  transition: all 0.14s ease !important;
+}
+
+.drawer-section-card:hover {
+  background: #161c28 !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  border-left-color: var(--sec-accent, var(--accent-primary)) !important;
+}
+
+.drawer-section-card.focused {
+  border-color: var(--accent-primary) !important;
+  background: rgba(37, 99, 235, 0.14) !important;
+  box-shadow: 0 0 0 1px var(--accent-primary), 0 2px 12px rgba(59, 130, 246, 0.25) !important;
+}
+
+.drawer-section-card .drag-handle {
+  color: var(--text-dim) !important;
+  cursor: grab !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  width: 14px !important;
+  transition: color 0.12s ease !important;
+}
+
+.drawer-section-card:hover .drag-handle {
+  color: var(--text-muted) !important;
+}
+
+.drawer-section-card .section-type-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 8.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em !important;
+  text-transform: uppercase !important;
+  padding: 0 4px !important;
+  border-radius: 2px !important;
+  width: 74px !important;
+  min-width: 74px !important;
+  max-width: 74px !important;
+  flex: 0 0 74px !important;
+  height: 20px !important;
+  line-height: 1 !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  box-sizing: border-box !important;
+}
+
+.drawer-section-card .section-name-input {
+  width: 100% !important;
+  min-width: 0 !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  outline: none !important;
+  color: var(--text-main) !important;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  padding: 2px 6px !important;
+  border-radius: 2px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  transition: all 0.12s ease !important;
+}
+
+.drawer-section-card .section-name-input:hover {
+  background: var(--bg-card) !important;
+  border-color: var(--border-subtle) !important;
+}
+
+.drawer-section-card .section-name-input:focus {
+  background: var(--bg-input) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+.drawer-section-card .section-bars-select {
+  width: 70px !important;
+  min-width: 70px !important;
+  max-width: 70px !important;
+  flex: 0 0 70px !important;
+  height: 24px !important;
+  line-height: 22px !important;
+  display: inline-block !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-xs) !important;
+  color: var(--text-secondary) !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  padding: 0 4px !important;
+  text-align: center !important;
+  outline: none !important;
+  cursor: pointer !important;
+  box-sizing: border-box !important;
+  transition: all 0.12s ease !important;
+}
+
+.drawer-section-card .section-bars-select:hover {
+  border-color: var(--border-medium) !important;
+  color: var(--text-main) !important;
+}
+
+.drawer-section-card .section-bars-select:focus {
+  border-color: var(--accent-primary) !important;
+}
+
+.drawer-section-card .btn-card-action {
+  width: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: transparent !important;
+  border: none !important;
+  color: var(--text-muted) !important;
+  cursor: pointer !important;
+  border-radius: var(--radius-xs) !important;
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+  transition: all 0.12s ease !important;
+}
+
+.drawer-section-card .btn-card-action:hover {
+  background: var(--bg-card-hover) !important;
+  color: var(--text-main) !important;
+}
+
+.drawer-section-card .btn-card-action.btn-del:hover {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #ef4444 !important;
+}
+
+/* ========================================================
+   Notes In-Session Panel (Focused Studio Notebook - Exact Matching Colors)
+   ======================================================== */
+.drawer-notes-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 2px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+/* Studio Notebook Writing Section */
+.drawer-notes-section {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.drawer-notes-editor-wrap {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 16px 20px;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.drawer-notes-editor-wrap:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
+}
+
+.drawer-textarea.notes-textarea {
+  flex: 1 1 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+  caret-color: var(--accent-primary, #3b82f6);
+}
+
+.drawer-textarea.notes-textarea::placeholder {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* ========================================================
+   Tasks In-Session Panel
+   ======================================================== */
+.drawer-tasks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.drawer-tasks-header .workspace-stats-pill {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  padding: 2.5px 8px;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  letter-spacing: 0.02em;
+}
+
+/* ========================================================
+   Tasks In-Session Panel – Full 1:1 match to main Tasks workspace
+   ======================================================== */
+.drawer-tasks-studio-card {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: #222222 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+#drawer-panel-tasks .reminders-header-bar {
+  flex-shrink: 0;
+  padding: 16px 20px 12px;
+}
+
+#drawer-panel-tasks .tasks-viewport {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px 20px 24px;
+}
+
+
+.feat-icon {
+  font-size: 1.15rem;
+}
+.feat-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.workspace-teaser-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+.badge-soon {
+  background: var(--bg-card) !important;
+  color: var(--text-dim) !important;
+  border: 1px solid var(--border-subtle) !important;
+  font-size: 0.68rem !important;
+  padding: 1px 6px !important;
+  font-weight: 600 !important;
+  border-radius: var(--radius-xs) !important;
+}

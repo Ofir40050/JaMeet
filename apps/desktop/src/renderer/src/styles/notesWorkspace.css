@@ -1,0 +1,195 @@
+/* ========================================================
+   FULL-WIDTH STUDIO PROJECT NOTES WORKSPACE
+   ======================================================== */
+.project-notes-workspace {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.notes-workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px 18px;
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-wrap: nowrap;
+  min-height: 64px;
+  box-sizing: border-box;
+}
+
+.notes-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.notes-workspace-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #f8fafc;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.notes-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.notes-meta-chips-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.notes-chip-field {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xs);
+  padding: 0 10px;
+  gap: 6px;
+  height: 32px;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.notes-chip-field:focus-within {
+  border-color: var(--accent-primary);
+}
+
+.chip-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  user-select: none;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  line-height: 1;
+}
+
+.notes-chip-dual-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.notes-chip-input {
+  background: transparent !important;
+  border: none !important;
+  color: var(--text-main) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 58px !important;
+  height: 22px !important;
+  line-height: 22px !important;
+  outline: none !important;
+  box-shadow: none !important;
+  vertical-align: middle;
+}
+
+.notes-chip-select {
+  background: transparent !important;
+  border: none !important;
+  color: var(--text-main) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  height: 22px !important;
+  line-height: 22px !important;
+  outline: none !important;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow: none !important;
+  vertical-align: middle;
+}
+
+.notes-key-root-select {
+  width: 22px !important;
+  text-align: center;
+}
+
+.notes-key-mode-select {
+  width: 48px !important;
+  text-align: left;
+}
+
+.notes-chip-select option, .notes-chip-select optgroup {
+  background: var(--bg-card-solid);
+  color: var(--text-main);
+  font-weight: 500;
+}
+
+/* Status Badge Completely Hidden */
+.workspace-status-badge {
+  display: none !important;
+}
+
+.notes-editor-canvas-wrap {
+  padding: 16px 20px;
+  background: var(--bg-app);
+  flex: 1;
+  min-height: 480px;
+  display: flex;
+}
+
+.notes-studio-textarea {
+  width: 100%;
+  min-height: 440px;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: vertical;
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.notes-studio-textarea::placeholder {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.notes-workspace-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 18px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.notes-footer-text {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
