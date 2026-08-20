@@ -66,6 +66,33 @@ export class WebRtcSession {
 
   setVideoTrack(track: MediaStreamTrack | undefined): void { this.videoTrack = track; }
 
+  isVoiceStereo(): boolean {
+    const sdp = this.pc?.currentRemoteDescription?.sdp || this.pc?.remoteDescription?.sdp || this.pc?.currentLocalDescription?.sdp || this.pc?.localDescription?.sdp;
+    if (sdp) {
+      const lines = sdp.split(/\r?\n/);
+      const opusPayloads = new Set<string>();
+      for (const line of lines) {
+        const match = line.match(/^a=rtpmap:(\d+)\s+opus\/48000(?:\/2)?$/i);
+        if (match?.[1]) opusPayloads.add(match[1]);
+      }
+      for (const line of lines) {
+        for (const payload of opusPayloads) {
+          if (line.startsWith(`a=fmtp:${payload} `) || line.startsWith(`a=fmtp:${payload}:`)) {
+            const fmtp = line.slice(line.indexOf(' ') + 1);
+            const params = fmtp.split(';').map((p) => p.trim());
+            for (const param of params) {
+              const [key, val] = param.split('=', 2);
+              if (key?.trim().toLowerCase() === 'stereo') {
+                return val?.trim() === '1';
+              }
+            }
+          }
+        }
+      }
+    }
+    return this.sessionMode() === 'music';
+  }
+
   private sessionMode(): AudioMode { return this.localMode === 'music' || this.remoteMode === 'music' || Boolean(this.audio.music) || this.remoteHasMusic ? 'music' : 'talk'; }
 
   private ensurePeer(): RTCPeerConnection {

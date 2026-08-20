@@ -2637,18 +2637,12 @@ async function refreshRemoteAudio(): Promise<void> {
   // Reconcile Remote Voice
   if (latestVoiceTracks.length > 0) {
     const voiceTrack = latestVoiceTracks[0];
-    const settingsCount = voiceTrack.getSettings?.()?.channelCount;
-    if (typeof settingsCount === 'number' && settingsCount > 0) {
-      remoteVoiceIsStereo = settingsCount > 1;
-    }
+    remoteVoiceIsStereo = rtc.isVoiceStereo();
 
     if (!remoteVoiceSourceNode || remoteVoiceSourceNode.mediaStream.getAudioTracks()[0] !== voiceTrack) {
       try { remoteVoiceSourceNode?.disconnect(); } catch {}
       const voiceStream = new MediaStream([voiceTrack]);
       remoteVoiceSourceNode = ctx.createMediaStreamSource(voiceStream);
-      if (typeof settingsCount !== 'number' || settingsCount <= 0) {
-        remoteVoiceIsStereo = remoteVoiceSourceNode.channelCount > 1;
-      }
       if (remoteVoiceGain) remoteVoiceSourceNode.connect(remoteVoiceGain);
       void startRemoteVoiceBridge(ctx, remoteVoiceSourceNode);
 
@@ -2733,6 +2727,9 @@ function handleRemoteMedia(media: MediaMetadata): void {
   if (fullShareBtn) fullShareBtn.disabled = !media.sharingScreen;
   setText('remote-placeholder', media.sharingScreen ? 'Loading shared screen…' : media.audioOnly || !media.cameraEnabled ? 'Musician is in Audio Only' : 'Waiting for Musician');
   updateSessionStage();
+  if (inCall) {
+    applyMixerAudioRouting();
+  }
 }
 
 function setCallStatus(status: string): void { setText('call-status', status); }
@@ -13303,6 +13300,9 @@ function applyMixerAudioRouting(): void {
   // 2. Control Web Audio DSP Engine in real-time
   if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
     const now = remoteAudioCtx.currentTime;
+    if (inCall) {
+      remoteVoiceIsStereo = rtc.isVoiceStereo();
+    }
 
     // Real Gain Routing (0 to 1.5x)
     if (remoteVoiceGain) remoteVoiceGain.gain.setValueAtTime(effectiveRemoteVoiceVol, now);
