@@ -127,7 +127,9 @@ import {
 import {
   initLyricsController,
   handleLyricsInput,
-  handleLyricsDocTitleChange
+  handleLyricsDocTitleChange,
+  hasLyricsSaveTimeout,
+  clearLyricsSaveTimeout
 } from './workspace/lyrics/lyricsController';
 import {
   initNotesController,
@@ -153,6 +155,44 @@ import {
 import {
   getActiveSongState
 } from './songs/state/songState';
+import {
+  initSongsPersistence,
+  saveSongsWorkspace
+} from './songs/state/songsPersistence';
+import {
+  initLyricsPersistence,
+  saveLyricsWorkspace
+} from './workspace/lyrics/lyricsPersistence';
+import {
+  initNotesPersistence,
+  saveNotesWorkspace,
+  hasNotesSaveTimeout,
+  clearNotesSaveTimeout
+} from './workspace/notes/notesPersistence';
+import {
+  initWorkspaceRealtimeSync
+} from './workspace/core/workspaceRealtimeSyncController';
+import {
+  initProjectActivitySync
+} from './projects/core/projectActivitySyncController';
+import {
+  initAuthStateUiController,
+  updateAuthUi
+} from './auth/authStateUiController';
+import {
+  initAuthNavigation,
+  openAuthView,
+  openSettings,
+  openAuthDialog,
+  getLastActiveViewBeforeSettings
+} from './auth/authNavigationController';
+import {
+  initParticipantIdentityUi,
+  updateParticipantIdentityUi
+} from './sessions/call/participantIdentityUi';
+import {
+  initSessionViewSelectorUi
+} from './sessions/call/sessionViewSelectorUi';
 import {
   initSongStudioUi,
   closeSongStudio,
@@ -415,6 +455,151 @@ initAuthoritativeWorkspaceController({
     renderProjectSongsSelector();
   }
 });
+initSongsPersistence({
+  getProject: () => activeProject,
+  getAuthToken: () => auth.getToken(),
+  isSignalingConnected: () => signaling.isConnected(),
+  onSignalingUpdateProjectWorkspace: async (projectId, payload, token) => {
+    return signaling.updateProjectWorkspace(projectId, payload, token);
+  }
+});
+initLyricsPersistence({
+  getProject: () => activeProject,
+  getAuthToken: () => auth.getToken(),
+  getUser: () => auth.getUser(),
+  canEdit: () => canUserEditProject(),
+  getActiveSong: () => getActiveSong(),
+  getActiveLyricsDoc: () => getActiveLyricsDoc(),
+  getWorkspaceContextGen: () => getWorkspaceContextGen(),
+  getLyricsEditGen: () => getLyricsEditGen(),
+  getLyricsSaveGen: () => getLyricsSaveGen(),
+  incrementLyricsSaveGen: () => incrementLyricsSaveGen(),
+  setLyricsStatus: (status) => {
+    setLyricsStatus(status);
+  },
+  onSignalingUpdate: async (projectId, payload, token) => {
+    return signaling.updateProjectWorkspace(projectId, payload, token);
+  },
+  onApplyAuthoritativeWorkspace: (area, workspace) => {
+    applyAuthoritativeWorkspaceUpdate(area, workspace);
+  },
+  onRenderProjectActivities: (project, user) => {
+    renderProjectActivities(project, user);
+  }
+});
+initNotesPersistence({
+  getProject: () => activeProject,
+  getAuthToken: () => auth.getToken(),
+  getUser: () => auth.getUser(),
+  canEdit: () => canUserEditProject(),
+  getActiveSong: () => getActiveSong(),
+  getWorkspaceContextGen: () => getWorkspaceContextGen(),
+  getNotesEditGen: () => getNotesEditGen(),
+  getNotesSaveGen: () => getNotesSaveGen(),
+  incrementNotesSaveGen: () => incrementNotesSaveGen(),
+  setNotesStatus: (status) => {
+    setNotesStatus(status);
+  },
+  onSyncNotesControls: (values, force) => {
+    syncNotesControls(values, force);
+  },
+  onSignalingUpdate: async (projectId, payload, token) => {
+    return signaling.updateProjectWorkspace(projectId, payload, token);
+  },
+  onApplyAuthoritativeWorkspace: (area, workspace) => {
+    applyAuthoritativeWorkspaceUpdate(area, workspace);
+  },
+  onRenderProjectActivities: (project, user) => {
+    renderProjectActivities(project, user);
+  }
+});
+initWorkspaceRealtimeSync({
+  signaling,
+  getActiveProject: () => activeProject,
+  getSessionProjectId: () => sessionProjectId,
+  getUser: () => auth.getUser(),
+  onRenderProjectActivities: (project, user) => {
+    renderProjectActivities(project, user);
+  },
+  getActiveLyricsDoc: () => getActiveLyricsDoc(),
+  onRenderLyricsDocTabs: (doc) => {
+    renderLyricsDocTabs(doc);
+  },
+  onUpdateLyricsStats: (html) => {
+    updateLyricsStatsFromHtml(html);
+  },
+  getLyricsStatus: () => getLyricsStatus(),
+  setLyricsStatus: (status) => {
+    setLyricsStatus(status);
+  },
+  hasLyricsSaveTimeout: () => hasLyricsSaveTimeout(),
+  getNotesStatus: () => getNotesStatus(),
+  setNotesStatus: (status) => {
+    setNotesStatus(status);
+  },
+  hasNotesSaveTimeout: () => hasNotesSaveTimeout(),
+  onSyncNotesControls: (values) => {
+    syncNotesControls(values);
+  },
+  onSaveNotesWorkspace: (content, bpm, key) => {
+    return saveNotesWorkspace(content, bpm, key);
+  },
+  getStructureStatus: () => getStructureStatus(),
+  setStructureStatus: (status) => {
+    setStructureStatus(status);
+  },
+  hasStructureSaveTimeout: () => hasStructureSaveTimeout(),
+  onRenderStructureWorkspace: () => {
+    renderStructureWorkspace();
+  },
+  getTasksStatus: () => getTasksStatus(),
+  setTasksStatus: (status) => {
+    setTasksStatus(status);
+  },
+  hasTasksSaveTimeout: () => hasTasksSaveTimeout(),
+  onRenderTasksWorkspace: () => {
+    renderTasksWorkspace();
+  }
+});
+initProjectActivitySync({
+  signaling,
+  getActiveProject: () => activeProject,
+  getUser: () => auth.getUser(),
+  onRenderProjectActivities: (project, user) => {
+    renderProjectActivities(project, user);
+  }
+});
+initAuthStateUiController({
+  onLoadScheduledSessions: () => loadScheduledSessions(),
+  onLoadRecentSessions: () => loadRecentSessions(),
+  onLoadProjects: () => loadProjects(),
+  onStopScheduledNotifications: () => {
+    scheduledNotifications.stop();
+  }
+});
+initAuthNavigation({
+  showView: (view) => showView(view as any),
+  getViews: () => views,
+  getUser: () => auth.getUser(),
+  getGuestName: () => auth.getGuestName(),
+  onCloseAccountMenu: () => closeAccountMenu(),
+  onUpdateAuthUi: (user, guestName) => updateAuthUi(user, guestName),
+  onEnumerateAndPopulate: () => enumerateAndPopulate()
+});
+initParticipantIdentityUi({
+  getUser: () => auth.getUser(),
+  getGuestName: () => auth.getGuestName(),
+  getMyIdentity: () => myIdentity,
+  getPeerIdentity: () => peerIdentity,
+  getCurrentRole: () => currentRole,
+  getPeerParticipantId: () => peerParticipantId,
+  onUpdateSessionViewButton: () => updateSessionViewButton(),
+  onRenderSessionViewMenu: () => renderSessionViewMenu()
+});
+initSessionViewSelectorUi({
+  onToggleSessionViewMenu: (e) => toggleSessionViewMenu(e),
+  onCloseSessionViewMenu: () => closeSessionViewMenu()
+});
 initLyricsDocumentsController({
   getProject: () => activeProject,
   getActiveSong: () => getActiveSong(),
@@ -432,9 +617,6 @@ initLyricsDocumentsController({
   },
   onSaveLyricsWorkspace: (content, id, title) => {
     void saveLyricsWorkspace(content, id, title);
-  },
-  onUpdateLastSyncedLyrics: (content) => {
-    lastSyncedLyrics = content;
   }
 });
 initStructureController({
@@ -537,23 +719,17 @@ initSongStudioUi({
 });
 initSongSwitchController({
   getProject: () => activeProject,
-  hasLyricsSaveTimeout: () => Boolean(lyricsSaveTimeout),
+  hasLyricsSaveTimeout: () => hasLyricsSaveTimeout(),
   clearLyricsSaveTimeout: () => {
-    if (lyricsSaveTimeout) {
-      clearTimeout(lyricsSaveTimeout);
-      lyricsSaveTimeout = null;
-    }
+    clearLyricsSaveTimeout();
   },
   getActiveLyricsDoc: () => getActiveLyricsDoc(),
   onSaveLyricsWorkspace: (content, id, title) => {
     void saveLyricsWorkspace(content, id, title);
   },
-  hasNotesSaveTimeout: () => Boolean(notesSaveTimeout),
+  hasNotesSaveTimeout: () => hasNotesSaveTimeout(),
   clearNotesSaveTimeout: () => {
-    if (notesSaveTimeout) {
-      clearTimeout(notesSaveTimeout);
-      notesSaveTimeout = null;
-    }
+    clearNotesSaveTimeout();
   },
   getNotesFieldValues: () => getNotesFieldValues(),
   onSaveNotesWorkspace: (content, bpm, key) => {
@@ -616,12 +792,12 @@ initWorkspaceSyncController({
   setLyricsStatus: (status) => {
     setLyricsStatus(status);
   },
-  hasLyricsSaveTimeout: () => lyricsSaveTimeout !== null,
+  hasLyricsSaveTimeout: () => hasLyricsSaveTimeout(),
   getNotesStatus: () => getNotesStatus(),
   setNotesStatus: (status) => {
     setNotesStatus(status);
   },
-  hasNotesSaveTimeout: () => notesSaveTimeout !== null,
+  hasNotesSaveTimeout: () => hasNotesSaveTimeout(),
   getStructureStatus: () => getStructureStatus(),
   setStructureStatus: (status) => {
     setStructureStatus(status);
@@ -634,33 +810,21 @@ initWorkspaceSyncController({
   hasTasksSaveTimeout: () => hasTasksSaveTimeout(),
   onApplyWorkspacePermissions: () => {
     applyWorkspacePermissions();
-  },
-  onUpdateLastSyncedValues: (values) => {
-    if (values.lyrics !== undefined) lastSyncedLyrics = values.lyrics;
-    if (values.notes !== undefined) lastSyncedNotes = values.notes;
-    if (values.bpm !== undefined) lastSyncedNotesBpm = values.bpm;
-    if (values.key !== undefined) lastSyncedNotesKey = values.key;
   }
 });
 initWorkspaceFlushController({
   getProject: () => activeProject,
-  hasLyricsSaveTimeout: () => lyricsSaveTimeout !== null,
+  hasLyricsSaveTimeout: () => hasLyricsSaveTimeout(),
   clearLyricsSaveTimeout: () => {
-    if (lyricsSaveTimeout) {
-      clearTimeout(lyricsSaveTimeout);
-      lyricsSaveTimeout = null;
-    }
+    clearLyricsSaveTimeout();
   },
   getActiveLyricsDoc: () => getActiveLyricsDoc(),
   onSaveLyricsWorkspace: (content, id, title) => {
     return saveLyricsWorkspace(content, id, title);
   },
-  hasNotesSaveTimeout: () => notesSaveTimeout !== null,
+  hasNotesSaveTimeout: () => hasNotesSaveTimeout(),
   clearNotesSaveTimeout: () => {
-    if (notesSaveTimeout) {
-      clearTimeout(notesSaveTimeout);
-      notesSaveTimeout = null;
-    }
+    clearNotesSaveTimeout();
   },
   getNotesFieldValues: () => getNotesFieldValues(),
   onSaveNotesWorkspace: (content, bpm, key) => {
@@ -761,7 +925,7 @@ initProfileUi({
   }
 });
 initSettingsUi({
-  onCloseSettings: () => showView(lastActiveViewBeforeSettings || 'home-view')
+  onCloseSettings: () => showView(getLastActiveViewBeforeSettings() || 'home-view')
 });
 initAuthController({
   onLoginAuth: async (credentials) => {
@@ -4069,7 +4233,7 @@ presenter.setActionHandler(async (action) => {
           closeInCallAudioModal();
         }
         if (!$('settings-view')?.classList.contains('hidden')) {
-          showView(lastActiveViewBeforeSettings || 'call-view');
+          showView(getLastActiveViewBeforeSettings() || 'call-view');
         }
       }
       break;
@@ -4382,242 +4546,7 @@ $('tab-btn-screens')?.addEventListener('click', () => {
 $('btn-stop-share-floating')?.addEventListener('click', () => void stopScreenShare());
 $('stage-stop-share-btn')?.addEventListener('click', () => void stopScreenShare());
 
-// Session View Selector Controls
-$('session-view-btn')?.addEventListener('click', (e) => {
-  toggleSessionViewMenu(e);
-});
 
-document.addEventListener('click', (e) => {
-  const target = e.target as HTMLElement | null;
-  if (!target?.closest('#session-view-selector')) {
-    closeSessionViewMenu();
-  }
-});
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    closeSessionViewMenu();
-  }
-});
-
-function updateParticipantIdentityUi(): void {
-  const user = auth.getUser();
-  const guestName = auth.getGuestName();
-  const isLogged = !!auth.getUser();
-  const avatarBg = safeAvatarColor(user?.avatarColor, '#38bdf8');
-  const avatarUrl = user?.avatarUrl;
-
-  const localLabel = myIdentity
-    ? `${myIdentity.displayName}${myIdentity.isHost ? ' (Host)' : myIdentity.isGuest ? ' (Guest)' : ''}`
-    : user ? user.displayName : guestName ? `${guestName} (Guest)` : 'You';
-  setText('local-user-name', localLabel);
-  setText('call-user-name', user ? user.displayName : guestName ? `${guestName} (Guest)` : 'Host');
-
-  const localIconEl = $('local-user-icon');
-  if (localIconEl) localIconEl.innerHTML = myIdentity?.isHost ? icons.crown({ size: 12 }) : icons.headphones({ size: 12 });
-
-  const callBadge = $('call-avatar-badge');
-  if (callBadge) {
-    if (isLogged && user) {
-      applyAvatarToElement(callBadge, user.displayName || user.username, avatarBg, avatarUrl);
-    } else if (guestName) {
-      applyAvatarToElement(callBadge, guestName, '#06b6d4');
-    } else {
-      callBadge.innerHTML = icons.user({ size: 14 });
-    }
-  }
-
-  const remoteLabel = peerIdentity
-    ? `${peerIdentity.displayName}${peerIdentity.username ? ` (@${peerIdentity.username})` : ''}${peerIdentity.isHost ? ' (Host)' : peerIdentity.isGuest ? ' (Guest)' : ''}`
-    : 'Musician';
-  setText('remote-user-name', remoteLabel);
-  const remoteIconEl = $('remote-user-icon');
-  if (remoteIconEl) remoteIconEl.innerHTML = peerIdentity?.isHost ? icons.crown({ size: 12 }) : icons.user({ size: 12 });
-
-  const removeBtn = $('btn-remove-participant');
-  if (removeBtn) {
-    if (currentRole === 'host' && Boolean(peerParticipantId)) {
-      removeBtn.classList.remove('hidden');
-    } else {
-      removeBtn.classList.add('hidden');
-    }
-  }
-
-  updateSessionViewButton();
-  renderSessionViewMenu();
-}
-
-// User Authentication, Personalized Home & Identity Management
-function updateAuthUi(user: UserProfile | null, guestName: string): void {
-  const isLogged = Boolean(user);
-  const avatarBg = safeAvatarColor(user?.avatarColor, '#38bdf8');
-  const avatarUrl = user?.avatarUrl;
-
-  // 1. Home Navigation Bar Controls (Always show profile / account pill)
-  const navUser = $('home-auth-nav-user');
-  if (navUser) navUser.classList.remove('hidden');
-
-  const navAvatar = $('nav-user-avatar');
-  if (navAvatar) {
-    if (isLogged && user?.displayName) {
-      applyAvatarToElement(navAvatar, user.displayName, avatarBg, avatarUrl);
-      setText('nav-user-name', user.displayName);
-      setText('nav-user-handle', `@${user.username}`);
-    } else {
-      navAvatar.style.background = 'var(--bg-elevated)';
-      navAvatar.style.backgroundImage = 'none';
-      navAvatar.innerHTML = icons.user({ size: 14 });
-    }
-  }
-
-  const projectAvatar = $('project-user-avatar');
-  if (projectAvatar) {
-    if (isLogged && user?.displayName) {
-      applyAvatarToElement(projectAvatar, user.displayName, avatarBg, avatarUrl);
-    } else {
-      projectAvatar.style.background = 'var(--bg-elevated)';
-      projectAvatar.style.backgroundImage = 'none';
-      projectAvatar.innerHTML = icons.user({ size: 14 });
-    }
-  }
-
-  // 2. Home Hero Area & Action Blocks (Personalized for logged in vs Guest)
-  const homeHeroUser = $('home-user-hero');
-  const homeHeroGuest = $('home-guest-hero');
-  const homeCards = $('home-cards-section');
-  const recentSection = $('recent-sessions-section');
-  const scheduledSection = $('scheduled-sessions-section');
-  const projectsSection = $('projects-section');
-  if (homeHeroUser) homeHeroUser.classList.toggle('hidden', !isLogged);
-  if (homeHeroGuest) homeHeroGuest.classList.toggle('hidden', isLogged);
-  if (homeCards) homeCards.classList.toggle('hidden', !isLogged);
-  if (scheduledSection) scheduledSection.classList.toggle('hidden', !isLogged);
-  if (recentSection) recentSection.classList.toggle('hidden', !isLogged);
-  if (projectsSection) projectsSection.classList.toggle('hidden', !isLogged);
-
-  if (isLogged && user) {
-    setText('home-user-greeting', user.displayName);
-    setText('home-user-handle-display', `@${user.username}`);
-    setText('home-user-email-display', user.email);
-    const heroAvatar = $('home-hero-avatar');
-    applyAvatarToElement(heroAvatar, user.displayName, avatarBg, avatarUrl);
-
-    const createBtn = $<HTMLButtonElement>('create-button');
-    if (createBtn) createBtn.textContent = `Start New Session (Host as ${user.displayName})`;
-    void loadScheduledSessions();
-    void loadRecentSessions();
-    void loadProjects();
-  } else {
-    scheduledNotifications.stop();
-    const createBtn = $<HTMLButtonElement>('create-button');
-    if (createBtn) createBtn.textContent = 'Start New Session';
-  }
-
-  // 3. Sound Check Header Pill
-  setText('setup-user-name', user ? user.displayName : guestName ? `${guestName} (Guest)` : 'Account');
-  const setupBadge = $('setup-avatar-badge');
-  if (setupBadge) {
-    if (isLogged && user?.displayName) {
-      applyAvatarToElement(setupBadge, user.displayName, avatarBg, avatarUrl);
-    } else {
-      setupBadge.innerHTML = icons.user({ size: 14 });
-    }
-  }
-
-  // 4. Call Header Pill
-  setText('call-user-name', user ? user.displayName : guestName ? `${guestName} (Guest)` : 'Host');
-  const callBadge = $('call-avatar-badge');
-  if (callBadge) {
-    if (isLogged && user) {
-      applyAvatarToElement(callBadge, user.displayName || user.username, avatarBg, avatarUrl);
-    } else if (guestName) {
-      applyAvatarToElement(callBadge, guestName, '#06b6d4');
-    } else {
-      callBadge.innerHTML = icons.user({ size: 14 });
-    }
-  }
-
-  // 5. Modal Panels Configuration & Profile Form Initialization
-  $('auth-tabs')?.classList.toggle('hidden', isLogged);
-  $('panel-auth-login')?.classList.toggle('hidden', isLogged);
-  $('panel-auth-register')?.classList.add('hidden');
-  $('panel-auth-profile')?.classList.toggle('hidden', !isLogged);
-
-  if (isLogged && user) {
-    setText('auth-dialog-title', 'Account Profile');
-    setEditingAvatarColor(safeAvatarColor(user.avatarColor, '#06b6d4'));
-    setEditingAvatarUrl(user.avatarUrl);
-
-    // Populate profile form fields
-    const nameInp = $<HTMLInputElement>('profile-edit-display-name');
-    if (nameInp) nameInp.value = user.displayName;
-    const roleInp = $<HTMLInputElement>('profile-edit-role');
-    if (roleInp) roleInp.value = user.role || '';
-    const locInp = $<HTMLInputElement>('profile-edit-location');
-    if (locInp) locInp.value = user.location || '';
-    const dawInp = $<HTMLSelectElement>('profile-edit-daw');
-    if (dawInp) dawInp.value = user.primaryDaw || '';
-    const genresInp = $<HTMLInputElement>('profile-edit-genres');
-    if (genresInp) genresInp.value = user.genres ? user.genres.join(', ') : '';
-    const bioInp = $<HTMLTextAreaElement>('profile-edit-bio');
-    if (bioInp) bioInp.value = user.bio || '';
-    const socialInp = $<HTMLInputElement>('profile-edit-social');
-    if (socialInp) socialInp.value = user.socialHandle || user.website || '';
-
-    // Clear password inputs
-    const curPass = $<HTMLInputElement>('profile-input-cur-password');
-    const newPass = $<HTMLInputElement>('profile-input-new-password');
-    const confPass = $<HTMLInputElement>('profile-input-confirm-password');
-    if (curPass) curPass.value = '';
-    if (newPass) newPass.value = '';
-    if (confPass) confPass.value = '';
-
-    // Set preview card & avatar
-    setText('profile-username', `@${user.username}`);
-    setText('profile-email', user.email);
-    highlightActiveSwatch(getEditingAvatarColor());
-    $('btn-remove-avatar-photo')?.classList.toggle('hidden', !Boolean(getEditingAvatarUrl()));
-    $('profile-feedback-msg')?.classList.add('hidden');
-
-    switchProfileSubtab('info');
-    updateProfileLivePreview();
-  } else {
-    setText('auth-dialog-title', 'Sign In or Register');
-  }
-}
-
-function openAuthView(tab: 'login' | 'register' = 'login'): void {
-  showView('auth-view');
-  switchAuthViewTab(tab);
-}
-
-let lastActiveViewBeforeSettings = 'home-view';
-
-function openSettings(section: SettingsSection = 'account'): void {
-  closeAccountMenu();
-  const currentActive = views.find((v) => !$(v)?.classList.contains('hidden') && v !== 'settings-view');
-  if (currentActive) {
-    lastActiveViewBeforeSettings = currentActive;
-  }
-
-  const user = auth.getUser();
-  if (user) {
-    updateAuthUi(user, auth.getGuestName());
-  }
-  void enumerateAndPopulate();
-
-  switchSettingsSection(section);
-  showView('settings-view');
-}
-
-function openAuthDialog(tab: 'login' | 'register' = 'login'): void {
-  const user = auth.getUser();
-  if (user) {
-    openSettings('account');
-  } else {
-    openAuthView(tab);
-  }
-}
 
 for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="settings-default-mode"]')) {
   radio.addEventListener('change', () => {
@@ -4787,559 +4716,8 @@ function resetProjectTabs(): void {
   resetProjectTabsUi();
 }
 
-// ========================================================
-// PROJECT WORKSPACE: GOOGLE DOCS-INSPIRED SONGWRITING STUDIO & MULTI-DOC ENGINE
-// ========================================================
-let lyricsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
-let notesSaveTimeout: ReturnType<typeof setTimeout> | null = null;
-
-// Snapshot of last confirmed server state for 3-way merging
-let lastSyncedLyrics = '';
-let lastSyncedNotes = '';
-let lastSyncedNotesBpm = '';
-let lastSyncedNotesKey = '';
-
-// ========================================================
-// PROJECT WORKSPACE: MULTI-SONG TRACKS ARCHITECTURE
-// ========================================================
 function getActiveSong(): ProjectSongItem {
   return getActiveSongState(activeProject);
-}
-
-function openSongStudio(songId?: string, targetTab: SongStudioTab = 'lyrics'): void {
-  if (songId && activeProject?.workspace && activeProject.workspace.activeSongId !== songId) {
-    switchActiveSong(songId);
-  }
-  openSongStudioUiView(targetTab);
-}
-
-function createNewSong(title: string, autoOpenStudio: boolean = false): void {
-  if (!activeProject || !canUserEditProject()) return;
-  const newId = `song_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  mutateCreateSong(activeProject, title, newId);
-
-  syncWorkspaceInputsFromProject(true);
-  void saveSongsWorkspace();
-  renderProjectSongsSelector();
-  renderProjectOverviewSongsList();
-
-  if (autoOpenStudio) {
-    openSongStudio(newId, 'lyrics');
-  }
-}
-
-function duplicateSong(songId: string): void {
-  if (!activeProject?.workspace?.songs) return;
-  const newId = `song_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const result = mutateDuplicateSong(activeProject, songId, newId);
-  if (!result) return;
-
-  syncWorkspaceInputsFromProject(true);
-  void saveSongsWorkspace();
-}
-
-function deleteSong(songId: string): void {
-  if (!activeProject?.workspace?.songs) return;
-  const ws = activeProject.workspace;
-  if (ws.songs.length <= 1) return;
-
-  const idx = ws.songs.findIndex((s) => s.id === songId);
-  if (idx === -1) return;
-
-  ws.songs.splice(idx, 1);
-  if (ws.activeSongId === songId) {
-    const nextSong = ws.songs[Math.max(0, idx - 1)] || ws.songs[0];
-    ws.activeSongId = nextSong.id;
-    ws.lyrics = nextSong.lyrics;
-    ws.notes = nextSong.notes;
-    ws.structure = nextSong.structure;
-  }
-
-  syncWorkspaceInputsFromProject(true);
-  void saveSongsWorkspace();
-}
-
-function reorderSongs(sourceId: string, targetId: string): void {
-  if (!activeProject?.workspace?.songs) return;
-  const changed = mutateReorderSongs(activeProject, sourceId, targetId);
-  if (!changed) return;
-
-  renderProjectSongsSelector();
-  void saveSongsWorkspace();
-}
-
-function renameSong(songId: string, newTitle: string): void {
-  if (!activeProject?.workspace?.songs || !canUserEditProject()) return;
-  const changed = mutateRenameSong(activeProject, songId, newTitle);
-  if (!changed) return;
-  void saveSongsWorkspace();
-}
-
-function toggleArchiveSong(songId: string, isArchived: boolean): void {
-  if (!activeProject?.workspace?.songs || !canUserEditProject()) return;
-  const changed = mutateToggleArchiveSong(activeProject, songId, isArchived);
-  if (!changed) return;
-  renderProjectSongsSelector();
-  renderProjectOverviewSongsList();
-  void saveSongsWorkspace();
-}
-
-async function saveSongsWorkspace(): Promise<boolean> {
-  if (!activeProject?.workspace) return false;
-  const token = auth.getToken();
-  if (!token) return false;
-  const targetProjectId = activeProject.id;
-  const payload: UpdateProjectWorkspaceRequest = {
-    activeSongId: activeProject.workspace.activeSongId,
-    songs: JSON.parse(JSON.stringify(activeProject.workspace.songs || []))
-  };
-
-  try {
-    let res: UpdateProjectWorkspaceResponse | null = null;
-    if (signaling.isConnected()) {
-      try {
-        res = await signaling.updateProjectWorkspace(targetProjectId, payload, token);
-      } catch {
-        res = null;
-      }
-    }
-    if (!res || !res.ok) {
-      const httpRes = await projectsApi.updateProjectWorkspace(token, targetProjectId, payload);
-      res = { ok: true, project: httpRes.project, workspace: httpRes.workspace };
-    }
-    if (res?.project && activeProject && activeProject.id === res.project.id) {
-      activeProject.workspace = res.project.workspace;
-      activeProject.updatedAt = res.project.updatedAt;
-    }
-    return true;
-  } catch (err) {
-    console.error('Failed to save songs workspace:', err);
-    return false;
-  }
-}
-
-
-
-async function saveLyricsWorkspace(content: string, documentId?: string, title?: string): Promise<void> {
-  if (!activeProject || !canUserEditProject()) return;
-  const token = auth.getToken();
-  if (!token) {
-    setLyricsStatus('unsaved');
-    return;
-  }
-  const activeSong = getActiveSong();
-  const targetProjectId = activeProject.id;
-  const targetContextGen = getWorkspaceContextGen();
-  const targetEditGen = getLyricsEditGen();
-  const targetSaveGen = incrementLyricsSaveGen();
-  const baseRevision = activeSong.lyrics?.revision ?? 1;
-
-  try {
-    const activeDoc = getActiveLyricsDoc();
-    const docId = documentId || activeDoc.id;
-    const docTitle = title || activeDoc.title;
-
-    activeDoc.content = content;
-    activeDoc.title = docTitle;
-    activeDoc.updatedAt = Date.now();
-    if (activeSong.lyrics) {
-      activeSong.lyrics.content = content;
-      activeSong.lyrics.updatedAt = Date.now();
-    }
-    if (activeProject.workspace?.lyrics) {
-      activeProject.workspace.lyrics.content = content;
-    }
-
-    const payload: UpdateProjectWorkspaceRequest = {
-      activeSongId: activeSong.id,
-      songId: activeSong.id,
-      songs: activeProject.workspace?.songs,
-      lyrics: {
-        baseRevision,
-        activeDocumentId: activeSong.lyrics?.activeDocumentId,
-        documents: activeSong.lyrics?.documents,
-        content,
-        documentId: docId,
-        title: docTitle
-      }
-    };
-
-    let res = await signaling.updateProjectWorkspace(targetProjectId, payload, token);
-    if (!res?.ok && !res?.conflict && res?.code !== 'WORKSPACE_CONFLICT') {
-      try {
-        const httpRes = await projectsApi.updateProjectWorkspace(token, targetProjectId, payload);
-        if (httpRes?.workspace) {
-          res = { ok: true, workspace: httpRes.workspace, project: httpRes.project };
-        }
-      } catch (httpErr: any) {
-        console.warn('HTTP workspace update fallback failed:', httpErr);
-      }
-    }
-    const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === getWorkspaceContextGen()) &&
-      (targetSaveGen === getLyricsSaveGen()) &&
-      (targetEditGen === getLyricsEditGen());
-    if (res?.ok && res.workspace && activeProject) {
-      applyAuthoritativeWorkspaceUpdate('lyrics', res.workspace);
-      if (res.project?.activities) {
-        activeProject.activities = res.project.activities;
-        renderProjectActivities(activeProject, auth.getUser());
-      }
-      const syncedDoc = getActiveLyricsDoc();
-      lastSyncedLyrics = syncedDoc.content ?? content;
-      setLyricsStatus('saved');
-    } else if (res?.conflict || res?.code === 'WORKSPACE_CONFLICT') {
-      // Confirmed WORKSPACE_CONFLICT: preserve local edits exactly, keep unsaved, do not overwrite local content
-      setLyricsStatus('unsaved');
-    } else {
-      setLyricsStatus('unsaved');
-    }
-  } catch (err) {
-    console.error('Failed to save lyrics document:', err);
-    const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === getWorkspaceContextGen()) &&
-      (targetSaveGen === getLyricsSaveGen()) &&
-      (targetEditGen === getLyricsEditGen());
-    if (isLatest) {
-      setLyricsStatus('unsaved');
-    }
-  }
-}
-
-async function saveNotesWorkspace(content: string, bpm: string, key: string): Promise<void> {
-  if (!activeProject || !canUserEditProject()) return;
-  const token = auth.getToken();
-  if (!token) {
-    setNotesStatus('unsaved');
-    return;
-  }
-  const activeSong = getActiveSong();
-  const targetProjectId = activeProject.id;
-  const targetContextGen = getWorkspaceContextGen();
-  const targetEditGen = getNotesEditGen();
-  const targetSaveGen = incrementNotesSaveGen();
-  const baseRevision = activeSong.notes?.revision ?? 1;
-
-  if (activeSong.notes) {
-    activeSong.notes.content = content;
-    activeSong.notes.bpm = bpm;
-    activeSong.notes.key = key;
-    activeSong.updatedAt = Date.now();
-  }
-  if (activeProject.workspace?.notes) {
-    activeProject.workspace.notes.content = content;
-    activeProject.workspace.notes.bpm = bpm;
-    activeProject.workspace.notes.key = key;
-  }
-
-  const payload: UpdateProjectWorkspaceRequest = {
-    activeSongId: activeSong.id,
-    songId: activeSong.id,
-    songs: activeProject.workspace?.songs,
-    notes: { baseRevision, content, bpm, key }
-  };
-
-  try {
-    let res = await signaling.updateProjectWorkspace(targetProjectId, payload, token);
-    if (!res?.ok && !res?.conflict && res?.code !== 'WORKSPACE_CONFLICT') {
-      try {
-        const httpRes = await projectsApi.updateProjectWorkspace(token, targetProjectId, payload);
-        if (httpRes?.workspace) {
-          res = { ok: true, workspace: httpRes.workspace, project: httpRes.project };
-        }
-      } catch (httpErr: any) {
-        console.warn('HTTP workspace update fallback failed for notes:', httpErr);
-      }
-    }
-    const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === getWorkspaceContextGen()) &&
-      (targetSaveGen === getNotesSaveGen()) &&
-      (targetEditGen === getNotesEditGen());
-    if (!isLatest) return;
-
-    if (res?.ok && res.workspace && activeProject) {
-      applyAuthoritativeWorkspaceUpdate('notes', res.workspace);
-      if (res.project?.activities) {
-        activeProject.activities = res.project.activities;
-        renderProjectActivities(activeProject, auth.getUser());
-      }
-      lastSyncedNotes = res.workspace.notes?.content ?? content;
-      lastSyncedNotesBpm = res.workspace.notes?.bpm ?? bpm;
-      lastSyncedNotesKey = res.workspace.notes?.key ?? key;
-      setNotesStatus('saved');
-    } else if ((res?.conflict || res?.code === 'WORKSPACE_CONFLICT') && res.workspace?.notes && activeProject) {
-      // Confirmed WORKSPACE_CONFLICT on Notes: safely reconcile content, BPM, and Key against authoritative server state
-      const baseNotes: NotesStateValues = {
-        content: lastSyncedNotes,
-        bpm: lastSyncedNotesBpm,
-        key: lastSyncedNotesKey
-      };
-      const localNotes: NotesStateValues = {
-        content: activeProject.workspace?.notes?.content ?? content,
-        bpm: activeProject.workspace?.notes?.bpm ?? bpm,
-        key: activeProject.workspace?.notes?.key ?? key
-      };
-      const remoteNotes: NotesStateValues = {
-        content: res.workspace.notes.content ?? '',
-        bpm: res.workspace.notes.bpm ?? '',
-        key: res.workspace.notes.key ?? ''
-      };
-
-      const reconciliation = reconcileNotesWorkspace(baseNotes, localNotes, remoteNotes);
-
-      // If both sides changed the same BPM or Key field differently, preserve unresolved local work
-      // and leave Notes unsaved without automatically overwriting persisted collaborator data.
-      if (reconciliation.hasUnresolvableConflict) {
-        if (activeProject.workspace?.notes) {
-          activeProject.workspace.notes.content = reconciliation.content;
-        }
-        syncNotesControls({ content: reconciliation.content });
-        setNotesStatus('unsaved');
-        return;
-      }
-
-      // Safe reconciliation: update UI controls for remote updates
-      syncNotesControls({
-        content: reconciliation.content,
-        bpm: reconciliation.bpmChangedRemotely ? reconciliation.bpm : undefined,
-        key: reconciliation.keyChangedRemotely ? reconciliation.key : undefined
-      });
-
-      // Update authoritative baseline tracking and activeProject state
-      lastSyncedNotes = remoteNotes.content || '';
-      lastSyncedNotesBpm = remoteNotes.bpm || '';
-      lastSyncedNotesKey = remoteNotes.key || '';
-
-      const nextRevision = res.workspace.notes.revision ?? (res.currentRevision ?? activeProject.workspace?.notes?.revision ?? 1);
-      if (activeProject.workspace?.notes) {
-        activeProject.workspace.notes.content = reconciliation.content;
-        activeProject.workspace.notes.bpm = reconciliation.bpm;
-        activeProject.workspace.notes.key = reconciliation.key;
-        activeProject.workspace.notes.revision = nextRevision;
-      }
-
-      setNotesStatus('saving');
-      if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
-      notesSaveTimeout = setTimeout(() => {
-        notesSaveTimeout = null;
-        void saveNotesWorkspace(reconciliation.content, reconciliation.bpm, reconciliation.key);
-      }, 350);
-    } else {
-      setNotesStatus('unsaved');
-    }
-  } catch (err) {
-    console.error('Failed to save notes:', err);
-    const isLatest = (activeProject?.id === targetProjectId) &&
-      (targetContextGen === getWorkspaceContextGen()) &&
-      (targetSaveGen === getNotesSaveGen()) &&
-      (targetEditGen === getNotesEditGen());
-    if (isLatest) {
-      setNotesStatus('unsaved');
-    }
-  }
-}
-
-
-
-// Real-Time Socket Workspace Sync
-signaling.on('project:workspace:synced', (data: { projectId: string; workspace: any; activities?: any[]; updatedBy?: string; updatedByName?: string }) => {
-  if (!data?.workspace) return;
-  const matchesCurrent = activeProject?.id === data.projectId || sessionProjectId === data.projectId;
-  if (!matchesCurrent) return;
-
-  if (data.activities && activeProject) {
-    activeProject.activities = data.activities;
-    renderProjectActivities(activeProject, auth.getUser());
-  }
-
-  if (!activeProject) return;
-  if (!activeProject.workspace) {
-    activeProject.workspace = {
-      lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: Date.now() }], content: '', updatedAt: Date.now() },
-      notes: { content: '', updatedAt: Date.now() },
-      structure: { sections: [], updatedAt: Date.now() },
-      tasks: { tasks: [], updatedAt: Date.now() }
-    };
-  }
-
-  // 1. Sync Lyrics Documents & Active Document
-  const hasPendingLyrics = lyricsSaveTimeout !== null || getLyricsStatus() === 'saving' || getLyricsStatus() === 'unsaved';
-  if (!hasPendingLyrics && data.workspace.lyrics) {
-    activeProject.workspace.lyrics = data.workspace.lyrics;
-    const activeDoc = getActiveLyricsDoc();
-    renderLyricsDocTabs(activeDoc);
-    const incomingLyrics = activeDoc.content || '';
-
-    const projectEditor = $('project-lyrics-editor');
-    const sessionEditor = $('session-lyrics-editor');
-    const isEditingProject = document.activeElement === projectEditor;
-    const isEditingSession = document.activeElement === sessionEditor;
-
-    if (!isEditingProject && projectEditor) {
-      projectEditor.innerHTML = sanitizeLyricsHtml(incomingLyrics);
-    }
-    if (!isEditingSession && sessionEditor) {
-      sessionEditor.innerHTML = sanitizeLyricsHtml(incomingLyrics);
-    }
-    updateLyricsStatsFromHtml(incomingLyrics);
-    lastSyncedLyrics = incomingLyrics;
-    setLyricsStatus('saved');
-  }
-
-  // 2. Converge Notes
-  const incomingNotesContent = data.workspace.notes?.content ?? '';
-  const incomingNotesBpm = data.workspace.notes?.bpm ?? '';
-  const incomingNotesKey = data.workspace.notes?.key ?? '';
-
-  const currentLocalContent = activeProject?.workspace?.notes?.content ?? '';
-  const currentLocalBpm = activeProject?.workspace?.notes?.bpm ?? '';
-  const currentLocalKey = activeProject?.workspace?.notes?.key ?? '';
-
-  const hasPendingNotes =
-    notesSaveTimeout !== null ||
-    getNotesStatus() === 'saving' ||
-    getNotesStatus() === 'unsaved' ||
-    currentLocalContent !== lastSyncedNotes ||
-    currentLocalBpm !== lastSyncedNotesBpm ||
-    currentLocalKey !== lastSyncedNotesKey;
-
-  if (hasPendingNotes) {
-    const baseNotes: NotesStateValues = {
-      content: lastSyncedNotes,
-      bpm: lastSyncedNotesBpm,
-      key: lastSyncedNotesKey
-    };
-    const localNotes: NotesStateValues = {
-      content: currentLocalContent,
-      bpm: currentLocalBpm,
-      key: currentLocalKey
-    };
-    const remoteNotes: NotesStateValues = {
-      content: incomingNotesContent,
-      bpm: incomingNotesBpm,
-      key: incomingNotesKey
-    };
-
-    const reconciliation = reconcileNotesWorkspace(baseNotes, localNotes, remoteNotes);
-
-    if (reconciliation.hasUnresolvableConflict) {
-      if (activeProject.workspace?.notes) {
-        activeProject.workspace.notes.content = reconciliation.content;
-      }
-      syncNotesControls({ content: reconciliation.content });
-      setNotesStatus('unsaved');
-    } else {
-      syncNotesControls({
-        content: reconciliation.content,
-        bpm: reconciliation.bpmChangedRemotely ? reconciliation.bpm : undefined,
-        key: reconciliation.keyChangedRemotely ? reconciliation.key : undefined
-      });
-
-      lastSyncedNotes = incomingNotesContent;
-      lastSyncedNotesBpm = incomingNotesBpm;
-      lastSyncedNotesKey = incomingNotesKey;
-
-      if (activeProject.workspace?.notes) {
-        activeProject.workspace.notes.content = reconciliation.content;
-        activeProject.workspace.notes.bpm = reconciliation.bpm;
-        activeProject.workspace.notes.key = reconciliation.key;
-        if (data.workspace.notes?.revision !== undefined) {
-          activeProject.workspace.notes.revision = data.workspace.notes.revision;
-        }
-      }
-
-      const hasLocalRemainingChanges =
-        reconciliation.content !== incomingNotesContent ||
-        reconciliation.bpm !== incomingNotesBpm ||
-        reconciliation.key !== incomingNotesKey;
-
-      if (hasLocalRemainingChanges) {
-        if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
-        setNotesStatus('saving');
-        notesSaveTimeout = setTimeout(() => {
-          notesSaveTimeout = null;
-          void saveNotesWorkspace(reconciliation.content, reconciliation.bpm, reconciliation.key);
-        }, 350);
-      } else {
-        setNotesStatus('saved');
-      }
-    }
-  } else {
-    if (data.workspace.notes) {
-      if (activeProject.workspace?.notes) {
-        activeProject.workspace.notes = data.workspace.notes;
-      }
-      lastSyncedNotes = incomingNotesContent;
-      lastSyncedNotesBpm = incomingNotesBpm;
-      lastSyncedNotesKey = incomingNotesKey;
-
-      syncNotesControls({
-        content: incomingNotesContent,
-        bpm: incomingNotesBpm,
-        key: incomingNotesKey
-      });
-
-      setNotesStatus('saved');
-    }
-  }
-
-  // 3. Sync Song Structure
-  const hasPendingStructure = structureSaveTimeout !== null || getStructureStatus() === 'saving' || getStructureStatus() === 'unsaved';
-  if (!hasPendingStructure && data.workspace.structure) {
-    const activeInputInStructure = document.activeElement && (
-      document.activeElement.classList.contains('section-name-input') ||
-      document.activeElement.classList.contains('section-bars-input') ||
-      document.activeElement.classList.contains('section-note-input')
-    );
-    if (!activeInputInStructure) {
-      activeProject.workspace.structure = data.workspace.structure;
-      renderStructureWorkspace();
-      setStructureStatus('saved');
-    }
-  }
-
-  // 4. Sync Project Tasks with non-intrusive convergence
-  const hasPendingTasks = tasksSaveTimeout !== null || getTasksStatus() === 'saving' || getTasksStatus() === 'unsaved';
-  if (!hasPendingTasks && data.workspace?.tasks) {
-    const activeTaskEl = document.activeElement;
-    const isEditingTask = activeTaskEl && (
-      activeTaskEl.classList.contains('task-title-input') ||
-      activeTaskEl.classList.contains('task-note-input') ||
-      activeTaskEl.classList.contains('drawer-task-title')
-    );
-
-    if (!isEditingTask) {
-      activeProject.workspace.tasks = {
-        revision: data.workspace.tasks.revision || 1,
-        tasks: Array.isArray(data.workspace.tasks.tasks) ? data.workspace.tasks.tasks : [],
-        updatedAt: data.workspace.tasks.updatedAt || Date.now()
-      };
-      renderTasksWorkspace();
-      setTasksStatus('saved');
-    }
-  }
-
-  // 5. Sync Project Activities
-  if (data.activities && activeProject) {
-    activeProject.activities = data.activities;
-    renderProjectActivities(activeProject ?? null, auth.getUser());
-  }
-});
-
-signaling.on('project:activity:new', (data: { projectId: string; activities: ProjectActivityItem[] }) => {
-  if (activeProject && activeProject.id === data.projectId) {
-    activeProject.activities = data.activities;
-    renderProjectActivities(activeProject ?? null, auth.getUser());
-  }
-});
-
-// ========================================================
-// PROJECT WORKSPACE: TASKS & CHECKLIST ENGINE
-// ========================================================
-let tasksSaveTimeout: ReturnType<typeof setTimeout> | null = null;
-
-function getProjectTasks(): ProjectTaskItem[] {
-  return normalizeProjectTasks(activeProject);
 }
 
 

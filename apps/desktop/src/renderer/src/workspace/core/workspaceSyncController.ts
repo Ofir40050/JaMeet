@@ -2,6 +2,7 @@ import type { Project, ProjectSongItem, UserProfile } from '@jameet/shared';
 import { $ } from '../../core/dom';
 import { sanitizeLyricsHtml } from '../../core/htmlSecurity';
 import type { LyricsDocItem } from '../lyrics/lyricsDocumentState';
+import { setAllLastSyncedValues } from './workspaceSyncState';
 
 export interface WorkspaceSyncControllerOptions {
   getProject: () => Project | null | undefined;
@@ -28,7 +29,6 @@ export interface WorkspaceSyncControllerOptions {
   setTasksStatus: (status: 'saved' | 'saving' | 'unsaved') => void;
   hasTasksSaveTimeout: () => boolean;
   onApplyWorkspacePermissions: () => void;
-  onUpdateLastSyncedValues: (values: { lyrics?: string; notes?: string; bpm?: string; key?: string }) => void;
 }
 
 let controllerOptions: WorkspaceSyncControllerOptions | null = null;
@@ -53,7 +53,7 @@ export function syncWorkspaceInputsFromProject(force = false): void {
   const notesKey = activeSong.notes?.key || '';
 
   if (force) {
-    controllerOptions.onUpdateLastSyncedValues({
+    setAllLastSyncedValues({
       lyrics: lyricsHtml,
       notes: notesContent,
       bpm: notesBpm,

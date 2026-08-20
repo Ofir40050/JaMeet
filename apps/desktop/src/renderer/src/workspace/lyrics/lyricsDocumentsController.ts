@@ -11,6 +11,7 @@ import {
   findLyricsDocToDelete,
   mutateDeleteLyricsDoc
 } from './lyricsDocumentDeletion';
+import { setLastSyncedLyrics } from '../core/workspaceSyncState';
 
 export interface LyricsDocumentsControllerOptions {
   getProject: () => Project | null | undefined;
@@ -20,7 +21,6 @@ export interface LyricsDocumentsControllerOptions {
   onIncrementLyricsEditGen: () => void;
   onSetLyricsStatus: (status: 'saved' | 'saving' | 'unsaved') => void;
   onSaveLyricsWorkspace: (content: string, id: string, title: string) => Promise<void> | void;
-  onUpdateLastSyncedLyrics: (content: string) => void;
 }
 
 let controllerOptions: LyricsDocumentsControllerOptions | null = null;
@@ -54,7 +54,7 @@ export function switchActiveLyricsDoc(docId: string): void {
   if (projectEditor) projectEditor.innerHTML = sanitizeLyricsHtml(doc.content || '');
   if (sessionEditor) sessionEditor.innerHTML = sanitizeLyricsHtml(doc.content || '');
 
-  controllerOptions.onUpdateLastSyncedLyrics(doc.content || '');
+  setLastSyncedLyrics(doc.content || '');
   controllerOptions.onUpdateLyricsStats(doc.content || '');
   controllerOptions.onIncrementLyricsEditGen();
   controllerOptions.onSetLyricsStatus('saving');

@@ -15,6 +15,17 @@ export function initLyricsController(options: LyricsControllerOptions): void {
   controllerOptions = options;
 }
 
+export function hasLyricsSaveTimeout(): boolean {
+  return lyricsSaveTimeout !== null;
+}
+
+export function clearLyricsSaveTimeout(): void {
+  if (lyricsSaveTimeout) {
+    clearTimeout(lyricsSaveTimeout);
+    lyricsSaveTimeout = null;
+  }
+}
+
 export function handleLyricsInput(newHtml: string): void {
   if (!controllerOptions) return;
   const project = controllerOptions.getActiveProject();
