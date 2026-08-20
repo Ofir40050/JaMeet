@@ -115,6 +115,11 @@ import { prepareStudioDomain } from './sessions/setup/studioPreparationDomainCon
 import { getMeterInterval, getEffectiveMusicBitrate } from './media/mediaPreferenceController';
 import { bindDeviceSelect } from './media/deviceChangeController';
 import { initAuthDomainController } from './auth/authDomainController';
+import { showScreenPickerUi } from './sessions/call/screenPickerController';
+import { updateScreenSharingUi } from './sessions/call/screenSharingUi';
+import { updateCameraButtonUi } from './sessions/call/cameraUi';
+import { testSpeakers as testSpeakersController, testMicrophone as testMicrophoneController, getMicrophonePlayback } from './media/deviceTestController';
+import { initMediaSettingsBindings } from './media/mediaSettingsBindingsController';
 import {
   getWorkspaceContextGen,
   isWorkspaceContextGenCurrent,
@@ -1911,111 +1916,23 @@ async function stopScreenShare(): Promise<void> {
 }
 
 function setScreenSharingUi(active: boolean): void {
-  const toggleBtn = document.getElementById('toggle-screen');
-  if (toggleBtn) {
-    toggleBtn.classList.toggle('active', active);
-    toggleBtn.innerHTML = `<span class="tool-icon">${active ? icons.stopSquare({ size: 18 }) : icons.monitor({ size: 18 })}</span>`;
-    toggleBtn.title = active ? 'Stop Sharing Screen' : 'Share Screen';
-  }
-  const shareOverlay = document.getElementById('local-share-overlay');
-  if (shareOverlay) {
-    shareOverlay.classList.toggle('hidden', !active);
-    const titleEl = document.getElementById('local-share-title');
-    if (titleEl) titleEl.textContent = currentSharingSourceTitle ? `Sharing: ${currentSharingSourceTitle}` : 'Sharing Screen';
-  }
-  const localTile = document.querySelector('.video-tile.local-tile');
-  if (localTile) {
-    localTile.classList.toggle('sharing-screen', active);
-  }
-  const camBtn = $<HTMLButtonElement>('toggle-camera');
-  if (camBtn) camBtn.disabled = active;
-  const callCamSel = $<HTMLSelectElement>('call-camera-select');
-  if (callCamSel) callCamSel.disabled = active;
+  updateScreenSharingUi(active, {
+    getCurrentSharingSourceTitle: () => currentSharingSourceTitle
+  });
 }
 
 async function showScreenPicker(): Promise<void> {
-  if (screenTrack) { await stopScreenShare(); return; }
-  const dialog = $<HTMLDialogElement>('screen-dialog');
-  if (!dialog) return;
-
-  const dawGrid = $('screen-daw-grid');
-  const appsGrid = $('screen-apps-grid');
-  const screensGrid = $('screen-displays-grid');
-  if (dawGrid) dawGrid.replaceChildren();
-  if (appsGrid) appsGrid.replaceChildren();
-  if (screensGrid) screensGrid.replaceChildren();
-
-  setMessage('screen-status', 'Loading available screens and DAW windows…');
-  dialog.showModal();
-
-  const dawPattern = /logic|ableton|cubase|pro tools|studio one|reaper|fl studio|reason|bitwig|garageband/i;
-
-  try {
-    const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
-    const sources = desktopApi?.listDisplaySources ? await desktopApi.listDisplaySources() : [];
-    if (!sources.length) {
-      setMessage('screen-status', 'No screens or windows found. On macOS, make sure Screen Recording permission is allowed in System Settings > Privacy & Security.', true);
-      return;
-    }
-    setMessage('screen-status', '');
-
-    const screens = sources.filter((s) => s.id.startsWith('screen:'));
-    const windows = sources.filter((s) => !s.id.startsWith('screen:'));
-    const daws = windows.filter((w) => dawPattern.test(w.name));
-    const otherApps = windows.filter((w) => !dawPattern.test(w.name));
-
-    setText('apps-count-badge', String(windows.length));
-    setText('screens-count-badge', String(screens.length));
-
-    const getOptimizationPreset = (): 'detail' | 'motion' => {
-      const checked = document.querySelector<HTMLInputElement>('input[name="share-preset"]:checked');
-      return (checked?.value as 'detail' | 'motion') || 'detail';
-    };
-
-    const createCard = (source: { id: string; name: string; thumbnail: string }, isDaw = false) => {
-      const card = document.createElement('button');
-      card.type = 'button';
-      card.className = 'screen-source-card';
-      card.innerHTML = `
-        <div class="source-thumbnail-wrap">
-          <img src="${source.thumbnail}" alt="" />
-          ${isDaw ? `<span class="daw-badge">${icons.music({ size: 12 })} DAW</span>` : ''}
-        </div>
-        <div class="source-card-info">
-          <span class="source-card-icon">${isDaw ? icons.piano({ size: 16 }) : source.id.startsWith('screen:') ? icons.monitor({ size: 16 }) : icons.appWindow({ size: 16 })}</span>
-          <span class="source-card-name" title="${escapeHtml(source.name)}">${escapeHtml(source.name)}</span>
-        </div>
-      `;
-      card.addEventListener('click', () => {
-        dialog.close();
-        currentSharingSourceTitle = source.name;
-        const preset = getOptimizationPreset();
-        void startScreenShare(source.id, preset).catch((error) => setCallStatus(deviceError(error)));
-      });
-      return card;
-    };
-
-    // Populate DAWs
-    if (dawGrid) {
-      if (daws.length === 0) {
-        dawGrid.innerHTML = '<div class="no-daws-hint"><span>No running DAWs detected. Open Logic Pro, Ableton, FL Studio, or Pro Tools to share directly.</span></div>';
-      } else {
-        daws.forEach((daw) => dawGrid.appendChild(createCard(daw, true)));
-      }
-    }
-
-    // Populate Other Windows
-    if (appsGrid) {
-      otherApps.forEach((app) => appsGrid.appendChild(createCard(app, false)));
-    }
-
-    // Populate Displays
-    if (screensGrid) {
-      screens.forEach((scr) => screensGrid.appendChild(createCard(scr, false)));
-    }
-  } catch (error) {
-    setMessage('screen-status', deviceError(error), true);
-  }
+  await showScreenPickerUi({
+    hasScreenTrack: () => Boolean(screenTrack),
+    onStopScreenShare: () => stopScreenShare(),
+    onStartScreenShare: (sourceId, preset) => startScreenShare(sourceId, preset),
+    onSetCurrentSharingSourceTitle: (title) => {
+      currentSharingSourceTitle = title;
+    },
+    onSetMessage: (id, text, isError) => setMessage(id, text, isError),
+    onSetText: (id, text) => setText(id, text),
+    onSetCallStatus: (status) => setCallStatus(status)
+  });
 }
 
 async function setOutputDevice(deviceId?: string): Promise<void> {
@@ -2027,7 +1944,7 @@ async function setOutputDevice(deviceId?: string): Promise<void> {
     }
   }
 
-  const media = [$<HTMLAudioElement>('remote-voice-audio'), $<HTMLAudioElement>('remote-music-audio'), microphonePlayback].filter(Boolean) as HTMLMediaElement[];
+  const media = [$<HTMLAudioElement>('remote-voice-audio'), $<HTMLAudioElement>('remote-music-audio'), getMicrophonePlayback()].filter(Boolean) as HTMLMediaElement[];
   for (const element of media) {
     if (!element.setSinkId) {
       if (deviceId && !remoteAudioCtx) throw new Error('Audio output selection is not supported on this system.');
@@ -2042,59 +1959,19 @@ async function setOutputDevice(deviceId?: string): Promise<void> {
 }
 
 async function testSpeakers(pan: 'both' | 'left' | 'right' = 'both'): Promise<void> {
-  const context = new AudioContext();
-  if (context.state === 'suspended') await context.resume();
-  const destination = context.createMediaStreamDestination();
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-  const volume = prefs.outputVolume ?? 1;
-  oscillator.frequency.value = pan === 'left' ? 380 : pan === 'right' ? 520 : 440;
-  gain.gain.value = 0.12 * volume;
-
-  const merger = context.createChannelMerger(2);
-  if (pan === 'left') {
-    gain.connect(merger, 0, 0); // Left
-  } else if (pan === 'right') {
-    gain.connect(merger, 0, 1); // Right
-  } else {
-    gain.connect(merger, 0, 0);
-    gain.connect(merger, 0, 1);
-  }
-  oscillator.connect(gain);
-  merger.connect(destination);
-
-  const element = new Audio();
-  element.srcObject = destination.stream;
-  if (element.setSinkId) await element.setSinkId(prefs.audioOutputId ?? '');
-  await element.play();
-  oscillator.start();
-  oscillator.stop(context.currentTime + 0.7);
-  await new Promise((resolve) => window.setTimeout(resolve, 850));
-  element.pause();
-  await context.close();
+  await testSpeakersController(pan, {
+    getAudioOutputId: () => prefs.audioOutputId,
+    getOutputVolume: () => prefs.outputVolume
+  });
 }
 
-let microphonePlayback: HTMLAudioElement | undefined;
 async function testMicrophone(): Promise<void> {
-  const track = audio.primary?.track;
-  if (!track) throw new Error('Choose an audio input first.');
-  setMessage('setup-status', 'Recording a 3-second microphone test…');
-  const clone = track.clone();
-  const recorder = new MediaRecorder(new MediaStream([clone]));
-  const chunks: Blob[] = [];
-  recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
-  recorder.start();
-  await new Promise((resolve) => window.setTimeout(resolve, 3_000));
-  const stopped = new Promise<void>((resolve) => { recorder.onstop = () => resolve(); });
-  recorder.stop();
-  await stopped;
-  clone.stop();
-  microphonePlayback?.pause();
-  const mimeType = recorder.mimeType || 'audio/webm';
-  microphonePlayback = new Audio(URL.createObjectURL(new Blob(chunks, { type: mimeType })));
-  if (microphonePlayback.setSinkId) await microphonePlayback.setSinkId(prefs.audioOutputId ?? '');
-  await microphonePlayback.play();
-  setMessage('setup-status', 'Playing the recorded microphone test.');
+  await testMicrophoneController({
+    getPrimaryTrack: () => audio.primary?.track,
+    getAudioOutputId: () => prefs.audioOutputId,
+    getOutputVolume: () => prefs.outputVolume,
+    onSetMessage: (id, text, isError) => setMessage(id, text, isError)
+  });
 }
 
 async function initializeActiveCall(ack: MeetingAck): Promise<void> {
@@ -2780,16 +2657,7 @@ async function setAudioOnly(enabled: boolean): Promise<void> {
 }
 
 function updateCameraButtonState(): void {
-  const camBtn = document.getElementById('camera-button');
-  if (camBtn) camBtn.textContent = cameraEnabled ? 'Stop Camera' : 'Start Camera';
-
-  const toggleCam = document.getElementById('toggle-camera');
-  if (toggleCam) {
-    toggleCam.classList.toggle('active', cameraEnabled);
-    toggleCam.classList.toggle('muted', !cameraEnabled);
-    toggleCam.innerHTML = `<span class="tool-icon">${cameraEnabled ? icons.video({ size: 18 }) : icons.videoOff({ size: 18 })}</span>`;
-    toggleCam.title = cameraEnabled ? 'Stop Camera' : 'Start Camera';
-  }
+  updateCameraButtonUi(cameraEnabled);
 }
 
 async function toggleCamera(): Promise<void> {
@@ -2834,12 +2702,7 @@ async function fullscreenRemote(requireShare: boolean): Promise<void> {
 }
 
 
-for (const id of ['speaker-test', 'in-call-speaker-test']) {
-  $(id)?.addEventListener('click', () => void testSpeakers().then(() => setMessage('setup-status', 'Speaker test complete.')).catch((error) => showSessionErrorModal(parseSessionError(error))));
-}
-for (const id of ['microphone-test', 'in-call-microphone-test']) {
-  $(id)?.addEventListener('click', () => void testMicrophone().catch((error) => showSessionErrorModal(parseSessionError(error))));
-}
+
 
 async function switchAudioMode(mode: AudioMode): Promise<void> {
   prefs.mode = mode;
@@ -2864,96 +2727,24 @@ bindSelect('call-music-input-select', async (value) => { prefs.musicInputId = va
 bindSelect('audio-output-select', async (value) => { await setOutputDevice(value || undefined); await enumerateAndPopulate(); });
 bindSelect('call-audio-output-select', async (value) => { await setOutputDevice(value || undefined); await enumerateAndPopulate(); });
 
-for (const id of ['add-voice-mic-btn', 'call-add-voice-mic-btn']) {
-  $(id)?.addEventListener('click', async () => {
-    const newId = (prefs.voiceInputs.reduce((max, m) => Math.max(max, m.id), 0) || 0) + 1;
-    const channelSuggestion = String(Math.min(32, newId));
-    const newMic: VoiceInputConfig = {
-      id: newId,
-      name: `Microphone ${newId} (Singer / Musician / Room)`,
-      deviceId: prefs.voiceInputs[0]?.deviceId,
-      channelRoute: channelSuggestion,
-      gain: 1.0,
-      enabled: true
-    };
-    prefs.voiceInputs.push(newMic);
-    savePreferences();
-    await syncAllVoiceMics();
-    await enumerateAndPopulate();
-    setMessage(inCall ? 'device-dialog-status' : 'setup-status', `Microphone ${newId} added.`);
-  });
-}
-
-for (const id of ['music-source-type-select', 'call-music-source-type-select']) {
-  $<HTMLSelectElement>(id)?.addEventListener('change', async (event) => {
-    const val = (event.currentTarget as HTMLSelectElement).value as 'app' | 'interface' | 'system' | 'none';
-    prefs.musicSourceType = val;
-    savePreferences();
-    for (const other of ['music-source-type-select', 'call-music-source-type-select']) {
-      const el = $<HTMLSelectElement>(other);
-      if (el && el !== event.currentTarget) el.value = val;
-    }
-    const isApp = val === 'app';
-    const isInterface = val === 'interface';
-    const isSystem = val === 'system';
-    $('music-app-group')?.classList.toggle('hidden', !isApp);
-    $('call-music-app-group')?.classList.toggle('hidden', !isApp);
-    $('music-interface-group')?.classList.toggle('hidden', !isInterface);
-    $('call-music-interface-group')?.classList.toggle('hidden', !isInterface);
-    $('music-system-group')?.classList.toggle('hidden', !isSystem);
-    $('call-music-system-group')?.classList.toggle('hidden', !isSystem);
-
-    try {
-      await replaceMusicInput();
-      setMessage(inCall ? 'device-dialog-status' : 'setup-status', `Music Source: ${val === 'app' ? 'Application Audio' : val === 'interface' ? 'Audio Interface Output' : val === 'system' ? 'Computer Audio' : 'Disabled'}`);
-    } catch (error) {
-      setMessage(inCall ? 'device-dialog-status' : 'setup-status', deviceError(error), true);
-    }
-  });
-}
-
-for (const id of ['music-app-select', 'call-music-app-select']) {
-  $<HTMLSelectElement>(id)?.addEventListener('change', async (event) => {
-    const pid = Number((event.currentTarget as HTMLSelectElement).value);
-    prefs.musicAppPid = pid;
-    const matched = getCachedRunningApps().find((a) => a.pid === pid);
-    if (matched) prefs.musicAppName = matched.name;
-    savePreferences();
-    updateAppIconBadge(pid);
-    for (const other of ['music-app-select', 'call-music-app-select']) {
-      const el = $<HTMLSelectElement>(other);
-      if (el && el !== event.currentTarget) el.value = String(pid);
-    }
-    try {
-      await replaceMusicInput();
-      setMessage(inCall ? 'device-dialog-status' : 'setup-status', `Capturing ${prefs.musicAppName || 'App'}`);
-    } catch (error) {
-      setMessage(inCall ? 'device-dialog-status' : 'setup-status', deviceError(error), true);
-    }
-  });
-}
-
-for (const id of ['refresh-apps-button', 'call-refresh-apps-button']) {
-  $(id)?.addEventListener('click', async () => {
-    try {
-      await refreshRunningApps();
-      setMessage(inCall ? 'device-dialog-status' : 'setup-status', 'Refreshed running audio applications.');
-    } catch (error) {
-      setMessage(inCall ? 'device-dialog-status' : 'setup-status', deviceError(error), true);
-    }
-  });
-}
-bindSelect('camera-quality-select', (value) => changeCameraQuality(value as VideoQuality));
-bindSelect('call-camera-quality-select', (value) => changeCameraQuality(value as VideoQuality));
-bindSelect('receive-quality-select', (value) => changeReceiveQuality(value as VideoQuality));
-bindSelect('call-receive-quality-select', (value) => changeReceiveQuality(value as VideoQuality));
-bindSelect('performance-select', (value) => changePerformanceMode(value as PerformanceMode));
-bindSelect('call-performance-select', (value) => changePerformanceMode(value as PerformanceMode));
-
-$('settings-mirror-camera')?.addEventListener('change', (event) => {
-  prefs.mirrorCamera = (event.currentTarget as HTMLInputElement).checked;
-  savePreferences();
-  updateLocalPreviews();
+initMediaSettingsBindings({
+  getPreferences: () => prefs,
+  isInCall: () => inCall,
+  bindSelect,
+  onChangeCameraQuality: (quality) => changeCameraQuality(quality),
+  onChangeReceiveQuality: (quality) => changeReceiveQuality(quality),
+  onChangePerformanceMode: (mode) => changePerformanceMode(mode),
+  onReplaceMusicInput: () => replaceMusicInput(),
+  onRefreshRunningApps: () => refreshRunningApps(),
+  onUpdateAppIconBadge: (pid) => updateAppIconBadge(pid),
+  onTestSpeakers: () => testSpeakers(),
+  onTestMicrophone: () => testMicrophone(),
+  onSyncAllVoiceMics: () => syncAllVoiceMics(),
+  onEnumerateAndPopulate: () => enumerateAndPopulate(),
+  onSavePreferences: () => savePreferences(),
+  onUpdateLocalPreviews: () => updateLocalPreviews(),
+  onSetMessage: (id, text, isError) => setMessage(id, text, isError),
+  onShowSessionError: (error) => showSessionErrorModal(parseSessionError(error))
 });
 
 function syncMediaActiveState(): void {
