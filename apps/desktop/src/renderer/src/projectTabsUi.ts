@@ -1,3 +1,5 @@
+import { $ } from './dom';
+
 export interface ProjectTabsUiOptions {
   onTabChange?: (tab: string) => void;
   onSelectOverview?: () => void;
@@ -16,6 +18,13 @@ export function switchProjectTab(targetTab: string = 'overview'): void {
       panel.classList.toggle('hidden', panel.id !== `project-panel-${targetTab}`);
     }
   });
+}
+
+export function resetProjectTabsUi(): void {
+  $('project-song-studio-view')?.classList.add('hidden');
+  $('project-main-tabs-bar')?.classList.remove('hidden');
+  switchProjectTab('overview');
+  tabOptions.onSelectOverview?.();
 }
 
 export function initProjectTabsUi(options: ProjectTabsUiOptions = {}): void {

@@ -56,26 +56,28 @@ import {
 import {
   initProjectSessionsListUi,
   renderProjectSessions,
-  resetProjectSessionsPage,
-  updateProjectSessionsCounter,
-  renderProjectSessionsEmptyState,
-  renderProjectSessionsPagination
+  resetProjectSessionsPage
 } from './projectSessionsListUi';
 import {
   initProjectCollaboratorsController,
+  handleAddCollaborator,
   handleUpdateCollaboratorRole,
   handleRemoveCollaborator
 } from './projectCollaboratorsController';
 import { initDialogUi } from './dialogUi';
 import { applyWorkspacePermissionsPresentation } from './workspacePermissionsUi';
 import {
-  threeWayLineMergeDetailed,
-  threeWayLineMerge,
-  type ThreeWayMergeResult,
-  type Change
-} from './workspaceMerge';
+  reconcileNotesWorkspace,
+  type NotesStateValues,
+  type NotesReconciliationResult
+} from './notesReconciliation';
+import {
+  canUserEditProject as checkCanUserEditProject,
+  isProjectOwner as checkIsProjectOwner
+} from './projectAccess';
 import {
   switchProjectTab,
+  resetProjectTabsUi,
   initProjectTabsUi
 } from './projectTabsUi';
 import {
@@ -425,9 +427,7 @@ initProjectsListUi({
     void openProjectView(projectId);
   }
 });
-initProjectSessionSummaryUi({
-  getActiveSessionCode: () => activeSummarySession?.code
-});
+initProjectSessionSummaryUi();
 initProjectTabsUi({
   onSelectOverview: () => {
     renderProjectOverviewSongsList();
@@ -437,7 +437,7 @@ initProjectSessionsListUi({
   getSessions: () => activeProject?.sessions || [],
   formatRelativeTime: (t) => projectsApi.formatRelativeTime(t),
   onOpenSummary: (session) => {
-    openSessionSummaryModal(session);
+    if (activeProject) renderSessionSummaryModal(activeProject, session);
   },
   onStartSession: async () => {
     if (!activeProject) return;
@@ -513,17 +513,15 @@ initProjectRenameUi({
 });
 initProjectCollaboratorModalUi({
   onAddCollaborator: async ({ usernameOrEmail, role }) => {
-    if (!activeProject) return;
-    const token = auth.getToken();
-    if (!token) return;
-    try {
-      setAddCollaboratorError('');
-      activeProject = await projectsApi.addCollaborator(token, activeProject.id, usernameOrEmail, role);
-      renderProjectView();
-      closeAddCollaboratorModal();
-    } catch (err) {
-      setAddCollaboratorError(err instanceof Error ? err.message : 'Failed to add collaborator.');
-    }
+    setAddCollaboratorError('');
+    await handleAddCollaborator(usernameOrEmail, role, {
+      onSuccess: () => {
+        closeAddCollaboratorModal();
+      },
+      onError: (errorMessage) => {
+        setAddCollaboratorError(errorMessage);
+      }
+    });
   }
 });
 initProjectDeleteUi({
@@ -4418,10 +4416,7 @@ async function openProjectView(projectId: string): Promise<void> {
 
 function resetProjectTabs(): void {
   isSongStudioOpen = false;
-  $('project-song-studio-view')?.classList.add('hidden');
-  $('project-main-tabs-bar')?.classList.remove('hidden');
-  switchProjectTab('overview');
-  renderProjectOverviewSongsList();
+  resetProjectTabsUi();
 }
 
 function renderProjectView(): void {
@@ -4451,12 +4446,6 @@ function renderProjectCollaboratorsView(): void {
       void handleRemoveCollaborator(userId);
     }
   });
-}
-
-function openSessionSummaryModal(session: ProjectSessionItem): void {
-  activeSummarySession = session;
-  if (!activeProject) return;
-  renderSessionSummaryModal(activeProject, session);
 }
 
 // Delete Song Modal Handlers
@@ -4493,117 +4482,14 @@ let lastSyncedNotesBpm = '';
 let lastSyncedNotesKey = '';
 
 function canUserEditProject(): boolean {
-  if (!activeProject) return false;
-  const user = auth.getUser();
-  if (!user) return false;
-  if (activeProject.ownerId === user.id || (user.username && activeProject.ownerUsername && activeProject.ownerUsername.toLowerCase() === user.username.toLowerCase())) {
-    return true;
-  }
-  const collab = activeProject.collaborators?.find((c) => 
-    c.userId === user.id || 
-    (user.username && c.username && c.username.toLowerCase() === user.username.toLowerCase())
-  );
-  if (!collab) return false;
-  return collab.role === 'editor' || collab.role === 'collaborator' || (collab.role as string) === 'owner';
+  return checkCanUserEditProject(activeProject, auth.getUser());
 }
 
 function applyWorkspacePermissions(): void {
-  const canEdit = canUserEditProject();
   const user = auth.getUser();
-  const isOwner = Boolean(
-    user?.id === activeProject?.ownerId ||
-    (user?.username && activeProject?.ownerUsername && activeProject.ownerUsername.toLowerCase() === user.username.toLowerCase())
-  );
+  const canEdit = checkCanUserEditProject(activeProject, user);
+  const isOwner = checkIsProjectOwner(activeProject, user);
   applyWorkspacePermissionsPresentation({ canEdit, isOwner });
-}
-
-interface NotesStateValues {
-  content?: string;
-  bpm?: string;
-  key?: string;
-}
-
-interface NotesReconciliationResult {
-  content: string;
-  bpm: string;
-  key: string;
-  hasUnresolvableConflict: boolean;
-  bpmChangedRemotely: boolean;
-  keyChangedRemotely: boolean;
-  bpmChangedLocally: boolean;
-  keyChangedLocally: boolean;
-}
-
-function reconcileNotesWorkspace(
-  base: NotesStateValues,
-  local: NotesStateValues,
-  remote: NotesStateValues
-): NotesReconciliationResult {
-  const baseContent = base.content || '';
-  const localContent = local.content || '';
-  const remoteContent = remote.content || '';
-
-  const baseBpm = (base.bpm || '').trim();
-  const localBpm = (local.bpm || '').trim();
-  const remoteBpm = (remote.bpm || '').trim();
-
-  const baseKey = (base.key || '').trim();
-  const localKey = (local.key || '').trim();
-  const remoteKey = (remote.key || '').trim();
-
-  // 1. Text reconciliation using robust 3-way line merge
-  const textMerge = threeWayLineMergeDetailed(baseContent, localContent, remoteContent);
-
-  // 2. BPM reconciliation
-  const bpmChangedLocally = localBpm !== baseBpm;
-  const bpmChangedRemotely = remoteBpm !== baseBpm;
-  let resolvedBpm = localBpm;
-  let bpmConflict = false;
-
-  if (bpmChangedLocally && bpmChangedRemotely) {
-    if (localBpm === remoteBpm) {
-      resolvedBpm = localBpm;
-    } else {
-      bpmConflict = true;
-      resolvedBpm = localBpm;
-    }
-  } else if (bpmChangedRemotely) {
-    resolvedBpm = remoteBpm;
-  } else {
-    resolvedBpm = localBpm;
-  }
-
-  // 3. Key reconciliation
-  const keyChangedLocally = localKey !== baseKey;
-  const keyChangedRemotely = remoteKey !== baseKey;
-  let resolvedKey = localKey;
-  let keyConflict = false;
-
-  if (keyChangedLocally && keyChangedRemotely) {
-    if (localKey === remoteKey) {
-      resolvedKey = localKey;
-    } else {
-      keyConflict = true;
-      resolvedKey = localKey;
-    }
-  } else if (keyChangedRemotely) {
-    resolvedKey = remoteKey;
-  } else {
-    resolvedKey = localKey;
-  }
-
-  const hasUnresolvableConflict = textMerge.hasConflict || bpmConflict || keyConflict;
-
-  return {
-    content: textMerge.merged,
-    bpm: resolvedBpm,
-    key: resolvedKey,
-    hasUnresolvableConflict,
-    bpmChangedRemotely: !bpmConflict && bpmChangedRemotely,
-    keyChangedRemotely: !keyConflict && keyChangedRemotely,
-    bpmChangedLocally,
-    keyChangedLocally
-  };
 }
 
 // ========================================================

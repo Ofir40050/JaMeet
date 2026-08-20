@@ -3,15 +3,12 @@ import { formatSessionDuration, formatRelativeTime } from './projects';
 import { escapeHtml } from './htmlSecurity';
 import { $, setText } from './dom';
 
-export interface ProjectSessionSummaryUiOptions {
-  getActiveSessionCode?: () => string | undefined;
-}
+export interface ProjectSessionSummaryUiOptions {}
 
-let summaryOptions: ProjectSessionSummaryUiOptions = {};
+let currentDisplayedSession: ProjectSessionItem | null = null;
 let isInitialized = false;
 
-export function initProjectSessionSummaryUi(options: ProjectSessionSummaryUiOptions): void {
-  summaryOptions = options;
+export function initProjectSessionSummaryUi(_options?: ProjectSessionSummaryUiOptions): void {
   if (isInitialized) return;
   isInitialized = true;
 
@@ -30,7 +27,7 @@ export function initProjectSessionSummaryUi(options: ProjectSessionSummaryUiOpti
   });
 
   $('btn-session-summary-copy')?.addEventListener('click', () => {
-    const code = summaryOptions.getActiveSessionCode?.();
+    const code = currentDisplayedSession?.code;
     if (code) {
       void navigator.clipboard.writeText(code);
       const copyBtn = $('btn-session-summary-copy');
@@ -49,6 +46,8 @@ export function initProjectSessionSummaryUi(options: ProjectSessionSummaryUiOpti
 export function renderSessionSummaryModal(project: Project, session: ProjectSessionItem): void {
   const modal = $('project-session-summary-modal');
   if (!modal) return;
+
+  currentDisplayedSession = session;
 
   const isCollab = Boolean(session.collaborator);
   const titleText = isCollab ? `Session with ${session.collaborator!.displayName}` : 'Solo Studio Session';

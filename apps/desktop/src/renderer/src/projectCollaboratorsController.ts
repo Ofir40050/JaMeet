@@ -15,6 +15,30 @@ export function initProjectCollaboratorsController(options: ProjectCollaborators
   controllerOptions = options;
 }
 
+export async function handleAddCollaborator(
+  usernameOrEmail: string,
+  role: ProjectRole,
+  callbacks?: {
+    onSuccess?: () => void;
+    onError?: (errorMessage: string) => void;
+  }
+): Promise<void> {
+  if (!controllerOptions) return;
+  const token = controllerOptions.getAuthToken();
+  const project = controllerOptions.getProject();
+  if (!token || !project) return;
+
+  try {
+    const updated = await projectsApi.addCollaborator(token, project.id, usernameOrEmail, role);
+    controllerOptions.onProjectUpdated(updated);
+    controllerOptions.onRefreshProjectView();
+    callbacks?.onSuccess?.();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to add collaborator.';
+    callbacks?.onError?.(message);
+  }
+}
+
 export async function handleUpdateCollaboratorRole(userId: string, targetRole: ProjectRole): Promise<void> {
   if (!controllerOptions) return;
   const token = controllerOptions.getAuthToken();
