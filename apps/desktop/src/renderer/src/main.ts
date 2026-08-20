@@ -129,7 +129,18 @@ const activeMicLevels = new Map<number, number>();
 const activeMicPeaks = new Map<number, number>();
 const musicMeter = new LevelMeter();
 const signaling = new SignalingClient(signalingUrl);
-const rtc = new WebRtcSession(signaling, audio, setRemoteStream, setRemoteAudio, handleRemoteMedia, (status) => setCallStatus(status));
+const rtc = new WebRtcSession(
+  signaling,
+  audio,
+  setRemoteStream,
+  setRemoteAudio,
+  handleRemoteMedia,
+  (status) => setCallStatus(status),
+  (isStereo) => {
+    remoteVoiceIsStereo = isStereo;
+    applyMixerAudioRouting();
+  }
+);
 
 type ParticipantViewMode = 'gallery' | 'speaker' | 'focus';
 type ScreenViewMode = 'screen' | 'side-by-side' | 'screen-focus';

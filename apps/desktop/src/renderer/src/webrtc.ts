@@ -63,13 +63,17 @@ export class WebRtcSession {
   private disconnectTimer?: number;
   private remoteStream = new MediaStream();
 
+  private voiceStereo = false;
+  private inboundStatsTimer?: number;
+
   constructor(
     private readonly signaling: SignalingClient,
     private readonly audio: LocalAudioSourceManager,
     private readonly onRemoteStream: (stream?: MediaStream) => void,
     private readonly onRemoteAudio: (id: string, purpose: 'voice' | 'music', track: MediaStreamTrack) => void,
     private readonly onRemoteMedia: (media: MediaMetadata) => void,
-    private readonly onStatus: (status: string) => void
+    private readonly onStatus: (status: string) => void,
+    private readonly onVoiceStereoChange?: (isStereo: boolean) => void
   ) {
     signaling.on('signal:description', (description: RTCSessionDescriptionInit) => void this.receiveDescription(description));
     signaling.on('signal:candidate', (candidate: RTCIceCandidateInit | null) => void this.receiveCandidate(candidate));
@@ -103,61 +107,111 @@ export class WebRtcSession {
   setVideoTrack(track: MediaStreamTrack | undefined): void { this.videoTrack = track; }
 
   isVoiceStereo(): boolean {
+    return this.voiceStereo;
+  }
+
+  async updateVoiceStereoFromInboundStats(): Promise<boolean> {
+    const currentStereo = await this.queryInboundVoiceStereo();
+    if (this.voiceStereo !== currentStereo) {
+      this.voiceStereo = currentStereo;
+      this.onVoiceStereoChange?.(this.voiceStereo);
+    }
+    return this.voiceStereo;
+  }
+
+  private async queryInboundVoiceStereo(): Promise<boolean> {
     const voiceTransceiver = this.audioTransceivers.get('voice') ??
       (this.pc?.getTransceivers() ?? []).find((t) => this.audioPurpose.get(t)?.id === 'voice');
 
     const mid = voiceTransceiver?.mid;
-    if (!voiceTransceiver || !mid) {
+    if (!voiceTransceiver || !mid || !this.pc) {
       return false;
     }
 
-    const remoteSdp = this.pc?.currentRemoteDescription?.sdp || this.pc?.remoteDescription?.sdp;
-    if (!remoteSdp) {
-      return false;
-    }
+    try {
+      const statsReport = await (voiceTransceiver.receiver?.getStats?.() ?? this.pc.getStats());
+      if (!statsReport) return false;
 
-    const mediaSection = extractMediaSectionByMid(remoteSdp, mid);
-    if (!mediaSection) {
-      return false;
-    }
-
-    const lines = mediaSection.split(/\r?\n/);
-    const mLine = lines.find((l) => l.startsWith('m=audio '));
-    if (!mLine) {
-      return false;
-    }
-
-    // Extract payload types listed on the m=audio line in order of preference
-    const mParts = mLine.trim().split(/\s+/);
-    const payloadTypes = mParts.slice(3);
-    if (payloadTypes.length === 0) {
-      return false;
-    }
-
-    // Identify which payload type in this Voice media section is Opus
-    for (const pt of payloadTypes) {
-      const isOpus = lines.some((l) => {
-        const match = l.match(new RegExp(`^a=rtpmap:${pt}\\s+opus/48000(?:/2)?$`, 'i'));
-        return Boolean(match);
-      });
-
-      if (isOpus) {
-        // Inspect only the corresponding fmtp parameters for this negotiated Opus payload
-        const fmtpLine = lines.find((l) => {
-          return l.startsWith(`a=fmtp:${pt} `) || l.startsWith(`a=fmtp:${pt}:`);
-        });
-
-        if (fmtpLine) {
-          const fmtpText = fmtpLine.slice(fmtpLine.indexOf(' ') + 1);
-          if (parseSpropStereo(fmtpText)) {
-            return true;
+      let inboundAudioStat: any = null;
+      for (const stat of statsReport.values()) {
+        if (stat.type === 'inbound-rtp' && (stat.kind === 'audio' || stat.mediaType === 'audio')) {
+          if (stat.mid === mid || (voiceTransceiver.receiver.track && stat.trackIdentifier === voiceTransceiver.receiver.track.id)) {
+            inboundAudioStat = stat;
+            break;
           }
         }
       }
+
+      if (!inboundAudioStat) {
+        return false;
+      }
+
+      // Resolve the codecId from the active inbound RTP stream
+      const codecId = inboundAudioStat.codecId;
+      const codecStat = codecId ? statsReport.get(codecId) : null;
+
+      if (codecStat && codecStat.type === 'codec') {
+        const mimeType = (codecStat.mimeType || '').toLowerCase();
+        if (mimeType.includes('opus')) {
+          if (codecStat.sdpFmtpLine) {
+            return parseSpropStereo(codecStat.sdpFmtpLine);
+          }
+          const payloadType = codecStat.payloadType ?? inboundAudioStat.payloadType;
+          if (typeof payloadType === 'number') {
+            const remoteSdp = this.pc.currentRemoteDescription?.sdp || this.pc.remoteDescription?.sdp;
+            if (remoteSdp) {
+              const mediaSection = extractMediaSectionByMid(remoteSdp, mid);
+              if (mediaSection) {
+                const lines = mediaSection.split(/\r?\n/);
+                const fmtpLine = lines.find((l) => l.startsWith(`a=fmtp:${payloadType} `) || l.startsWith(`a=fmtp:${payloadType}:`));
+                if (fmtpLine) {
+                  const fmtpText = fmtpLine.slice(fmtpLine.indexOf(' ') + 1);
+                  return parseSpropStereo(fmtpText);
+                }
+              }
+            }
+          }
+        }
+      } else if (typeof inboundAudioStat.payloadType === 'number') {
+        const remoteSdp = this.pc.currentRemoteDescription?.sdp || this.pc.remoteDescription?.sdp;
+        if (remoteSdp) {
+          const mediaSection = extractMediaSectionByMid(remoteSdp, mid);
+          if (mediaSection) {
+            const lines = mediaSection.split(/\r?\n/);
+            const isOpus = lines.some((l) => {
+              const match = l.match(new RegExp(`^a=rtpmap:${inboundAudioStat.payloadType}\\s+opus/48000(?:/2)?$`, 'i'));
+              return Boolean(match);
+            });
+            if (isOpus) {
+              const fmtpLine = lines.find((l) => l.startsWith(`a=fmtp:${inboundAudioStat.payloadType} `) || l.startsWith(`a=fmtp:${inboundAudioStat.payloadType}:`));
+              if (fmtpLine) {
+                const fmtpText = fmtpLine.slice(fmtpLine.indexOf(' ') + 1);
+                return parseSpropStereo(fmtpText);
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Conservative default to mono on stats query failure
     }
 
-    // Conservative default to mono when no reliable sender-side sprop-stereo=1 is found
     return false;
+  }
+
+  private startInboundStatsPolling(): void {
+    if (this.inboundStatsTimer) return;
+    void this.updateVoiceStereoFromInboundStats();
+    this.inboundStatsTimer = window.setInterval(() => {
+      void this.updateVoiceStereoFromInboundStats();
+    }, 1000);
+  }
+
+  private stopInboundStatsPolling(): void {
+    if (this.inboundStatsTimer) {
+      window.clearInterval(this.inboundStatsTimer);
+      this.inboundStatsTimer = undefined;
+    }
   }
 
   private sessionMode(): AudioMode { return this.localMode === 'music' || this.remoteMode === 'music' || Boolean(this.audio.music) || this.remoteHasMusic ? 'music' : 'talk'; }
@@ -404,11 +458,17 @@ export class WebRtcSession {
       if (this.disconnectTimer) window.clearTimeout(this.disconnectTimer);
       this.iceRestarted = false;
       this.onStatus('Connected');
-    } else if (state === 'connecting' || state === 'new') this.onStatus('Connecting…');
-    else if (state === 'disconnected' || state === 'failed') {
+      this.startInboundStatsPolling();
+    } else if (state === 'connecting' || state === 'new') {
+      this.onStatus('Connecting…');
+    } else if (state === 'disconnected' || state === 'failed') {
+      this.stopInboundStatsPolling();
       this.onStatus('Reconnecting…');
       if (!this.disconnectTimer) this.disconnectTimer = window.setTimeout(() => void this.tryIceRestart(), 4_000);
-    } else if (state === 'closed') this.onStatus('Session ended');
+    } else if (state === 'closed') {
+      this.stopInboundStatsPolling();
+      this.onStatus('Session ended');
+    }
   }
 
   private async tryIceRestart(): Promise<void> {
@@ -423,6 +483,8 @@ export class WebRtcSession {
   resetPeer(): void {
     if (this.disconnectTimer) window.clearTimeout(this.disconnectTimer);
     this.disconnectTimer = undefined;
+    this.stopInboundStatsPolling();
+    this.voiceStereo = false;
     for (const track of this.remoteStream.getTracks()) {
       track.onended = null;
     }
