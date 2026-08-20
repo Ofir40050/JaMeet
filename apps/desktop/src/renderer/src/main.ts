@@ -544,6 +544,7 @@ logger.initGlobalErrorHandling();
 logger.info('renderer_startup', 'JaMeet renderer application initialized', { participantId });
 
 const auth = new AuthManager(signalingUrl);
+const signaling = new SignalingClient(signalingUrl);
 initWorkspacePermissionsController({
   getProject: () => activeProject,
   getUser: () => auth.getUser()
@@ -1472,7 +1473,6 @@ const voiceMeters = new Map<number, LevelMeter>();
 const activeMicLevels = new Map<number, number>();
 const activeMicPeaks = new Map<number, number>();
 const musicMeter = new LevelMeter();
-const signaling = new SignalingClient(signalingUrl);
 const rtc = new WebRtcSession(
   signaling,
   audio,
