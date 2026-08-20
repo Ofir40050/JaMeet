@@ -26,7 +26,7 @@ export function setAuthInputError(inputId: string, isError: boolean): void {
 export function showAuthFormError(errElId: string, message: string, invalidInputIds: string[] = []): void {
   const errEl = $(errElId);
   if (errEl) {
-    errEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon" style="flex-shrink:0;"><circle cx="12" cy="10" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg><span>${message}</span>`;
+    errEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg><span>${message}</span>`;
     errEl.classList.remove('hidden');
   }
   invalidInputIds.forEach((id) => setAuthInputError(id, true));
