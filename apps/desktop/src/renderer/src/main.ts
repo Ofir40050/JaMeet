@@ -78,6 +78,13 @@ import {
   closeAddCollaboratorModal,
   setAddCollaboratorError
 } from './projectCollaboratorModalUi';
+import {
+  initProjectDeleteUi,
+  openDeleteProjectModal,
+  closeDeleteProjectModal,
+  setDeleteProjectError,
+  setDeleteProjectBusy
+} from './projectDeleteUi';
 import { ScheduledNotificationManager } from './scheduledNotifications';
 import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
 import { audioLimitations } from './audioProfiles';
@@ -256,6 +263,37 @@ initProjectCollaboratorModalUi({
       closeAddCollaboratorModal();
     } catch (err) {
       setAddCollaboratorError(err instanceof Error ? err.message : 'Failed to add collaborator.');
+    }
+  }
+});
+initProjectDeleteUi({
+  onTriggerDelete: () => {
+    if (!activeProject) return;
+    closeProjectMenu();
+    openDeleteProjectModal(activeProject.name);
+  },
+  getProjectName: () => activeProject?.name,
+  onConfirmDelete: async () => {
+    if (!activeProject) return;
+    const token = auth.getToken();
+    if (!token) {
+      setDeleteProjectError('You must be signed in to delete a project.');
+      return;
+    }
+    setDeleteProjectBusy(true);
+    setDeleteProjectError('');
+    try {
+      await projectsApi.deleteProject(token, activeProject.id);
+      closeDeleteProjectModal();
+      activeProject = undefined;
+      activeProjectId = undefined;
+      showView('home-view');
+      await loadProjects();
+    } catch (err: any) {
+      console.error('Failed to delete project:', err);
+      setDeleteProjectError(err?.message || 'Failed to delete project. Make sure you are the project owner.');
+    } finally {
+      setDeleteProjectBusy(false);
     }
   }
 });
@@ -4628,104 +4666,6 @@ $('btn-project-archive')?.addEventListener('click', async () => {
     void loadProjects();
   } catch (err) {
     console.error('Failed to archive/unarchive project:', err);
-  }
-});
-
-$('btn-project-delete')?.addEventListener('click', () => {
-  if (!activeProject) return;
-  closeProjectMenu();
-  
-  const targetPhrase = `delete ${activeProject.name}`;
-  setText('delete-project-name-confirm', activeProject.name);
-  setText('delete-phrase-target', targetPhrase);
-  
-  const confirmInput = $<HTMLInputElement>('delete-project-confirm-input');
-  if (confirmInput) {
-    confirmInput.value = '';
-    confirmInput.placeholder = `Type "${targetPhrase}"`;
-  }
-  
-  const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-project');
-  if (confirmBtn) {
-    confirmBtn.disabled = true;
-    confirmBtn.textContent = 'Delete Project';
-  }
-  
-  const errEl = $('delete-project-error');
-  if (errEl) {
-    errEl.textContent = '';
-    errEl.style.display = 'none';
-  }
-
-  $('delete-project-modal')?.classList.remove('hidden');
-  setTimeout(() => confirmInput?.focus(), 50);
-});
-
-$('delete-project-confirm-input')?.addEventListener('input', (e) => {
-  if (!activeProject) return;
-  const inputEl = e.target as HTMLInputElement;
-  const val = inputEl.value.trim().toLowerCase();
-  const projName = activeProject.name.trim().toLowerCase();
-  const targetA = `delete ${projName}`;
-  const targetB = `delete - ${projName}`;
-  const targetC = `delete "${projName}"`;
-  
-  const isMatch = val === targetA || val === targetB || val === targetC;
-  inputEl.classList.toggle('is-matched', isMatch);
-  const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-project');
-  if (confirmBtn) {
-    confirmBtn.disabled = !isMatch;
-  }
-});
-
-$('delete-project-confirm-input')?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-project');
-    if (confirmBtn && !confirmBtn.disabled) {
-      confirmBtn.click();
-    }
-  }
-});
-
-$('btn-close-delete-project')?.addEventListener('click', () => $('delete-project-modal')?.classList.add('hidden'));
-$('btn-cancel-delete-project')?.addEventListener('click', () => $('delete-project-modal')?.classList.add('hidden'));
-
-$('btn-confirm-delete-project')?.addEventListener('click', async () => {
-  if (!activeProject) return;
-  const token = auth.getToken();
-  const errEl = $('delete-project-error');
-  if (!token) {
-    if (errEl) {
-      errEl.textContent = 'You must be signed in to delete a project.';
-      errEl.style.display = 'block';
-    }
-    return;
-  }
-  const confirmBtn = $<HTMLButtonElement>('btn-confirm-delete-project');
-  if (confirmBtn) {
-    confirmBtn.disabled = true;
-    confirmBtn.textContent = 'Deleting…';
-  }
-  if (errEl) errEl.style.display = 'none';
-
-  try {
-    await projectsApi.deleteProject(token, activeProject.id);
-    $('delete-project-modal')?.classList.add('hidden');
-    activeProject = undefined;
-    activeProjectId = undefined;
-    showView('home-view');
-    await loadProjects();
-  } catch (err: any) {
-    console.error('Failed to delete project:', err);
-    if (errEl) {
-      errEl.textContent = err?.message || 'Failed to delete project. Make sure you are the project owner.';
-      errEl.style.display = 'block';
-    }
-  } finally {
-    if (confirmBtn) {
-      confirmBtn.disabled = false;
-      confirmBtn.textContent = 'Delete Project';
-    }
   }
 });
 
