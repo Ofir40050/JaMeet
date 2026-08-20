@@ -422,9 +422,7 @@ initProjectNavigationUi({
   },
   onStartSession: async () => {
     if (!activeProject) return;
-    if (activeProject.workspace) {
-      await flushAllWorkspacePendingSaves();
-    }
+    await flushAllWorkspacePendingSaves();
     activeProjectId = activeProject.id;
     await prepareStudio({ type: 'create' });
   }
