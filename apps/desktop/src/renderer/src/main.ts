@@ -1,7 +1,6 @@
 import type { AudioMode, MediaMetadata, MeetingAck, PerformanceMode, VideoQuality, ParticipantIdentity, UserProfile, UpdateProfileRequest, Project, ProjectSessionItem, SessionHistoryItem, ProjectTaskItem, ProjectTaskStatus, ProjectTaskStage, ProjectTaskSubtask, ProjectActivityItem, ProjectActivityType, SessionChatMessage, WaitingParticipantItem, ScheduledSession } from '@jameet/shared';
 import * as projectsApi from './projects';
 import {
-  setScheduledApiBase,
   fetchScheduledSessions,
   createScheduledSession,
   updateScheduledSession,
@@ -37,20 +36,13 @@ import {
   type Preferences,
   type VoiceInputConfig
 } from './preferences';
+import { signalingUrl, participantId } from './runtime';
 import './style.css';
 
 export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const views = ['home-view', 'project-view', 'all-sessions-view', 'auth-view', 'setup-view', 'waiting-view', 'call-view', 'settings-view'] as const;
-const DEFAULT_PROD_SIGNALING_URL = 'https://jameet-jwi8.onrender.com';
-const DEFAULT_DEV_SIGNALING_URL = 'http://localhost:3000';
-const signalingUrl = (
-  import.meta.env.VITE_SIGNALING_URL ||
-  (import.meta.env.PROD ? DEFAULT_PROD_SIGNALING_URL : DEFAULT_DEV_SIGNALING_URL)
-).replace(/\/+$/, '');
-projectsApi.setApiBase(signalingUrl);
-setScheduledApiBase(signalingUrl);
 const scheduledNotifications = new ScheduledNotificationManager();
 scheduledNotifications.onSessionClick((sessionId) => {
   const callView = $('call-view');
@@ -68,8 +60,6 @@ scheduledNotifications.onSessionClick((sessionId) => {
     section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 });
-const participantId = sessionStorage.getItem('jameet-participant') ?? sessionStorage.getItem('musiczoom-participant') ?? crypto.randomUUID();
-sessionStorage.setItem('jameet-participant', participantId);
 
 logger.initGlobalErrorHandling();
 logger.info('renderer_startup', 'JaMeet renderer application initialized', { participantId });
