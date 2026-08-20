@@ -3,6 +3,49 @@ import { formatSessionDuration, formatRelativeTime } from './projects';
 import { escapeHtml } from './htmlSecurity';
 import { $, setText } from './dom';
 
+export interface ProjectSessionSummaryUiOptions {
+  getActiveSessionCode?: () => string | undefined;
+}
+
+let summaryOptions: ProjectSessionSummaryUiOptions = {};
+let isInitialized = false;
+
+export function initProjectSessionSummaryUi(options: ProjectSessionSummaryUiOptions): void {
+  summaryOptions = options;
+  if (isInitialized) return;
+  isInitialized = true;
+
+  $('btn-close-session-summary')?.addEventListener('click', () => {
+    $('project-session-summary-modal')?.classList.add('hidden');
+  });
+
+  $('btn-close-session-summary-footer')?.addEventListener('click', () => {
+    $('project-session-summary-modal')?.classList.add('hidden');
+  });
+
+  $('project-session-summary-modal')?.addEventListener('click', (e) => {
+    if (e.target === $('project-session-summary-modal')) {
+      $('project-session-summary-modal')?.classList.add('hidden');
+    }
+  });
+
+  $('btn-session-summary-copy')?.addEventListener('click', () => {
+    const code = summaryOptions.getActiveSessionCode?.();
+    if (code) {
+      void navigator.clipboard.writeText(code);
+      const copyBtn = $('btn-session-summary-copy');
+      if (copyBtn) {
+        copyBtn.innerHTML =
+          '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> <span>Copied!</span>';
+        setTimeout(() => {
+          copyBtn.innerHTML =
+            '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg> <span>Copy Code</span>';
+        }, 1500);
+      }
+    }
+  });
+}
+
 export function renderSessionSummaryModal(project: Project, session: ProjectSessionItem): void {
   const modal = $('project-session-summary-modal');
   if (!modal) return;

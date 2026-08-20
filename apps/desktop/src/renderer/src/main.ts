@@ -48,7 +48,10 @@ import {
   createOverviewSessionItem,
   createProjectSessionCard
 } from './projectSessionsUi';
-import { renderSessionSummaryModal } from './projectSessionSummaryUi';
+import {
+  renderSessionSummaryModal,
+  initProjectSessionSummaryUi
+} from './projectSessionSummaryUi';
 import {
   updateProjectSessionsCounter,
   renderProjectSessionsEmptyState,
@@ -156,6 +159,9 @@ initProjectsListUi({
   onOpenProject: (projectId) => {
     void openProjectView(projectId);
   }
+});
+initProjectSessionSummaryUi({
+  getActiveSessionCode: () => activeSummarySession?.code
 });
 let myIdentity: ParticipantIdentity | null = null;
 let peerIdentity: ParticipantIdentity | null = null;
@@ -4560,34 +4566,6 @@ $('btn-sessions-prev-page')?.addEventListener('click', () => {
 $('btn-sessions-next-page')?.addEventListener('click', () => {
   currentProjectSessionsPage++;
   renderProjectSessions();
-});
-
-
-$('btn-close-session-summary')?.addEventListener('click', () => {
-  $('project-session-summary-modal')?.classList.add('hidden');
-});
-
-$('project-session-summary-modal')?.addEventListener('click', (e) => {
-  if (e.target === $('project-session-summary-modal')) {
-    $('project-session-summary-modal')?.classList.add('hidden');
-  }
-});
-
-$('btn-session-summary-copy')?.addEventListener('click', () => {
-  if (activeSummarySession) {
-    void navigator.clipboard.writeText(activeSummarySession.code);
-    const copyBtn = $('btn-session-summary-copy');
-    if (copyBtn) {
-      copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> <span>Copied!</span>';
-      setTimeout(() => {
-        copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg> <span>Copy Code</span>';
-      }, 1500);
-    }
-  }
-});
-
-$('btn-close-session-summary-footer')?.addEventListener('click', () => {
-  $('project-session-summary-modal')?.classList.add('hidden');
 });
 
 // Project Menu
