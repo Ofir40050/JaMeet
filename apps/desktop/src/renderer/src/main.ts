@@ -229,6 +229,48 @@ import {
   initDesktopLifecycle
 } from './core/desktopLifecycleController';
 import {
+  initProjectNavigationController
+} from './projects/navigation/projectNavigationController';
+import {
+  initProjectSongDeleteController
+} from './songs/delete/projectSongDeleteController';
+import {
+  initGuestJoinController,
+  getPendingJoinCode,
+  setPendingJoinCode,
+  clearPendingJoinCode
+} from './auth/guestJoinController';
+import {
+  views,
+  showView,
+  setBusy,
+  initViewController
+} from './core/viewController';
+import {
+  initHomeSessionController
+} from './sessions/home/homeSessionController';
+import {
+  initStudioSetupController
+} from './sessions/setup/studioSetupController';
+import {
+  prepareStudio as prepareStudioController,
+  type PendingAction
+} from './sessions/setup/studioPreparationController';
+import {
+  initCallModeUi,
+  setModeRadios,
+  updateMusicWarning,
+  updateCallMode
+} from './sessions/call/callModeUiController';
+import {
+  checkActiveSpeaker as checkActiveSpeakerImpl
+} from './sessions/call/activeSpeakerController';
+import {
+  buildSessionMetadata,
+  effectiveVideoQuality,
+  buildCurrentStream
+} from './sessions/call/sessionMetadataController';
+import {
   initSongStudioUi,
   closeSongStudio,
   isSongStudioVisible,
@@ -463,7 +505,6 @@ import './style.css';
 
 export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
 
-const views = ['home-view', 'project-view', 'all-sessions-view', 'auth-view', 'setup-view', 'waiting-view', 'call-view', 'settings-view'] as const;
 const scheduledNotifications = new ScheduledNotificationManager();
 scheduledNotifications.onSessionClick((sessionId) => {
   handleScheduledSessionNotificationClick(sessionId, {
@@ -685,6 +726,48 @@ initSessionKeyboard({
   isSessionWorkspaceOpen: () => isSessionWorkspaceOpen(),
   setSessionWorkspaceOpen: (open) => setSessionWorkspaceOpen(open),
   toggleStudioMixer: () => toggleStudioMixer()
+});
+initViewController({
+  onUpdateLocalPreviews: () => updateLocalPreviews(),
+  onUpdateAuthUi: () => updateAuthUi(auth.getUser(), auth.getGuestName()),
+  onUpdateParticipantIdentityUi: () => updateParticipantIdentityUi()
+});
+initCallModeUi({
+  onSwitchAudioMode: (mode) => switchAudioMode(mode),
+  onUpdateHeadphoneWarning: () => updateHeadphoneWarning(),
+  onUpdateLocalPreviews: () => updateLocalPreviews()
+});
+initHomeSessionController({
+  getUser: () => auth.getUser(),
+  onOpenAuthView: (tab) => openAuthView(tab),
+  onPrepareStudio: (action) => prepareStudio(action),
+  onEnumerateAndPopulate: () => enumerateAndPopulate(),
+  onOpenSettings: (section) => openSettings(section),
+  onSetPendingJoinCode: (code) => setPendingJoinCode(code),
+  getDeviceErrorMessage: (error) => deviceError(error)
+});
+initStudioSetupController({
+  onCancelCleanup: async () => {
+    for (const m of voiceMeters.values()) await m.stop();
+    voiceMeters.clear();
+    activeMicLevels.clear();
+    activeMicPeaks.clear();
+    audio.dispose();
+    videoTrack?.stop();
+    videoTrack = undefined;
+    await musicMeter.stop();
+    lastLocalMusicDb = -60;
+    lastLocalMusicPeakDb = -60;
+  },
+  getActiveProjectId: () => activeProjectId,
+  getSessionProjectId: () => sessionProjectId,
+  isAuthenticated: () => Boolean(auth.getUser() && auth.getToken()),
+  onOpenProjectView: (projectId) => openProjectView(projectId),
+  onShowHomeView: () => showView('home-view'),
+  onEnumerateAndPopulate: () => enumerateAndPopulate(),
+  onOpenSettings: (section) => openSettings(section),
+  onShowSessionError: (error) => showSessionErrorModal(parseSessionError(error)),
+  onEnterSession: () => enterSession()
 });
 initLyricsDocumentsController({
   getProject: () => activeProject,
@@ -961,7 +1044,7 @@ initDeepLinkController({
   isInCall: () => inCall,
   getUser: () => auth.getUser(),
   onSetPendingJoinCode: (code) => {
-    pendingJoinCode = code;
+    setPendingJoinCode(code);
   },
   onOpenAuthView: (mode) => {
     openAuthView(mode);
@@ -1023,9 +1106,9 @@ initAuthController({
   onLogoutAuth: async () => {
     await auth.logout();
   },
-  getPendingJoinCode: () => pendingJoinCode,
+  getPendingJoinCode: () => getPendingJoinCode(),
   clearPendingJoinCode: () => {
-    pendingJoinCode = '';
+    clearPendingJoinCode();
   },
   onJoinStudio: (code) => {
     void prepareStudio({ type: 'join', code });
@@ -1281,34 +1364,14 @@ initProjectDeleteUi({
   }
 });
 
-initProjectSongDeleteUi({
-  getSongTitle: () => getSongPendingDeletion()?.title,
-  onCancel: () => {
-    clearSongPendingDeletion();
-  },
-  onConfirmDelete: async () => {
-    const pending = getSongPendingDeletion();
-    if (!activeProject?.workspace || !pending || !canUserEditProject()) return;
-    const result = computeSongDeletion(
-      activeProject.workspace.songs || [],
-      activeProject.workspace.activeSongId,
-      pending.id,
-      'Song 1'
-    );
-
-    activeProject.workspace.songs = result.songs;
-    if (result.shouldSwitchActiveSong && result.nextActiveSongId) {
-      switchActiveSong(result.nextActiveSongId);
-    }
-
-    closeDeleteSongModal();
-    clearSongPendingDeletion();
-
-    renderProjectSongsSelector();
-    renderProjectOverviewSongsList();
-    applyWorkspacePermissions();
-    void saveSongsWorkspace();
-  }
+initProjectSongDeleteController({
+  getProject: () => activeProject,
+  canUserEditProject: () => canUserEditProject(),
+  onSwitchActiveSong: (songId) => switchActiveSong(songId),
+  onRenderProjectSongsSelector: () => renderProjectSongsSelector(),
+  onRenderProjectOverviewSongsList: () => renderProjectOverviewSongsList(),
+  onApplyWorkspacePermissions: () => applyWorkspacePermissions(),
+  onSaveSongsWorkspace: () => saveSongsWorkspace()
 });
 
 initProjectCreateController({
@@ -1326,39 +1389,29 @@ initProjectCreateUi({
   }
 });
 initCallShortcutsUi();
-initGuestJoinUi({
+initGuestJoinController({
   onOpenSignIn: () => {
     openAuthView('login');
   },
-  onConfirmGuest: (rawName) => {
-    const name = rawName || 'Guest Musician';
+  onSetGuestName: (name) => {
     auth.setGuestName(name);
-    closeGuestJoinDialog();
-    if (pendingJoinCode) {
-      const code = pendingJoinCode;
-      pendingJoinCode = '';
-      void prepareStudio({ type: 'join', code });
-    }
+  },
+  onPrepareStudio: (action) => {
+    void prepareStudio(action);
   }
 });
-initProjectNavigationUi({
-  onRefreshProjects: () => {
-    void loadProjects();
-  },
-  onExitProject: async () => {
-    if (activeProject?.workspace) {
-      await flushAllWorkspacePendingSaves();
-    }
+initProjectNavigationController({
+  getProject: () => activeProject,
+  onClearActiveProject: () => {
     activeProjectId = undefined;
     activeProject = undefined;
-    showView('home-view');
-    void loadProjects();
   },
-  onStartSession: async () => {
-    if (!activeProject) return;
-    await flushAllWorkspacePendingSaves();
-    activeProjectId = activeProject.id;
-    await prepareStudio({ type: 'create' });
+  onFlushPendingSaves: () => flushAllWorkspacePendingSaves(),
+  onShowHomeView: () => showView('home-view'),
+  onLoadProjects: () => loadProjects(),
+  onPrepareStudio: (action) => prepareStudio(action),
+  onSetActiveProjectId: (id) => {
+    activeProjectId = id;
   }
 });
 let myIdentity: ParticipantIdentity | null = null;
@@ -1440,69 +1493,37 @@ let lastLocalVoiceDb = -60;
 let lastRemoteVoiceDb = -60;
 let lastLocalMusicDb = -60;
 let lastLocalMusicPeakDb = -60;
-let lastSpeakerSwitchTime = 0;
-const SPEAKER_SWITCH_HOLD_MS = 1200;
-
 function savePreferences(): void {
   persistPreferences(prefs);
 }
-function showView(id: string): void {
-  for (const view of views) $(view)?.classList.toggle('hidden', view !== id);
-  updateLocalPreviews();
-  if (id === 'call-view') {
-    updateAuthUi(auth.getUser(), auth.getGuestName());
-    updateParticipantIdentityUi();
-  }
-}
-function setBusy(busy: boolean): void {
-  const buttons = document.querySelectorAll<HTMLButtonElement>('#create-button, #join-button, #enter-session');
-  for (const button of buttons) button.disabled = busy;
-}
+
 function metadata(): MediaMetadata {
-  return {
-    audioSources: audio.metadata(),
-    cameraEnabled,
-    outgoingVideoQuality: effectiveVideoQuality(prefs.cameraQuality),
-    preferredReceiveVideoQuality: effectiveVideoQuality(prefs.receiveQuality),
-    sharingScreen: Boolean(screenTrack),
-    audioOnly,
-    performanceMode: prefs.performanceMode
-  };
+  return buildSessionMetadata({
+    getAudioSources: () => audio.metadata(),
+    isCameraEnabled: () => cameraEnabled,
+    getCameraQuality: () => prefs.cameraQuality,
+    getReceiveQuality: () => prefs.receiveQuality,
+    hasScreenTrack: () => Boolean(screenTrack),
+    isAudioOnly: () => audioOnly,
+    getPerformanceMode: () => prefs.performanceMode
+  });
 }
-function effectiveVideoQuality(selected: VideoQuality): VideoQuality {
-  return performanceVideoQuality(selected, prefs.performanceMode);
-}
+
 function currentStream(): MediaStream {
-  const visibleTrack = screenTrack ?? (cameraEnabled ? videoTrack : undefined);
-  return new MediaStream(visibleTrack ? [visibleTrack] : []);
+  return buildCurrentStream(screenTrack, cameraEnabled, videoTrack);
 }
 
 function checkActiveSpeaker(): void {
-  const VOICE_THRESHOLD_DB = -46;
-  const now = performance.now();
-
-  const isLocalSpeaking = (!muted) && lastLocalVoiceDb > VOICE_THRESHOLD_DB;
-  const isRemoteSpeaking = (!remoteMuted) && lastRemoteVoiceDb > VOICE_THRESHOLD_DB;
-
-  $('remote-tile')?.classList.toggle('is-speaking', isRemoteSpeaking);
-  $('local-tile')?.classList.toggle('is-speaking', isLocalSpeaking);
-
-  let newSpeaker: ParticipantTarget | null = null;
-  if (isRemoteSpeaking && (!isLocalSpeaking || lastRemoteVoiceDb > lastLocalVoiceDb + 2)) {
-    newSpeaker = 'remote';
-  } else if (isLocalSpeaking && (!isRemoteSpeaking || lastLocalVoiceDb > lastRemoteVoiceDb + 2)) {
-    newSpeaker = 'local';
-  }
-
-  if (newSpeaker && newSpeaker !== getActiveSpeaker()) {
-    if (now - lastSpeakerSwitchTime > SPEAKER_SWITCH_HOLD_MS) {
-      setActiveSpeaker(newSpeaker);
-      lastSpeakerSwitchTime = now;
-      if (getCameraViewMode() === 'speaker') {
-        applyParticipantViewLayout();
-      }
-    }
-  }
+  checkActiveSpeakerImpl({
+    isLocalMuted: () => muted,
+    isRemoteMuted: () => remoteMuted,
+    getLastLocalVoiceDb: () => lastLocalVoiceDb,
+    getLastRemoteVoiceDb: () => lastRemoteVoiceDb,
+    getActiveSpeaker: () => getActiveSpeaker(),
+    onSetActiveSpeaker: (speaker) => setActiveSpeaker(speaker),
+    getCameraViewMode: () => getCameraViewMode(),
+    onApplyParticipantViewLayout: () => applyParticipantViewLayout()
+  });
 }
 
 function createDownscaledVideoTrack(rawTrack: MediaStreamTrack, width: number, height: number, fps: number): MediaStreamTrack {
@@ -2503,42 +2524,29 @@ function fillSelects(ids: string[], devices: MediaDeviceInfo[], selected: string
 }
 
 async function prepareStudio(action: PendingAction): Promise<void> {
-  pending = action;
-  if (action.type === 'join') {
-    currentCode = action.code;
-  } else if (!currentCode) {
-    currentCode = (Math.random().toString(36).substring(2, 6) + Math.random().toString(36).substring(2, 6)).slice(0, 8).toUpperCase();
-  }
-  showView('setup-view');
-  setText('setup-code', currentCode);
-  $('setup-waiting-room-group')?.classList.add('hidden');
-  setMessage('setup-status', '');
-  setBusy(true);
-
-  // Immediately render default UI state so everything is visible
-  setModeRadios(prefs.mode);
-  updateMusicWarning();
-  updateCameraButtonState();
-  updateLocalPreviews();
-
-  try {
-    // 1. Quick device enumeration
-    await enumerateAndPopulate().catch((e) => console.warn('enumerateAndPopulate error:', e));
-
-    // 2. Parallel acquisition of microphone, camera, and music inputs for instantaneous loading!
-    await Promise.all([
-      syncAllVoiceMics(prefs.mode).catch((e) => console.warn('syncAllVoiceMics error:', e)),
-      (!audioOnly ? replaceCamera(prefs.cameraId) : Promise.resolve()).catch((e) => console.warn('replaceCamera error:', e)),
-      replaceMusicInput().catch((e) => console.warn('replaceMusicInput error:', e))
-    ]);
-
-    updateLocalPreviews();
-    setMessage('setup-status', '');
-  } catch (error) {
-    showSessionErrorModal(parseSessionError(error));
-  } finally {
-    setBusy(false);
-  }
+  await prepareStudioController(action, {
+    onSetPendingAction: (act) => {
+      pending = act;
+    },
+    getCurrentCode: () => currentCode,
+    onSetCurrentCode: (code) => {
+      currentCode = code;
+    },
+    onShowSetupView: () => showView('setup-view'),
+    onSetBusy: (busy) => setBusy(busy),
+    getAudioMode: () => prefs.mode,
+    getCameraId: () => prefs.cameraId,
+    isAudioOnly: () => audioOnly,
+    onSetModeRadios: (mode) => setModeRadios(mode),
+    onUpdateMusicWarning: () => updateMusicWarning(),
+    onUpdateCameraButtonState: () => updateCameraButtonState(),
+    onUpdateLocalPreviews: () => updateLocalPreviews(),
+    onEnumerateAndPopulate: () => enumerateAndPopulate(),
+    onSyncAllVoiceMics: (mode) => syncAllVoiceMics(mode),
+    onReplaceCamera: (camId) => replaceCamera(camId),
+    onReplaceMusicInput: () => replaceMusicInput(),
+    onShowSessionError: (error) => showSessionErrorModal(parseSessionError(error))
+  });
 }
 
 function deviceError(error: unknown): string {
@@ -2570,31 +2578,6 @@ function renderAudioLimitations(): void {
       control.title = 'Hardware & stream input gain';
     }
   }
-}
-function setModeRadios(mode: AudioMode): void {
-  for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="setup-mode"], input[name="call-setup-mode"]')) {
-    const isCur = radio.value === mode;
-    radio.checked = isCur;
-    const card = radio.closest<HTMLElement>('.mode-card');
-    card?.classList.toggle('active', isCur);
-  }
-}
-function updateMusicWarning(): void {
-  updateHeadphoneWarning();
-}
-
-function updateCallMode(): void {
-  const music = prefs.mode === 'music';
-  const label = $('mode-label');
-  if (label) label.textContent = music ? 'Music Mode' : 'Talk Mode';
-  const modeBtn = $('mode-button');
-  if (modeBtn) modeBtn.textContent = music ? 'Talk Mode' : 'Music Mode';
-  
-  $('mode-music-btn')?.classList.toggle('active', music);
-  $('mode-talk-btn')?.classList.toggle('active', !music);
-  
-  updateHeadphoneWarning();
-  updateLocalPreviews();
 }
 
 async function startScreenShare(sourceId: string, optimizeFor: 'detail' | 'motion' = 'detail'): Promise<void> {
@@ -3899,62 +3882,7 @@ async function fullscreenRemote(requireShare: boolean): Promise<void> {
   if (tile && document.fullscreenElement !== tile) await tile.requestFullscreen();
 }
 
-$('create-button').addEventListener('click', () => {
-  if (!auth.getUser()) {
-    openAuthView('login');
-    return;
-  }
-  void prepareStudio({ type: 'create' });
-});
-$('home-settings-button')?.addEventListener('click', async () => {
-  try {
-    await enumerateAndPopulate();
-    openSettings('audio');
-  } catch (error) {
-    setMessage('home-error', deviceError(error), true);
-  }
-});
-$('join-button').addEventListener('click', () => {
-  const code = normalizeMeetingCode($<HTMLInputElement>('join-code').value);
-  const parsed = meetingCodeSchema.safeParse(code);
-  if (!parsed.success) return setMessage('home-error', 'Enter a valid 8-character session code.', true);
-  if (!auth.getUser()) {
-    pendingJoinCode = code;
-    openAuthView('login');
-    return;
-  }
-  void prepareStudio({ type: 'join', code });
-});
-$<HTMLInputElement>('join-code').addEventListener('keydown', (event) => { if (event.key === 'Enter') $('join-button').click(); });
-$('setup-cancel').addEventListener('click', async () => {
-  for (const m of voiceMeters.values()) await m.stop();
-  voiceMeters.clear();
-  activeMicLevels.clear();
-  activeMicPeaks.clear();
-  audio.dispose();
-  videoTrack?.stop();
-  videoTrack = undefined;
-  await musicMeter.stop();
-  lastLocalMusicDb = -60;
-  lastLocalMusicPeakDb = -60;
-  const returnProjectId = activeProjectId || sessionProjectId;
-  if (returnProjectId && auth.getUser() && auth.getToken()) {
-    void openProjectView(returnProjectId);
-  } else {
-    showView('home-view');
-  }
-});
-for (const id of ['setup-advanced-button', 'setup-advanced-action-button']) {
-  $(id)?.addEventListener('click', async () => {
-    try {
-      await enumerateAndPopulate();
-      openSettings('audio');
-    } catch (error) {
-      showSessionErrorModal(parseSessionError(error));
-    }
-  });
-}
-$('enter-session').addEventListener('click', () => void enterSession());
+
 for (const id of ['speaker-test', 'in-call-speaker-test']) {
   $(id)?.addEventListener('click', () => void testSpeakers().then(() => setMessage('setup-status', 'Speaker test complete.')).catch((error) => showSessionErrorModal(parseSessionError(error))));
 }
@@ -3978,22 +3906,6 @@ async function switchAudioMode(mode: AudioMode): Promise<void> {
   }
 }
 
-for (const card of document.querySelectorAll<HTMLElement>('.mode-card')) {
-  card.addEventListener('click', () => {
-    const radio = card.querySelector<HTMLInputElement>('input[type="radio"]');
-    if (radio && radio.value) {
-      void switchAudioMode(radio.value as AudioMode);
-    }
-  });
-}
-
-for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="setup-mode"], input[name="call-setup-mode"]')) {
-  radio.addEventListener('change', () => {
-    if (radio.checked) {
-      void switchAudioMode(radio.value as AudioMode);
-    }
-  });
-}
 bindSelect('camera-select', (value) => replaceCamera(value || undefined));
 bindSelect('call-camera-select', (value) => replaceCamera(value || undefined));
 bindSelect('music-input-select', async (value) => { prefs.musicInputId = value || undefined; await replaceMusicInput(); await enumerateAndPopulate(); });
@@ -4474,8 +4386,6 @@ for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="set
     void syncAllVoiceMics(prefs.mode);
   });
 }
-
-let pendingJoinCode = '';
 
 auth.onStateChange((user, guestName) => updateAuthUi(user, guestName || ''));
 
