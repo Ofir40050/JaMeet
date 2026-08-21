@@ -74,7 +74,7 @@ import { createLocalVideoController } from './media/video/localVideoController';
 import { createStudioPreparationController } from './sessions/setup/studioPreparationController';
 import { createAudioOutputRoutingController } from './media/devices/audioOutputRoutingController';
 import { createMediaActiveStateController } from './media/devices/mediaActiveStateController';
-import { createMediaStreamControlsController } from './media/devices/mediaStreamControlsController';
+import { createMediaStreamControlsController } from './sessions/call/mediaStreamControlsController';
 import { updateCameraButtonUi } from './sessions/call/cameraUi';
 import { initMediaSettingsBindings } from './media/devices/mediaSettingsBindingsController';
 import {
