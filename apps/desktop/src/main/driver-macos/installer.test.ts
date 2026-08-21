@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { execSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 
 describe('JaMeet Remote macOS Installer Packaging', () => {
   it('builds a valid macOS local preview installer package installing JaMeet.app to /Applications and JaMeetRemote.driver to /Library/Audio/Plug-Ins/HAL', () => {
@@ -75,6 +75,32 @@ describe('JaMeet Remote macOS Installer Packaging', () => {
       }
     } finally {
       rmSync(expandDir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it('ensures preview packaging never deletes or modifies an existing JaMeet-Installer.pkg', () => {
+    if (process.platform !== 'darwin') {
+      return;
+    }
+
+    const desktopDir = join(__dirname, '..', '..', '..');
+    const releaseDir = join(desktopDir, 'release');
+    const pkgScript = join(desktopDir, 'scripts', 'build-macos-pkg.cjs');
+
+    const officialPkg = join(releaseDir, 'JaMeet-Installer.pkg');
+    const mockContent = 'OFFICIAL_RELEASE_PACKAGE_MOCK_DATA';
+    writeFileSync(officialPkg, mockContent, 'utf-8');
+
+    try {
+      execSync(`node "${pkgScript}" --preview`, { cwd: desktopDir, stdio: 'pipe' });
+
+      // Verify that official package is preserved and unmodified
+      expect(existsSync(officialPkg)).toBe(true);
+      expect(readFileSync(officialPkg, 'utf-8')).toBe(mockContent);
+    } finally {
+      if (existsSync(officialPkg)) {
+        rmSync(officialPkg, { force: true });
+      }
     }
   }, 30000);
 

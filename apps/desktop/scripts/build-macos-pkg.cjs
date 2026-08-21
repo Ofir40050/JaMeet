@@ -15,20 +15,24 @@ if (process.platform !== 'darwin') {
   process.exit(0);
 }
 
-// Clean any stale official, preview, or dmg installers in releaseDir so no stale build can be mistaken for current output
+// Ensure releaseDir exists
 fs.mkdirSync(releaseDir, { recursive: true });
-const staleFiles = [
-  path.join(releaseDir, 'JaMeet-Installer.pkg'),
-  path.join(releaseDir, 'JaMeet-Preview-Unsigned.pkg'),
-  path.join(releaseDir, 'JaMeet-0.1.0-mac-arm64.dmg'),
-  path.join(releaseDir, 'JaMeet-0.1.0-mac-arm64.dmg.blockmap')
-];
-for (const f of staleFiles) {
-  if (fs.existsSync(f)) {
+
+if (isPreview) {
+  // Preview mode cleans ONLY its own output and never touches official release artifacts
+  const previewPkg = path.join(releaseDir, 'JaMeet-Preview-Unsigned.pkg');
+  if (fs.existsSync(previewPkg)) {
+    fs.unlinkSync(previewPkg);
+  }
+} else {
+  // Official release mode removes stale official installer; failure MUST stop the build
+  const officialPkg = path.join(releaseDir, 'JaMeet-Installer.pkg');
+  if (fs.existsSync(officialPkg)) {
     try {
-      fs.unlinkSync(f);
-    } catch {
-      // Ignore
+      fs.unlinkSync(officialPkg);
+    } catch (err) {
+      console.error(`[build-macos-pkg] Error: Failed to remove stale official installer at ${officialPkg}:`, err.message);
+      process.exit(1);
     }
   }
 }
@@ -167,6 +171,7 @@ const distributionXmlPath = path.join(tmpWorkDir, 'distribution.xml');
 const targetUnsignedPkgPath = path.join(tmpWorkDir, 'JaMeet-Unsigned.pkg');
 const targetSignedPkgPath = path.join(tmpWorkDir, 'JaMeet-Signed.pkg');
 
+let tempReleasePkgPath = null;
 let officialFinalMoved = false;
 
 try {
@@ -307,25 +312,47 @@ exit 0
     console.log('[build-macos-pkg] 4/4 Verifying stapled notarization ticket...');
     execFileSync('xcrun', ['stapler', 'validate', targetSignedPkgPath], { stdio: 'inherit' });
 
-    // 13. Atomically move validated package to official output path
+    // 13. Atomically move validated package to official output path via temporary file and rename
     const officialPkgFinalPath = path.join(releaseDir, 'JaMeet-Installer.pkg');
-    fs.copyFileSync(targetSignedPkgPath, officialPkgFinalPath);
+    tempReleasePkgPath = path.join(releaseDir, `.tmp-JaMeet-Installer-${Date.now()}-${process.pid}.pkg`);
+
+    // First copy into temporary release file
+    fs.copyFileSync(targetSignedPkgPath, tempReleasePkgPath);
+
+    // Atomic filesystem rename from temporary file to official destination
+    fs.renameSync(tempReleasePkgPath, officialPkgFinalPath);
+    tempReleasePkgPath = null;
     officialFinalMoved = true;
 
     console.log('\n[build-macos-pkg] Successfully built, verified, and notarized official release package: ' + officialPkgFinalPath);
   } else {
-    // Local preview: move unsigned package to Preview filename
+    // Local preview: move unsigned package to Preview filename via atomic rename
     const previewPkgFinalPath = path.join(releaseDir, 'JaMeet-Preview-Unsigned.pkg');
-    fs.copyFileSync(targetUnsignedPkgPath, previewPkgFinalPath);
+    tempReleasePkgPath = path.join(releaseDir, `.tmp-JaMeet-Preview-${Date.now()}-${process.pid}.pkg`);
+
+    fs.copyFileSync(targetUnsignedPkgPath, tempReleasePkgPath);
+    fs.renameSync(tempReleasePkgPath, previewPkgFinalPath);
+    tempReleasePkgPath = null;
 
     console.log('\n[build-macos-pkg] NOTICE: Created unsigned local preview package at: ' + previewPkgFinalPath);
     console.log('[build-macos-pkg] This package is for local testing only and cannot be distributed as an official release.\n');
   }
 } finally {
+  if (tempReleasePkgPath && fs.existsSync(tempReleasePkgPath)) {
+    try {
+      fs.unlinkSync(tempReleasePkgPath);
+    } catch {
+      // Ignore
+    }
+  }
   if (!isPreview && !officialFinalMoved) {
     const officialPkgFinalPath = path.join(releaseDir, 'JaMeet-Installer.pkg');
     if (fs.existsSync(officialPkgFinalPath)) {
-      fs.unlinkSync(officialPkgFinalPath);
+      try {
+        fs.unlinkSync(officialPkgFinalPath);
+      } catch {
+        // Ignore
+      }
     }
   }
   fs.rmSync(tmpWorkDir, { recursive: true, force: true });
