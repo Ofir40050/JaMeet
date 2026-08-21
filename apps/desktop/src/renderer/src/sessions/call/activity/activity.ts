@@ -50,31 +50,7 @@ export function getActivityIconSvg(type: ProjectActivityType): string {
   }
 }
 
-export function applyAvatarToElement(
-  el: HTMLElement | null,
-  displayName: string,
-  avatarColor = '#06b6d4',
-  avatarUrl?: string
-): void {
-  if (!el) return;
-  const initials = displayName
-    ? displayName.trim().split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
-    : 'U';
-  if (avatarUrl) {
-    el.textContent = '';
-    el.style.backgroundImage = `url("${avatarUrl}")`;
-    el.style.backgroundSize = 'cover';
-    el.style.backgroundPosition = 'center';
-    el.style.backgroundRepeat = 'no-repeat';
-    el.style.backgroundColor = 'transparent';
-  } else {
-    const safeColor = safeAvatarColor(avatarColor, '#06b6d4');
-    el.textContent = initials;
-    el.style.backgroundImage = 'none';
-    el.style.backgroundColor = safeColor;
-    el.style.background = `linear-gradient(135deg, ${safeColor}, #0284c7)`;
-  }
-}
+export { applyAvatarToElement } from '../../../auth/profile/profileUi';
 
 export function resolveUserAvatar(
   activeProject: Project | null,

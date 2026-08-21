@@ -84,6 +84,18 @@ export function initCallSignalingListenersController(ctx: CallSignalingListeners
     void ctx.onLeaveSession(payload.message || 'You have been removed from the session by the host.');
   });
 
+  ctx.signaling.on('disconnect', () => {
+    if (ctx.isInCall()) {
+      ctx.onSetCallStatus('Signaling reconnecting…');
+    }
+  });
+
+  ctx.signaling.on('connect', () => {
+    if (ctx.isInCall()) {
+      ctx.onSetCallStatus('Reconnecting session…');
+    }
+  });
+
   $('btn-leave-waiting')?.addEventListener('click', async () => {
     ctx.signaling.leave();
     ctx.setIsInCall(false);

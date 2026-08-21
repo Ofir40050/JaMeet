@@ -4,12 +4,8 @@ import { LevelMeter } from '../audio/meter/levelMeter';
 import { startRemoteVoiceBridge, stopRemoteVoiceBridge } from './remoteVoiceBridge';
 import type { Preferences } from '../../core/preferences';
 
-export function getStereoBalanceGains(pan: number): { left: number; right: number } {
-  const clamped = Math.max(-1, Math.min(1, pan));
-  const left = clamped <= 0 ? 1.0 : Math.max(0, 1.0 - clamped);
-  const right = clamped >= 0 ? 1.0 : Math.max(0, 1.0 + clamped);
-  return { left, right };
-}
+import { getStereoBalanceGains } from '../audio/sources/stereoBalance';
+export { getStereoBalanceGains };
 
 export interface RemoteAudioGraphContext {
   getRemoteAudioCtx: () => AudioContext | undefined;

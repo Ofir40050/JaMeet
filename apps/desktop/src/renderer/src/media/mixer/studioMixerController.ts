@@ -8,7 +8,7 @@ import {
   loadSavedStudioMixerConfig,
   saveStudioMixerConfig as saveStudioMixerConfigStorage
 } from './studioMixerStorage';
-import { getStereoBalanceGains } from '../remote/remoteAudioGraphController';
+import { getStereoBalanceGains } from '../audio/sources/stereoBalance';
 import {
   startMixerVuAnimation as startMixerVuAnimationHelper,
   stopMixerVuAnimation as stopMixerVuAnimationHelper

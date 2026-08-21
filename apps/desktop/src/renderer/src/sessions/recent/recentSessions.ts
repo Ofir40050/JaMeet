@@ -42,21 +42,7 @@ export function initRecentSessions(opts: RecentSessionsOptions): void {
   });
 }
 
-export function formatSessionDate(timestamp: number): string {
-  const date = new Date(timestamp);
-  const now = new Date();
-  const isToday = date.toDateString() === now.toDateString();
-  const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (isToday) return `Today at ${timeStr}`;
-  return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${timeStr}`;
-}
-
-export function formatDuration(sec?: number): string {
-  if (!sec) return '';
-  if (sec < 60) return `${sec}s`;
-  const mins = Math.round(sec / 60);
-  return `${mins} min`;
-}
+export { formatSessionDate, formatDuration } from '../../core/dateTimeFormatters';
 
 export function openSessionSummaryDialog(session: SessionHistoryItem): void {
   const dialog = $<HTMLDialogElement>('session-summary-dialog');

@@ -164,15 +164,4 @@ export async function removeCollaborator(token: string, projectId: string, userI
   return data.project;
 }
 
-export { formatRelativeTime } from '../../core/dateTimeFormatters';
-
-export function formatSessionDuration(seconds?: number): string {
-  if (!seconds || seconds <= 0) return '< 1m';
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m < 60) return s > 0 ? `${m}m ${s}s` : `${m}m`;
-  const h = Math.floor(m / 60);
-  const remainM = m % 60;
-  return remainM > 0 ? `${h}h ${remainM}m` : `${h}h`;
-}
+export { formatRelativeTime, formatSessionDuration } from '../../core/dateTimeFormatters';

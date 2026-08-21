@@ -67,7 +67,7 @@ import { initSessionUtilityBindingsController } from './sessions/call/view/sessi
 import { getCachedRunningApps } from './media/audio/sources/runningApplications';
 import { populateMusicAppSelectOptions, updateMusicAppIconByPid } from './media/audio/ui/musicAppSelectUi';
 import { type HardwareAudioDeviceInfo } from './media/devices/hardwareDeviceUtils';
-import { getMeterInterval, getEffectiveMusicBitrate } from './media/devices/mediaPreferenceController';
+import { getMeterInterval, getEffectiveMusicBitrate } from './media/devices/mediaPreferenceCalculations';
 import { bindDeviceSelect } from './media/devices/deviceChangeController';
 import { initAuthDomainController } from './auth/login/authDomainController';
 import { createScreenSharingController } from './sessions/call/controls/screenSharingController';
@@ -135,7 +135,7 @@ import {
 } from './sessions/call/controls/sessionKeyboardController';
 import {
   startRendererApp
-} from './core/startupController';
+} from './core/appBootstrap';
 import {
   initDesktopLifecycle
 } from './core/desktopLifecycleController';
