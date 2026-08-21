@@ -13,7 +13,9 @@ case "$url" in */) url=${url%/} ;; esac
 
 export VITE_SIGNALING_URL="$url"
 export VITE_ICE_TRANSPORT_POLICY=all
-npm run package:mac:arm64 -w @jameet/desktop
+echo "Building official macOS production PKG installer..."
+npm run build -w @jameet/shared
+npm run package:mac:pkg -w @jameet/desktop
 
 if ! grep -R --fixed-strings "$url" apps/desktop/out/renderer/assets >/dev/null; then
   echo "Production signaling URL was not found in the renderer bundle." >&2
@@ -25,6 +27,12 @@ if [ ! -f "apps/desktop/bin/jameet-screen-capture" ]; then
   exit 1
 fi
 
-echo "Production Apple Silicon DMG created in apps/desktop/release/."
+if [ ! -f "apps/desktop/release/JaMeet-Installer.pkg" ]; then
+  echo "Official JaMeet-Installer.pkg was not created in apps/desktop/release/" >&2
+  exit 1
+fi
+
+echo "Official production Apple Silicon PKG installer created at apps/desktop/release/JaMeet-Installer.pkg"
+echo "Includes: JaMeet.app (/Applications) and JaMeetRemote.driver (/Library/Audio/Plug-Ins/HAL)"
 echo "Baked signaling origin: $url"
 

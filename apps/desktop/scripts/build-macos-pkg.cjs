@@ -8,9 +8,46 @@ const releaseDir = path.join(rootDir, 'release');
 const driverDistDir = path.join(rootDir, 'src', 'main', 'driver-macos', 'dist');
 const driverBundlePath = path.join(driverDistDir, 'JaMeetRemote.driver');
 
+const isPreview = process.argv.includes('--preview') || process.env.JAMEET_BUILD_PREVIEW === '1';
+
 if (process.platform !== 'darwin') {
   console.log('[build-macos-pkg] Skipping macOS package creation on ' + process.platform);
   process.exit(0);
+}
+
+// Validate Apple Developer credentials for official releases
+const appSigningIdentity = process.env.APPLE_SIGNING_IDENTITY || process.env.DEVELOPER_ID_APPLICATION || process.env.CSC_NAME;
+const installerSigningIdentity = process.env.APPLE_INSTALLER_IDENTITY || process.env.DEVELOPER_ID_INSTALLER;
+const appleId = process.env.APPLE_ID;
+const applePassword = process.env.APPLE_ID_PASSWORD || process.env.APPLE_APP_SPECIFIC_PASSWORD;
+const appleTeamId = process.env.APPLE_TEAM_ID;
+
+if (!isPreview) {
+  const missing = [];
+  if (!appSigningIdentity) {
+    missing.push('APPLE_SIGNING_IDENTITY (or DEVELOPER_ID_APPLICATION / CSC_NAME) for application and driver signing');
+  }
+  if (!installerSigningIdentity) {
+    missing.push('APPLE_INSTALLER_IDENTITY (or DEVELOPER_ID_INSTALLER) for installer package signing');
+  }
+  if (!appleId) {
+    missing.push('APPLE_ID for Apple Notarization');
+  }
+  if (!applePassword) {
+    missing.push('APPLE_APP_SPECIFIC_PASSWORD (or APPLE_ID_PASSWORD) for Apple Notarization');
+  }
+  if (!appleTeamId) {
+    missing.push('APPLE_TEAM_ID for Apple Notarization');
+  }
+
+  if (missing.length > 0) {
+    console.error('\n[build-macos-pkg] ERROR: Official macOS release packaging requires complete Apple Developer credentials.');
+    console.error('[build-macos-pkg] Missing required configuration:\n  • ' + missing.join('\n  • '));
+    console.error('\n[build-macos-pkg] To build an unsigned package for local preview and testing, run the separate preview command:');
+    console.error('  npm run package:mac:preview -w @jameet/desktop');
+    console.error('  (or pass --preview flag to build-macos-pkg.cjs)\n');
+    process.exit(1);
+  }
 }
 
 // 1. Ensure JaMeetRemote.driver is freshly compiled
@@ -85,22 +122,14 @@ const commonArchs = appArchs.filter((a) => driverArchs.includes(a));
 const hostArchString = commonArchs.length > 0 ? commonArchs.join(',') : appArchs.join(',');
 console.log(`[build-macos-pkg] Detected architectures: App=[${appArchs.join(',')}], Driver=[${driverArchs.join(',')}]. Target=[${hostArchString}]`);
 
-// 4. Developer ID Application Signing Hook (driver bundle)
-const appSigningIdentity = process.env.APPLE_SIGNING_IDENTITY || process.env.DEVELOPER_ID_APPLICATION || process.env.CSC_NAME;
-if (appSigningIdentity) {
+// 4. Driver Bundle Code Signing
+if (!isPreview) {
   console.log(`[build-macos-pkg] Signing JaMeetRemote.driver with Developer ID Application (${appSigningIdentity})...`);
-  try {
-    execSync(`codesign --force --options runtime --timestamp --sign "${appSigningIdentity}" "${driverBundlePath}"`, { stdio: 'inherit' });
-  } catch (err) {
-    console.warn('[build-macos-pkg] Warning: Developer ID signing failed:', err.message);
-  }
+  execSync(`codesign --force --options runtime --timestamp --sign "${appSigningIdentity}" "${driverBundlePath}"`, { stdio: 'inherit' });
 } else {
-  // Ad-hoc sign for local development
-  try {
-    execSync(`codesign --force --sign - "${driverBundlePath}"`, { stdio: 'pipe' });
-  } catch {
-    // Ignore if codesign unavailable
-  }
+  // Ad-hoc sign for local preview on Apple Silicon
+  console.log('[build-macos-pkg] Ad-hoc signing JaMeetRemote.driver for local preview...');
+  execSync(`codesign --force --sign - "${driverBundlePath}"`, { stdio: 'inherit' });
 }
 
 // 5. Create temporary work directory for pkgbuild / productbuild
@@ -108,7 +137,9 @@ const tmpWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-pkg-'));
 const appPkgPath = path.join(tmpWorkDir, 'jameet-app.pkg');
 const driverPkgPath = path.join(tmpWorkDir, 'jameet-driver.pkg');
 const distributionXmlPath = path.join(tmpWorkDir, 'distribution.xml');
-const finalPkgPath = path.join(releaseDir, 'JaMeet-Installer.pkg');
+
+const finalPkgName = isPreview ? 'JaMeet-Preview-Unsigned.pkg' : 'JaMeet-Installer.pkg';
+const finalPkgPath = path.join(releaseDir, finalPkgName);
 const unsignedPkgPath = path.join(tmpWorkDir, 'JaMeet-Unsigned.pkg');
 
 fs.mkdirSync(releaseDir, { recursive: true });
@@ -207,44 +238,31 @@ exit 0
 
   // 9. Synthesize Product Package via productbuild
   console.log('[build-macos-pkg] Synthesizing installer package via productbuild...');
-  const targetOutputForBuild = (process.env.APPLE_INSTALLER_IDENTITY || process.env.DEVELOPER_ID_INSTALLER) ? unsignedPkgPath : finalPkgPath;
+  const targetOutputForBuild = (!isPreview && installerSigningIdentity) ? unsignedPkgPath : finalPkgPath;
   execSync(
     `productbuild --distribution "${distributionXmlPath}" --package-path "${tmpWorkDir}" "${targetOutputForBuild}"`,
     { stdio: 'inherit' }
   );
 
-  // 10. Developer ID Installer Signing Hook
-  const installerSigningIdentity = process.env.APPLE_INSTALLER_IDENTITY || process.env.DEVELOPER_ID_INSTALLER;
-  if (installerSigningIdentity && fs.existsSync(unsignedPkgPath)) {
-    console.log(`[build-macos-pkg] Signing installer with Developer ID Installer (${installerSigningIdentity})...`);
-    try {
-      execSync(`productsign --sign "${installerSigningIdentity}" "${unsignedPkgPath}" "${finalPkgPath}"`, { stdio: 'inherit' });
-    } catch (err) {
-      console.warn('[build-macos-pkg] Warning: productsign failed, copying unsigned package:', err.message);
-      fs.copyFileSync(unsignedPkgPath, finalPkgPath);
-    }
-  }
+  // 10. Developer ID Installer Signing Hook (Official Release)
+  if (!isPreview) {
+    console.log(`[build-macos-pkg] Signing installer package with Developer ID Installer (${installerSigningIdentity})...`);
+    execSync(`productsign --sign "${installerSigningIdentity}" "${unsignedPkgPath}" "${finalPkgPath}"`, { stdio: 'inherit' });
 
-  // 11. Apple Notarization Hook (Optional for Release Pipelines)
-  const appleId = process.env.APPLE_ID;
-  const applePassword = process.env.APPLE_ID_PASSWORD || process.env.APPLE_APP_SPECIFIC_PASSWORD;
-  const appleTeamId = process.env.APPLE_TEAM_ID;
-
-  if (appleId && applePassword && appleTeamId && fs.existsSync(finalPkgPath)) {
+    // 11. Apple Notarization & Stapling (Official Release)
     console.log('[build-macos-pkg] Submitting package for Apple Notarization...');
-    try {
-      execSync(
-        `xcrun notarytool submit "${finalPkgPath}" --apple-id "${appleId}" --password "${applePassword}" --team-id "${appleTeamId}" --wait`,
-        { stdio: 'inherit' }
-      );
-      console.log('[build-macos-pkg] Stapling notarization ticket to package...');
-      execSync(`xcrun stapler staple "${finalPkgPath}"`, { stdio: 'inherit' });
-    } catch (err) {
-      console.warn('[build-macos-pkg] Warning: Notarization/stapling failed:', err.message);
-    }
-  }
+    execSync(
+      `xcrun notarytool submit "${finalPkgPath}" --apple-id "${appleId}" --password "${applePassword}" --team-id "${appleTeamId}" --wait`,
+      { stdio: 'inherit' }
+    );
+    console.log('[build-macos-pkg] Stapling notarization ticket to package...');
+    execSync(`xcrun stapler staple "${finalPkgPath}"`, { stdio: 'inherit' });
 
-  console.log('[build-macos-pkg] Successfully created installer package: ' + finalPkgPath);
+    console.log('\n[build-macos-pkg] Successfully built and notarized official release package: ' + finalPkgPath);
+  } else {
+    console.log('\n[build-macos-pkg] NOTICE: Created unsigned local preview package at: ' + finalPkgPath);
+    console.log('[build-macos-pkg] This package is for local testing only and cannot be distributed as an official release.\n');
+  }
 } finally {
   fs.rmSync(tmpWorkDir, { recursive: true, force: true });
 }
