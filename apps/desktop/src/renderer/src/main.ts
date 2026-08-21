@@ -1196,7 +1196,7 @@ const {
   onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
   onRenderAudioLimitations: () => renderAudioLimitations(),
   onUpdateLocalPreviews: () => updateLocalPreviews(),
-  onUpdateCallMode: () => updateCallMode(),
+  onUpdateCallMode: () => updateCallMode(prefs.mode),
   onPopulateMusicAppSelectOptions: (apps, p) => populateMusicAppSelectOptions(apps, p),
   isInCall: () => inCall,
   getCurrentCode: () => currentCode,
@@ -1315,7 +1315,7 @@ const {
   setPeerParticipantId: (id) => { peerParticipantId = id; },
   isInCall: () => inCall,
   setInCall: (inCallState) => { inCall = inCallState; },
-  onUpdateCallMode: () => updateCallMode(),
+  onUpdateCallMode: () => updateCallMode(prefs.mode),
   onUpdateCameraButtonState: () => updateCameraButtonState(),
   onUpdateLocalPreviews: () => updateLocalPreviews(),
   onUpdateParticipantIdentityUi: () => updateParticipantIdentityUi(),
@@ -1574,7 +1574,7 @@ const {
   onRemoveRtcVideoTrack: () => rtc.removeVideoTrack(),
   onSignalingUpdateMedia: (code, meta) => signaling.updateMedia(code, meta),
   onSetModeRadios: (mode) => setModeRadios(mode),
-  onUpdateCallMode: () => updateCallMode(),
+  onUpdateCallMode: () => updateCallMode(prefs.mode),
   onUpdateMusicWarning: () => updateMusicWarning(),
   onShowSessionError: (error) => showSessionErrorModal(parseSessionError(error))
 });
