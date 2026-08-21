@@ -44,7 +44,7 @@ import { initProjectsDomainController } from './projects/core/projectsDomainCont
 import { initProjectOpenDomainController } from './projects/core/projectOpenDomainController';
 import { initProjectCollaboratorsDomainController } from './projects/collaborators/projectCollaboratorsDomainController';
 import { initProjectManagementController } from './projects/core/projectManagementController';
-import { initSessionStatsController } from './sessions/call/view/sessionStatsController';
+import { initSessionStats } from './sessions/call/view/sessionStatsUi';
 import { initWaitingRoomUi } from './sessions/call/waiting/waitingRoomUi';
 import { initDeepLinkDomainController } from './sessions/join/deepLinkDomainController';
 import { initCallShortcutsUi } from './sessions/call/controls/callShortcutsUi';
@@ -294,7 +294,7 @@ import { type StudioMixerChannel } from './media/mixer/studioMixerLogic';
 import { hydrateStudioMixerEqPersistence } from './media/mixer/studioMixerStorage';
 import { initStudioMixerPopoversAndControls } from './media/mixer/studioMixerUi';
 import { createStudioMixerController } from './media/mixer/studioMixerController';
-import { initPresenterCoordinationController } from './sessions/call/view/presenterCoordinationController';
+import { initPresenterCoordinationController } from './sessions/call/controls/presenterCoordinationController';
 import { initMediaHardwareControlsController } from './media/devices/mediaHardwareControlsController';
 import { initCallSignalingListenersController } from './sessions/call/lifecycle/callSignalingListenersController';
 import {
@@ -1050,7 +1050,7 @@ setSessionViewStateProvider(() => ({
   sharingSourceTitle: currentSharingSourceTitle
 }));
 
-initSessionStatsController({
+initSessionStats({
   getStatsReport: () => rtc.getStatsReport(),
   isInCall: () => inCall,
   getPreferences: () => prefs,
