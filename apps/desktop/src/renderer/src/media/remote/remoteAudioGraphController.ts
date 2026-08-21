@@ -1,8 +1,8 @@
-import { $ } from '../core/dom';
-import { deviceError } from './deviceError';
-import { LevelMeter } from './levelMeter';
+import { $ } from '../../core/dom';
+import { deviceError } from '../devices/deviceError';
+import { LevelMeter } from '../audio/levelMeter';
 import { startRemoteVoiceBridge, stopRemoteVoiceBridge } from './remoteVoiceBridge';
-import type { Preferences } from '../core/preferences';
+import type { Preferences } from '../../core/preferences';
 
 export function getStereoBalanceGains(pan: number): { left: number; right: number } {
   const clamped = Math.max(-1, Math.min(1, pan));

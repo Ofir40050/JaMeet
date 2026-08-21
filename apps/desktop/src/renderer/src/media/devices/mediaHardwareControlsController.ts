@@ -1,7 +1,7 @@
-import { $, setMessage } from '../core/dom';
-import type { Preferences } from '../core/preferences';
+import { $, setMessage } from '../../core/dom';
+import type { Preferences } from '../../core/preferences';
 import { deviceError } from './deviceError';
-import type { StudioMixerChannel } from './studioMixerLogic';
+import type { StudioMixerChannel } from '../mixer/studioMixerLogic';
 
 export interface MediaHardwareControlsContext {
   getPreferences: () => Preferences;

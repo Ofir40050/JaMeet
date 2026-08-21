@@ -1,13 +1,13 @@
 import { $, setText, setMessage } from '../../core/dom';
 import { logger } from '../../core/logger';
-import { presenter } from '../../media/presenter';
+import { presenter } from '../../media/video/presenter';
 import { closeSessionViewMenu } from './sessionView';
 import { hideWaitingBanner } from './waitingRoomUi';
 import { setSessionWorkspaceOpen } from './workspaceDrawerUi';
 import { resetChatUi } from './chat';
-import type { LevelMeter } from '../../media/levelMeter';
-import type { LocalAudioSourceManager } from '../../media/audioSources';
-import type { StudioMixerChannel } from '../../media/studioMixerLogic';
+import type { LevelMeter } from '../../media/audio/levelMeter';
+import type { LocalAudioSourceManager } from '../../media/audio/audioSources';
+import type { StudioMixerChannel } from '../../media/mixer/studioMixerLogic';
 import type { MediaMetadata, ParticipantIdentity, Project, UserProfile } from '@jameet/shared';
 
 export interface CallTerminationContext {

@@ -1,10 +1,10 @@
 import type { AudioMode, IceServerConfig, MediaMetadata, MeetingRole, VideoQuality } from '@jameet/shared';
-import { opusBitrate } from './audioProfiles';
-import { LocalAudioSourceManager } from './audioSources';
-import { applyOpusPolicy } from './opus';
+import { opusBitrate } from '../audio/audioProfiles';
+import { LocalAudioSourceManager } from '../audio/audioSources';
+import { applyOpusPolicy } from '../audio/opus';
 import { SignalingClient } from './signaling';
-import { lowerQuality, VIDEO_QUALITY } from './videoQuality';
-import { logger } from '../core/logger';
+import { lowerQuality, VIDEO_QUALITY } from '../video/videoQuality';
+import { logger } from '../../core/logger';
 
 function parseSpropStereo(fmtpText: string): boolean {
   const params = fmtpText.split(';').map((p) => p.trim());

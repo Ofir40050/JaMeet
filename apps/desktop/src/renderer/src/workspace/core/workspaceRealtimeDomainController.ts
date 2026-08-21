@@ -1,5 +1,5 @@
 import type { Project, UserProfile } from '@jameet/shared';
-import type { SignalingClient } from '../../media/signaling';
+import type { SignalingClient } from '../../media/remote/signaling';
 import type { LyricsDocItem } from '../lyrics/lyricsDocumentState';
 import { initWorkspaceRealtimeSync } from './workspaceRealtimeSyncController';
 import { initProjectActivitySync } from '../../projects/core/projectActivitySyncController';

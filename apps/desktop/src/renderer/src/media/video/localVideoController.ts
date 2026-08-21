@@ -1,6 +1,6 @@
 import { cameraConstraints } from './videoQuality';
-import { createDownscaledVideoTrack } from '../sessions/call/videoTrackScaling';
-import { effectiveVideoQuality } from '../sessions/call/sessionMetadataController';
+import { createDownscaledVideoTrack } from '../../sessions/call/videoTrackScaling';
+import { effectiveVideoQuality } from '../../sessions/call/sessionMetadataController';
 import type { Preferences } from '@jameet/shared';
 
 export interface LocalVideoContext {

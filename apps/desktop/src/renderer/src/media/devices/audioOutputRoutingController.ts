@@ -1,4 +1,4 @@
-import { $ } from '../core/dom';
+import { $ } from '../../core/dom';
 import { testSpeakers as testSpeakersHelper, testMicrophone as testMicrophoneHelper, getMicrophonePlayback } from './deviceTestController';
 import type { Preferences } from '@jameet/shared';
 

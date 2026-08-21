@@ -1,14 +1,14 @@
-import { $ } from '../core/dom';
-import { icons } from '../core/icons';
+import { $ } from '../../core/dom';
+import { icons } from '../../core/icons';
 import { LevelMeter, type LevelReading } from './levelMeter';
 import type { HardwareAudioDeviceInfo } from './hardwareDeviceTypes';
 import {
   findHardwareDevice,
   generateInputChannelOptions,
   formatDeviceDisplayName
-} from './hardwareDeviceUtils';
-import type { Preferences } from '../core/preferences';
-import type { StudioMixerChannel } from './studioMixerLogic';
+} from '../devices/hardwareDeviceUtils';
+import type { Preferences } from '../../core/preferences';
+import type { StudioMixerChannel } from '../mixer/studioMixerLogic';
 import type { LocalAudioSourceManager } from './audioSources';
 
 export interface VoiceInputsUiContext {

@@ -58,25 +58,25 @@ import { initWorkspacePersistenceController } from './workspace/core/workspacePe
 import { initWorkspaceRealtimeDomainController } from './workspace/core/workspaceRealtimeDomainController';
 import { updateLocalPreviews as updateLocalPreviewsHelper } from './sessions/call/localPreviewUi';
 import { createSessionMetadata, createCurrentStream, performCheckActiveSpeaker } from './sessions/call/sessionMediaStateController';
-import { deviceError } from './media/deviceError';
+import { deviceError } from './media/devices/deviceError';
 import { initInCallAudioModalController } from './sessions/call/inCallAudioModalController';
 import { initCallToolbarController } from './sessions/call/callToolbarController';
 import { initSessionUtilityBindingsController } from './sessions/call/sessionUtilityBindingsController';
-import { updateAppIconBadge } from './media/runningApplicationsController';
-import { type HardwareAudioDeviceInfo } from './media/hardwareDeviceUtils';
-import { getMeterInterval, getEffectiveMusicBitrate } from './media/mediaPreferenceController';
-import { bindDeviceSelect } from './media/deviceChangeController';
+import { updateAppIconBadge } from './media/devices/runningApplicationsController';
+import { type HardwareAudioDeviceInfo } from './media/devices/hardwareDeviceUtils';
+import { getMeterInterval, getEffectiveMusicBitrate } from './media/devices/mediaPreferenceController';
+import { bindDeviceSelect } from './media/devices/deviceChangeController';
 import { initAuthDomainController } from './auth/authDomainController';
 import { createScreenSharingController } from './sessions/call/screenSharingController';
-import { createVoiceInputsUiController } from './media/voiceInputsUiController';
-import { createLocalAudioCaptureController } from './media/localAudioCaptureController';
-import { createLocalVideoController } from './media/localVideoController';
-import { createStudioPreparationController } from './media/studioPreparationController';
-import { createAudioOutputRoutingController } from './media/audioOutputRoutingController';
-import { createMediaActiveStateController } from './media/mediaActiveStateController';
-import { createMediaStreamControlsController } from './media/mediaStreamControlsController';
+import { createVoiceInputsUiController } from './media/audio/voiceInputsUiController';
+import { createLocalAudioCaptureController } from './media/audio/localAudioCaptureController';
+import { createLocalVideoController } from './media/video/localVideoController';
+import { createStudioPreparationController } from './media/devices/studioPreparationController';
+import { createAudioOutputRoutingController } from './media/devices/audioOutputRoutingController';
+import { createMediaActiveStateController } from './media/devices/mediaActiveStateController';
+import { createMediaStreamControlsController } from './media/devices/mediaStreamControlsController';
 import { updateCameraButtonUi } from './sessions/call/cameraUi';
-import { initMediaSettingsBindings } from './media/mediaSettingsBindingsController';
+import { initMediaSettingsBindings } from './media/devices/mediaSettingsBindingsController';
 import {
   getWorkspaceContextGen,
   isWorkspaceContextGenCurrent,
@@ -279,27 +279,27 @@ import {
   renderSongStudioHeader
 } from './songs/songsUi';
 import { ScheduledNotificationManager } from './sessions/scheduled/scheduledNotifications';
-import { LocalAudioSourceManager } from './media/audioSources';
-import { LevelMeter } from './media/levelMeter';
-import { SignalingClient } from './media/signaling';
+import { LocalAudioSourceManager } from './media/audio/audioSources';
+import { LevelMeter } from './media/audio/levelMeter';
+import { SignalingClient } from './media/remote/signaling';
 import { AuthManager } from './auth/auth';
-import { WebRtcSession } from './media/webrtc';
-import { presenter } from './media/presenter';
+import { WebRtcSession } from './media/remote/webrtc';
+import { presenter } from './media/video/presenter';
 import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor } from './core/htmlSecurity';
 import { initActivityHistory, renderProjectActivities } from './sessions/call/activity';
 import { initSessionChat, setSessionChatOpen, setOnChatOpenCallback } from './sessions/call/chat';
-import { stopRemoteVoiceBridge } from './media/remoteVoiceBridge';
+import { stopRemoteVoiceBridge } from './media/remote/remoteVoiceBridge';
 import { logger } from './core/logger';
-import { type StudioMixerChannel } from './media/studioMixerLogic';
-import { hydrateStudioMixerEqPersistence } from './media/studioMixerStorage';
-import { initStudioMixerPopoversAndControls } from './media/studioMixerUi';
-import { createStudioMixerController } from './media/studioMixerController';
+import { type StudioMixerChannel } from './media/mixer/studioMixerLogic';
+import { hydrateStudioMixerEqPersistence } from './media/mixer/studioMixerStorage';
+import { initStudioMixerPopoversAndControls } from './media/mixer/studioMixerUi';
+import { createStudioMixerController } from './media/mixer/studioMixerController';
 import { initPresenterCoordinationController } from './sessions/call/presenterCoordinationController';
-import { initMediaHardwareControlsController } from './media/mediaHardwareControlsController';
+import { initMediaHardwareControlsController } from './media/devices/mediaHardwareControlsController';
 import { initCallSignalingListenersController } from './sessions/call/callSignalingListenersController';
 import {
   createRemoteAudioGraphController
-} from './media/remoteAudioGraphController';
+} from './media/remote/remoteAudioGraphController';
 import {
   readPreferences,
   savePreferences as persistPreferences,

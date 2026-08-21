@@ -1,5 +1,5 @@
 import type { PerformanceMode } from '@jameet/shared';
-import type { Preferences } from '../core/preferences';
+import type { Preferences } from '../../core/preferences';
 
 export function getMeterInterval(performanceMode: PerformanceMode): number {
   return performanceMode === 'low' ? 125 : performanceMode === 'quality' ? 40 : 66;

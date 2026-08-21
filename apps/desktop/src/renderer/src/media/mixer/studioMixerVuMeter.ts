@@ -1,6 +1,6 @@
 import { formatPeakDbText } from './studioMixerFaderMath';
 import type { StudioMixerChannel } from './studioMixerLogic';
-import type { VoiceInputConfig } from '../core/preferences';
+import type { VoiceInputConfig } from '../../core/preferences';
 
 const timeDomainBuffer = new Float32Array(256);
 

@@ -1,5 +1,5 @@
-import { $ } from '../core/dom';
-import { channelEqDspRegistry } from './channelEq';
+import { $ } from '../../core/dom';
+import { channelEqDspRegistry } from '../audio/channelEq';
 import {
   type StudioMixerChannel,
   computeMixerRouting
@@ -8,7 +8,7 @@ import {
   loadSavedStudioMixerConfig,
   saveStudioMixerConfig as saveStudioMixerConfigStorage
 } from './studioMixerStorage';
-import { getStereoBalanceGains } from './remoteAudioGraphController';
+import { getStereoBalanceGains } from '../remote/remoteAudioGraphController';
 import {
   startMixerVuAnimation as startMixerVuAnimationHelper,
   stopMixerVuAnimation as stopMixerVuAnimationHelper
@@ -16,8 +16,8 @@ import {
 import {
   renderStudioMixer as renderStudioMixerHelper
 } from './studioMixerUi';
-import type { Preferences } from '../core/preferences';
-import type { LocalAudioSourceManager } from './audioSources';
+import type { Preferences } from '../../core/preferences';
+import type { LocalAudioSourceManager } from '../audio/audioSources';
 
 export interface StudioMixerControllerContext {
   getChannels: () => StudioMixerChannel[];

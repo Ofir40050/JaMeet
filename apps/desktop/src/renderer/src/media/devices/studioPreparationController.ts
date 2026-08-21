@@ -1,9 +1,9 @@
 import { enumerateAndPopulateDevices } from './deviceEnumerationController';
-import { prepareStudioDomain } from '../sessions/setup/studioPreparationDomainController';
-import { renderAudioLimitations as renderAudioLimitationsUi } from './audioLimitationsUi';
+import { prepareStudioDomain } from '../../sessions/setup/studioPreparationDomainController';
+import { renderAudioLimitations as renderAudioLimitationsUi } from '../audio/audioLimitationsUi';
 import type { AudioMode, Preferences } from '@jameet/shared';
 import type { HardwareAudioDeviceInfo } from './hardwareDeviceUtils';
-import type { PendingAction } from '../sessions/setup/studioPreparationController';
+import type { PendingAction } from '../../sessions/setup/studioPreparationController';
 
 export interface StudioPreparationContext {
   getPreferences: () => Preferences;

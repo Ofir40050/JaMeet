@@ -1,5 +1,5 @@
-import { logger } from '../core/logger';
-import { getChannelEqConfig, setChannelEqConfig } from './channelEq';
+import { logger } from '../../core/logger';
+import { getChannelEqConfig, setChannelEqConfig } from '../audio/channelEq';
 import {
   type PersistentStudioMixerMap,
   type StudioMixerChannel,

@@ -1,6 +1,6 @@
 import type { AudioMode } from '@jameet/shared';
 import { $, setMessage } from '../../core/dom';
-import { deviceError } from '../../media/deviceError';
+import { deviceError } from '../../media/devices/deviceError';
 
 export interface CallToolbarControllerOptions {
   onToggleMute: () => void;

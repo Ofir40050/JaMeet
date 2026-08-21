@@ -1,4 +1,4 @@
-import type { ChannelEqConfig } from './channelEq';
+import type { ChannelEqConfig } from '../audio/channelEq';
 
 export interface StudioMixerChannel {
   id: string;

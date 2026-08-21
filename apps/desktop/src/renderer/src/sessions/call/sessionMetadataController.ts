@@ -4,7 +4,7 @@ import type {
   PerformanceMode,
   VideoQuality
 } from '@jameet/shared';
-import { performanceVideoQuality } from '../../media/videoQuality';
+import { performanceVideoQuality } from '../../media/video/videoQuality';
 
 export interface SessionMetadataOptions {
   getAudioSources: () => AudioSourceMetadata[];

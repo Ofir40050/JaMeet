@@ -1,6 +1,6 @@
 import { icons } from '../../core/icons';
 import { escapeHtml } from '../../core/htmlSecurity';
-import { deviceError } from '../../media/deviceError';
+import { deviceError } from '../../media/devices/deviceError';
 
 export interface ScreenPickerControllerOptions {
   hasScreenTrack: () => boolean;

@@ -1,6 +1,6 @@
 import { $ } from '../../core/dom';
-import { presenter } from '../../media/presenter';
-import { deviceError } from '../../media/deviceError';
+import { presenter } from '../../media/video/presenter';
+import { deviceError } from '../../media/devices/deviceError';
 import { updateScreenSharingUi } from './screenSharingUi';
 import { showScreenPickerUi } from './screenPickerController';
 import type { MediaMetadata } from '@jameet/shared';

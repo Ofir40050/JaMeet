@@ -1,10 +1,10 @@
-import { $ } from '../core/dom';
-import type { VoiceInputConfig } from '../core/preferences';
+import { $ } from '../../core/dom';
+import type { VoiceInputConfig } from '../../core/preferences';
 import {
   channelEqDspRegistry,
   openChannelEqPlugin,
   removeChannelEqConfig
-} from './channelEq';
+} from '../audio/channelEq';
 import {
   dbToFaderTopPercent,
   dbToGain,

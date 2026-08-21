@@ -1,4 +1,4 @@
-import type { Preferences, VoiceInputConfig } from '../core/preferences';
+import type { Preferences, VoiceInputConfig } from '../../core/preferences';
 import type { VideoQuality, PerformanceMode } from '@jameet/shared';
 import { deviceError } from './deviceError';
 import { getCachedRunningApps } from './runningApplicationsController';

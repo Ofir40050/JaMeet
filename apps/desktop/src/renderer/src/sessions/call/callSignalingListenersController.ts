@@ -1,9 +1,9 @@
 import { $, setText } from '../../core/dom';
-import type { SignalingClient } from '../../media/signaling';
+import type { SignalingClient } from '../../media/remote/signaling';
 import type { MediaMetadata, ParticipantIdentity } from '@jameet/shared';
-import type { WebRtcSession } from '../../media/webrtc';
-import type { LocalAudioSourceManager } from '../../media/audioSources';
-import type { LevelMeter } from '../../media/levelMeter';
+import type { WebRtcSession } from '../../media/remote/webrtc';
+import type { LocalAudioSourceManager } from '../../media/audio/audioSources';
+import type { LevelMeter } from '../../media/audio/levelMeter';
 import type { AuthManager } from '../../auth/auth';
 
 export interface CallSignalingListenersContext {

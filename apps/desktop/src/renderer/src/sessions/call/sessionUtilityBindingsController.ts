@@ -1,5 +1,5 @@
 import { $, setText, setMessage } from '../../core/dom';
-import { deviceError } from '../../media/deviceError';
+import { deviceError } from '../../media/devices/deviceError';
 
 export interface SessionUtilityBindingsControllerOptions {
   isRemoteMuted: () => boolean;

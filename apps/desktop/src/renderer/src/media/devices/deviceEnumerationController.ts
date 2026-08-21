@@ -1,5 +1,5 @@
 import type { AudioMode, PerformanceMode, VideoQuality } from '@jameet/shared';
-import type { Preferences } from '../core/preferences';
+import type { Preferences } from '../../core/preferences';
 import {
   type HardwareAudioDeviceInfo,
   findHardwareDevice,

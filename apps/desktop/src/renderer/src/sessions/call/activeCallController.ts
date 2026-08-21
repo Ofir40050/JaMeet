@@ -1,6 +1,6 @@
 import { $, setText } from '../../core/dom';
 import { logger } from '../../core/logger';
-import { deviceError } from '../../media/deviceError';
+import { deviceError } from '../../media/devices/deviceError';
 import { handleRemoteMediaUi } from './remoteMediaUiController';
 import { effectiveVideoQuality } from './sessionMetadataController';
 import { updateLockUi as updateLockUiHelper } from './sessionLockUi';

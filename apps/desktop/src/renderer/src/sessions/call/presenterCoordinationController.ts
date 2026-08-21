@@ -1,6 +1,6 @@
 import { $ } from '../../core/dom';
-import { presenter } from '../../media/presenter';
-import { deviceError } from '../../media/deviceError';
+import { presenter } from '../../media/video/presenter';
+import { deviceError } from '../../media/devices/deviceError';
 import type { AudioMode, MediaMetadata } from '@jameet/shared';
 import type { Preferences } from '../../core/preferences';
 import type { SettingsSection } from '../../auth/settings/settingsUi';

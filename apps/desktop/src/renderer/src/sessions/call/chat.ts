@@ -1,5 +1,5 @@
 import type { SessionChatMessage } from '@jameet/shared';
-import type { SignalingClient } from '../../media/signaling';
+import type { SignalingClient } from '../../media/remote/signaling';
 
 let sessionChatOpen = false;
 let unreadChatCount = 0;

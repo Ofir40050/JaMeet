@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { MediaMetadata, MeetingAck, SessionChatMessage, UpdateProjectWorkspaceRequest, UpdateProjectWorkspaceResponse } from '@jameet/shared';
-import { logger } from '../core/logger';
+import { logger } from '../../core/logger';
 
 type Listener = (...args: any[]) => void;
 
