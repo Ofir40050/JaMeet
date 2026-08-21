@@ -66,7 +66,7 @@ import { updateAppIconBadge } from './media/devices/runningApplicationsControlle
 import { type HardwareAudioDeviceInfo } from './media/devices/hardwareDeviceUtils';
 import { getMeterInterval, getEffectiveMusicBitrate } from './media/devices/mediaPreferenceController';
 import { bindDeviceSelect } from './media/devices/deviceChangeController';
-import { initAuthDomainController } from './auth/authDomainController';
+import { initAuthDomainController } from './auth/login/authDomainController';
 import { createScreenSharingController } from './sessions/call/controls/screenSharingController';
 import { createVoiceInputsUiController } from './sessions/setup/voiceInputsUiController';
 import { createLocalAudioCaptureController } from './media/audio/sources/localAudioCaptureController';
@@ -103,7 +103,7 @@ import {
   openAuthView,
   openSettings,
   getLastActiveViewBeforeSettings
-} from './auth/authNavigationController';
+} from './auth/login/authNavigationController';
 import {
   initParticipantIdentityUi,
   updateParticipantIdentityUi
@@ -169,12 +169,12 @@ import {
 import {
   initAuthStateUiController,
   updateAuthUi
-} from './auth/authStateUiController';
+} from './auth/login/authStateUiController';
 import {
   getPendingJoinCode,
   setPendingJoinCode,
   clearPendingJoinCode
-} from './auth/guestJoinController';
+} from './auth/guest/guestJoinController';
 import {
   views,
   showView,
@@ -213,7 +213,7 @@ import {
 } from './auth/profile/profileUiController';
 import {
   initAuthUiController
-} from './auth/authUiController';
+} from './auth/login/authUiController';
 import {
   initProjectSessionsController
 } from './projects/sessions/projectSessionsController';
@@ -282,7 +282,7 @@ import { ScheduledNotificationManager } from './sessions/scheduled/scheduledNoti
 import { LocalAudioSourceManager } from './media/audio/sources/audioSources';
 import { LevelMeter } from './media/audio/meter/levelMeter';
 import { SignalingClient } from './media/remote/signaling';
-import { AuthManager } from './auth/auth';
+import { AuthManager } from './auth/login/auth';
 import { WebRtcSession } from './media/remote/webrtc';
 import { presenter } from './media/video/presenter';
 import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor } from './core/htmlSecurity';

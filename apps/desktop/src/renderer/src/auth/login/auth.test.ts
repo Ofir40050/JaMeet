@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { AuthManager } from './auth';
-import { logger } from '../core/logger';
+import { logger } from '../../core/logger';
 
 class MockLocalStorage {
   private store = new Map<string, string>();

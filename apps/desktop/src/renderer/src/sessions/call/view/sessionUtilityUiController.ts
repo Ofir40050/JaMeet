@@ -1,5 +1,5 @@
 import { initCallShortcutsUi } from '../controls/callShortcutsUi';
-import { initGuestJoinController } from '../../../auth/guestJoinController';
+import { initGuestJoinController } from '../../../auth/guest/guestJoinController';
 
 export interface SessionUtilityUiControllerOptions {
   onOpenSignIn: () => void;

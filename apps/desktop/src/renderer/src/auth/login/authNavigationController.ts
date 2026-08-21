@@ -1,7 +1,7 @@
 import type { UserProfile } from '@jameet/shared';
-import { $ } from '../core/dom';
+import { $ } from '../../core/dom';
 import { switchAuthViewTab } from './authUi';
-import { switchSettingsSection, type SettingsSection } from './settings/settingsUi';
+import { switchSettingsSection, type SettingsSection } from '../settings/settingsUi';
 
 export interface AuthNavigationOptions {
   showView: (view: string) => void;

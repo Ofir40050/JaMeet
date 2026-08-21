@@ -1,7 +1,7 @@
 import type { UserProfile } from '@jameet/shared';
-import { $, setText } from '../core/dom';
-import { icons } from '../core/icons';
-import { safeAvatarColor } from '../core/htmlSecurity';
+import { $, setText } from '../../core/dom';
+import { icons } from '../../core/icons';
+import { safeAvatarColor } from '../../core/htmlSecurity';
 import {
   applyAvatarToElement,
   highlightActiveSwatch,
@@ -11,7 +11,7 @@ import {
   getEditingAvatarUrl,
   switchProfileSubtab,
   updateProfileLivePreview
-} from './profile/profileUi';
+} from '../profile/profileUi';
 
 export interface AuthStateUiControllerOptions {
   onLoadScheduledSessions: () => Promise<void> | void;

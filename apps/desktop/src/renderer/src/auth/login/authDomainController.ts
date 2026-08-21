@@ -3,9 +3,9 @@ import type { UpdateProfileRequest } from '@jameet/shared';
 import {
   initProfileController,
   handleSaveProfile
-} from './profile/profileController';
-import { initProfileUiController } from './profile/profileUiController';
-import { initSettingsUi } from './settings/settingsUi';
+} from '../profile/profileController';
+import { initProfileUiController } from '../profile/profileUiController';
+import { initSettingsUi } from '../settings/settingsUi';
 import {
   initAuthController,
   handleLogin,

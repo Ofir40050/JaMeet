@@ -1,5 +1,5 @@
 import type { UserProfile, RegisterRequest, LoginRequest, UpdateProfileRequest, SessionHistoryItem } from '@jameet/shared';
-import { logger } from '../core/logger';
+import { logger } from '../../core/logger';
 
 export type AuthStateListener = (user: UserProfile | null, guestName?: string) => void;
 

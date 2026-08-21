@@ -1,5 +1,5 @@
-import { $ } from '../core/dom';
-import { icons } from '../core/icons';
+import { $ } from '../../core/dom';
+import { icons } from '../../core/icons';
 
 export interface GuestJoinUiOptions {
   onConfirmGuest?: (name: string) => Promise<void> | void;

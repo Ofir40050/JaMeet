@@ -4,7 +4,7 @@ import type { MediaMetadata, ParticipantIdentity } from '@jameet/shared';
 import type { WebRtcSession } from '../../../media/remote/webrtc';
 import type { LocalAudioSourceManager } from '../../../media/audio/sources/audioSources';
 import type { LevelMeter } from '../../../media/audio/meter/levelMeter';
-import type { AuthManager } from '../../../auth/auth';
+import type { AuthManager } from '../../../auth/login/auth';
 
 export interface CallSignalingListenersContext {
   signaling: SignalingClient;
