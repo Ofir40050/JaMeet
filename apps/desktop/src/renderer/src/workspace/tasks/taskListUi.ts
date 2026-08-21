@@ -1,9 +1,9 @@
 import type { ProjectTaskStage, ProjectTaskStatus } from "@jameet/shared";
 import { escapeHtml } from "../../core/htmlSecurity";
 import { SONG_ICONS, SONG_COLORS, STAGE_CONFIG } from "./tasksConstants";
-import { formatShortDate } from "./tasksFormatting";
-import { showTaskContextMenu } from "./taskContextMenu";
-import { openTaskInspector } from "./taskInspector";
+import { formatShortDate } from "./taskFormatters";
+import { showTaskContextMenu } from "./taskContextMenuUi";
+import { openTaskInspector } from "./taskInspectorUi";
 import { tasksState } from "./tasksUiState";
 import type { ReadonlyTaskItem, ReadonlySongItem } from "./tasksTypes";
 

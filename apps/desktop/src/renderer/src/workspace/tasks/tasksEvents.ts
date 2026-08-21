@@ -1,6 +1,6 @@
 import type { ProjectTaskStage } from "@jameet/shared";
 import { $ } from "../../core/dom";
-import { renderTasksWorkspace } from "./tasksWorkspaceRenderer";
+import { renderTasksWorkspace } from "./tasksWorkspaceUi";
 import { tasksState } from "./tasksUiState";
 
 export function bindTasksEventListeners(): void {

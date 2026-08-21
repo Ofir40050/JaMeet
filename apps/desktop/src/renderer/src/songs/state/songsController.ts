@@ -3,7 +3,7 @@ import {
   initSongsUi,
   renderProjectOverviewSongsList,
   renderProjectSongsSelector
-} from '../studio/songsUi';
+} from '../studio/songSelectorUi';
 import {
   openSongStudio as openSongStudioUiView,
   closeSongStudio,

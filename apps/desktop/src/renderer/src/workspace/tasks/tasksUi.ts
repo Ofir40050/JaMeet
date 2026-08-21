@@ -1,6 +1,6 @@
 import { tasksState } from "./tasksUiState";
 import { bindTasksEventListeners } from "./tasksEvents";
-import { renderTasksWorkspace } from "./tasksWorkspaceRenderer";
+import { renderTasksWorkspace } from "./tasksWorkspaceUi";
 import type { TasksUiOptions } from "./tasksTypes";
 
 // ========================================================
@@ -23,9 +23,9 @@ export {
   setTasksStatus,
   getTasksStatus,
   applyTasksPermissions
-} from "./tasksFormatting";
+} from "./taskFormatters";
 
-export { renderTasksWorkspace } from "./tasksWorkspaceRenderer";
+export { renderTasksWorkspace } from "./tasksWorkspaceUi";
 
 // ========================================================
 // INITIALIZATION

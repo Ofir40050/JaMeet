@@ -2,8 +2,8 @@ import type { ProjectTaskStatus } from "@jameet/shared";
 import { $, setText } from "../../core/dom";
 import { escapeHtml } from "../../core/htmlSecurity";
 import { STAGE_CONFIG } from "./tasksConstants";
-import { formatShortDate } from "./tasksFormatting";
-import { showTaskContextMenu } from "./taskContextMenu";
+import { formatShortDate } from "./taskFormatters";
+import { showTaskContextMenu } from "./taskContextMenuUi";
 import { tasksState } from "./tasksUiState";
 import type { ReadonlyTaskItem, ReadonlySongItem } from "./tasksTypes";
 

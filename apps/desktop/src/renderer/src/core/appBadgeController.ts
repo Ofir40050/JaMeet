@@ -1,4 +1,4 @@
-import type { Preferences } from '../../core/preferences';
+import type { Preferences } from './preferences';
 
 export interface RunningAudioApp {
   pid: number;

@@ -7,7 +7,7 @@ import {
   getSongPendingDeletion,
   clearSongPendingDeletion
 } from './songDeleteController';
-import { computeSongDeletion } from './songDeletion';
+import { computeSongDeletion } from './songDeleteLogic';
 
 export interface ProjectSongDeleteControllerOptions {
   getProject: () => Project | null | undefined;

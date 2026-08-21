@@ -1,7 +1,7 @@
 import type { Preferences, VoiceInputConfig } from '../../core/preferences';
 import type { VideoQuality, PerformanceMode } from '@jameet/shared';
 import { deviceError } from './deviceError';
-import { getCachedRunningApps } from './runningApplicationsController';
+import { getCachedRunningApps } from '../../core/appBadgeController';
 
 export interface MediaSettingsBindingsOptions {
   getPreferences: () => Preferences;

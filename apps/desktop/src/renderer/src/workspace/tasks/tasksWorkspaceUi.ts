@@ -1,7 +1,7 @@
 import { $, setText } from "../../core/dom";
 import { escapeHtml } from "../../core/htmlSecurity";
-import { renderTasksIntoList } from "./taskListRenderer";
-import { renderBoard } from "./taskBoardRenderer";
+import { renderTasksIntoList } from "./taskListUi";
+import { renderBoard } from "./taskBoardUi";
 import { tasksState } from "./tasksUiState";
 
 export function renderTasksWorkspace(): void {
