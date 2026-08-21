@@ -269,6 +269,9 @@ import {
   createActiveCallController
 } from './sessions/call/activeCallController';
 import {
+  createCallTerminationController
+} from './sessions/call/callTerminationController';
+import {
   initProfileUiController
 } from './auth/profile/profileUiController';
 import {
@@ -1684,82 +1687,53 @@ const {
 });
 
 
-async function leaveSession(endedMessage?: string): Promise<void> {
-  stopSessionTimer();
-  logger.info('session_leave', 'Left session', { code: currentCode }, { sessionCode: currentCode });
-  logger.setSessionContext(undefined);
-  if (inCall) signaling.leave();
-  inCall = false;
-  rtc.dispose();
-  for (const m of voiceMeters.values()) await m.stop();
-  voiceMeters.clear();
-  activeMicLevels.clear();
-  activeMicPeaks.clear();
-  audio.dispose();
-  const sharing = screenTrack;
-  screenTrack = undefined;
-  if (sharing) { sharing.onended = null; sharing.stop(); }
-  await presenter.stopNativeCapture();
-  await presenter.exitPresenterMode();
-  videoTrack?.stop();
-  videoTrack = undefined;
-  await musicMeter.stop();
-
-  await cleanupRemoteAudioGraph();
-
-  lastLocalVoiceDb = -60;
-  lastRemoteVoiceDb = -60;
-  lastLocalMusicDb = -60;
-  lastLocalMusicPeakDb = -60;
-  checkActiveSpeaker();
-
-  $('remote-tile')?.classList.remove('is-speaking');
-  $('local-tile')?.classList.remove('is-speaking');
-  closeSessionViewMenu();
-  $('voice-in-indicator')?.classList.remove('active');
-  $('music-in-indicator')?.classList.remove('active');
-  remoteMedia = undefined;
-  currentCode = '';
-
-  // Reset Remote Mute state
-  remoteMuted = false;
-  setText('remote-mute-button', 'Mute Remote');
-
-  // Reset Studio Mixer Mute & Solo
-  studioMixerChannels.forEach((ch) => {
-    ch.muted = false;
-    ch.soloed = false;
-  });
-  if (studioMixerOpen) {
-    renderStudioMixer();
-  }
-  const returnProjectId = sessionProjectId || activeProjectId;
-  peerIdentity = null;
-  peerParticipantId = null;
-  sessionProjectId = undefined;
-  $('session-workspace-drawer')?.classList.add('hidden');
-  $('in-call-audio-modal')?.classList.add('hidden');
-  $('toggle-session-workspace')?.classList.remove('active');
-  $('toggle-session-workspace')?.classList.add('hidden');
-  hideWaitingBanner();
-  setSessionWorkspaceOpen(false);
-  resetChatUi();
-  setIsSessionLocked(false);
-  updateLockUi();
-  if (endedMessage) {
-    setMessage('home-error', endedMessage, endedMessage.toLowerCase().includes('ended') || endedMessage.toLowerCase().includes('left'));
-  }
-  if (returnProjectId && auth.getUser() && auth.getToken()) {
-    void openProjectView(returnProjectId);
-  } else {
-    activeProjectId = undefined;
-    activeProject = undefined;
-    showView('home-view');
-    void loadProjects();
-  }
-  if (!audioOnly) void replaceCamera(prefs.cameraId).catch(() => {});
-  void syncAllVoiceMics().catch(() => {});
-}
+const { leaveSession } = createCallTerminationController({
+  onStopSessionTimer: () => stopSessionTimer(),
+  getCurrentCode: () => currentCode,
+  setCurrentCode: (code) => { currentCode = code; },
+  isInCall: () => inCall,
+  setInCall: (inCallState) => { inCall = inCallState; },
+  onSignalingLeave: () => signaling.leave(),
+  onRtcDispose: () => rtc.dispose(),
+  getVoiceMeters: () => voiceMeters,
+  getActiveMicLevels: () => activeMicLevels,
+  getActiveMicPeaks: () => activeMicPeaks,
+  getAudio: () => audio,
+  getScreenTrack: () => screenTrack,
+  setScreenTrack: (track) => { screenTrack = track; },
+  getVideoTrack: () => videoTrack,
+  setVideoTrack: (track) => { videoTrack = track; },
+  getMusicMeter: () => musicMeter,
+  onCleanupRemoteAudioGraph: () => cleanupRemoteAudioGraph(),
+  onSetLastLocalVoiceDb: (db) => { lastLocalVoiceDb = db; },
+  onSetLastRemoteVoiceDb: (db) => { lastRemoteVoiceDb = db; },
+  onSetLastLocalMusicDb: (db) => { lastLocalMusicDb = db; },
+  onSetLastLocalMusicPeakDb: (db) => { lastLocalMusicPeakDb = db; },
+  onCheckActiveSpeaker: () => checkActiveSpeaker(),
+  setRemoteMedia: (media) => { remoteMedia = media; },
+  setRemoteMuted: (muted) => { remoteMuted = muted; },
+  getStudioMixerChannels: () => studioMixerChannels,
+  isStudioMixerOpen: () => studioMixerOpen,
+  onRenderStudioMixer: () => renderStudioMixer(),
+  getSessionProjectId: () => sessionProjectId,
+  setSessionProjectId: (id) => { sessionProjectId = id; },
+  getActiveProjectId: () => activeProjectId,
+  setActiveProjectId: (id) => { activeProjectId = id; },
+  setActiveProject: (p) => { activeProject = p; },
+  setPeerIdentity: (identity) => { peerIdentity = identity; },
+  setPeerParticipantId: (id) => { peerParticipantId = id; },
+  onSetIsSessionLocked: (locked) => setIsSessionLocked(locked),
+  onUpdateLockUi: () => updateLockUi(),
+  getAuthUser: () => auth.getUser(),
+  getAuthToken: () => auth.getToken(),
+  onOpenProjectView: (projectId) => openProjectView(projectId),
+  onShowView: (view) => showView(view as any),
+  onLoadProjects: () => loadProjects(),
+  isAudioOnly: () => audioOnly,
+  getCameraId: () => prefs.cameraId,
+  onReplaceCamera: (cameraId) => replaceCamera(cameraId),
+  onSyncAllVoiceMics: () => syncAllVoiceMics()
+});
 
 function bindSelect(id: string, handler: (value: string) => Promise<void>): void {
   bindDeviceSelect(id, handler, {
