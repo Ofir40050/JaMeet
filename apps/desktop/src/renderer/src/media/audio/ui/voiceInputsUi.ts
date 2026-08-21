@@ -35,7 +35,7 @@ export interface VoiceInputsUiContext {
   onSetMessage: (id: string, text: string, isError?: boolean) => void;
 }
 
-export function createVoiceInputsUiController(ctx: VoiceInputsUiContext) {
+export function createVoiceInputsUi(ctx: VoiceInputsUiContext) {
   function getOrCreateVoiceMeter(id: number): LevelMeter {
     const voiceMeters = ctx.getVoiceMeters();
     let m = voiceMeters.get(id);
@@ -330,3 +330,5 @@ export function createVoiceInputsUiController(ctx: VoiceInputsUiContext) {
     renderVoiceInputControls
   };
 }
+
+export const createVoiceInputsUiController = createVoiceInputsUi;
