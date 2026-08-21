@@ -1,5 +1,5 @@
 import type { MediaMetadata } from '@jameet/shared';
-import { buildSessionMetadata, buildCurrentStream } from './sessionMetadataController';
+import { buildSessionMetadata, buildCurrentStream } from './sessionMetadata';
 import { checkActiveSpeaker as checkActiveSpeakerImpl } from './activeSpeakerController';
 import type { ParticipantViewMode } from './sessionView';
 

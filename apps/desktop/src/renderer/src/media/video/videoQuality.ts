@@ -33,6 +33,10 @@ export function performanceVideoQuality(selected: VideoQuality, mode: Performanc
   return lowerQuality(selected, maxAllowed[mode]);
 }
 
+export function effectiveVideoQuality(selected: VideoQuality, mode: PerformanceMode = 'balanced'): VideoQuality {
+  return performanceVideoQuality(selected, mode);
+}
+
 export function cameraConstraints(quality: VideoQuality, deviceId?: string): MediaTrackConstraints {
   if (quality === 'low') {
     return {

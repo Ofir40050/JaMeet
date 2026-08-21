@@ -1,5 +1,5 @@
-import type { Preferences } from '../../../core/preferences';
-import { initSessionStats } from './sessionStats';
+import type { Preferences } from '@jameet/shared';
+import { initSessionStats } from './sessionStatsUi';
 
 export interface SessionStatsControllerOptions {
   getStatsReport: () => Promise<RTCStatsReport | undefined>;

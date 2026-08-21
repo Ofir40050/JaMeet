@@ -4,7 +4,9 @@ import type {
   PerformanceMode,
   VideoQuality
 } from '@jameet/shared';
-import { performanceVideoQuality } from '../../../media/video/videoQuality';
+import { performanceVideoQuality, effectiveVideoQuality } from '../../../media/video/videoQuality';
+
+export { effectiveVideoQuality };
 
 export interface SessionMetadataOptions {
   getAudioSources: () => AudioSourceMetadata[];
@@ -14,13 +16,6 @@ export interface SessionMetadataOptions {
   hasScreenTrack: () => boolean;
   isAudioOnly: () => boolean;
   getPerformanceMode: () => PerformanceMode;
-}
-
-export function effectiveVideoQuality(
-  selected: VideoQuality,
-  performanceMode: PerformanceMode
-): VideoQuality {
-  return performanceVideoQuality(selected, performanceMode);
 }
 
 export function buildSessionMetadata(options: SessionMetadataOptions): MediaMetadata {
