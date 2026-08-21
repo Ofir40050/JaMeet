@@ -117,6 +117,7 @@ import { bindDeviceSelect } from './media/deviceChangeController';
 import { initAuthDomainController } from './auth/authDomainController';
 import { createScreenSharingController } from './sessions/call/screenSharingController';
 import { createVoiceInputsUiController } from './media/voiceInputsUiController';
+import { createMediaStreamControlsController } from './media/mediaStreamControlsController';
 import { updateCameraButtonUi } from './sessions/call/cameraUi';
 import { testSpeakers as testSpeakersController, testMicrophone as testMicrophoneController, getMicrophonePlayback } from './media/deviceTestController';
 import { initMediaSettingsBindings } from './media/mediaSettingsBindingsController';
@@ -1981,127 +1982,52 @@ function bindSelect(id: string, handler: (value: string) => Promise<void>): void
   });
 }
 
-async function changeCameraQuality(quality: VideoQuality): Promise<void> {
-  const previous = prefs.cameraQuality;
-  prefs.cameraQuality = quality;
-  savePreferences();
-  try {
-    if (inCall) await rtc.videoQualityChanged(effectiveVideoQuality(quality));
-    if (!screenTrack) await replaceCamera(prefs.cameraId);
-    await enumerateAndPopulate();
-    setMessage(inCall ? 'device-dialog-status' : 'setup-status', `Camera quality set to ${quality}.`);
-  } catch (error) {
-    prefs.cameraQuality = previous;
-    savePreferences();
-    if (inCall) await rtc.videoQualityChanged(effectiveVideoQuality(previous));
-    await enumerateAndPopulate();
-    throw error;
-  }
-}
-
-async function changeReceiveQuality(quality: VideoQuality): Promise<void> {
-  prefs.receiveQuality = quality;
-  savePreferences();
-  if (inCall) signaling.updateMedia(currentCode, metadata());
-  await enumerateAndPopulate();
-  setMessage(inCall ? 'device-dialog-status' : 'setup-status', `Received video preference set to ${quality}.`);
-}
-
-async function changePerformanceMode(mode: PerformanceMode): Promise<void> {
-  prefs.performanceMode = mode;
-  savePreferences();
-  if (inCall) await rtc.videoQualityChanged(effectiveVideoQuality(prefs.cameraQuality));
-  if (inCall) await rtc.musicQualityChanged(effectiveMusicBitrate());
-  if (!screenTrack && videoTrack) await replaceCamera(prefs.cameraId);
-  await syncAllVoiceMics(prefs.mode);
-  if (inCall) signaling.updateMedia(currentCode, metadata());
-  await enumerateAndPopulate();
-}
-
-async function setAudioOnly(enabled: boolean): Promise<void> {
-  audioOnly = enabled;
-  prefs.audioOnly = enabled;
-  savePreferences();
-  if (enabled) {
-    cameraEnabled = false;
-    videoTrack?.stop();
-    videoTrack = undefined;
-    if (inCall && !screenTrack) await rtc.removeVideoTrack();
-  } else {
-    cameraEnabled = true;
-    if (!screenTrack) await replaceCamera(prefs.cameraId);
-  }
-  const audioBtn = $('audio-only-button');
-  if (audioBtn) audioBtn.textContent = enabled ? 'Enable Video' : 'Audio Only';
-  $('camera-button')?.classList.toggle('hidden', enabled);
-  updateCameraButtonState();
-  updateLocalPreviews();
-  if (inCall) signaling.updateMedia(currentCode, metadata());
-}
-
-function updateCameraButtonState(): void {
-  updateCameraButtonUi(cameraEnabled);
-}
-
-async function toggleCamera(): Promise<void> {
-  if (audioOnly) return;
-  if (cameraEnabled) {
-    cameraEnabled = false;
-    videoTrack?.stop();
-    videoTrack = undefined;
-    if (inCall && !screenTrack) await rtc.removeVideoTrack();
-  } else {
-    cameraEnabled = true;
-    if (screenTrack) {
-      videoTrack = await acquireVideo(prefs.cameraId);
-    } else {
-      await replaceCamera(prefs.cameraId);
-    }
-  }
-  updateCameraButtonState();
-  updateLocalPreviews();
-  if (inCall) signaling.updateMedia(currentCode, metadata());
-}
-
-async function applyAdvancedAudioSettings(): Promise<void> {
-  await syncAllVoiceMics(prefs.mode);
-  await replaceMusicInput();
-  await enumerateAndPopulate();
-}
-
-function updateHeadphoneWarning(): void {
-  const el1 = document.getElementById('music-warning');
-  if (el1) el1.classList.add('hidden');
-  const el2 = document.getElementById('call-warning');
-  if (el2) el2.classList.add('hidden');
-  const el3 = document.getElementById('in-call-music-warning');
-  if (el3) el3.classList.add('hidden');
-}
-
-async function fullscreenRemote(requireShare: boolean): Promise<void> {
-  if (requireShare && !remoteMedia?.sharingScreen) return;
-  const tile = $<HTMLVideoElement>('remote-video').closest<HTMLElement>('.video-tile');
-  if (tile && document.fullscreenElement !== tile) await tile.requestFullscreen();
-}
-
-
-
-
-async function switchAudioMode(mode: AudioMode): Promise<void> {
-  prefs.mode = mode;
-  savePreferences();
-  setModeRadios(mode);
-  updateCallMode();
-  updateMusicWarning();
-  try {
-    await syncAllVoiceMics(mode);
-    setMessage(inCall ? 'device-dialog-status' : 'setup-status', `Audio Profile: ${mode === 'music' ? 'Music Mode' : 'Talk Mode'}`);
-  } catch (error) {
-    logger.warn('mode_change_error', 'Failed to switch audio mode', { mode }, error);
-    setModeRadios(prefs.mode);
-    showSessionErrorModal(parseSessionError(error));
-  }
-}
+const {
+  changeCameraQuality,
+  changeReceiveQuality,
+  changePerformanceMode,
+  setAudioOnly,
+  updateCameraButtonState,
+  toggleCamera,
+  applyAdvancedAudioSettings,
+  updateHeadphoneWarning,
+  fullscreenRemote,
+  switchAudioMode,
+  toggleMute
+} = createMediaStreamControlsController({
+  getPreferences: () => prefs,
+  onSavePreferences: () => savePreferences(),
+  isInCall: () => inCall,
+  isAudioOnly: () => audioOnly,
+  setAudioOnlyState: (enabled) => { audioOnly = enabled; },
+  isCameraEnabled: () => cameraEnabled,
+  setCameraEnabledState: (enabled) => { cameraEnabled = enabled; },
+  isMuted: () => muted,
+  setMutedState: (val) => { muted = val; },
+  getVideoTrack: () => videoTrack,
+  setVideoTrack: (track) => { videoTrack = track; },
+  getScreenTrack: () => screenTrack,
+  getRemoteMedia: () => remoteMedia,
+  getCurrentCode: () => currentCode,
+  getMetadata: () => metadata(),
+  onReplaceCamera: (cameraId) => replaceCamera(cameraId),
+  onAcquireVideo: (cameraId) => acquireVideo(cameraId),
+  onSyncAllVoiceMics: (mode) => syncAllVoiceMics(mode),
+  onReplaceMusicInput: () => replaceMusicInput(),
+  onEnumerateAndPopulate: () => enumerateAndPopulate(),
+  onUpdateLocalPreviews: () => updateLocalPreviews(),
+  onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
+  onSyncMediaActiveState: () => syncMediaActiveState(),
+  onSetMessage: (id, text, isError) => setMessage(id, text, isError),
+  onVideoQualityChanged: (quality) => rtc.videoQualityChanged(quality),
+  onMusicQualityChanged: (bitrate) => rtc.musicQualityChanged(bitrate),
+  onRemoveRtcVideoTrack: () => rtc.removeVideoTrack(),
+  onSignalingUpdateMedia: (code, meta) => signaling.updateMedia(code, meta),
+  onSetModeRadios: (mode) => setModeRadios(mode),
+  onUpdateCallMode: () => updateCallMode(),
+  onUpdateMusicWarning: () => updateMusicWarning(),
+  onShowSessionError: (error) => showSessionErrorModal(parseSessionError(error))
+});
 
 bindSelect('camera-select', (value) => replaceCamera(value || undefined));
 bindSelect('call-camera-select', (value) => replaceCamera(value || undefined));
@@ -2142,22 +2068,6 @@ function syncMediaActiveState(): void {
 }
 setInterval(syncMediaActiveState, 500);
 
-function toggleMute(): void {
-  muted = !muted;
-  applyMixerAudioRouting();
-  const muteBtn = $('mute-button');
-  if (muteBtn) muteBtn.textContent = muted ? 'Unmute' : 'Mute';
-  const toggleMic = $('toggle-mic');
-  if (toggleMic) {
-    toggleMic.classList.toggle('active', !muted);
-    toggleMic.classList.toggle('muted', muted);
-    toggleMic.innerHTML = `<span class="tool-icon">${muted ? icons.micOff({ size: 18 }) : icons.mic({ size: 18 })}</span>`;
-    toggleMic.title = muted ? 'Unmute Microphone' : 'Mute Microphone';
-  }
-  if (muted) $('voice-in-indicator')?.classList.remove('active');
-  if (inCall) signaling.updateMedia(currentCode, metadata());
-  syncMediaActiveState();
-}
 
 initCallToolbarController({
   onToggleMute: () => toggleMute(),
