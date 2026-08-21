@@ -444,40 +444,10 @@ import {
   setChannelEqConfig,
   removeChannelEqConfig
 } from './media/channelEq';
-import {
-  type StudioMixerChannel,
-  type PersistentStudioMixerChannel,
-  type PersistentStudioMixerMap,
-  getLocalMicChannelId,
-  parseLocalMicId,
-  serializeStudioMixerConfig,
-  computeMixerRouting
-} from './media/studioMixerLogic';
-import {
-  loadSavedStudioMixerConfig,
-  hydrateStudioMixerEqPersistence,
-  saveStudioMixerConfig as saveStudioMixerConfigStorage
-} from './media/studioMixerStorage';
-import {
-  faderTopPercentToDb,
-  dbToFaderTopPercent,
-  dbToGain,
-  formatDbText,
-  formatPeakDbText,
-  volumeToDb,
-  getPanBackground,
-  panToReadout,
-  panToLabel,
-  getStereoPanGains
-} from './media/studioMixerFaderMath';
-import {
-  startMixerVuAnimation as startMixerVuAnimationHelper,
-  stopMixerVuAnimation as stopMixerVuAnimationHelper
-} from './media/studioMixerVuMeter';
-import {
-  renderStudioMixer as renderStudioMixerHelper,
-  initStudioMixerPopoversAndControls
-} from './media/studioMixerUi';
+import { type StudioMixerChannel } from './media/studioMixerLogic';
+import { hydrateStudioMixerEqPersistence } from './media/studioMixerStorage';
+import { initStudioMixerPopoversAndControls } from './media/studioMixerUi';
+import { createStudioMixerController } from './media/studioMixerController';
 import { initPresenterCoordinationController } from './sessions/call/presenterCoordinationController';
 import { initMediaHardwareControlsController } from './media/mediaHardwareControlsController';
 import { initCallSignalingListenersController } from './sessions/call/callSignalingListenersController';
@@ -2652,400 +2622,63 @@ initSessionChat({ getSessionCode: () => currentCode, signaling });
 // ========================================================
 // LOGIC PRO STYLE STUDIO MULTITRACK MIXER SUBSYSTEM
 // ========================================================
-function saveStudioMixerConfig(immediate = true): void {
-  saveStudioMixerConfigStorage(studioMixerChannels, immediate);
-}
-
 let studioMixerOpen = false;
 let studioMixerChannels: StudioMixerChannel[] = [];
 
-function syncMixerChannelsWithVoiceInputs(): void {
-  const savedMap = loadSavedStudioMixerConfig();
-  const enabledMics = (prefs.voiceInputs && prefs.voiceInputs.length > 0)
-    ? prefs.voiceInputs.filter((v) => v.enabled)
-    : [{ id: 1, name: 'Microphone 1', enabled: true, gain: 1, channelRoute: '1' }];
-
-  // Preserve existing in-memory channel settings (during active session runtime)
-  const existingMap = new Map<string, StudioMixerChannel>();
-  studioMixerChannels.forEach((ch) => existingMap.set(ch.id, ch));
-
-  const DEFAULT_APP_BLUE = '#3b82f6';
-  const MASTER_GOLD = '#f59e0b';
-
-  const newLocalMicChannels: StudioMixerChannel[] = enabledMics.map((mic) => {
-    const chId = mic.id === 1 ? 'you-mic' : `you-mic-${mic.id}`;
-    const existing = existingMap.get(chId) || (mic.id === 1 ? existingMap.get('you-mic-1') : undefined);
-    const saved = savedMap[chId] || (mic.id === 1 ? savedMap['you-mic-1'] : undefined);
-
-    const defaultName = mic.id === 1 ? 'Mic 1' : `Mic ${mic.id}`;
-    const name = existing?.name ?? saved?.name ?? defaultName;
-    const icon = existing?.icon ?? saved?.icon ?? 'mic';
-    const rawColor = existing?.color ?? saved?.color ?? DEFAULT_APP_BLUE;
-    const color = rawColor === MASTER_GOLD ? DEFAULT_APP_BLUE : rawColor;
-    const volume = mic.gain ?? 1.0;
-    const pan = existing?.pan ?? saved?.pan ?? 0;
-    const fx = existing?.fx ?? (saved?.fx ? [...saved.fx] : []);
-
-    return {
-      id: chId,
-      name,
-      icon,
-      color,
-      volume,
-      pan,
-      muted: existing?.muted ?? false,
-      soloed: existing?.soloed ?? false,
-      fx,
-      section: 'local'
-    };
-  });
-
-  // Local music stream
-  const existingMusic = existingMap.get('music-stream');
-  const savedMusic = savedMap['music-stream'];
-  const musicCh: StudioMixerChannel = {
-    id: 'music-stream',
-    name: existingMusic?.name ?? savedMusic?.name ?? 'Music',
-    icon: existingMusic?.icon ?? savedMusic?.icon ?? 'waves',
-    color: (existingMusic?.color ?? savedMusic?.color) === '#a855f7' ? DEFAULT_APP_BLUE : (existingMusic?.color ?? savedMusic?.color ?? DEFAULT_APP_BLUE),
-    volume: existingMusic?.volume ?? savedMusic?.volume ?? 1.0,
-    pan: existingMusic?.pan ?? savedMusic?.pan ?? 0,
-    muted: existingMusic?.muted ?? false,
-    soloed: existingMusic?.soloed ?? false,
-    fx: existingMusic?.fx ?? (savedMusic?.fx ? [...savedMusic.fx] : []),
-    section: 'local'
-  };
-
-  // Remote Section
-  const existingRemoteVoice = existingMap.get('remote-voice');
-  const savedRemoteVoice = savedMap['remote-voice'];
-  let remoteVoiceName = existingRemoteVoice?.name ?? savedRemoteVoice?.name ?? 'Vocal';
-  if (remoteVoiceName === 'Mic 1') remoteVoiceName = 'Vocal';
-  const remoteVoiceColor = (existingRemoteVoice?.color ?? savedRemoteVoice?.color) === '#22c55e'
-    ? DEFAULT_APP_BLUE
-    : (existingRemoteVoice?.color ?? savedRemoteVoice?.color ?? DEFAULT_APP_BLUE);
-
-  const remoteVoiceCh: StudioMixerChannel = {
-    id: 'remote-voice',
-    name: remoteVoiceName,
-    icon: existingRemoteVoice?.icon ?? savedRemoteVoice?.icon ?? 'mic',
-    color: remoteVoiceColor,
-    volume: existingRemoteVoice?.volume ?? savedRemoteVoice?.volume ?? 1.0,
-    pan: existingRemoteVoice?.pan ?? savedRemoteVoice?.pan ?? 0,
-    muted: existingRemoteVoice?.muted ?? false,
-    soloed: existingRemoteVoice?.soloed ?? false,
-    fx: existingRemoteVoice?.fx ?? (savedRemoteVoice?.fx ? [...savedRemoteVoice.fx] : []),
-    section: 'remote'
-  };
-
-  const existingRemoteMusic = existingMap.get('remote-music');
-  const savedRemoteMusic = savedMap['remote-music'];
-  const remoteMusicColor = (existingRemoteMusic?.color ?? savedRemoteMusic?.color) === '#06b6d4'
-    ? DEFAULT_APP_BLUE
-    : (existingRemoteMusic?.color ?? savedRemoteMusic?.color ?? DEFAULT_APP_BLUE);
-
-  const remoteMusicCh: StudioMixerChannel = {
-    id: 'remote-music',
-    name: existingRemoteMusic?.name ?? savedRemoteMusic?.name ?? 'Music',
-    icon: existingRemoteMusic?.icon ?? savedRemoteMusic?.icon ?? 'waves',
-    color: remoteMusicColor,
-    volume: existingRemoteMusic?.volume ?? savedRemoteMusic?.volume ?? 1.0,
-    pan: existingRemoteMusic?.pan ?? savedRemoteMusic?.pan ?? 0,
-    muted: existingRemoteMusic?.muted ?? false,
-    soloed: existingRemoteMusic?.soloed ?? false,
-    fx: existingRemoteMusic?.fx ?? (savedRemoteMusic?.fx ? [...savedRemoteMusic.fx] : []),
-    section: 'remote'
-  };
-
-  const existingMaster = existingMap.get('master-out');
-  const savedMaster = savedMap['master-out'];
-  let masterName = existingMaster?.name ?? savedMaster?.name ?? 'Monitor Master';
-  if (masterName === 'Master') masterName = 'Monitor Master';
-
-  const masterOutCh: StudioMixerChannel = {
-    id: 'master-out',
-    name: masterName,
-    icon: existingMaster?.icon ?? savedMaster?.icon ?? 'crown',
-    color: MASTER_GOLD,
-    volume: existingMaster?.volume ?? savedMaster?.volume ?? 1.0,
-    pan: 0,
-    muted: existingMaster?.muted ?? false,
-    soloed: false,
-    fx: [],
-    isMaster: true,
-    section: 'remote'
-  };
-
-  studioMixerChannels = [
-    ...newLocalMicChannels,
-    musicCh,
-    remoteVoiceCh,
-    remoteMusicCh,
-    masterOutCh
-  ];
-
-  if (studioMixerOpen) {
-    renderStudioMixer();
-    applyMixerAudioRouting();
-  }
-}
+const {
+  syncMixerChannelsWithVoiceInputs,
+  toggleStudioMixer,
+  applyMixerAudioRouting,
+  saveStudioMixerConfig,
+  renderStudioMixer,
+  startMixerVuAnimation,
+  stopMixerVuAnimation
+} = createStudioMixerController({
+  getChannels: () => studioMixerChannels,
+  setChannels: (channels) => { studioMixerChannels = channels; },
+  isStudioMixerOpen: () => studioMixerOpen,
+  setStudioMixerOpen: (open) => { studioMixerOpen = open; },
+  getPreferences: () => prefs,
+  isMuted: () => muted,
+  isRemoteMuted: () => remoteMuted,
+  isInCall: () => inCall,
+  isVoiceStereo: () => rtc.isVoiceStereo(),
+  getAudio: () => audio,
+  getRemoteAudioCtx: () => remoteAudioCtx,
+  getRemoteVoiceGain: () => remoteVoiceGain,
+  getRemoteMusicGain: () => remoteMusicGain,
+  getRemoteMasterGain: () => remoteMasterGain,
+  isRemoteVoiceStereo: () => remoteVoiceIsStereo,
+  setRemoteVoiceStereo: (val) => { remoteVoiceIsStereo = val; },
+  getRemoteVoicePanner: () => remoteVoicePanner,
+  getRemoteVoiceMeterSplitter: () => remoteVoiceMeterSplitter,
+  getRemoteVoiceSplitter: () => remoteVoiceSplitter,
+  getRemoteVoiceLeftGain: () => remoteVoiceLeftGain,
+  getRemoteVoiceRightGain: () => remoteVoiceRightGain,
+  getRemoteVoiceMerger: () => remoteVoiceMerger,
+  getRemoteMusicSplitter: () => remoteMusicSplitter,
+  getRemoteMusicLeftGain: () => remoteMusicLeftGain,
+  getRemoteMusicRightGain: () => remoteMusicRightGain,
+  getRemoteMusicMerger: () => remoteMusicMerger,
+  getRemoteVoiceAnalyserL: () => remoteVoiceAnalyserL,
+  getRemoteVoiceAnalyserR: () => remoteVoiceAnalyserR,
+  getRemoteMusicAnalyserL: () => remoteMusicAnalyserL,
+  getRemoteMusicAnalyserR: () => remoteMusicAnalyserR,
+  getRemoteMasterAnalyserL: () => remoteMasterAnalyserL,
+  getRemoteMasterAnalyserR: () => remoteMasterAnalyserR,
+  getRemoteVoiceFxNodes: () => remoteVoiceFxNodes,
+  setRemoteVoiceFxNodes: (nodes) => { remoteVoiceFxNodes = nodes; },
+  getRemoteMusicFxNodes: () => remoteMusicFxNodes,
+  setRemoteMusicFxNodes: (nodes) => { remoteMusicFxNodes = nodes; },
+  getLastConnectedVoiceFx: () => lastConnectedVoiceFx,
+  setLastConnectedVoiceFx: (val) => { lastConnectedVoiceFx = val; },
+  getLastConnectedMusicFx: () => lastConnectedMusicFx,
+  setLastConnectedMusicFx: (val) => { lastConnectedMusicFx = val; },
+  onSavePreferences: () => savePreferences()
+});
 
 hydrateStudioMixerEqPersistence();
 syncMixerChannelsWithVoiceInputs();
-
-function toggleStudioMixer(forceOpen?: boolean): void {
-  const modal = $('session-studio-mixer-modal');
-  if (!modal) return;
-  studioMixerOpen = forceOpen !== undefined ? forceOpen : !studioMixerOpen;
-  modal.classList.toggle('hidden', !studioMixerOpen);
-  $('toggle-session-mixer')?.classList.toggle('active', studioMixerOpen);
-
-  if (studioMixerOpen) {
-    try {
-      syncMixerChannelsWithVoiceInputs();
-      renderStudioMixer();
-      startMixerVuAnimation();
-    } catch (err) {
-      console.error('Failed to render studio mixer:', err);
-    }
-  } else {
-    stopMixerVuAnimation();
-    $('mixer-fx-picker-popover')?.classList.add('hidden');
-    $('mixer-icon-picker-popover')?.classList.add('hidden');
-  }
-}
-
-function startMixerVuAnimation(): void {
-  startMixerVuAnimationHelper({
-    isMixerOpen: () => studioMixerOpen,
-    getChannels: () => studioMixerChannels,
-    getVoiceInputs: () => prefs.voiceInputs,
-    getVoiceMicAnalysers: (id) => audio.getVoiceMicAnalysers(id),
-    getMusicAnalysers: () => audio.getMusicAnalysers(),
-    getRemoteVoiceAnalysers: () => ({ left: remoteVoiceAnalyserL, right: remoteVoiceAnalyserR }),
-    getRemoteMusicAnalysers: () => ({ left: remoteMusicAnalyserL, right: remoteMusicAnalyserR }),
-    getRemoteMasterAnalysers: () => ({ left: remoteMasterAnalyserL, right: remoteMasterAnalyserR }),
-    isRemoteMuted: () => remoteMuted
-  });
-}
-
-function stopMixerVuAnimation(): void {
-  stopMixerVuAnimationHelper();
-}
-
-function applyMixerAudioRouting(): void {
-  const routing = computeMixerRouting({
-    channels: studioMixerChannels,
-    voiceInputs: prefs.voiceInputs,
-    outputVolume: prefs.outputVolume,
-    globalMuted: muted,
-    remoteMuted
-  });
-  const masterVol = routing.masterVol;
-
-  routing.localMics.forEach((micResult, micId) => {
-    const micCh = studioMixerChannels.find((c) => c.id === micResult.channelId || (micId === 1 && c.id === 'you-mic'));
-    if (micCh) {
-      micCh.volume = micResult.gainVal;
-    }
-
-    for (const prefix of ['', 'call-']) {
-      const slider = document.querySelector<HTMLInputElement>(`#${prefix}gain-${micId}`);
-      const valLabel = document.querySelector<HTMLElement>(`#${prefix}gain-val-${micId}`);
-      if (slider) slider.value = String(micResult.gainVal);
-      if (valLabel) valLabel.textContent = `${Math.round(micResult.gainVal * 100)}%`;
-    }
-    if (micId === 1) {
-      for (const otherId of ['input-gain', 'call-input-gain']) {
-        const el = document.querySelector<HTMLInputElement>(`#${otherId}`);
-        if (el) el.value = String(micResult.gainVal);
-      }
-      for (const labelId of ['gain-value', 'call-gain-value']) {
-        const el = document.getElementById(labelId);
-        if (el) el.textContent = `${Math.round(micResult.gainVal * 100)}%`;
-      }
-    }
-
-    // Apply to audio engine
-    audio.setVoiceMicFx(micId, micResult.fx);
-    void audio.setVoiceMicGain(micId, micResult.effectiveVol);
-    void audio.setVoiceMicPan(micId, micResult.pan);
-  });
-
-  audio.setEnabled('voice', routing.voiceSenderEnabled);
-
-  const localMusicCh = studioMixerChannels.find((c) => c.id === 'music-stream');
-  const remoteVoiceCh = studioMixerChannels.find((c) => c.id === 'remote-voice');
-  const remoteMusicCh = studioMixerChannels.find((c) => c.id === 'remote-music');
-
-  const effectiveLocalMusicVol = routing.effectiveLocalMusicVol;
-  const localMusicPan = routing.localMusicPan;
-  const effectiveRemoteVoiceVol = routing.effectiveRemoteVoiceVol;
-  const effectiveRemoteMusicVol = routing.effectiveRemoteMusicVol;
-
-  audio.setMusicFx(routing.localMusicFx);
-  audio.setEnabled('music', effectiveLocalMusicVol > 0);
-  void audio.applyMusicGain(effectiveLocalMusicVol);
-  void audio.applyMusicPan(localMusicPan);
-
-  // 2. Control Web Audio DSP Engine in real-time
-  if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
-    const now = remoteAudioCtx.currentTime;
-    if (inCall) {
-      remoteVoiceIsStereo = rtc.isVoiceStereo();
-    }
-
-    // Real Gain Routing (0 to 1.5x)
-    if (remoteVoiceGain) remoteVoiceGain.gain.setValueAtTime(effectiveRemoteVoiceVol, now);
-    if (remoteMusicGain) remoteMusicGain.gain.setValueAtTime(effectiveRemoteMusicVol, now);
-    if (remoteMasterGain) remoteMasterGain.gain.setValueAtTime(masterVol, now);
-
-    // Real Stereo Panning (Mono Voice) & Stereo Balance (Stereo Voice & Stereo Music)
-    const voicePan = typeof remoteVoiceCh?.pan === 'number' && !isNaN(remoteVoiceCh.pan) ? remoteVoiceCh.pan : 0;
-    if (remoteVoiceIsStereo) {
-      if (remoteVoiceLeftGain && remoteVoiceRightGain) {
-        const { left, right } = getStereoBalanceGains(voicePan);
-        remoteVoiceLeftGain.gain.setValueAtTime(left, now);
-        remoteVoiceRightGain.gain.setValueAtTime(right, now);
-      }
-    } else {
-      if (remoteVoicePanner) {
-        remoteVoicePanner.pan.setValueAtTime(voicePan, now);
-      }
-    }
-
-    if (remoteMusicLeftGain && remoteMusicRightGain && remoteMusicCh) {
-      const musicPan = typeof remoteMusicCh.pan === 'number' && !isNaN(remoteMusicCh.pan) ? remoteMusicCh.pan : 0;
-      const { left, right } = getStereoBalanceGains(musicPan);
-      remoteMusicLeftGain.gain.setValueAtTime(left, now);
-      remoteMusicRightGain.gain.setValueAtTime(right, now);
-    }
-
-    // Dynamic Channel FX Routing: Remote Voice (rebuild topology when fx array or mono/stereo mode changes)
-    if (remoteVoiceGain && (remoteVoicePanner || (remoteVoiceSplitter && remoteVoiceMerger))) {
-      const voiceSlots = Array.isArray(remoteVoiceCh?.fx) ? remoteVoiceCh.fx.slice(0, 4) : [];
-      const voiceFxKey = `${remoteVoiceIsStereo ? 'stereo' : 'mono'}|${voiceSlots.map((f, i) => `${i}:${f || ''}`).join('|')}`;
-      if (voiceFxKey !== lastConnectedVoiceFx) {
-        try { remoteVoiceGain.disconnect(); } catch {}
-        for (const node of remoteVoiceFxNodes) {
-          try { node.disconnect(); } catch {}
-        }
-        remoteVoiceFxNodes = [];
-
-        try { remoteVoicePanner?.disconnect(); } catch {}
-        try { remoteVoiceMeterSplitter?.disconnect(); } catch {}
-        try { remoteVoiceMerger?.disconnect(); } catch {}
-        try { remoteVoiceSplitter?.disconnect(); } catch {}
-        try { remoteVoiceLeftGain?.disconnect(); } catch {}
-        try { remoteVoiceRightGain?.disconnect(); } catch {}
-
-        let currentVoiceSource: AudioNode = remoteVoiceGain;
-        for (let i = 0; i < 4; i++) {
-          const fxName = voiceSlots[i];
-          if (fxName === 'Chan EQ') {
-            const eqDsp = channelEqDspRegistry.getOrCreate('remote-voice', i, remoteAudioCtx);
-            currentVoiceSource.connect(eqDsp.inputNode);
-            currentVoiceSource = eqDsp.outputNode;
-            remoteVoiceFxNodes.push(eqDsp.outputNode);
-          } else if (fxName === 'Compressor') {
-            channelEqDspRegistry.remove('remote-voice', i);
-            const compressorNode = remoteAudioCtx.createDynamicsCompressor();
-            compressorNode.threshold.setValueAtTime(-18.0, now);
-            compressorNode.knee.setValueAtTime(6.0, now);
-            compressorNode.ratio.setValueAtTime(4.0, now);
-            compressorNode.attack.setValueAtTime(0.005, now);
-            compressorNode.release.setValueAtTime(0.08, now);
-
-            currentVoiceSource.connect(compressorNode);
-            currentVoiceSource = compressorNode;
-            remoteVoiceFxNodes.push(compressorNode);
-          } else {
-            channelEqDspRegistry.remove('remote-voice', i);
-          }
-        }
-
-        if (remoteVoiceIsStereo && remoteVoiceSplitter && remoteVoiceLeftGain && remoteVoiceRightGain && remoteVoiceMerger && remoteVoiceAnalyserL && remoteVoiceAnalyserR && remoteMasterGain) {
-          currentVoiceSource.connect(remoteVoiceSplitter);
-          remoteVoiceSplitter.connect(remoteVoiceLeftGain, 0, 0);
-          remoteVoiceSplitter.connect(remoteVoiceRightGain, 1, 0);
-          remoteVoiceLeftGain.connect(remoteVoiceMerger, 0, 0);
-          remoteVoiceRightGain.connect(remoteVoiceMerger, 0, 1);
-          remoteVoiceMerger.connect(remoteMasterGain);
-          remoteVoiceLeftGain.connect(remoteVoiceAnalyserL);
-          remoteVoiceRightGain.connect(remoteVoiceAnalyserR);
-        } else if (remoteVoicePanner && remoteVoiceMeterSplitter && remoteVoiceAnalyserL && remoteVoiceAnalyserR && remoteMasterGain) {
-          currentVoiceSource.connect(remoteVoicePanner);
-          remoteVoicePanner.connect(remoteMasterGain);
-          remoteVoicePanner.connect(remoteVoiceMeterSplitter);
-          remoteVoiceMeterSplitter.connect(remoteVoiceAnalyserL, 0);
-          remoteVoiceMeterSplitter.connect(remoteVoiceAnalyserR, 1);
-        }
-
-        lastConnectedVoiceFx = voiceFxKey;
-      }
-    }
-
-    // Dynamic Channel FX Routing: Remote Music (rebuild topology only when fx array changes)
-    if (remoteMusicGain && remoteMusicSplitter) {
-      const musicSlots = Array.isArray(remoteMusicCh?.fx) ? remoteMusicCh.fx.slice(0, 4) : [];
-      const musicFxKey = musicSlots.map((f, i) => `${i}:${f || ''}`).join('|');
-      if (musicFxKey !== lastConnectedMusicFx) {
-        try { remoteMusicGain.disconnect(); } catch {}
-        for (const node of remoteMusicFxNodes) {
-          try { node.disconnect(); } catch {}
-        }
-        remoteMusicFxNodes = [];
-
-        let currentMusicSource: AudioNode = remoteMusicGain;
-        for (let i = 0; i < 4; i++) {
-          const fxName = musicSlots[i];
-          if (fxName === 'Chan EQ') {
-            const eqDsp = channelEqDspRegistry.getOrCreate('remote-music', i, remoteAudioCtx);
-            currentMusicSource.connect(eqDsp.inputNode);
-            currentMusicSource = eqDsp.outputNode;
-            remoteMusicFxNodes.push(eqDsp.outputNode);
-          } else if (fxName === 'Compressor') {
-            channelEqDspRegistry.remove('remote-music', i);
-            const compressorNode = remoteAudioCtx.createDynamicsCompressor();
-            compressorNode.threshold.setValueAtTime(-12.0, now);
-            compressorNode.knee.setValueAtTime(6.0, now);
-            compressorNode.ratio.setValueAtTime(3.0, now);
-            compressorNode.attack.setValueAtTime(0.01, now);
-            compressorNode.release.setValueAtTime(0.1, now);
-
-            currentMusicSource.connect(compressorNode);
-            currentMusicSource = compressorNode;
-            remoteMusicFxNodes.push(compressorNode);
-          } else {
-            channelEqDspRegistry.remove('remote-music', i);
-          }
-        }
-        currentMusicSource.connect(remoteMusicSplitter);
-        lastConnectedMusicFx = musicFxKey;
-      }
-    }
-  }
-
-  const voiceAudio = document.getElementById('remote-voice-audio') as HTMLAudioElement | null;
-  const musicAudio = document.getElementById('remote-music-audio') as HTMLAudioElement | null;
-  if (voiceAudio) voiceAudio.volume = Math.min(1.0, masterVol * effectiveRemoteVoiceVol);
-  if (musicAudio) musicAudio.volume = Math.min(1.0, masterVol * effectiveRemoteMusicVol);
-}
-
-function renderStudioMixer(): void {
-  renderStudioMixerHelper({
-    getChannels: () => studioMixerChannels,
-    getVoiceInputs: () => prefs.voiceInputs,
-    onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
-    onSavePreferences: () => savePreferences(),
-    onSetInputGain: (val) => {
-      prefs.inputGain = val;
-    },
-    getVoiceMicEqDsp: (micIdx, slotIdx) => audio.getVoiceMicEqDsp(micIdx, slotIdx),
-    getMusicEqDsp: (slotIdx) => audio.getMusicEqDsp(slotIdx),
-    onToggleStudioMixer: (forceOpen) => toggleStudioMixer(forceOpen)
-  });
-}
 
 initStudioMixerPopoversAndControls({
   getChannels: () => studioMixerChannels,
