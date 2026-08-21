@@ -115,8 +115,7 @@ import { prepareStudioDomain } from './sessions/setup/studioPreparationDomainCon
 import { getMeterInterval, getEffectiveMusicBitrate } from './media/mediaPreferenceController';
 import { bindDeviceSelect } from './media/deviceChangeController';
 import { initAuthDomainController } from './auth/authDomainController';
-import { showScreenPickerUi } from './sessions/call/screenPickerController';
-import { updateScreenSharingUi } from './sessions/call/screenSharingUi';
+import { createScreenSharingController } from './sessions/call/screenSharingController';
 import { updateCameraButtonUi } from './sessions/call/cameraUi';
 import { testSpeakers as testSpeakersController, testMicrophone as testMicrophoneController, getMicrophonePlayback } from './media/deviceTestController';
 import { initMediaSettingsBindings } from './media/mediaSettingsBindingsController';
@@ -1846,145 +1845,40 @@ function renderAudioLimitations(): void {
   });
 }
 
-async function startScreenShare(sourceId: string, optimizeFor: 'detail' | 'motion' = 'detail'): Promise<void> {
-  if (!inCall || screenTrack) return;
-  
-  const isMotion = optimizeFor === 'motion';
-  const fps = isMotion ? 30 : 15;
-  const targetRes = isMotion ? { width: 1280, height: 720 } : { width: 1920, height: 1080 };
-
-  let next: MediaStreamTrack | undefined;
-  const desktopApi = typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
-
-  // 1. For entire display sharing on macOS, use native ScreenCaptureKit capture with SCContentFilter app exclusion
-  if (sourceId.startsWith('screen:') && desktopApi?.platform === 'darwin') {
-    try {
-      const displayIndex = parseInt(sourceId.split(':')[1], 10) || 0;
-      next = await presenter.createScreenCaptureTrack(displayIndex, { fps, width: targetRes.width, height: targetRes.height });
-    } catch (err) {
-      console.warn('Native ScreenCaptureKit failed, falling back to standard getDisplayMedia:', err);
-    }
-  }
-
-  // 2. Standard getDisplayMedia fallback or window sharing
-  if (!next) {
-    const selected = desktopApi?.selectDisplaySource ? desktopApi.selectDisplaySource(sourceId) : true;
-    if (!selected) throw new Error('The selected screen could not be authorized.');
-    
-    const fpsConstraint = isMotion ? { ideal: 30, max: 30 } : { ideal: 15, max: 15 };
-    const resConstraint = isMotion ? { width: { ideal: 1280 }, height: { ideal: 720 } } : { width: { ideal: 1920 }, height: { ideal: 1080 } };
-
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { ...resConstraint, frameRate: fpsConstraint },
-        audio: true
-      });
-    } catch {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { ...resConstraint, frameRate: fpsConstraint },
-        audio: false
-      });
-    }
-    next = stream.getVideoTracks()[0];
-    if (!next) throw new Error('Screen sharing did not provide a video track.');
-    const displayAudio = stream.getAudioTracks()[0];
-    if (displayAudio) {
-      await audio.addExternal('screen-audio', 'music', displayAudio);
-      await rtc.audioSourceChanged('screen-audio');
-    }
-  }
-
-  next.contentHint = isMotion ? 'motion' : 'detail';
-  try { await rtc.replaceVideoTrack(next); }
-  catch (error) {
-    next.stop();
-    await presenter.stopNativeCapture();
-    await presenter.exitPresenterMode();
-    throw error;
-  }
-  screenTrack = next;
-  // NOTE: Keep videoTrack running so local camera remains visible in the camera strip!
-  rtc.setVideoTrack(next);
-  next.onended = () => void stopScreenShare();
-  setScreenSharingUi(true);
-  updateLocalPreviews();
-  setCallStatus(`Sharing: ${currentSharingSourceTitle || 'Screen'}`);
-  signaling.updateMedia(currentCode, metadata());
-
-  // 3. Automatically transition into Presenter Mode
-  presenter.setRemoteVideoElement($<HTMLVideoElement>('remote-video'));
-  presenter.setLocalVideoElement($<HTMLVideoElement>('local-video'));
-  presenter.setParticipantInfo(
-    'Musician',
-    auth.getUser()?.name || auth.getGuestName() || 'You',
-    lastRemoteVoiceDb,
-    lastLocalVoiceDb
-  );
-  $('session-presenter-banner')?.classList.add('hidden');
-  await presenter.enterPresenterMode({
-    micMuted: muted,
-    camEnabled: cameraEnabled,
-    mode: prefs.mode,
-    paused: false,
-    pipVisible: true
-  });
-}
-
-async function stopScreenShare(): Promise<void> {
-  const previous = screenTrack;
-  if (!previous) return;
-  previous.onended = null;
-  currentSharingSourceTitle = '';
-  try {
-    if (cameraEnabled && videoTrack) {
-      await rtc.replaceVideoTrack(videoTrack);
-      rtc.setVideoTrack(videoTrack);
-    } else if (cameraEnabled) {
-      const camera = await acquireVideo(prefs.cameraId);
-      await rtc.replaceVideoTrack(camera);
-      videoTrack = camera;
-      rtc.setVideoTrack(camera);
-    } else {
-      await rtc.removeVideoTrack();
-      rtc.setVideoTrack(undefined);
-    }
-  } catch (error) {
-    await rtc.removeVideoTrack();
-    setCallStatus(`Screen sharing stopped. ${deviceError(error)}`);
-  } finally {
-    await audio.remove('screen-audio');
-    await rtc.audioSourceChanged('screen-audio');
-    screenTrack = undefined;
-    previous.stop();
-    await presenter.stopNativeCapture();
-    await presenter.exitPresenterMode();
-    $('session-presenter-banner')?.classList.add('hidden');
-    setScreenSharingUi(false);
-    updateLocalPreviews();
-    signaling.updateMedia(currentCode, metadata());
-  }
-}
-
-function setScreenSharingUi(active: boolean): void {
-  updateScreenSharingUi(active, {
-    getCurrentSharingSourceTitle: () => currentSharingSourceTitle
-  });
-}
-
-async function showScreenPicker(): Promise<void> {
-  await showScreenPickerUi({
-    hasScreenTrack: () => Boolean(screenTrack),
-    onStopScreenShare: () => stopScreenShare(),
-    onStartScreenShare: (sourceId, preset) => startScreenShare(sourceId, preset),
-    onSetCurrentSharingSourceTitle: (title) => {
-      currentSharingSourceTitle = title;
-    },
-    onSetMessage: (id, text, isError) => setMessage(id, text, isError),
-    onSetText: (id, text) => setText(id, text),
-    onSetCallStatus: (status) => setCallStatus(status)
-  });
-}
+const {
+  startScreenShare,
+  stopScreenShare,
+  setScreenSharingUi,
+  showScreenPicker
+} = createScreenSharingController({
+  isInCall: () => inCall,
+  getScreenTrack: () => screenTrack,
+  setScreenTrack: (track) => { screenTrack = track; },
+  getVideoTrack: () => videoTrack,
+  setVideoTrack: (track) => { videoTrack = track; },
+  isCameraEnabled: () => cameraEnabled,
+  isMuted: () => muted,
+  getPreferences: () => prefs,
+  getCurrentSharingSourceTitle: () => currentSharingSourceTitle,
+  setCurrentSharingSourceTitle: (title) => { currentSharingSourceTitle = title; },
+  getCurrentCode: () => currentCode,
+  getMetadata: () => metadata(),
+  getLastRemoteVoiceDb: () => lastRemoteVoiceDb,
+  getLastLocalVoiceDb: () => lastLocalVoiceDb,
+  getUserName: () => auth.getUser()?.name || auth.getGuestName() || 'You',
+  onReplaceRtcVideoTrack: (track) => rtc.replaceVideoTrack(track),
+  onSetRtcVideoTrack: (track) => rtc.setVideoTrack(track),
+  onRemoveRtcVideoTrack: () => rtc.removeVideoTrack(),
+  onAddAudioExternal: (id, purpose, track) => audio.addExternal(id, purpose, track),
+  onRemoveAudioExternal: (id) => audio.remove(id),
+  onRtcAudioSourceChanged: (id) => rtc.audioSourceChanged(id),
+  onSignalingUpdateMedia: (code, meta) => signaling.updateMedia(code, meta),
+  onAcquireVideo: (cameraId) => acquireVideo(cameraId),
+  onUpdateLocalPreviews: () => updateLocalPreviews(),
+  onSetCallStatus: (status) => setCallStatus(status),
+  onSetMessage: (id, text, isError) => setMessage(id, text, isError),
+  onSetText: (id, text) => setText(id, text)
+});
 
 async function setOutputDevice(deviceId?: string): Promise<void> {
   if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
