@@ -17,6 +17,11 @@ export function updateMusicAppIcon(app: RunningAudioApp | undefined): void {
   }
 }
 
+export function updateMusicAppIconByPid(pid: number | undefined, apps: RunningAudioApp[]): void {
+  const app = apps.find((a) => a.pid === pid);
+  updateMusicAppIcon(app);
+}
+
 export function populateMusicAppSelectOptions(
   runningApps: RunningAudioApp[],
   prefs: Preferences

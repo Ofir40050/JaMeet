@@ -1,6 +1,6 @@
 import { $ } from '../../../core/dom';
 import { logger } from '../../../core/logger';
-import { refreshRunningApps as refreshRunningAppsHelper } from './runningApplications';
+import { fetchRunningAudioApps, type RunningAudioApp } from './runningApplications';
 import type { AudioMode, MediaMetadata, Preferences } from '@jameet/shared';
 import type { LevelMeter, LevelReading } from '../meter/levelMeter';
 import type { HardwareAudioDeviceInfo } from './hardwareDeviceTypes';
@@ -27,6 +27,7 @@ export interface LocalAudioCaptureContext {
   onRenderAudioLimitations: () => void;
   onUpdateLocalPreviews: () => void;
   onUpdateCallMode: () => void;
+  onPopulateMusicAppSelectOptions: (apps: RunningAudioApp[], prefs: Preferences) => void;
   isInCall: () => boolean;
   getCurrentCode: () => string;
   getMetadata: () => MediaMetadata;
@@ -110,9 +111,9 @@ export function createLocalAudioCaptureController(ctx: LocalAudioCaptureContext)
   }
 
   async function refreshRunningApps(): Promise<void> {
-    await refreshRunningAppsHelper({
-      getPreferences: () => ctx.getPreferences()
-    });
+    const apps = await fetchRunningAudioApps();
+    const prefs = ctx.getPreferences();
+    ctx.onPopulateMusicAppSelectOptions(apps, prefs);
   }
 
   async function replaceMusicInput(): Promise<void> {

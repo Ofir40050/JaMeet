@@ -62,7 +62,8 @@ import { deviceError } from './media/devices/deviceError';
 import { initInCallAudioModalController } from './sessions/call/controls/inCallAudioModalController';
 import { initCallToolbarController } from './sessions/call/controls/callToolbarController';
 import { initSessionUtilityBindingsController } from './sessions/call/view/sessionUtilityBindingsController';
-import { updateAppIconBadge } from './media/audio/sources/runningApplications';
+import { getCachedRunningApps } from './media/audio/sources/runningApplications';
+import { populateMusicAppSelectOptions, updateMusicAppIconByPid } from './media/audio/ui/musicAppSelectUi';
 import { type HardwareAudioDeviceInfo } from './media/devices/hardwareDeviceUtils';
 import { getMeterInterval, getEffectiveMusicBitrate } from './media/devices/mediaPreferenceController';
 import { bindDeviceSelect } from './media/devices/deviceChangeController';
@@ -1187,6 +1188,7 @@ const {
   onRenderAudioLimitations: () => renderAudioLimitations(),
   onUpdateLocalPreviews: () => updateLocalPreviews(),
   onUpdateCallMode: () => updateCallMode(),
+  onPopulateMusicAppSelectOptions: (apps, p) => populateMusicAppSelectOptions(apps, p),
   isInCall: () => inCall,
   getCurrentCode: () => currentCode,
   getMetadata: () => metadata(),
@@ -1584,7 +1586,7 @@ initMediaSettingsBindings({
   onChangePerformanceMode: (mode) => changePerformanceMode(mode),
   onReplaceMusicInput: () => replaceMusicInput(),
   onRefreshRunningApps: () => refreshRunningApps(),
-  onUpdateAppIconBadge: (pid) => updateAppIconBadge(pid),
+  onUpdateAppIconBadge: (pid) => updateMusicAppIconByPid(pid, getCachedRunningApps()),
   onTestSpeakers: () => testSpeakers(),
   onTestMicrophone: () => testMicrophone(),
   onSyncAllVoiceMics: () => syncAllVoiceMics(),
