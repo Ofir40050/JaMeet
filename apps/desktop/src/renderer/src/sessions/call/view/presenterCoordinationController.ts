@@ -6,7 +6,7 @@ import type { Preferences } from '../../../core/preferences';
 import type { SettingsSection } from '../../../auth/settings/settingsUi';
 import { isSessionWorkspaceOpen, setSessionWorkspaceOpen } from '../workspace/workspaceDrawerUi';
 import { isSessionChatOpen, setSessionChatOpen } from '../chat/chat';
-import { toggleSessionLayout } from './sessionView';
+import { toggleSessionLayout } from './sessionViewUi';
 
 export interface PresenterCoordinationContext {
   isMuted: () => boolean;

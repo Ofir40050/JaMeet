@@ -1,7 +1,7 @@
 import { $, setText, setMessage } from '../../../core/dom';
 import { logger } from '../../../core/logger';
 import { presenter } from '../../../media/video/presenter';
-import { closeSessionViewMenu } from '../view/sessionView';
+import { closeSessionViewMenu } from '../view/sessionViewUi';
 import { hideWaitingBanner } from '../waiting/waitingRoomUi';
 import { setSessionWorkspaceOpen } from '../workspace/workspaceDrawerUi';
 import { resetChatUi } from '../chat/chat';

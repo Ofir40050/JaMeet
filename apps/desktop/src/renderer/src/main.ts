@@ -46,7 +46,6 @@ import { initProjectCollaboratorsDomainController } from './projects/collaborato
 import { initProjectManagementController } from './projects/core/projectManagementController';
 import { initSessionStatsController } from './sessions/call/view/sessionStatsController';
 import { initWaitingRoomUi } from './sessions/call/waiting/waitingRoomUi';
-import { initSessionViewStateController } from './sessions/call/view/sessionViewStateController';
 import { initDeepLinkDomainController } from './sessions/join/deepLinkDomainController';
 import { initCallShortcutsUi } from './sessions/call/controls/callShortcutsUi';
 import { initGuestJoinController } from './auth/guest/guestJoinController';
@@ -59,7 +58,8 @@ import { initWorkspaceCoreController } from './workspace/core/workspaceCoreContr
 import { initWorkspacePersistenceController } from './workspace/core/workspacePersistenceController';
 import { initWorkspaceRealtimeDomainController } from './workspace/realtime/workspaceRealtimeDomainController';
 import { updateLocalPreviews as updateLocalPreviewsHelper } from './media/video/localPreviewUi';
-import { createSessionMetadata, createCurrentStream, performCheckActiveSpeaker } from './sessions/call/view/sessionMediaHelpers';
+import { buildSessionMetadata, buildCurrentStream } from './sessions/call/view/sessionMetadata';
+import { checkActiveSpeaker as checkActiveSpeakerImpl } from './sessions/call/view/activeSpeakerController';
 import { deviceError } from './media/devices/deviceError';
 import { initInCallAudioModalController } from './sessions/call/controls/inCallAudioModalController';
 import { initCallToolbarController } from './sessions/call/controls/callToolbarController';
@@ -312,18 +312,20 @@ import {
   type ParticipantViewMode,
   type ScreenViewMode,
   type ParticipantTarget,
+  setSessionViewStateProvider,
+  getCameraViewMode,
+  getActiveSpeaker,
+  setActiveSpeaker
+} from './sessions/call/view/sessionViewState';
+import {
   applyParticipantViewLayout,
   updateSessionStage,
   toggleSessionViewMenu,
   closeSessionViewMenu,
-  setSessionViewStateProvider,
-  getCameraViewMode,
-  getActiveSpeaker,
-  setActiveSpeaker,
   toggleSessionLayout,
   updateSessionViewButton,
   renderSessionViewMenu
-} from './sessions/call/view/sessionView';
+} from './sessions/call/view/sessionViewUi';
 import './styles/index.css';
 
 export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
@@ -1039,14 +1041,14 @@ const rtc = new WebRtcSession(
   }
 );
 
-initSessionViewStateController({
-  getScreenTrack: () => screenTrack,
-  getRemoteMedia: () => remoteMedia,
-  getRemoteVideoStream: () => remoteVideoStream,
-  getPeerIdentity: () => peerIdentity,
-  getMyIdentity: () => myIdentity,
-  getSharingSourceTitle: () => currentSharingSourceTitle
-});
+setSessionViewStateProvider(() => ({
+  screenTrack,
+  remoteMedia,
+  remoteVideoStream,
+  peerIdentity,
+  myIdentity,
+  sharingSourceTitle: currentSharingSourceTitle
+}));
 
 initSessionStatsController({
   getStatsReport: () => rtc.getStatsReport(),
@@ -1074,7 +1076,7 @@ function savePreferences(): void {
 }
 
 function metadata(): MediaMetadata {
-  return createSessionMetadata({
+  return buildSessionMetadata({
     getAudioSources: () => audio.metadata(),
     isCameraEnabled: () => cameraEnabled,
     getCameraQuality: () => prefs.cameraQuality,
@@ -1086,11 +1088,11 @@ function metadata(): MediaMetadata {
 }
 
 function currentStream(): MediaStream {
-  return createCurrentStream(screenTrack, cameraEnabled, videoTrack);
+  return buildCurrentStream(screenTrack, cameraEnabled, videoTrack);
 }
 
 function checkActiveSpeaker(): void {
-  performCheckActiveSpeaker({
+  checkActiveSpeakerImpl({
     isLocalMuted: () => muted,
     isRemoteMuted: () => remoteMuted,
     getLastLocalVoiceDb: () => lastLocalVoiceDb,
