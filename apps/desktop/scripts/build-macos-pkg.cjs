@@ -72,10 +72,10 @@ if (!isPreview) {
   }
 }
 
-// 1. Ensure JaMeetRemote.driver is freshly compiled
-console.log('[build-macos-pkg] Building fresh JaMeetRemote.driver bundle from source...');
+// 1. Ensure JaMeetRemote.driver is freshly compiled for arm64 target architecture
+console.log('[build-macos-pkg] Building fresh JaMeetRemote.driver bundle from source (arm64)...');
 const buildDriverScript = path.join(rootDir, 'src', 'main', 'driver-macos', 'build-driver.sh');
-execFileSync(buildDriverScript, [driverDistDir], { cwd: rootDir, stdio: 'inherit' });
+execFileSync(buildDriverScript, [driverDistDir, 'arm64'], { cwd: rootDir, stdio: 'inherit' });
 
 if (!fs.existsSync(driverBundlePath)) {
   console.error('[build-macos-pkg] Error: Failed to find freshly built JaMeetRemote.driver at ' + driverBundlePath);
@@ -132,21 +132,36 @@ if (!appPath || !fs.existsSync(appPath)) {
 
 console.log('[build-macos-pkg] Fresh JaMeet.app packaged at: ' + appPath);
 
-// 3. Inspect architectures contained in the app and driver
-function getArchitectures(binaryPath) {
-  try {
-    const output = execFileSync('lipo', ['-archs', binaryPath], { encoding: 'utf-8' }).trim();
-    return output.split(/\s+/).filter(Boolean);
-  } catch {
-    return ['arm64'];
-  }
-}
-
+// 3. Inspect architectures contained in the app and driver (fail-closed)
 const appBinary = path.join(appPath, 'Contents', 'MacOS', 'JaMeet');
 const driverBinary = path.join(driverBundlePath, 'Contents', 'MacOS', 'JaMeetRemote');
 
-const appArchs = fs.existsSync(appBinary) ? getArchitectures(appBinary) : ['arm64'];
-const driverArchs = fs.existsSync(driverBinary) ? getArchitectures(driverBinary) : ['arm64'];
+if (!fs.existsSync(appBinary)) {
+  console.error('[build-macos-pkg] Error: JaMeet application executable not found at: ' + appBinary);
+  process.exit(1);
+}
+
+if (!fs.existsSync(driverBinary)) {
+  console.error('[build-macos-pkg] Error: JaMeetRemote driver executable not found at: ' + driverBinary);
+  process.exit(1);
+}
+
+function getArchitectures(binaryPath, binaryLabel) {
+  try {
+    const output = execFileSync('lipo', ['-archs', binaryPath], { encoding: 'utf-8' }).trim();
+    const archs = output.split(/\s+/).filter(Boolean);
+    if (archs.length === 0) {
+      throw new Error('No architecture symbols returned by lipo');
+    }
+    return archs;
+  } catch (err) {
+    console.error(`[build-macos-pkg] Error: Failed to inspect architecture for ${binaryLabel} at ${binaryPath}:`, err.message);
+    process.exit(1);
+  }
+}
+
+const appArchs = getArchitectures(appBinary, 'JaMeet.app');
+const driverArchs = getArchitectures(driverBinary, 'JaMeetRemote.driver');
 
 const commonArchs = appArchs.filter((a) => driverArchs.includes(a));
 if (commonArchs.length === 0) {
