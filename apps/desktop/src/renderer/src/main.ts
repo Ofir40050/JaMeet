@@ -137,6 +137,9 @@ import {
   initDesktopLifecycle
 } from './core/desktopLifecycleController';
 import {
+  handleScheduledSessionNotificationClick
+} from './sessions/scheduled/scheduledNotificationUi';
+import {
   hasLyricsSaveTimeout,
   clearLyricsSaveTimeout
 } from './workspace/lyrics/lyricsController';
@@ -282,6 +285,7 @@ import { SignalingClient } from './media/signaling';
 import { AuthManager } from './auth/auth';
 import { WebRtcSession } from './media/webrtc';
 import { presenter } from './media/presenter';
+import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor } from './core/htmlSecurity';
 import { initActivityHistory, renderProjectActivities } from './sessions/call/activity';
 import { initSessionChat, setSessionChatOpen, setOnChatOpenCallback } from './sessions/call/chat';
 import { stopRemoteVoiceBridge } from './media/remoteVoiceBridge';
