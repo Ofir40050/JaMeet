@@ -1,12 +1,12 @@
 import { $ } from '../../../core/dom';
 import { icons } from '../../../core/icons';
 import { LevelMeter, type LevelReading } from '../meter/levelMeter';
-import type { HardwareAudioDeviceInfo } from '../../devices/hardwareDeviceUtils';
+import type { HardwareAudioDeviceInfo } from '../../devices/hardwareAudioDeviceUtils';
 import {
   findHardwareDevice,
   generateInputChannelOptions,
   formatDeviceDisplayName
-} from '../../devices/hardwareDeviceUtils';
+} from '../../devices/hardwareAudioDeviceUtils';
 import type { Preferences } from '@jameet/shared';
 import type { StudioMixerChannel } from '../../mixer/studioMixerLogic';
 import type { LocalAudioSourceManager } from '../sources/audioSources';

@@ -4,7 +4,7 @@ import {
   type HardwareAudioDeviceInfo,
   findHardwareDevice,
   generateOutputChannelOptions
-} from './hardwareDeviceUtils';
+} from './hardwareAudioDeviceUtils';
 import { fillSelects, populateChannelDropdowns } from './deviceSelectUi';
 
 export interface DeviceEnumerationOptions {

@@ -1,5 +1,5 @@
 import type { Preferences } from '../../core/preferences';
-import { formatDeviceDisplayName, type ChannelDropdownOption } from './hardwareDeviceUtils';
+import { formatDeviceDisplayName, type ChannelDropdownOption } from './hardwareAudioDeviceUtils';
 
 export interface FillSelectsOptions {
   ids: string[];

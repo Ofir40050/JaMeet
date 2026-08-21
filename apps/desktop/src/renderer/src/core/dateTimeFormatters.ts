@@ -39,3 +39,13 @@ export function formatSessionDate(timestamp: number): string {
   if (isToday) return `Today at ${timeStr}`;
   return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${timeStr}`;
 }
+
+export function formatTotalDuration(totalSeconds: number): string {
+  if (!totalSeconds || totalSeconds < 60) return '< 1m';
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  if (h > 0) {
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${m}m`;
+}

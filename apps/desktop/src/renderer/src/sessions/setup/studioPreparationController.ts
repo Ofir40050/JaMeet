@@ -2,7 +2,7 @@ import { enumerateAndPopulateDevices } from '../../media/devices/deviceEnumerati
 import { prepareStudioDomain } from './studioPreparationDomainController';
 import { renderAudioLimitations as renderAudioLimitationsUi } from '../../media/audio/profiles/audioLimitationsUi';
 import type { AudioMode, Preferences } from '@jameet/shared';
-import type { HardwareAudioDeviceInfo } from '../../media/devices/hardwareDeviceUtils';
+import type { HardwareAudioDeviceInfo } from '../../media/devices/hardwareAudioDeviceUtils';
 import type { PendingAction } from './studioPreparation';
 
 export interface StudioPreparationContext {

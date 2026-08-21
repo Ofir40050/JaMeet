@@ -66,7 +66,7 @@ import { initCallToolbarController } from './sessions/call/controls/callToolbarC
 import { initSessionUtilityBindingsController } from './sessions/call/view/sessionUtilityBindingsController';
 import { getCachedRunningApps } from './media/audio/sources/runningApplications';
 import { populateMusicAppSelectOptions, updateMusicAppIconByPid } from './media/audio/ui/musicAppSelectUi';
-import { type HardwareAudioDeviceInfo } from './media/devices/hardwareDeviceUtils';
+import { type HardwareAudioDeviceInfo } from './media/devices/hardwareAudioDeviceUtils';
 import { getMeterInterval, getEffectiveMusicBitrate } from './media/devices/mediaPreferenceCalculations';
 import { bindDeviceSelect } from './media/devices/deviceChangeController';
 import { initAuthDomainController } from './auth/login/authDomainController';
@@ -76,7 +76,7 @@ import { createLocalAudioCaptureController } from './media/audio/sources/localAu
 import { createLocalVideoController } from './media/video/localVideoController';
 import { createStudioPreparationController } from './sessions/setup/studioPreparationController';
 import { createAudioOutputRoutingController } from './media/devices/audioOutputRoutingController';
-import { createMediaActiveStateController } from './media/devices/mediaActiveStateController';
+import { createMediaActiveStateController } from './media/devices/mediaActiveSync';
 import { createMediaStreamControlsController } from './sessions/call/controls/mediaStreamControlsController';
 import { updateCameraButtonUi } from './sessions/call/controls/cameraUi';
 import { initMediaSettingsBindings } from './media/devices/mediaSettingsBindingsController';

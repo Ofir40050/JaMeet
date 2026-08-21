@@ -1,5 +1,5 @@
 import { $, setText } from '../../core/dom';
-import { formatRelativeTime } from '../../core/dateTimeFormatters';
+import { formatRelativeTime, formatTotalDuration } from '../../core/dateTimeFormatters';
 import {
   createOverviewSessionItem,
   createProjectSessionCard,
@@ -32,15 +32,6 @@ export function resetProjectSessionsPage(): void {
   currentProjectSessionsPage = 1;
 }
 
-export function formatTotalStudioTime(totalSeconds: number): string {
-  if (!totalSeconds || totalSeconds < 60) return '< 1m';
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  if (h > 0) {
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  }
-  return `${m}m`;
-}
 
 export function updateProjectSessionsCounter(filteredCount: number): void {
   setText('project-sessions-counter-badge', String(filteredCount));
@@ -111,7 +102,7 @@ export function renderProjectSessions(): void {
     ? formatRelativeTime(sessions[0].startedAt)
     : '—';
 
-  setText('project-stat-sessions-time', `${formatTotalStudioTime(totalSec)} studio time`);
+  setText('project-stat-sessions-time', `${formatTotalDuration(totalSec)} studio time`);
   setText('project-stat-sessions-last', `Last active: ${lastActiveText}`);
 
   // 2. Render mini list in Overview tab (top 5)
