@@ -117,6 +117,7 @@ import { bindDeviceSelect } from './media/deviceChangeController';
 import { initAuthDomainController } from './auth/authDomainController';
 import { createScreenSharingController } from './sessions/call/screenSharingController';
 import { createVoiceInputsUiController } from './media/voiceInputsUiController';
+import { createLocalAudioCaptureController } from './media/localAudioCaptureController';
 import { createMediaStreamControlsController } from './media/mediaStreamControlsController';
 import { updateCameraButtonUi } from './sessions/call/cameraUi';
 import { testSpeakers as testSpeakersController, testMicrophone as testMicrophoneController, getMicrophonePlayback } from './media/deviceTestController';
@@ -1318,174 +1319,10 @@ async function replaceCamera(deviceId?: string): Promise<void> {
   updateLocalPreviews();
 }
 
-async function syncAllVoiceMics(mode = prefs.mode): Promise<void> {
-  prefs.mode = mode;
-  savePreferences();
-  setModeRadios(mode);
-  const activeIds = new Set(prefs.voiceInputs.filter((v) => v.enabled).map((v) => v.id));
+let cachedHardwareDevices: HardwareAudioDeviceInfo[] = [];
 
-  for (const id of Array.from(voiceMeters.keys())) {
-    if (!activeIds.has(id)) {
-      const m = voiceMeters.get(id);
-      if (m) await m.stop();
-      voiceMeters.delete(id);
-      activeMicLevels.delete(id);
-      activeMicPeaks.delete(id);
-      await audio.removeVoiceMic(id);
-    }
-  }
-
-  for (const mic of prefs.voiceInputs) {
-    if (!mic.enabled) continue;
-    try {
-      await audio.acquireVoiceMic(mic.id, mic.deviceId, mode, {
-        sampleRate: prefs.sampleRate ?? 44_100,
-        inputGain: mic.gain ?? 1,
-        stereo: prefs.stereoMusic !== false,
-        channelRoute: mic.channelRoute ?? '1'
-      });
-      const node = audio.getVoiceMicNode(mic.id);
-      if (node) {
-        const m = getOrCreateVoiceMeter(mic.id);
-        await m.startFromNode(node, meterInterval(), (reading) => renderVoiceLevel(mic.id, reading));
-      } else {
-        const track = audio.getVoiceRawTrack(mic.id);
-        if (track) {
-          const m = getOrCreateVoiceMeter(mic.id);
-          await m.start(track, (reading) => renderVoiceLevel(mic.id, reading), meterInterval());
-        }
-      }
-    } catch (error) {
-      logger.warn('audio_init_failure', `Failed to acquire microphone ${mic.id}`, { micId: mic.id, deviceId: mic.deviceId, sampleRate: prefs.sampleRate }, error);
-      console.warn(`Failed to acquire microphone ${mic.id}:`, error);
-    }
-  }
-
-  syncMixerChannelsWithVoiceInputs();
-  applyMixerAudioRouting();
-  renderAudioLimitations();
-  updateLocalPreviews();
-  updateCallMode();
-  if (inCall) {
-    signaling.updateMedia(currentCode, metadata());
-    await rtc.audioChanged(mode);
-  }
-}
-
-async function replaceAudioInput(deviceId: string | undefined, mode = prefs.mode): Promise<void> {
-  if (prefs.voiceInputs.length === 0) {
-    prefs.voiceInputs.push({ id: 1, name: 'Microphone 1 (Primary · Lead)', deviceId, channelRoute: '1', gain: 1, enabled: true });
-  } else {
-    prefs.voiceInputs[0]!.deviceId = deviceId;
-  }
-  prefs.audioInputId = deviceId;
-  prefs.mode = mode;
-  savePreferences();
-  await syncAllVoiceMics(mode);
-}
 function meterInterval(): number { return getMeterInterval(prefs.performanceMode); }
 function effectiveMusicBitrate(): number { return getEffectiveMusicBitrate(prefs); }
-
-async function refreshRunningApps(): Promise<void> {
-  await refreshRunningAppsHelper({
-    getPreferences: () => prefs
-  });
-}
-
-async function replaceMusicInput(): Promise<void> {
-  const type = prefs.musicSourceType;
-  if (type === 'none') {
-    await musicMeter.stop();
-    lastLocalMusicDb = -60;
-    lastLocalMusicPeakDb = -60;
-    await audio.remove('music');
-    $('music-in-indicator')?.classList.remove('active');
-  } else if (type === 'app') {
-    const pid = prefs.musicAppPid;
-    if (pid) {
-      try {
-        const source = await audio.acquireMusicFromApp(pid, prefs.musicAppName || 'Application');
-        const musicNode = audio.getMusicNode();
-        if (musicNode) {
-          await musicMeter.startFromNode(musicNode, meterInterval(), renderMusicLevel);
-        } else {
-          await musicMeter.start(source.track, renderMusicLevel, meterInterval());
-        }
-        for (const statusId of ['music-app-status', 'call-music-app-status']) {
-          const el = document.getElementById(statusId);
-          if (el) el.textContent = `Capturing ${prefs.musicAppName || 'App'} · Stereo 48 kHz (Native)`;
-        }
-      } catch (err) {
-        logger.warn('audio_init_failure', 'Failed to acquire application audio output', { type: 'app', pid, appName: prefs.musicAppName }, err);
-        await musicMeter.stop();
-        lastLocalMusicDb = -60;
-        lastLocalMusicPeakDb = -60;
-        await audio.remove('music');
-        for (const statusId of ['music-app-status', 'call-music-app-status']) {
-          const el = document.getElementById(statusId);
-          if (el) el.textContent = `Waiting for application audio output`;
-        }
-      }
-    } else {
-      await musicMeter.stop();
-      lastLocalMusicDb = -60;
-      lastLocalMusicPeakDb = -60;
-      await audio.remove('music');
-    }
-  } else if (type === 'system') {
-    try {
-      const source = await audio.acquireMusicFromApp('global', 'Computer Audio');
-      const musicNode = audio.getMusicNode();
-      if (musicNode) {
-        await musicMeter.startFromNode(musicNode, meterInterval(), renderMusicLevel);
-      } else {
-        await musicMeter.start(source.track, renderMusicLevel, meterInterval());
-      }
-    } catch (err) {
-      logger.warn('audio_init_failure', 'Failed to acquire system computer audio', { type: 'system' }, err);
-      await musicMeter.stop();
-      lastLocalMusicDb = -60;
-      lastLocalMusicPeakDb = -60;
-      await audio.remove('music');
-      $('music-in-indicator')?.classList.remove('active');
-    }
-  } else if (type === 'interface') {
-    const selectedDeviceId = prefs.musicInputId || prefs.audioOutputId || 'default';
-    const hw = cachedHardwareDevices.find((d) => d.uid === selectedDeviceId) ||
-               cachedHardwareDevices.find((d) => selectedDeviceId && d.uid.includes(selectedDeviceId)) ||
-               cachedHardwareDevices.find((d) => d.defaultOutput) ||
-               cachedHardwareDevices[0];
-    const targetUID = hw?.uid || selectedDeviceId;
-    try {
-      const source = await audio.acquireMusic(targetUID, {
-        sampleRate: prefs.sampleRate,
-        stereo: prefs.stereoMusic !== false,
-        channelRoute: prefs.musicChannel || '1-2'
-      });
-      const musicNode = audio.getMusicNode();
-      if (musicNode) {
-        await musicMeter.startFromNode(musicNode, meterInterval(), renderMusicLevel);
-      } else {
-        await musicMeter.start(source.track, renderMusicLevel, meterInterval());
-      }
-    } catch (err) {
-      logger.warn('audio_init_failure', 'Failed to acquire audio interface for music', { type: 'interface', targetUID }, err);
-      await musicMeter.stop();
-      lastLocalMusicDb = -60;
-      lastLocalMusicPeakDb = -60;
-      await audio.remove('music');
-      $('music-in-indicator')?.classList.remove('active');
-    }
-  }
-  applyMixerAudioRouting();
-  savePreferences();
-  if (inCall) {
-    await rtc.audioSourceChanged('music');
-    signaling.updateMedia(currentCode, metadata());
-  }
-}
-
-let cachedHardwareDevices: HardwareAudioDeviceInfo[] = [];
 
 const {
   getOrCreateVoiceMeter,
@@ -1515,6 +1352,40 @@ const {
   onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
   isInCall: () => inCall,
   onSetMessage: (id, text, isError) => setMessage(id, text, isError)
+});
+
+const {
+  syncAllVoiceMics,
+  replaceAudioInput,
+  refreshRunningApps,
+  replaceMusicInput
+} = createLocalAudioCaptureController({
+  getPreferences: () => prefs,
+  onSavePreferences: () => savePreferences(),
+  onSetModeRadios: (mode) => setModeRadios(mode),
+  getVoiceMeters: () => voiceMeters,
+  getActiveMicLevels: () => activeMicLevels,
+  getActiveMicPeaks: () => activeMicPeaks,
+  getAudio: () => audio,
+  getMusicMeter: () => musicMeter,
+  getMeterInterval: () => meterInterval(),
+  getOrCreateVoiceMeter: (id) => getOrCreateVoiceMeter(id),
+  onRenderVoiceLevel: (micId, reading) => renderVoiceLevel(micId, reading),
+  onRenderMusicLevel: (reading) => renderMusicLevel(reading),
+  onSetLastLocalMusicDb: (db) => { lastLocalMusicDb = db; },
+  onSetLastLocalMusicPeakDb: (db) => { lastLocalMusicPeakDb = db; },
+  getCachedHardwareDevices: () => cachedHardwareDevices,
+  onSyncMixerChannelsWithVoiceInputs: () => syncMixerChannelsWithVoiceInputs(),
+  onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
+  onRenderAudioLimitations: () => renderAudioLimitations(),
+  onUpdateLocalPreviews: () => updateLocalPreviews(),
+  onUpdateCallMode: () => updateCallMode(),
+  isInCall: () => inCall,
+  getCurrentCode: () => currentCode,
+  getMetadata: () => metadata(),
+  onSignalingUpdateMedia: (code, meta) => signaling.updateMedia(code, meta),
+  onRtcAudioChanged: (mode) => rtc.audioChanged(mode),
+  onRtcAudioSourceChanged: (source) => rtc.audioSourceChanged(source)
 });
 
 async function enumerateAndPopulate(): Promise<void> {
