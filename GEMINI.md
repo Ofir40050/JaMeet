@@ -3,6 +3,7 @@
 ## Testing and GitHub Policy
 - NEVER run automated test suites unless explicitly requested by the user.
 - Always commit and push changes to GitHub at the end of each action/task.
+- Always return the GitHub Pull Request URL (or compare/commit URL if on main), branch name, commit SHA, and the exact list of committed files at the end of each action/task.
 - Apply code changes and let Vite/Electron HMR reload the UI instantly without extra test overhead.
 
 ## Architecture & Code Design Rules
