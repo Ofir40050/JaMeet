@@ -489,6 +489,27 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
       fetchSpy.mockRestore();
     });
 
+    it('retains report in pending queue if delivery fails or server is unreachable', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('ECONNREFUSED: Server unreachable'));
+
+      testLogger.recordCrash({
+        reportId: 'crash-offline-1',
+        process: 'main',
+        reason: 'Fatal main process crash'
+      });
+
+      expect(testLogger.loadPendingQueue()).toHaveLength(1);
+
+      await testLogger.flushPendingCrashes();
+
+      // Pending queue must still retain the crash for next retry
+      const remaining = testLogger.loadPendingQueue();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0]?.reportId).toBe('crash-offline-1');
+
+      fetchSpy.mockRestore();
+    });
+
     it('preserves concurrent crash reports added while flusher is processing', async () => {
       let resolveFirstFetch: Function;
       const fetchPromise = new Promise((resolve) => {
