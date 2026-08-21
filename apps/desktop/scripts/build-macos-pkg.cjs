@@ -1,4 +1,4 @@
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -13,6 +13,24 @@ const isPreview = process.argv.includes('--preview') || process.env.JAMEET_BUILD
 if (process.platform !== 'darwin') {
   console.log('[build-macos-pkg] Skipping macOS package creation on ' + process.platform);
   process.exit(0);
+}
+
+// Clean any stale official, preview, or dmg installers in releaseDir so no stale build can be mistaken for current output
+fs.mkdirSync(releaseDir, { recursive: true });
+const staleFiles = [
+  path.join(releaseDir, 'JaMeet-Installer.pkg'),
+  path.join(releaseDir, 'JaMeet-Preview-Unsigned.pkg'),
+  path.join(releaseDir, 'JaMeet-0.1.0-mac-arm64.dmg'),
+  path.join(releaseDir, 'JaMeet-0.1.0-mac-arm64.dmg.blockmap')
+];
+for (const f of staleFiles) {
+  if (fs.existsSync(f)) {
+    try {
+      fs.unlinkSync(f);
+    } catch {
+      // Ignore
+    }
+  }
 }
 
 // Validate Apple Developer credentials for official releases
@@ -53,7 +71,7 @@ if (!isPreview) {
 // 1. Ensure JaMeetRemote.driver is freshly compiled
 console.log('[build-macos-pkg] Building fresh JaMeetRemote.driver bundle from source...');
 const buildDriverScript = path.join(rootDir, 'src', 'main', 'driver-macos', 'build-driver.sh');
-execSync(`"${buildDriverScript}" "${driverDistDir}"`, { cwd: rootDir, stdio: 'inherit' });
+execFileSync(buildDriverScript, [driverDistDir], { cwd: rootDir, stdio: 'inherit' });
 
 if (!fs.existsSync(driverBundlePath)) {
   console.error('[build-macos-pkg] Error: Failed to find freshly built JaMeetRemote.driver at ' + driverBundlePath);
@@ -72,15 +90,24 @@ const candidatePaths = [
 for (const p of candidatePaths) {
   if (fs.existsSync(p)) {
     try {
-      execSync(`rm -rf "${p}"`);
+      fs.rmSync(p, { recursive: true, force: true });
     } catch {
       // Ignore
     }
   }
 }
 
+const builderEnv = { ...process.env };
+if (!isPreview && appSigningIdentity) {
+  builderEnv.CSC_NAME = appSigningIdentity;
+}
+
 try {
-  execSync('npx electron-builder --mac dir --publish never', { cwd: rootDir, stdio: 'inherit' });
+  execFileSync('npx', ['electron-builder', '--mac', 'dir', '--publish', 'never'], {
+    cwd: rootDir,
+    stdio: 'inherit',
+    env: builderEnv
+  });
 } catch (err) {
   console.error('[build-macos-pkg] electron-builder error:', err.message);
   process.exit(1);
@@ -104,7 +131,7 @@ console.log('[build-macos-pkg] Fresh JaMeet.app packaged at: ' + appPath);
 // 3. Inspect architectures contained in the app and driver
 function getArchitectures(binaryPath) {
   try {
-    const output = execSync(`lipo -archs "${binaryPath}"`, { encoding: 'utf-8' }).trim();
+    const output = execFileSync('lipo', ['-archs', binaryPath], { encoding: 'utf-8' }).trim();
     return output.split(/\s+/).filter(Boolean);
   } catch {
     return ['arm64'];
@@ -117,7 +144,6 @@ const driverBinary = path.join(driverBundlePath, 'Contents', 'MacOS', 'JaMeetRem
 const appArchs = fs.existsSync(appBinary) ? getArchitectures(appBinary) : ['arm64'];
 const driverArchs = fs.existsSync(driverBinary) ? getArchitectures(driverBinary) : ['arm64'];
 
-// Common supported architectures (e.g. 'arm64' or 'arm64,x86_64')
 const commonArchs = appArchs.filter((a) => driverArchs.includes(a));
 const hostArchString = commonArchs.length > 0 ? commonArchs.join(',') : appArchs.join(',');
 console.log(`[build-macos-pkg] Detected architectures: App=[${appArchs.join(',')}], Driver=[${driverArchs.join(',')}]. Target=[${hostArchString}]`);
@@ -125,11 +151,11 @@ console.log(`[build-macos-pkg] Detected architectures: App=[${appArchs.join(',')
 // 4. Driver Bundle Code Signing
 if (!isPreview) {
   console.log(`[build-macos-pkg] Signing JaMeetRemote.driver with Developer ID Application (${appSigningIdentity})...`);
-  execSync(`codesign --force --options runtime --timestamp --sign "${appSigningIdentity}" "${driverBundlePath}"`, { stdio: 'inherit' });
+  execFileSync('codesign', ['--force', '--options', 'runtime', '--timestamp', '--sign', appSigningIdentity, driverBundlePath], { stdio: 'inherit' });
 } else {
   // Ad-hoc sign for local preview on Apple Silicon
   console.log('[build-macos-pkg] Ad-hoc signing JaMeetRemote.driver for local preview...');
-  execSync(`codesign --force --sign - "${driverBundlePath}"`, { stdio: 'inherit' });
+  execFileSync('codesign', ['--force', '--sign', '-', driverBundlePath], { stdio: 'inherit' });
 }
 
 // 5. Create temporary work directory for pkgbuild / productbuild
@@ -138,11 +164,10 @@ const appPkgPath = path.join(tmpWorkDir, 'jameet-app.pkg');
 const driverPkgPath = path.join(tmpWorkDir, 'jameet-driver.pkg');
 const distributionXmlPath = path.join(tmpWorkDir, 'distribution.xml');
 
-const finalPkgName = isPreview ? 'JaMeet-Preview-Unsigned.pkg' : 'JaMeet-Installer.pkg';
-const finalPkgPath = path.join(releaseDir, finalPkgName);
-const unsignedPkgPath = path.join(tmpWorkDir, 'JaMeet-Unsigned.pkg');
+const targetUnsignedPkgPath = path.join(tmpWorkDir, 'JaMeet-Unsigned.pkg');
+const targetSignedPkgPath = path.join(tmpWorkDir, 'JaMeet-Signed.pkg');
 
-fs.mkdirSync(releaseDir, { recursive: true });
+let officialFinalMoved = false;
 
 try {
   // 6. Build Application Component Package (Non-Relocatable)
@@ -150,13 +175,11 @@ try {
   const appRootDir = path.dirname(appPath);
   const appComponentPlistPath = path.join(tmpWorkDir, 'app-component.plist');
 
-  // Analyze bundle components and disable relocatability so PackageKit never redirects /Applications/JaMeet.app
-  execSync(`pkgbuild --analyze --root "${appRootDir}" "${appComponentPlistPath}"`, { stdio: 'inherit' });
+  execFileSync('pkgbuild', ['--analyze', '--root', appRootDir, appComponentPlistPath], { stdio: 'inherit' });
 
   try {
-    execSync(`plutil -replace 0.BundleIsRelocatable -bool NO "${appComponentPlistPath}"`, { stdio: 'inherit' });
+    execFileSync('plutil', ['-replace', '0.BundleIsRelocatable', '-bool', 'NO', appComponentPlistPath], { stdio: 'inherit' });
   } catch {
-    // Fallback: update plist content directly in Node.js if plutil keypath differs
     let plistData = fs.readFileSync(appComponentPlistPath, 'utf-8');
     plistData = plistData.replace(
       /<key>BundleIsRelocatable<\/key>\s*<true\/>/g,
@@ -165,7 +188,6 @@ try {
     fs.writeFileSync(appComponentPlistPath, plistData, 'utf-8');
   }
 
-  // Verify that BundleIsRelocatable is indeed false
   let finalPlistData = fs.readFileSync(appComponentPlistPath, 'utf-8');
   if (finalPlistData.includes('<key>BundleIsRelocatable</key>\n\t\t<true/>') || finalPlistData.includes('<key>BundleIsRelocatable</key><true/>')) {
     finalPlistData = finalPlistData.replace(
@@ -175,10 +197,14 @@ try {
     fs.writeFileSync(appComponentPlistPath, finalPlistData, 'utf-8');
   }
 
-  execSync(
-    `pkgbuild --root "${appRootDir}" --component-plist "${appComponentPlistPath}" --install-location "/Applications" --identifier "com.jameet.app.pkg" --version "0.1.0" "${appPkgPath}"`,
-    { stdio: 'inherit' }
-  );
+  execFileSync('pkgbuild', [
+    '--root', appRootDir,
+    '--component-plist', appComponentPlistPath,
+    '--install-location', '/Applications',
+    '--identifier', 'com.jameet.app.pkg',
+    '--version', '0.1.0',
+    appPkgPath
+  ], { stdio: 'inherit' });
 
   // 7. Build Driver Component Package
   console.log('[build-macos-pkg] Building JaMeet Remote AudioServerPlugIn component package...');
@@ -186,10 +212,8 @@ try {
   const targetDriverDir = path.join(driverPayloadRoot, 'Library', 'Audio', 'Plug-Ins', 'HAL', 'JaMeetRemote.driver');
   fs.mkdirSync(path.dirname(targetDriverDir), { recursive: true });
 
-  // Copy driver bundle into payload root
-  execSync(`cp -R "${driverBundlePath}" "${targetDriverDir}"`);
+  execFileSync('cp', ['-R', driverBundlePath, targetDriverDir]);
 
-  // Create postinstall script (strictly sets permissions without invasive process kills)
   const scriptsDir = path.join(tmpWorkDir, 'driver-scripts');
   fs.mkdirSync(scriptsDir, { recursive: true });
   const postinstallScript = path.join(scriptsDir, 'postinstall');
@@ -209,10 +233,13 @@ exit 0
 `;
   fs.writeFileSync(postinstallScript, postinstallContent, { mode: 0o755 });
 
-  execSync(
-    `pkgbuild --root "${driverPayloadRoot}" --scripts "${scriptsDir}" --identifier "com.jameet.audio.driver.JaMeetRemote.pkg" --version "1.0.0" "${driverPkgPath}"`,
-    { stdio: 'inherit' }
-  );
+  execFileSync('pkgbuild', [
+    '--root', driverPayloadRoot,
+    '--scripts', scriptsDir,
+    '--identifier', 'com.jameet.audio.driver.JaMeetRemote.pkg',
+    '--version', '1.0.0',
+    driverPkgPath
+  ], { stdio: 'inherit' });
 
   // 8. Generate Distribution XML with exact declared architectures and restart requirement
   const distXmlContent = `<?xml version="1.0" encoding="utf-8"?>
@@ -236,33 +263,70 @@ exit 0
 `;
   fs.writeFileSync(distributionXmlPath, distXmlContent);
 
-  // 9. Synthesize Product Package via productbuild
+  // 9. Synthesize Product Package via productbuild into temporary location
   console.log('[build-macos-pkg] Synthesizing installer package via productbuild...');
-  const targetOutputForBuild = (!isPreview && installerSigningIdentity) ? unsignedPkgPath : finalPkgPath;
-  execSync(
-    `productbuild --distribution "${distributionXmlPath}" --package-path "${tmpWorkDir}" "${targetOutputForBuild}"`,
-    { stdio: 'inherit' }
-  );
+  execFileSync('productbuild', [
+    '--distribution', distributionXmlPath,
+    '--package-path', tmpWorkDir,
+    targetUnsignedPkgPath
+  ], { stdio: 'inherit' });
 
-  // 10. Developer ID Installer Signing Hook (Official Release)
   if (!isPreview) {
+    // 10. Developer ID Installer Signing Hook (Official Release)
     console.log(`[build-macos-pkg] Signing installer package with Developer ID Installer (${installerSigningIdentity})...`);
-    execSync(`productsign --sign "${installerSigningIdentity}" "${unsignedPkgPath}" "${finalPkgPath}"`, { stdio: 'inherit' });
+    execFileSync('productsign', [
+      '--sign', installerSigningIdentity,
+      targetUnsignedPkgPath,
+      targetSignedPkgPath
+    ], { stdio: 'inherit' });
 
     // 11. Apple Notarization & Stapling (Official Release)
     console.log('[build-macos-pkg] Submitting package for Apple Notarization...');
-    execSync(
-      `xcrun notarytool submit "${finalPkgPath}" --apple-id "${appleId}" --password "${applePassword}" --team-id "${appleTeamId}" --wait`,
-      { stdio: 'inherit' }
-    );
-    console.log('[build-macos-pkg] Stapling notarization ticket to package...');
-    execSync(`xcrun stapler staple "${finalPkgPath}"`, { stdio: 'inherit' });
+    execFileSync('xcrun', [
+      'notarytool', 'submit', targetSignedPkgPath,
+      '--apple-id', appleId,
+      '--password', applePassword,
+      '--team-id', appleTeamId,
+      '--wait'
+    ], { stdio: 'inherit' });
 
-    console.log('\n[build-macos-pkg] Successfully built and notarized official release package: ' + finalPkgPath);
+    console.log('[build-macos-pkg] Stapling notarization ticket to package...');
+    execFileSync('xcrun', ['stapler', 'staple', targetSignedPkgPath], { stdio: 'inherit' });
+
+    // 12. Verification Step
+    console.log('[build-macos-pkg] Verifying complete signatures and notarization ticket...');
+    console.log('[build-macos-pkg] 1/4 Verifying JaMeet.app code signature...');
+    execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath], { stdio: 'inherit' });
+
+    console.log('[build-macos-pkg] 2/4 Verifying JaMeetRemote.driver code signature...');
+    execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', driverBundlePath], { stdio: 'inherit' });
+
+    console.log('[build-macos-pkg] 3/4 Verifying installer package signature...');
+    execFileSync('pkgutil', ['--check-signature', targetSignedPkgPath], { stdio: 'inherit' });
+
+    console.log('[build-macos-pkg] 4/4 Verifying stapled notarization ticket...');
+    execFileSync('xcrun', ['stapler', 'validate', targetSignedPkgPath], { stdio: 'inherit' });
+
+    // 13. Atomically move validated package to official output path
+    const officialPkgFinalPath = path.join(releaseDir, 'JaMeet-Installer.pkg');
+    fs.copyFileSync(targetSignedPkgPath, officialPkgFinalPath);
+    officialFinalMoved = true;
+
+    console.log('\n[build-macos-pkg] Successfully built, verified, and notarized official release package: ' + officialPkgFinalPath);
   } else {
-    console.log('\n[build-macos-pkg] NOTICE: Created unsigned local preview package at: ' + finalPkgPath);
+    // Local preview: move unsigned package to Preview filename
+    const previewPkgFinalPath = path.join(releaseDir, 'JaMeet-Preview-Unsigned.pkg');
+    fs.copyFileSync(targetUnsignedPkgPath, previewPkgFinalPath);
+
+    console.log('\n[build-macos-pkg] NOTICE: Created unsigned local preview package at: ' + previewPkgFinalPath);
     console.log('[build-macos-pkg] This package is for local testing only and cannot be distributed as an official release.\n');
   }
 } finally {
+  if (!isPreview && !officialFinalMoved) {
+    const officialPkgFinalPath = path.join(releaseDir, 'JaMeet-Installer.pkg');
+    if (fs.existsSync(officialPkgFinalPath)) {
+      fs.unlinkSync(officialPkgFinalPath);
+    }
+  }
   fs.rmSync(tmpWorkDir, { recursive: true, force: true });
 }

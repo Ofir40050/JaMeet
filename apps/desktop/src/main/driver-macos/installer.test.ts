@@ -19,7 +19,10 @@ describe('JaMeet Remote macOS Installer Packaging', () => {
     }).not.toThrow();
 
     const previewPkg = join(releaseDir, 'JaMeet-Preview-Unsigned.pkg');
+    const officialPkg = join(releaseDir, 'JaMeet-Installer.pkg');
     expect(existsSync(previewPkg)).toBe(true);
+    expect(existsSync(officialPkg)).toBe(false);
+    expect(existsSync(join(releaseDir, 'JaMeet-0.1.0-mac-arm64.dmg'))).toBe(false);
 
     // Expand package to verify distribution configuration and component payloads
     const expandDir = join(tmpdir(), `jameet_pkg_expand_${Date.now()}`);
