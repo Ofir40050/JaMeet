@@ -107,9 +107,6 @@ import {
   type ChannelDropdownOption
 } from './media/hardwareDeviceUtils';
 import { fillSelects, populateChannelDropdowns } from './media/deviceSelectUi';
-import { enumerateAndPopulateDevices } from './media/deviceEnumerationController';
-import { renderAudioLimitations as renderAudioLimitationsUi } from './media/audioLimitationsUi';
-import { prepareStudioDomain } from './sessions/setup/studioPreparationDomainController';
 import { getMeterInterval, getEffectiveMusicBitrate } from './media/mediaPreferenceController';
 import { bindDeviceSelect } from './media/deviceChangeController';
 import { initAuthDomainController } from './auth/authDomainController';
@@ -117,9 +114,11 @@ import { createScreenSharingController } from './sessions/call/screenSharingCont
 import { createVoiceInputsUiController } from './media/voiceInputsUiController';
 import { createLocalAudioCaptureController } from './media/localAudioCaptureController';
 import { createLocalVideoController } from './media/localVideoController';
+import { createStudioPreparationController } from './media/studioPreparationController';
+import { createAudioOutputRoutingController } from './media/audioOutputRoutingController';
+import { createMediaActiveStateController } from './media/mediaActiveStateController';
 import { createMediaStreamControlsController } from './media/mediaStreamControlsController';
 import { updateCameraButtonUi } from './sessions/call/cameraUi';
-import { testSpeakers as testSpeakersController, testMicrophone as testMicrophoneController, getMicrophonePlayback } from './media/deviceTestController';
 import { initMediaSettingsBindings } from './media/mediaSettingsBindingsController';
 import {
   getWorkspaceContextGen,
@@ -1342,55 +1341,40 @@ const {
   onRtcAudioSourceChanged: (source) => rtc.audioSourceChanged(source)
 });
 
-async function enumerateAndPopulate(): Promise<void> {
-  await enumerateAndPopulateDevices({
-    getPreferences: () => prefs,
-    onSavePreferences: () => savePreferences(),
-    getCachedHardwareDevices: () => cachedHardwareDevices,
-    onSetCachedHardwareDevices: (devices) => {
-      cachedHardwareDevices = devices;
-    },
-    onRefreshRunningApps: () => refreshRunningApps(),
-    onRenderVoiceInputControls: (audioInputs) => renderVoiceInputControls(audioInputs),
-    onSetMessage: (id, text) => setMessage(id, text),
-    isInCall: () => inCall,
-    isAudioOnly: () => audioOnly,
-    onSetModeRadios: (mode) => setModeRadios(mode)
-  });
-}
-
-async function prepareStudio(action: PendingAction): Promise<void> {
-  await prepareStudioDomain(action, {
-    onSetPendingAction: (act) => {
-      pending = act;
-    },
-    getCurrentCode: () => currentCode,
-    onSetCurrentCode: (code) => {
-      currentCode = code;
-    },
-    onShowSetupView: () => showView('setup-view'),
-    onSetBusy: (busy) => setBusy(busy),
-    getAudioMode: () => prefs.mode,
-    getCameraId: () => prefs.cameraId,
-    isAudioOnly: () => audioOnly,
-    onSetModeRadios: (mode) => setModeRadios(mode),
-    onUpdateMusicWarning: () => updateMusicWarning(),
-    onUpdateCameraButtonState: () => updateCameraButtonState(),
-    onUpdateLocalPreviews: () => updateLocalPreviews(),
-    onEnumerateAndPopulate: () => enumerateAndPopulate(),
-    onSyncAllVoiceMics: (mode) => syncAllVoiceMics(mode),
-    onReplaceCamera: (camId) => replaceCamera(camId),
-    onReplaceMusicInput: () => replaceMusicInput()
-  });
-}
-
-function renderAudioLimitations(): void {
-  renderAudioLimitationsUi({
-    getPrimaryAudioSource: () => audio.primary,
-    getPreferences: () => prefs,
-    onSetMessage: (id, text, isError) => setMessage(id, text, isError)
-  });
-}
+const {
+  enumerateAndPopulate,
+  prepareStudio,
+  renderAudioLimitations
+} = createStudioPreparationController({
+  getPreferences: () => prefs,
+  onSavePreferences: () => savePreferences(),
+  getCachedHardwareDevices: () => cachedHardwareDevices,
+  setCachedHardwareDevices: (devices) => {
+    cachedHardwareDevices = devices;
+  },
+  onRefreshRunningApps: () => refreshRunningApps(),
+  onRenderVoiceInputControls: (audioInputs) => renderVoiceInputControls(audioInputs),
+  onSetMessage: (id, text, isError) => setMessage(id, text, isError),
+  isInCall: () => inCall,
+  isAudioOnly: () => audioOnly,
+  onSetModeRadios: (mode) => setModeRadios(mode),
+  setPendingAction: (act) => {
+    pending = act;
+  },
+  getCurrentCode: () => currentCode,
+  setCurrentCode: (code) => {
+    currentCode = code;
+  },
+  onShowView: (view) => showView(view as any),
+  setBusy: (busy) => setBusy(busy),
+  onUpdateMusicWarning: () => updateMusicWarning(),
+  onUpdateCameraButtonState: () => updateCameraButtonState(),
+  onUpdateLocalPreviews: () => updateLocalPreviews(),
+  onSyncAllVoiceMics: (mode) => syncAllVoiceMics(mode),
+  onReplaceCamera: (camId) => replaceCamera(camId),
+  onReplaceMusicInput: () => replaceMusicInput(),
+  getPrimaryAudioSource: () => audio.primary
+});
 
 const {
   startScreenShare,
@@ -1427,44 +1411,19 @@ const {
   onSetText: (id, text) => setText(id, text)
 });
 
-async function setOutputDevice(deviceId?: string): Promise<void> {
-  if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
-    if (typeof (remoteAudioCtx as any).setSinkId === 'function') {
-      await (remoteAudioCtx as any).setSinkId(deviceId ?? '');
-    } else if (deviceId) {
-      throw new Error('Audio output selection is not supported on this system.');
-    }
-  }
-
-  const media = [$<HTMLAudioElement>('remote-voice-audio'), $<HTMLAudioElement>('remote-music-audio'), getMicrophonePlayback()].filter(Boolean) as HTMLMediaElement[];
-  for (const element of media) {
-    if (!element.setSinkId) {
-      if (deviceId && !remoteAudioCtx) throw new Error('Audio output selection is not supported on this system.');
-      continue;
-    }
-    await element.setSinkId(deviceId ?? '').catch(() => {});
-  }
-
-  prefs.audioOutputId = deviceId;
-  savePreferences();
-  updateHeadphoneWarning();
-}
-
-async function testSpeakers(pan: 'both' | 'left' | 'right' = 'both'): Promise<void> {
-  await testSpeakersController(pan, {
-    getAudioOutputId: () => prefs.audioOutputId,
-    getOutputVolume: () => prefs.outputVolume
-  });
-}
-
-async function testMicrophone(): Promise<void> {
-  await testMicrophoneController({
-    getPrimaryTrack: () => audio.primary?.track,
-    getAudioOutputId: () => prefs.audioOutputId,
-    getOutputVolume: () => prefs.outputVolume,
-    onSetMessage: (id, text, isError) => setMessage(id, text, isError)
-  });
-}
+const {
+  setOutputDevice,
+  testSpeakers,
+  testMicrophone,
+  getMicrophonePlayback
+} = createAudioOutputRoutingController({
+  getPreferences: () => prefs,
+  onSavePreferences: () => savePreferences(),
+  getRemoteAudioCtx: () => remoteAudioCtx,
+  getPrimaryTrack: () => audio.primary?.track,
+  onUpdateHeadphoneWarning: () => updateHeadphoneWarning(),
+  onSetMessage: (id, text, isError) => setMessage(id, text, isError)
+});
 
 const {
   setRemoteStream,
@@ -1782,17 +1741,13 @@ initMediaSettingsBindings({
   onShowSessionError: (error) => showSessionErrorModal(parseSessionError(error))
 });
 
-function syncMediaActiveState(): void {
-  const isMicLive = !muted && audio.hasActiveSources();
-  const isCamLive = Boolean(cameraEnabled && videoTrack && videoTrack.readyState === 'live');
-  const isScreenLive = Boolean(screenTrack && screenTrack.readyState === 'live');
-  const isAnyLive = Boolean(isCamLive || isScreenLive || isMicLive);
-  const desktopApi = (window as any).jameet || (window as any).musiczoom;
-  if (desktopApi?.setMediaActive) {
-    desktopApi.setMediaActive(isAnyLive);
-  }
-}
-setInterval(syncMediaActiveState, 500);
+const { syncMediaActiveState } = createMediaActiveStateController({
+  isMuted: () => muted,
+  hasActiveAudioSources: () => audio.hasActiveSources(),
+  isCameraEnabled: () => cameraEnabled,
+  getVideoTrack: () => videoTrack,
+  getScreenTrack: () => screenTrack
+});
 
 
 initCallToolbarController({
