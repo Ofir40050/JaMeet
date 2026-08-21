@@ -110,7 +110,6 @@ import {
 import { fillSelects, populateChannelDropdowns } from './media/deviceSelectUi';
 import { enumerateAndPopulateDevices } from './media/deviceEnumerationController';
 import { renderAudioLimitations as renderAudioLimitationsUi } from './media/audioLimitationsUi';
-import { handleRemoteMediaUi } from './sessions/call/remoteMediaUiController';
 import { prepareStudioDomain } from './sessions/setup/studioPreparationDomainController';
 import { getMeterInterval, getEffectiveMusicBitrate } from './media/mediaPreferenceController';
 import { bindDeviceSelect } from './media/deviceChangeController';
@@ -260,9 +259,6 @@ import {
   effectiveVideoQuality
 } from './sessions/call/sessionMetadataController';
 import {
-  enterSession as enterSessionController
-} from './sessions/setup/sessionEntryController';
-import {
   type SessionErrorModalOptions,
   parseSessionError
 } from './sessions/setup/sessionErrorParser';
@@ -270,17 +266,8 @@ import {
   showSessionErrorModal
 } from './sessions/setup/sessionErrorUi';
 import {
-  initializeActiveCall as initializeActiveCallController
+  createActiveCallController
 } from './sessions/call/activeCallController';
-import {
-  handleSessionProjectWorkspace
-} from './sessions/call/sessionProjectWorkspaceController';
-import {
-  transitionToActiveCallUi
-} from './sessions/call/activeCallUiController';
-import {
-  updateLockUi as updateLockUiHelper
-} from './sessions/call/sessionLockUi';
 import {
   initProfileUiController
 } from './auth/profile/profileUiController';
@@ -1184,9 +1171,9 @@ const musicMeter = new LevelMeter();
 const rtc = new WebRtcSession(
   signaling,
   audio,
-  setRemoteStream,
-  setRemoteAudio,
-  handleRemoteMedia,
+  (stream) => setRemoteStream(stream),
+  (id, purpose, track) => setRemoteAudio(id, purpose, track),
+  (media) => handleRemoteMedia(media),
   (status) => setCallStatus(status),
   (isStereo) => {
     remoteVoiceIsStereo = isStereo;
@@ -1512,143 +1499,85 @@ async function testMicrophone(): Promise<void> {
   });
 }
 
-async function initializeActiveCall(ack: MeetingAck): Promise<void> {
-  await initializeActiveCallController(ack, {
-    getVideoTrack: () => videoTrack,
-    onSetVideoTrackOnRtc: (track) => rtc.setVideoTrack(track),
-    getAudioMode: () => prefs.mode,
-    getCameraQuality: () => prefs.cameraQuality,
-    getEffectiveVideoQuality: (q) => effectiveVideoQuality(q),
-    getEffectiveMusicBitrate: () => effectiveMusicBitrate(),
-    onConfigureRtc: (code, role, iceServers, mode, quality, bitrate, peerMedia) => {
-      rtc.configure(code, role, iceServers, mode, quality, bitrate, peerMedia);
-    },
-    onSetCurrentCode: (code) => {
-      currentCode = code;
-    },
-    onSetCurrentRole: (role) => {
-      currentRole = role;
-    },
-    onSetCurrentIceServers: (servers) => {
-      currentIceServers = servers;
-    },
-    onSetMyIdentity: (identity) => {
-      myIdentity = identity;
-    },
-    onSetHostIdentity: (identity) => {
-      hostIdentity = identity;
-    },
-    onSetPeerIdentity: (identity) => {
-      peerIdentity = identity;
-    },
-    onSetPeerParticipantId: (id) => {
-      peerParticipantId = id;
-    },
-    onSetInCall: (inCallState) => {
-      inCall = inCallState;
-    },
-    onUpdateCallMode: () => updateCallMode(),
-    onUpdateCameraButtonState: () => updateCameraButtonState(),
-    onUpdateLocalPreviews: () => updateLocalPreviews(),
-    onUpdateParticipantIdentityUi: () => updateParticipantIdentityUi(),
-    onSetRemoteMuted: (muted) => {
-      remoteMuted = muted;
-    },
-    onResetStudioMixerChannels: () => {
-      studioMixerChannels.forEach((ch) => {
-        ch.muted = false;
-        ch.soloed = false;
-      });
-    },
-    isStudioMixerOpen: () => studioMixerOpen,
-    onRenderStudioMixer: () => renderStudioMixer(),
-    onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
-    onHandleSessionProjectWorkspace: (meetingAck) => {
-      handleSessionProjectWorkspace(meetingAck, {
-        getAuthToken: () => auth.getToken(),
-        onSetSessionProjectId: (id) => {
-          sessionProjectId = id;
-        },
-        onResetWorkspaceGenerations: () => resetWorkspaceGenerations(),
-        getWorkspaceContextGen: () => getWorkspaceContextGen(),
-        onFetchProject: (token, projectId) => projectsApi.fetchProject(token, projectId),
-        getActiveProject: () => activeProject,
-        onSetActiveProject: (p) => {
-          activeProject = p;
-        },
-        onSetActiveProjectId: (id) => {
-          activeProjectId = id;
-        },
-        onSyncWorkspaceInputsFromProject: (force) => syncWorkspaceInputsFromProject(force),
-        onJoinProjectWorkspace: (projectId, token) => signaling.joinProjectWorkspace(projectId, token)
-      });
-    },
-    onTransitionToActiveCallUi: async (meetingAck) => {
-      await transitionToActiveCallUi(meetingAck, {
-        onResetChatUi: () => resetChatUi(),
-        onSetIsSessionLocked: (locked) => setIsSessionLocked(locked),
-        onUpdateLockUi: () => updateLockUi(),
-        onShowCallView: () => showView('call-view'),
-        onStartSessionTimer: () => startSessionTimer(),
-        getPendingPeerMedia: () => pendingPeerMedia,
-        onClearPendingPeerMedia: () => {
-          pendingPeerMedia = undefined;
-        },
-        onPeerReady: (media) => rtc.peerReady(media)
-      });
-    }
-  });
-}
-
-function updateLockUi(): void {
-  updateLockUiHelper({
-    getRole: () => currentRole,
-    getIsLocked: () => getIsSessionLocked()
-  });
-}
-
-async function enterSession(): Promise<void> {
-  await enterSessionController({
-    getPendingAction: () => pending,
-    hasPrimaryAudio: () => Boolean(audio.primary),
-    isAudioOnly: () => audioOnly,
-    hasVideoTrack: () => Boolean(videoTrack),
-    setBusy: (busy) => setBusy(busy),
-    getAuthToken: () => auth.getToken(),
-    getGuestName: () => auth.getGuestName(),
-    getParticipantId: () => participantId,
-    getMetadata: () => metadata(),
-    getActiveProjectId: () => activeProjectId,
-    onSignalingCreate: (pId, meta, token, guestName, projId, waitingRoom) =>
-      signaling.create(pId, meta, token, guestName, projId, waitingRoom),
-    onSignalingJoin: (code, pId, meta, token, guestName) =>
-      signaling.join(code, pId, meta, token, guestName),
-    onSignalingLeave: () => signaling.leave(),
-    onOpenAuthView: (tab) => openAuthView(tab),
-    onSetCurrentCode: (code) => {
-      currentCode = code;
-    },
-    onSetLoggerSessionContext: (code) => logger.setSessionContext(code),
-    onSetHostIdentity: (identity) => {
-      hostIdentity = identity;
-    },
-    onSetMyIdentity: (identity) => {
-      myIdentity = identity;
-    },
-    onShowWaitingView: () => showView('waiting-view'),
-    onInitializeActiveCall: (ack) => initializeActiveCall(ack)
-  });
-}
-
-function setRemoteStream(stream?: MediaStream): void {
-  remoteVideoStream = stream;
-  const video = $<HTMLVideoElement>('remote-video');
-  const shouldRender = Boolean(stream && (!remoteMedia?.audioOnly || remoteMedia.sharingScreen));
-  if (video) video.srcObject = shouldRender ? stream! : null;
-  $('remote-placeholder')?.classList.toggle('hidden', shouldRender && Boolean(stream?.getVideoTracks().length));
-  if (stream) void setOutputDevice(prefs.audioOutputId).catch((error) => setCallStatus(deviceError(error)));
-  updateSessionStage();
-}
+const {
+  setRemoteStream,
+  handleRemoteMedia,
+  updateLockUi,
+  initializeActiveCall,
+  enterSession
+} = createActiveCallController({
+  getPreferences: () => prefs,
+  getVideoTrack: () => videoTrack,
+  onSetVideoTrackOnRtc: (track) => rtc.setVideoTrack(track),
+  getEffectiveMusicBitrate: () => effectiveMusicBitrate(),
+  onConfigureRtc: (code, role, iceServers, mode, quality, bitrate, peerMedia) => {
+    rtc.configure(code, role, iceServers, mode, quality, bitrate, peerMedia);
+  },
+  getCurrentCode: () => currentCode,
+  setCurrentCode: (code) => { currentCode = code; },
+  getCurrentRole: () => currentRole,
+  setCurrentRole: (role) => { currentRole = role; },
+  setCurrentIceServers: (servers) => { currentIceServers = servers; },
+  setMyIdentity: (identity) => { myIdentity = identity; },
+  setHostIdentity: (identity) => { hostIdentity = identity; },
+  setPeerIdentity: (identity) => { peerIdentity = identity; },
+  setPeerParticipantId: (id) => { peerParticipantId = id; },
+  isInCall: () => inCall,
+  setInCall: (inCallState) => { inCall = inCallState; },
+  onUpdateCallMode: () => updateCallMode(),
+  onUpdateCameraButtonState: () => updateCameraButtonState(),
+  onUpdateLocalPreviews: () => updateLocalPreviews(),
+  onUpdateParticipantIdentityUi: () => updateParticipantIdentityUi(),
+  setRemoteMuted: (muted) => { remoteMuted = muted; },
+  onResetStudioMixerChannels: () => {
+    studioMixerChannels.forEach((ch) => {
+      ch.muted = false;
+      ch.soloed = false;
+    });
+  },
+  isStudioMixerOpen: () => studioMixerOpen,
+  onRenderStudioMixer: () => renderStudioMixer(),
+  onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
+  getAuthToken: () => auth.getToken(),
+  getGuestName: () => auth.getGuestName(),
+  getParticipantId: () => participantId,
+  getMetadata: () => metadata(),
+  getActiveProjectId: () => activeProjectId,
+  setSessionProjectId: (id) => { sessionProjectId = id; },
+  onResetWorkspaceGenerations: () => resetWorkspaceGenerations(),
+  getWorkspaceContextGen: () => getWorkspaceContextGen(),
+  getActiveProject: () => activeProject,
+  setActiveProject: (p) => { activeProject = p; },
+  setActiveProjectId: (id) => { activeProjectId = id; },
+  onSyncWorkspaceInputsFromProject: (force) => syncWorkspaceInputsFromProject(force),
+  onJoinProjectWorkspace: (projectId, token) => signaling.joinProjectWorkspace(projectId, token),
+  onResetChatUi: () => resetChatUi(),
+  getIsSessionLocked: () => getIsSessionLocked(),
+  onSetIsSessionLocked: (locked) => setIsSessionLocked(locked),
+  onShowView: (view) => showView(view as any),
+  onStartSessionTimer: () => startSessionTimer(),
+  getPendingPeerMedia: () => pendingPeerMedia,
+  clearPendingPeerMedia: () => { pendingPeerMedia = undefined; },
+  onPeerReady: (media) => rtc.peerReady(media),
+  getPendingAction: () => pending,
+  hasPrimaryAudio: () => Boolean(audio.primary),
+  isAudioOnly: () => audioOnly,
+  setBusy: (busy) => setBusy(busy),
+  onSignalingCreate: (pId, meta, token, guestName, projId, waitingRoom) =>
+    signaling.create(pId, meta, token, guestName, projId, waitingRoom),
+  onSignalingJoin: (code, pId, meta, token, guestName) =>
+    signaling.join(code, pId, meta, token, guestName),
+  onSignalingLeave: () => signaling.leave(),
+  onOpenAuthView: (tab) => openAuthView(tab),
+  getRemoteMedia: () => remoteMedia,
+  setRemoteMedia: (media) => { remoteMedia = media; },
+  getRemoteVideoStream: () => remoteVideoStream,
+  setRemoteVideoStream: (stream) => { remoteVideoStream = stream; },
+  onSetOutputDevice: (deviceId) => setOutputDevice(deviceId),
+  onSetCallStatus: (status) => setCallStatus(status),
+  onUpdateSessionStage: () => updateSessionStage(),
+  onSetText: (id, text) => setText(id, text)
+});
 
 let remoteAudioCtx: AudioContext | undefined;
 let remoteVoiceGain: GainNode | undefined;
@@ -1754,18 +1683,6 @@ const {
   onCheckActiveSpeaker: () => checkActiveSpeaker()
 });
 
-function handleRemoteMedia(media: MediaMetadata): void {
-  handleRemoteMediaUi(media, {
-    onSetRemoteMedia: (m) => {
-      remoteMedia = m;
-    },
-    getRemoteVideoStream: () => remoteVideoStream,
-    onUpdateSessionStage: () => updateSessionStage(),
-    isInCall: () => inCall,
-    onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
-    onSetText: (id, text) => setText(id, text)
-  });
-}
 
 async function leaveSession(endedMessage?: string): Promise<void> {
   stopSessionTimer();
