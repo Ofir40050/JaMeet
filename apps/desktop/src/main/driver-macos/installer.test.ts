@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { execSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 
 describe('JaMeet Remote macOS Installer Packaging', () => {
-  it('builds a valid macOS installer package installing JaMeet.app to /Applications and JaMeetRemote.driver to /Library/Audio/Plug-Ins/HAL', () => {
+  it('builds a valid macOS local preview installer package installing JaMeet.app to /Applications and JaMeetRemote.driver to /Library/Audio/Plug-Ins/HAL', () => {
     if (process.platform !== 'darwin') {
       return;
     }
@@ -15,16 +15,25 @@ describe('JaMeet Remote macOS Installer Packaging', () => {
     const pkgScript = join(desktopDir, 'scripts', 'build-macos-pkg.cjs');
 
     expect(() => {
-      execSync(`node "${pkgScript}"`, { cwd: desktopDir, stdio: 'pipe' });
+      execSync(`node "${pkgScript}" --preview`, { cwd: desktopDir, stdio: 'pipe' });
     }).not.toThrow();
 
-    const installerPkg = join(releaseDir, 'JaMeet-Installer.pkg');
-    expect(existsSync(installerPkg)).toBe(true);
+    const previewPkg = join(releaseDir, 'JaMeet-Preview-Unsigned.pkg');
+    const officialPkg = join(releaseDir, 'JaMeet-Installer.pkg');
+    const officialExistedBefore = existsSync(officialPkg);
+    const originalOfficialBytes = officialExistedBefore ? readFileSync(officialPkg) : null;
+
+    expect(existsSync(previewPkg)).toBe(true);
+    if (officialExistedBefore && originalOfficialBytes) {
+      expect(existsSync(officialPkg)).toBe(true);
+      expect(readFileSync(officialPkg).equals(originalOfficialBytes)).toBe(true);
+    }
+    expect(existsSync(join(releaseDir, 'JaMeet-0.1.0-mac-arm64.dmg'))).toBe(false);
 
     // Expand package to verify distribution configuration and component payloads
     const expandDir = join(tmpdir(), `jameet_pkg_expand_${Date.now()}`);
     try {
-      execSync(`pkgutil --expand "${installerPkg}" "${expandDir}"`, { stdio: 'pipe' });
+      execSync(`pkgutil --expand "${previewPkg}" "${expandDir}"`, { stdio: 'pipe' });
 
       const distFile = join(expandDir, 'Distribution');
       expect(existsSync(distFile)).toBe(true);
@@ -73,5 +82,75 @@ describe('JaMeet Remote macOS Installer Packaging', () => {
     } finally {
       rmSync(expandDir, { recursive: true, force: true });
     }
-  }, 30000);
+  }, 120000);
+
+  it('ensures preview packaging never deletes or modifies an existing JaMeet-Installer.pkg', () => {
+    if (process.platform !== 'darwin') {
+      return;
+    }
+
+    const desktopDir = join(__dirname, '..', '..', '..');
+    const releaseDir = join(desktopDir, 'release');
+    const pkgScript = join(desktopDir, 'scripts', 'build-macos-pkg.cjs');
+
+    const officialPkg = join(releaseDir, 'JaMeet-Installer.pkg');
+    const existedBefore = existsSync(officialPkg);
+    const originalBytes = existedBefore ? readFileSync(officialPkg) : null;
+    const createdMock = !existedBefore;
+
+    if (createdMock) {
+      writeFileSync(officialPkg, 'OFFICIAL_RELEASE_PACKAGE_MOCK_DATA', 'utf-8');
+    }
+    const expectedBytes = existedBefore ? originalBytes! : readFileSync(officialPkg);
+
+    try {
+      execSync(`node "${pkgScript}" --preview`, { cwd: desktopDir, stdio: 'pipe' });
+
+      // Verify that official package is preserved and byte-identical
+      expect(existsSync(officialPkg)).toBe(true);
+      expect(readFileSync(officialPkg).equals(expectedBytes)).toBe(true);
+    } finally {
+      if (createdMock && existsSync(officialPkg)) {
+        rmSync(officialPkg, { force: true });
+      }
+    }
+  }, 120000);
+
+  it('strictly rejects official release packaging when Apple Developer credentials are missing', () => {
+    if (process.platform !== 'darwin') {
+      return;
+    }
+
+    const desktopDir = join(__dirname, '..', '..', '..');
+    const pkgScript = join(desktopDir, 'scripts', 'build-macos-pkg.cjs');
+
+    let failed = false;
+    let output = '';
+    try {
+      // Execute in isolated clean env without Apple signing identities
+      execSync(`node "${pkgScript}"`, {
+        cwd: desktopDir,
+        stdio: 'pipe',
+        env: {
+          ...process.env,
+          APPLE_SIGNING_IDENTITY: '',
+          DEVELOPER_ID_APPLICATION: '',
+          CSC_NAME: '',
+          APPLE_INSTALLER_IDENTITY: '',
+          DEVELOPER_ID_INSTALLER: '',
+          APPLE_ID: '',
+          APPLE_APP_SPECIFIC_PASSWORD: '',
+          APPLE_ID_PASSWORD: '',
+          APPLE_TEAM_ID: '',
+          JAMEET_BUILD_PREVIEW: ''
+        }
+      });
+    } catch (err: any) {
+      failed = true;
+      output = `${err.stdout || ''} ${err.stderr || ''}`;
+    }
+
+    expect(failed).toBe(true);
+    expect(output).toContain('Official macOS release packaging requires complete Apple Developer credentials');
+  }, 120000);
 });

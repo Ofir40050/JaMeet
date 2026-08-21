@@ -101,20 +101,40 @@ After the public health and Socket.IO checks pass, build the Apple Silicon clien
 PRODUCTION_SIGNALING_URL=https://signal.yourdomain.com npm run package:mac:production
 ```
 
-The build script rejects non-HTTPS endpoints and confirms that the production origin is present in the renderer bundle. Install the resulting arm64 DMG on both Macs. For the strongest first-call proof, use different internet connections such as home broadband and a phone hotspot.
+The build script rejects non-HTTPS endpoints, confirms that the production origin is present in the renderer bundle, and produces the official signed and notarized `JaMeet-Installer.pkg` containing both `JaMeet.app` and `JaMeetRemote.driver`.
 
 ## Build installers
 
+### macOS (Apple Silicon)
+
+- **Official Signed & Notarized Release Package:**
+  ```bash
+  npm run package:mac:production
+  # or: npm run package:mac
+  ```
+  Produces `apps/desktop/release/JaMeet-Installer.pkg` containing `JaMeet.app` (for `/Applications`) and the `JaMeetRemote.driver` virtual audio driver (for `/Library/Audio/Plug-Ins/HAL`).
+
+  Official macOS distribution requires complete Apple Developer credentials:
+  - `APPLE_SIGNING_IDENTITY` (or `DEVELOPER_ID_APPLICATION`): Developer ID Application certificate name or SHA (for `JaMeet.app` and `JaMeetRemote.driver`).
+  - `APPLE_INSTALLER_IDENTITY` (or `DEVELOPER_ID_INSTALLER`): Developer ID Installer certificate name or SHA (for `JaMeet-Installer.pkg`).
+  - `APPLE_ID`: Apple Developer account email address.
+  - `APPLE_APP_SPECIFIC_PASSWORD` (or `APPLE_ID_PASSWORD`): App-specific password generated on appleid.apple.com.
+  - `APPLE_TEAM_ID`: 10-character Apple Developer Team ID.
+
+- **Local Unsigned Developer Preview:**
+  ```bash
+  npm run package:mac:preview
+  ```
+  Produces `apps/desktop/release/JaMeet-Preview-Unsigned.pkg` for local Apple Silicon developer testing without requiring Apple Developer certificates.
+
+### Windows & Linux
+
 ```bash
-npm run build
-npm run package:mac
 npm run package:win
 npm run package:linux
 ```
 
-Build each installer on its native operating system for release. macOS outputs DMGs for arm64 and x64, Windows outputs an x64 NSIS installer, and Linux outputs an x64 AppImage under `apps/desktop/release/`.
-
-Unsigned packages are suitable for development. Public macOS distribution should set the electron-builder Apple signing/notarization environment variables (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`). Windows signing uses `CSC_LINK` and `CSC_KEY_PASSWORD`.
+Windows outputs an x64 NSIS installer (`JaMeet-Setup.exe`), and Linux outputs an x64 AppImage under `apps/desktop/release/`. Windows Authenticode code signing uses `CSC_LINK` and `CSC_KEY_PASSWORD`.
 
 ## Verification
 

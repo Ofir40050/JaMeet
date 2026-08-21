@@ -17,8 +17,10 @@
     "dev:desktop:peer": "node apps/desktop/scripts/dev-instance.cjs 2",
     "test": "npm run build -w @jameet/shared && npm test --workspaces --if-present",
     "typecheck": "npm run build -w @jameet/shared && npm run typecheck --workspaces --if-present",
-    "package:mac": "npm run package:mac -w @jameet/desktop",
+    "package:mac": "sh deploy/build-production-mac.sh",
     "package:mac:production": "sh deploy/build-production-mac.sh",
+    "package:mac:release": "sh deploy/build-production-mac.sh",
+    "package:mac:preview": "sh deploy/build-preview-mac.sh",
     "package:win": "npm run package:win -w @jameet/desktop",
     "package:win:production": "node deploy/build-production-win.cjs",
     "package:linux": "npm run package:linux -w @jameet/desktop"
