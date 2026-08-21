@@ -96,7 +96,7 @@ static void* JaMeetDriver_DiscoveryWorker(void* arg) {
 
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_nsec += 100 * 1000 * 1000; /* 100 ms polling interval */
+        ts.tv_nsec += 20 * 1000 * 1000; /* 20 ms polling interval for responsive background discovery */
         if (ts.tv_nsec >= 1000000000) {
             ts.tv_sec += 1;
             ts.tv_nsec -= 1000000000;

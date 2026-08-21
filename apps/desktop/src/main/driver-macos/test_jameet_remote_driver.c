@@ -271,19 +271,31 @@ static void test_background_discovery_for_running_client(void) {
 
     float pcm[256 * 2];
     for (int i = 0; i < 256 * 2; i++) pcm[i] = 25.0f;
-    uint64_t nowMs = get_current_time_ms();
-    JaMeetProducer_WriteFrames(&producer, pcm, 256, true, nowMs);
 
-    /* 3. Sleep 150 ms to allow background discovery worker to connect outside RT path */
-    usleep(150000);
+    /* 3. Run active IO cycles until background discovery worker connects the running stream */
+    bool discoveryConnected = false;
+    for (int attempt = 0; attempt < 200; attempt++) {
+        uint64_t nowMs = get_current_time_ms();
+        JaMeetProducer_WriteFrames(&producer, pcm, 256, true, nowMs);
 
-    /* 4. Client 501 calls DoIOOperation without restarting IO or adding new client */
-    memset(ioBuffer, 0, sizeof(ioBuffer));
-    status = (*driver)->DoIOOperation(
-        driver, kObjectID_Device, kObjectID_Stream_Input, 501,
-        kAudioServerPlugInIOOperationReadInput, 256, &cycleInfo, ioBuffer, NULL
-    );
-    assert(status == kAudioHardwareNoError);
+        memset(ioBuffer, 0, sizeof(ioBuffer));
+        status = (*driver)->DoIOOperation(
+            driver, kObjectID_Device, kObjectID_Stream_Input, 501,
+            kAudioServerPlugInIOOperationReadInput, 256, &cycleInfo, ioBuffer, NULL
+        );
+        assert(status == kAudioHardwareNoError);
+
+        if (fabsf(ioBuffer[0] - 25.0f) < 1e-5f) {
+            discoveryConnected = true;
+            break;
+        }
+
+        /* Simulate real-time audio cycle period (~5ms) */
+        usleep(5000);
+    }
+
+    /* 4. Verify that running client received audio without restarting IO */
+    assert(discoveryConnected == true);
     for (int i = 0; i < 256 * 2; i++) {
         assert(fabsf(ioBuffer[i] - 25.0f) < 1e-5f);
     }
