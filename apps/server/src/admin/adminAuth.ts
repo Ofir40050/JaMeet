@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import type { ServerConfig } from "../config.js";
+import type { ServerConfig } from "../core/config.js";
 import {
   ADMIN_SESSION_COOKIE_NAME,
   ADMIN_SESSION_TTL_MS

@@ -1,5 +1,5 @@
 import type { Project } from '@jameet/shared';
-import type { UserStore } from '../auth.js';
+import type { UserStore } from '../auth/auth.js';
 
 export function enrichUserAvatars(project: Project, userStore?: UserStore): Project {
   if (!userStore) return project;

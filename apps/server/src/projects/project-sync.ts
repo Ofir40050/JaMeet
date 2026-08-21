@@ -1,8 +1,8 @@
 import type { Server } from 'socket.io';
-import type { Room } from './rooms.js';
-import type { UserStore } from './auth.js';
+import type { Room } from '../rooms/rooms.js';
+import type { UserStore } from '../auth/auth.js';
 import type { ProjectStore } from './projects.js';
-import type { SocketData } from './types/socket.js';
+import type { SocketData } from '../types/socket.js';
 
 export function pruneStaleProjectSubscribers(
   io: Server,

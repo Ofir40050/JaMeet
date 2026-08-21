@@ -1,10 +1,10 @@
 import type { Server } from 'socket.io';
-import type { ServerConfig } from './config.js';
+import type { ServerConfig } from '../core/config.js';
 import type { RoomStore, Room, Participant } from './rooms.js';
-import { UserStore, validateStoredUserSessionAccess } from './auth.js';
-import type { ProjectStore } from './projects.js';
-import type { SocketData } from './types/socket.js';
-import { ensureRoomProjectAccess, finalizeProjectSessionOnClose } from './project-sync.js';
+import { UserStore, validateStoredUserSessionAccess } from '../auth/auth.js';
+import type { ProjectStore } from '../projects/projects.js';
+import type { SocketData } from '../types/socket.js';
+import { ensureRoomProjectAccess, finalizeProjectSessionOnClose } from '../projects/project-sync.js';
 
 export interface SessionLifecycleContext {
   rooms: RoomStore;

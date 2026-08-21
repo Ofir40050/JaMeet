@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { createApp } from './app.js';
-import { loadConfig } from './config.js';
-import { logger } from './logger.js';
+import { loadConfig } from './core/config.js';
+import { logger } from './core/logger.js';
 
 logger.setupGlobalHandlers();
 

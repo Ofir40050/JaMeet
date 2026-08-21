@@ -3,7 +3,7 @@ import {
   createScheduledSessionSchema,
   updateScheduledSessionSchema
 } from '@jameet/shared';
-import type { UserStore } from '../auth.js';
+import type { UserStore } from '../auth/auth.js';
 
 export function registerSessionRoutes(app: FastifyInstance, userStore: UserStore): void {
   app.get('/api/sessions/history', async (request, reply) => {

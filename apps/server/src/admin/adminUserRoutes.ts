@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
-import type { ServerConfig } from "../config.js";
-import { UserStore, type SessionAccessState } from "../auth.js";
-import { ALLOWED_SESSION_ACCESS_STATES } from "../admin-access.js";
+import type { ServerConfig } from "../core/config.js";
+import { UserStore, type SessionAccessState } from "../auth/auth.js";
+import { ALLOWED_SESSION_ACCESS_STATES } from "./admin-access.js";
 import type { AdminRuntimeContext } from "./adminTypes.js";
 import {
   isRequestAdminAuthenticated,

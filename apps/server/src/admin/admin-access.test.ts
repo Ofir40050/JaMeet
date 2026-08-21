@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { io as ioc, type Socket as ClientSocket } from 'socket.io-client';
-import { UserStore } from './auth.js';
-import { createApp } from './app.js';
-import { loadConfig } from './config.js';
+import { UserStore } from '../auth/auth.js';
+import { createApp } from '../app.js';
+import { loadConfig } from '../core/config.js';
 import {
   updateAccountSessionAccess,
   parseCliArgs,
@@ -20,7 +20,7 @@ import {
   readDatastoreLockInfo,
   getDatastoreLockPath,
   DatastoreLockError
-} from './datastore-lock.js';
+} from '../core/datastore-lock.js';
 
 describe('Admin Session Access CLI & Management Tool', () => {
   let testDir: string;

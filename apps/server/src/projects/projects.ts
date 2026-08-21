@@ -15,14 +15,14 @@ import {
   type UserProfile,
   type ParticipantIdentity
 } from '@jameet/shared';
-import type { UserStore } from './auth.js';
+import type { UserStore } from '../auth/auth.js';
 
 import {
   WorkspaceConflictError,
   ProjectLimitError,
   WorkspaceLimitError
-} from './projects/errors.js';
-import { PROJECT_LIMITS } from './projects/limits.js';
+} from './errors.js';
+import { PROJECT_LIMITS } from './limits.js';
 
 export {
   WorkspaceConflictError,
@@ -30,11 +30,11 @@ export {
   WorkspaceLimitError
 };
 export { PROJECT_LIMITS };
-export { type ProjectDatabaseSchema } from './projects/types.js';
+export { type ProjectDatabaseSchema } from './types.js';
 import {
   enrichUserAvatars,
   normalizeLoadedProject
-} from './projects/normalization.js';
+} from './normalization.js';
 import {
   loadProjectsFromDisk,
   resolveProjectPath,
@@ -42,15 +42,15 @@ import {
   deleteProjectFromDisk,
   createProjectSnapshot,
   restoreProjectSnapshot
-} from './projects/storage.js';
-import { recordProjectActivity } from './projects/activities.js';
-import { applyWorkspaceUpdates } from './projects/workspace.js';
+} from './storage.js';
+import { recordProjectActivity } from './activities.js';
+import { applyWorkspaceUpdates } from './workspace.js';
 import {
   addProjectCollaborator,
   updateProjectCollaboratorRole,
   removeProjectCollaborator
-} from './projects/collaborators.js';
-import { recordProjectSessionItem } from './projects/sessions.js';
+} from './collaborators.js';
+import { recordProjectSessionItem } from './sessions.js';
 
 export class ProjectStore {
   private projects = new Map<string, Project>(); // projectId -> Project

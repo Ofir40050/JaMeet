@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import type { CrashReport } from '@jameet/shared';
-import { logger } from './logger.js';
+import { logger } from '../core/logger.js';
 
 export const MAX_CRASH_REPORTS = 500;
 

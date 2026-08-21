@@ -7,8 +7,8 @@ import { io as client, type Socket } from 'socket.io-client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { MeetingAck } from '@jameet/shared';
 import { createApp } from './app.js';
-import { loadConfig } from './config.js';
-import { UserStore } from './auth.js';
+import { loadConfig } from './core/config.js';
+import { UserStore } from './auth/auth.js';
 
 const sockets: Socket[] = [];
 const media = { audioSources: [{ id: 'primary', purpose: 'primary' as const, mode: 'music' as const, enabled: true, channels: 2 }], cameraEnabled: true };

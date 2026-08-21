@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import type { ServerConfig } from "../config.js";
-import { getClientIp } from "../client-ip.js";
+import type { ServerConfig } from "../core/config.js";
+import { getClientIp } from "../core/client-ip.js";
 import {
   ADMIN_SESSION_MAX_AGE_SEC
 } from "./adminConstants.js";

@@ -1,9 +1,9 @@
-export type { AdminRuntimeContext } from "./admin/adminTypes.js";
+export type { AdminRuntimeContext } from "./adminTypes.js";
 export {
   ADMIN_SESSION_COOKIE_NAME,
   ADMIN_SESSION_TTL_MS,
   ADMIN_SESSION_MAX_AGE_SEC
-} from "./admin/adminConstants.js";
+} from "./adminConstants.js";
 export {
   parseCookies,
   buildAdminCookie,
@@ -13,5 +13,5 @@ export {
   verifyAdminSessionToken,
   isRequestAdminAuthenticated,
   validateSameOrigin
-} from "./admin/adminAuth.js";
-export { registerAdminPanel } from "./admin/adminRoutes.js";
+} from "./adminAuth.js";
+export { registerAdminPanel } from "./adminRoutes.js";

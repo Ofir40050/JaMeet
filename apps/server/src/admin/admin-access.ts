@@ -3,13 +3,13 @@ import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
-import { UserStore, type SessionAccessState } from './auth.js';
+import { UserStore, type SessionAccessState } from '../auth/auth.js';
 import {
   acquireDatastoreLock,
   readDatastoreLockInfo,
   isProcessAlive,
   type DatastoreLock
-} from './datastore-lock.js';
+} from '../core/datastore-lock.js';
 
 export const ALLOWED_SESSION_ACCESS_STATES: readonly SessionAccessState[] = ['blocked', 'beta', 'paid'] as const;
 

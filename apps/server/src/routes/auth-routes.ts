@@ -5,9 +5,9 @@ import {
   updateProfileRequestSchema,
   guestAuthRequestSchema
 } from '@jameet/shared';
-import type { UserStore } from '../auth.js';
-import { extractClientInfo } from '../client-info.js';
-import { logger } from '../logger.js';
+import type { UserStore } from '../auth/auth.js';
+import { extractClientInfo } from '../core/client-info.js';
+import { logger } from '../core/logger.js';
 
 export function registerAuthRoutes(app: FastifyInstance, userStore: UserStore): void {
   // REST Authentication Endpoints

@@ -16,20 +16,20 @@ import {
   type MeetingErrorCode,
   type SessionChatMessage
 } from '@jameet/shared';
-import type { ServerConfig } from '../config.js';
-import type { RoomStore, Room } from '../rooms.js';
-import { UserStore, authorizeSessionAccess, validateStoredUserSessionAccess } from '../auth.js';
-import type { ProjectStore } from '../projects.js';
-import { createIceServers } from '../turn.js';
-import type { SocketRateLimiter } from '../rate-limiter.js';
+import type { ServerConfig } from '../core/config.js';
+import type { RoomStore, Room } from '../rooms/rooms.js';
+import { UserStore, authorizeSessionAccess, validateStoredUserSessionAccess } from '../auth/auth.js';
+import type { ProjectStore } from '../projects/projects.js';
+import { createIceServers } from '../rooms/turn.js';
+import type { SocketRateLimiter } from '../core/rate-limiter.js';
 import type { SocketData } from '../types/socket.js';
-import { logger } from '../logger.js';
-import { ensureRoomProjectAccess, finalizeProjectSessionOnClose } from '../project-sync.js';
+import { logger } from '../core/logger.js';
+import { ensureRoomProjectAccess, finalizeProjectSessionOnClose } from '../projects/project-sync.js';
 import {
   endRoomDueToAccessLoss,
   removeParticipantDueToAccessLoss,
   type SessionLifecycleContext
-} from '../session-lifecycle.js';
+} from '../rooms/session-lifecycle.js';
 
 export interface MeetingSocketContext {
   io: Server;

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import type { UserStore } from '../auth.js';
-import { updateAccountSessionAccess } from '../admin-access.js';
+import type { UserStore } from '../auth/auth.js';
+import { updateAccountSessionAccess } from '../admin/admin-access.js';
 
 export function registerInternalAdminRoutes(
   app: FastifyInstance,

@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from './config.js';
+import { loadConfig } from '../core/config.js';
 import { createIceServers } from './turn.js';
 
 describe('TURN credentials', () => {

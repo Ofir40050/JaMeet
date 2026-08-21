@@ -4,17 +4,17 @@ import {
   type ProjectWorkspace,
   type UpdateProjectWorkspaceResponse
 } from '@jameet/shared';
-import type { UserStore } from '../auth.js';
+import type { UserStore } from '../auth/auth.js';
 import {
   ProjectStore,
   WorkspaceConflictError,
   WorkspaceLimitError
-} from '../projects.js';
-import type { RoomStore } from '../rooms.js';
+} from '../projects/projects.js';
+import type { RoomStore } from '../rooms/rooms.js';
 import type { SocketData, ProjectSubscription } from '../types/socket.js';
-import type { SocketRateLimiter } from '../rate-limiter.js';
-import { mapActivityToSessionSummaryEvent } from '../session-summary.js';
-import { pruneStaleProjectSubscribers, ensureRoomProjectAccess } from '../project-sync.js';
+import type { SocketRateLimiter } from '../core/rate-limiter.js';
+import { mapActivityToSessionSummaryEvent } from '../rooms/session-summary.js';
+import { pruneStaleProjectSubscribers, ensureRoomProjectAccess } from '../projects/project-sync.js';
 
 export interface ProjectSocketContext {
   io: Server;

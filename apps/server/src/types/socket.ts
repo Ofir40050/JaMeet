@@ -1,5 +1,5 @@
 import type { ParticipantIdentity } from '@jameet/shared';
-import type { SocketRateLimiter } from '../rate-limiter.js';
+import type { SocketRateLimiter } from '../core/rate-limiter.js';
 
 export type ProjectSubscription = {
   userId: string;

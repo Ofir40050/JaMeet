@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { crashReportSchema, type CrashReport, sanitizeLogData } from '@jameet/shared';
-import type { CrashReportStore } from '../crash-store.js';
-import { logger } from '../logger.js';
+import type { CrashReportStore } from '../crashes/crash-store.js';
+import { logger } from '../core/logger.js';
 
 export function registerCrashRoutes(app: FastifyInstance, crashStore: CrashReportStore): void {
   // REST Canonical Crash Report Ingestion Endpoint

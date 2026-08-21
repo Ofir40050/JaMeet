@@ -12,7 +12,7 @@ import type {
   SessionSummaryEvent,
   MeetingErrorCode
 } from '@jameet/shared';
-import { type ServerConfig, parseBetaEndAt } from './config.js';
+import { type ServerConfig, parseBetaEndAt } from '../core/config.js';
 
 export type SessionAccessState = 'beta' | 'paid' | 'blocked';
 

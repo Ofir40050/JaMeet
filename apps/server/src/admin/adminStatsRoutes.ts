@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import type { ServerConfig } from "../config.js";
-import { UserStore } from "../auth.js";
+import type { ServerConfig } from "../core/config.js";
+import { UserStore } from "../auth/auth.js";
 import type { AdminRuntimeContext } from "./adminTypes.js";
 import { isRequestAdminAuthenticated } from "./adminAuth.js";
 

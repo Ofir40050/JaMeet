@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { CrashReportStore, MAX_CRASH_REPORTS } from './crash-store.js';
-import { createApp } from './app.js';
+import { createApp } from '../app.js';
 import type { CrashReport } from '@jameet/shared';
-import type { ServerConfig } from './config.js';
+import type { ServerConfig } from '../core/config.js';
 
 describe('Server Crash Report Ingestion & CrashReportStore', () => {
   let testDataDir: string;

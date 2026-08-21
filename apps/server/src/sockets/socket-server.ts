@@ -1,9 +1,9 @@
 import type { Server } from 'socket.io';
-import type { ServerConfig } from '../config.js';
-import type { RoomStore } from '../rooms.js';
-import type { UserStore } from '../auth.js';
-import type { ProjectStore } from '../projects.js';
-import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from '../rate-limiter.js';
+import type { ServerConfig } from '../core/config.js';
+import type { RoomStore } from '../rooms/rooms.js';
+import type { UserStore } from '../auth/auth.js';
+import type { ProjectStore } from '../projects/projects.js';
+import { SocketRateLimiter, type RateLimitCategory, type RateLimitConfig } from '../core/rate-limiter.js';
 import type { SocketData } from '../types/socket.js';
 import { registerProjectSocketHandlers } from './project-handlers.js';
 import { registerMeetingSocketHandlers } from './meeting-handlers.js';

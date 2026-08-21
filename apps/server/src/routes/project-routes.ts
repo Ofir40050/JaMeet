@@ -8,14 +8,14 @@ import {
   updateProjectWorkspaceRequestSchema,
   type UserProfile
 } from '@jameet/shared';
-import type { UserStore } from '../auth.js';
+import type { UserStore } from '../auth/auth.js';
 import {
   ProjectStore,
   WorkspaceConflictError,
   ProjectLimitError,
   WorkspaceLimitError
-} from '../projects.js';
-import { pruneStaleProjectSubscribers } from '../project-sync.js';
+} from '../projects/projects.js';
+import { pruneStaleProjectSubscribers } from '../projects/project-sync.js';
 import type { SocketData } from '../types/socket.js';
 
 export interface ProjectRoutesContext {
