@@ -2,7 +2,7 @@ import { $ } from '../../core/dom';
 import { presenter } from '../../media/video/presenter';
 import { deviceError } from '../../media/devices/deviceError';
 import { updateScreenSharingUi } from './screenSharingUi';
-import { showScreenPickerUi } from './screenPickerController';
+import { showScreenPickerUi } from '../../media/video/screenPickerController';
 import type { MediaMetadata } from '@jameet/shared';
 import type { Preferences } from '../../core/preferences';
 

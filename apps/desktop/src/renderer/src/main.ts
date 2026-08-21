@@ -56,7 +56,7 @@ import { initStructurePersistenceController } from './workspace/structure/struct
 import { initWorkspaceCoreController } from './workspace/core/workspaceCoreController';
 import { initWorkspacePersistenceController } from './workspace/core/workspacePersistenceController';
 import { initWorkspaceRealtimeDomainController } from './workspace/core/workspaceRealtimeDomainController';
-import { updateLocalPreviews as updateLocalPreviewsHelper } from './sessions/call/localPreviewUi';
+import { updateLocalPreviews as updateLocalPreviewsHelper } from './media/video/localPreviewUi';
 import { createSessionMetadata, createCurrentStream, performCheckActiveSpeaker } from './sessions/call/sessionMediaStateController';
 import { deviceError } from './media/devices/deviceError';
 import { initInCallAudioModalController } from './sessions/call/inCallAudioModalController';
@@ -68,7 +68,7 @@ import { getMeterInterval, getEffectiveMusicBitrate } from './media/devices/medi
 import { bindDeviceSelect } from './media/devices/deviceChangeController';
 import { initAuthDomainController } from './auth/authDomainController';
 import { createScreenSharingController } from './sessions/call/screenSharingController';
-import { createVoiceInputsUiController } from './media/audio/voiceInputsUiController';
+import { createVoiceInputsUiController } from './sessions/setup/voiceInputsUiController';
 import { createLocalAudioCaptureController } from './media/audio/localAudioCaptureController';
 import { createLocalVideoController } from './media/video/localVideoController';
 import { createStudioPreparationController } from './sessions/setup/studioPreparationController';

@@ -1,15 +1,15 @@
 import { $ } from '../../core/dom';
 import { icons } from '../../core/icons';
-import { LevelMeter, type LevelReading } from './levelMeter';
-import type { HardwareAudioDeviceInfo } from './hardwareDeviceTypes';
+import { LevelMeter, type LevelReading } from '../../media/audio/levelMeter';
+import type { HardwareAudioDeviceInfo } from '../../media/devices/hardwareDeviceUtils';
 import {
   findHardwareDevice,
   generateInputChannelOptions,
   formatDeviceDisplayName
-} from '../devices/hardwareDeviceUtils';
+} from '../../media/devices/hardwareDeviceUtils';
 import type { Preferences } from '../../core/preferences';
-import type { StudioMixerChannel } from '../mixer/studioMixerLogic';
-import type { LocalAudioSourceManager } from './audioSources';
+import type { StudioMixerChannel } from '../../media/mixer/studioMixerLogic';
+import type { LocalAudioSourceManager } from '../../media/audio/audioSources';
 
 export interface VoiceInputsUiContext {
   getPreferences: () => Preferences;
