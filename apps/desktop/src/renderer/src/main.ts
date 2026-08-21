@@ -483,6 +483,10 @@ import { initPresenterCoordinationController } from './sessions/call/presenterCo
 import { initMediaHardwareControlsController } from './media/mediaHardwareControlsController';
 import { initCallSignalingListenersController } from './sessions/call/callSignalingListenersController';
 import {
+  getStereoBalanceGains,
+  createRemoteAudioGraphController
+} from './media/remoteAudioGraphController';
+import {
   readPreferences,
   savePreferences as persistPreferences,
   type Preferences,
@@ -2158,12 +2162,6 @@ function setRemoteStream(stream?: MediaStream): void {
   if (stream) void setOutputDevice(prefs.audioOutputId).catch((error) => setCallStatus(deviceError(error)));
   updateSessionStage();
 }
-function getStereoBalanceGains(pan: number): { left: number; right: number } {
-  const clamped = Math.max(-1, Math.min(1, pan));
-  const left = clamped <= 0 ? 1.0 : Math.max(0, 1.0 - clamped);
-  const right = clamped >= 0 ? 1.0 : Math.max(0, 1.0 + clamped);
-  return { left, right };
-}
 
 let remoteAudioCtx: AudioContext | undefined;
 let remoteVoiceGain: GainNode | undefined;
@@ -2194,276 +2192,80 @@ let lastConnectedMusicFx: string = '__uninitialized__';
 let remoteVoiceSourceNode: MediaStreamAudioSourceNode | undefined;
 const remoteMusicSourceNodes = new Map<string, { track: MediaStreamTrack; sourceNode: MediaStreamAudioSourceNode }>();
 
-async function getOrCreateRemoteAudioContext(): Promise<AudioContext> {
-  if (!remoteAudioCtx || remoteAudioCtx.state === 'closed') {
-    lastConnectedVoiceFx = '__uninitialized__';
-    lastConnectedMusicFx = '__uninitialized__';
-    remoteVoiceFxNodes = [];
-    remoteMusicFxNodes = [];
-    remoteAudioCtx = new AudioContext({ sampleRate: 48000 });
-    remoteVoiceGain = remoteAudioCtx.createGain();
-    remoteMusicGain = remoteAudioCtx.createGain();
-    remoteMasterGain = remoteAudioCtx.createGain();
-    remoteLimiter = remoteAudioCtx.createDynamicsCompressor();
-
-    // Panning & Balance Stages:
-    // Remote Voice:
-    // Mono: Constant Power Mono-to-Stereo Panner + Meter Splitter
-    remoteVoicePanner = remoteAudioCtx.createStereoPanner();
-    remoteVoiceMeterSplitter = remoteAudioCtx.createChannelSplitter(2);
-
-    // Stereo: True Stereo Balance (discrete L/R attenuation without crossfeed)
-    remoteVoiceSplitter = remoteAudioCtx.createChannelSplitter(2);
-    remoteVoiceLeftGain = remoteAudioCtx.createGain();
-    remoteVoiceRightGain = remoteAudioCtx.createGain();
-    remoteVoiceMerger = remoteAudioCtx.createChannelMerger(2);
-
-    // Remote Music: True Stereo Balance (discrete L/R attenuation without crossfeed)
-    remoteMusicSplitter = remoteAudioCtx.createChannelSplitter(2);
-    remoteMusicLeftGain = remoteAudioCtx.createGain();
-    remoteMusicRightGain = remoteAudioCtx.createGain();
-    remoteMusicMerger = remoteAudioCtx.createChannelMerger(2);
-
-    remoteMusicSplitter.connect(remoteMusicLeftGain, 0, 0);
-    remoteMusicSplitter.connect(remoteMusicRightGain, 1, 0);
-    remoteMusicLeftGain.connect(remoteMusicMerger, 0, 0);
-    remoteMusicRightGain.connect(remoteMusicMerger, 0, 1);
-
-    // Live Analysers for Real Level Metering (Stereo Measurement Taps)
-    remoteVoiceAnalyserL = remoteAudioCtx.createAnalyser();
-    remoteVoiceAnalyserL.fftSize = 256;
-    remoteVoiceAnalyserR = remoteAudioCtx.createAnalyser();
-    remoteVoiceAnalyserR.fftSize = 256;
-
-    remoteMusicAnalyserL = remoteAudioCtx.createAnalyser();
-    remoteMusicAnalyserL.fftSize = 256;
-    remoteMusicAnalyserR = remoteAudioCtx.createAnalyser();
-    remoteMusicAnalyserR.fftSize = 256;
-
-    const masterMeterSplitter = remoteAudioCtx.createChannelSplitter(2);
-    remoteMasterAnalyserL = remoteAudioCtx.createAnalyser();
-    remoteMasterAnalyserL.fftSize = 256;
-    remoteMasterAnalyserR = remoteAudioCtx.createAnalyser();
-    remoteMasterAnalyserR.fftSize = 256;
-
-    // Protective Monitor Master Peak Limiter (fastest practical attack, hard knee, max ratio, ~ -0.5 dBFS threshold)
-    remoteLimiter.threshold.setValueAtTime(-0.5, remoteAudioCtx.currentTime);
-    remoteLimiter.knee.setValueAtTime(0.0, remoteAudioCtx.currentTime); // Hard knee for peak limiting
-    remoteLimiter.ratio.setValueAtTime(20.0, remoteAudioCtx.currentTime); // High limiting ratio (20:1 max supported)
-    remoteLimiter.attack.setValueAtTime(0.001, remoteAudioCtx.currentTime); // Minimum practical attack (1ms) supported by Web Audio DynamicsCompressorNode
-    remoteLimiter.release.setValueAtTime(0.05, remoteAudioCtx.currentTime); // Fast release (50ms) to minimize pumping
-
-    // Audio Graph Static Routing for Music:
-    remoteMusicGain.connect(remoteMusicSplitter);
-    remoteMusicMerger.connect(remoteMasterGain);
-    remoteMusicLeftGain.connect(remoteMusicAnalyserL);
-    remoteMusicRightGain.connect(remoteMusicAnalyserR);
-
-    // Master: MasterGain -> Limiter -> Destination
-    remoteMasterGain
-      .connect(remoteLimiter)
-      .connect(remoteAudioCtx.destination);
-
-    remoteLimiter.connect(masterMeterSplitter);
-    masterMeterSplitter.connect(remoteMasterAnalyserL, 0);
-    masterMeterSplitter.connect(remoteMasterAnalyserR, 1);
-
-    if (prefs.audioOutputId && typeof (remoteAudioCtx as any).setSinkId === 'function') {
-      try {
-        await (remoteAudioCtx as any).setSinkId(prefs.audioOutputId);
-      } catch (err) {
-        console.warn('Failed to setSinkId on remoteAudioCtx:', err);
-      }
-    }
-
-    applyMixerAudioRouting();
-  }
-  if (remoteAudioCtx.state === 'suspended') {
-    await remoteAudioCtx.resume().catch(() => {});
-  }
-  return remoteAudioCtx;
-}
-
-function setRemoteAudio(id: string, purpose: 'voice' | 'music', track: MediaStreamTrack): void {
-  const existing = remoteAudioTracks.get(id);
-  if (existing) {
-    existing.track.onended = null;
-    if (existing.track !== track) {
-      try { existing.track.stop(); } catch {}
-      const existingSource = remoteMusicSourceNodes.get(id);
-      if (existingSource && existingSource.track === existing.track) {
-        try { existingSource.sourceNode.disconnect(); } catch {}
-        remoteMusicSourceNodes.delete(id);
-      }
-    }
-  }
-  remoteAudioTracks.set(id, { purpose, track });
-  track.onended = () => {
-    const current = remoteAudioTracks.get(id);
-    if (current && current.track === track) {
-      remoteAudioTracks.delete(id);
-      const existingSource = remoteMusicSourceNodes.get(id);
-      if (existingSource && existingSource.track === track) {
-        try { existingSource.sourceNode.disconnect(); } catch {}
-        remoteMusicSourceNodes.delete(id);
-      }
-      if (!inCall) return;
-      void refreshRemoteAudio();
-    }
-  };
-  if (inCall) {
-    void refreshRemoteAudio();
-  }
-}
-
-let remoteAudioRefreshSeq = 0;
-
-async function refreshRemoteAudio(): Promise<void> {
-  const seq = ++remoteAudioRefreshSeq;
-
-  if (!inCall) {
-    stopRemoteVoiceBridge();
-    try { remoteVoiceSourceNode?.disconnect(); } catch {}
-    remoteVoiceSourceNode = undefined;
-    if (remoteVoiceMeter) {
-      void remoteVoiceMeter.stop();
-      remoteVoiceMeter = undefined;
-    }
-    for (const [, entry] of remoteMusicSourceNodes) {
-      try { entry.sourceNode.disconnect(); } catch {}
-    }
-    remoteMusicSourceNodes.clear();
-    return;
-  }
-
-  const initialHasTracks = [...remoteAudioTracks.values()].some((item) => item.track.readyState !== 'ended');
-  if (!initialHasTracks) {
-    stopRemoteVoiceBridge();
-    try { remoteVoiceSourceNode?.disconnect(); } catch {}
-    remoteVoiceSourceNode = undefined;
-    if (remoteVoiceMeter) {
-      void remoteVoiceMeter.stop();
-      remoteVoiceMeter = undefined;
-    }
-    lastRemoteVoiceDb = -60;
-    checkActiveSpeaker();
-
-    for (const [, entry] of remoteMusicSourceNodes) {
-      try { entry.sourceNode.disconnect(); } catch {}
-    }
-    remoteMusicSourceNodes.clear();
-
-    const voiceEl = $<HTMLAudioElement>('remote-voice-audio');
-    const musicEl = $<HTMLAudioElement>('remote-music-audio');
-    if (voiceEl) {
-      voiceEl.srcObject = null;
-      voiceEl.pause();
-    }
-    if (musicEl) {
-      musicEl.srcObject = null;
-      musicEl.pause();
-    }
-
-    if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
-      applyMixerAudioRouting();
-    }
-    return;
-  }
-
-  const ctx = await getOrCreateRemoteAudioContext();
-
-  // If a newer refresh was triggered while awaiting the AudioContext, yield to the latest call
-  if (seq !== remoteAudioRefreshSeq || !inCall) return;
-
-  // Always query latest tracks state AFTER the async AudioContext operation completes
-  const latestVoiceTracks = [...remoteAudioTracks.values()]
-    .filter((item) => item.purpose === 'voice' && item.track.readyState !== 'ended')
-    .map((item) => item.track);
-  const latestMusicEntries = [...remoteAudioTracks.entries()]
-    .filter(([, item]) => item.purpose === 'music' && item.track.readyState !== 'ended');
-
-  // Reconcile Remote Voice
-  if (latestVoiceTracks.length > 0) {
-    const voiceTrack = latestVoiceTracks[0];
-    remoteVoiceIsStereo = rtc.isVoiceStereo();
-
-    if (!remoteVoiceSourceNode || remoteVoiceSourceNode.mediaStream.getAudioTracks()[0] !== voiceTrack) {
-      try { remoteVoiceSourceNode?.disconnect(); } catch {}
-      const voiceStream = new MediaStream([voiceTrack]);
-      remoteVoiceSourceNode = ctx.createMediaStreamSource(voiceStream);
-      if (remoteVoiceGain) remoteVoiceSourceNode.connect(remoteVoiceGain);
-      void startRemoteVoiceBridge(ctx, remoteVoiceSourceNode);
-
-      if (!remoteVoiceMeter) {
-        remoteVoiceMeter = new LevelMeter();
-      }
-      void remoteVoiceMeter.startFromNode(remoteVoiceSourceNode, 66, (reading) => {
-        lastRemoteVoiceDb = (!remoteMuted) ? reading.rmsDb : -60;
-        checkActiveSpeaker();
-      });
-    }
-  } else {
-    remoteVoiceIsStereo = false;
-    stopRemoteVoiceBridge();
-    try { remoteVoiceSourceNode?.disconnect(); } catch {}
-    remoteVoiceSourceNode = undefined;
-    if (remoteVoiceMeter) {
-      void remoteVoiceMeter.stop();
-      remoteVoiceMeter = undefined;
-    }
-    lastRemoteVoiceDb = -60;
-    checkActiveSpeaker();
-  }
-
-  // Reconcile Remote Music & Screen Audio sources
-  if (latestMusicEntries.length > 0) {
-    // Clean up any existing sources that are no longer active, ended, or replaced
-    for (const [id, entry] of remoteMusicSourceNodes) {
-      const stillActive = latestMusicEntries.some(([trackId, item]) => trackId === id && item.track === entry.track && item.track.readyState !== 'ended');
-      if (!stillActive) {
-        try { entry.sourceNode.disconnect(); } catch {}
-        remoteMusicSourceNodes.delete(id);
-      }
-    }
-
-    // Create or connect source nodes for all active remote music tracks
-    for (const [id, item] of latestMusicEntries) {
-      if (item.track.readyState === 'ended') continue;
-      const existing = remoteMusicSourceNodes.get(id);
-      if (!existing || existing.track !== item.track) {
-        if (existing) {
-          try { existing.sourceNode.disconnect(); } catch {}
-          remoteMusicSourceNodes.delete(id);
-        }
-        const stream = new MediaStream([item.track]);
-        const sourceNode = ctx.createMediaStreamSource(stream);
-        if (remoteMusicGain) {
-          sourceNode.connect(remoteMusicGain);
-        }
-        remoteMusicSourceNodes.set(id, { track: item.track, sourceNode });
-      }
-    }
-  } else {
-    for (const [, entry] of remoteMusicSourceNodes) {
-      try { entry.sourceNode.disconnect(); } catch {}
-    }
-    remoteMusicSourceNodes.clear();
-  }
-
-  const voiceEl = $<HTMLAudioElement>('remote-voice-audio');
-  const musicEl = $<HTMLAudioElement>('remote-music-audio');
-  if (voiceEl) {
-    voiceEl.srcObject = null;
-    voiceEl.pause();
-  }
-  if (musicEl) {
-    musicEl.srcObject = null;
-    musicEl.pause();
-  }
-
-  applyMixerAudioRouting();
-  void setOutputDevice(prefs.audioOutputId).catch((error) => setCallStatus(deviceError(error)));
-}
+const {
+  getOrCreateRemoteAudioContext,
+  setRemoteAudio,
+  refreshRemoteAudio,
+  cleanupRemoteAudioGraph
+} = createRemoteAudioGraphController({
+  getRemoteAudioCtx: () => remoteAudioCtx,
+  setRemoteAudioCtx: (ctx) => { remoteAudioCtx = ctx; },
+  getRemoteVoiceGain: () => remoteVoiceGain,
+  setRemoteVoiceGain: (node) => { remoteVoiceGain = node; },
+  getRemoteMusicGain: () => remoteMusicGain,
+  setRemoteMusicGain: (node) => { remoteMusicGain = node; },
+  getRemoteMasterGain: () => remoteMasterGain,
+  setRemoteMasterGain: (node) => { remoteMasterGain = node; },
+  isRemoteVoiceStereo: () => remoteVoiceIsStereo,
+  setRemoteVoiceStereo: (val) => { remoteVoiceIsStereo = val; },
+  getRemoteVoicePanner: () => remoteVoicePanner,
+  setRemoteVoicePanner: (node) => { remoteVoicePanner = node; },
+  getRemoteVoiceMeterSplitter: () => remoteVoiceMeterSplitter,
+  setRemoteVoiceMeterSplitter: (node) => { remoteVoiceMeterSplitter = node; },
+  getRemoteVoiceSplitter: () => remoteVoiceSplitter,
+  setRemoteVoiceSplitter: (node) => { remoteVoiceSplitter = node; },
+  getRemoteVoiceLeftGain: () => remoteVoiceLeftGain,
+  setRemoteVoiceLeftGain: (node) => { remoteVoiceLeftGain = node; },
+  getRemoteVoiceRightGain: () => remoteVoiceRightGain,
+  setRemoteVoiceRightGain: (node) => { remoteVoiceRightGain = node; },
+  getRemoteVoiceMerger: () => remoteVoiceMerger,
+  setRemoteVoiceMerger: (node) => { remoteVoiceMerger = node; },
+  getRemoteMusicSplitter: () => remoteMusicSplitter,
+  setRemoteMusicSplitter: (node) => { remoteMusicSplitter = node; },
+  getRemoteMusicLeftGain: () => remoteMusicLeftGain,
+  setRemoteMusicLeftGain: (node) => { remoteMusicLeftGain = node; },
+  getRemoteMusicRightGain: () => remoteMusicRightGain,
+  setRemoteMusicRightGain: (node) => { remoteMusicRightGain = node; },
+  getRemoteMusicMerger: () => remoteMusicMerger,
+  setRemoteMusicMerger: (node) => { remoteMusicMerger = node; },
+  getRemoteVoiceAnalyserL: () => remoteVoiceAnalyserL,
+  setRemoteVoiceAnalyserL: (node) => { remoteVoiceAnalyserL = node; },
+  getRemoteVoiceAnalyserR: () => remoteVoiceAnalyserR,
+  setRemoteVoiceAnalyserR: (node) => { remoteVoiceAnalyserR = node; },
+  getRemoteMusicAnalyserL: () => remoteMusicAnalyserL,
+  setRemoteMusicAnalyserL: (node) => { remoteMusicAnalyserL = node; },
+  getRemoteMusicAnalyserR: () => remoteMusicAnalyserR,
+  setRemoteMusicAnalyserR: (node) => { remoteMusicAnalyserR = node; },
+  getRemoteMasterAnalyserL: () => remoteMasterAnalyserL,
+  setRemoteMasterAnalyserL: (node) => { remoteMasterAnalyserL = node; },
+  getRemoteMasterAnalyserR: () => remoteMasterAnalyserR,
+  setRemoteMasterAnalyserR: (node) => { remoteMasterAnalyserR = node; },
+  getRemoteVoiceFxNodes: () => remoteVoiceFxNodes,
+  setRemoteVoiceFxNodes: (nodes) => { remoteVoiceFxNodes = nodes; },
+  getRemoteMusicFxNodes: () => remoteMusicFxNodes,
+  setRemoteMusicFxNodes: (nodes) => { remoteMusicFxNodes = nodes; },
+  getRemoteLimiter: () => remoteLimiter,
+  setRemoteLimiter: (node) => { remoteLimiter = node; },
+  getLastConnectedVoiceFx: () => lastConnectedVoiceFx,
+  setLastConnectedVoiceFx: (val) => { lastConnectedVoiceFx = val; },
+  getLastConnectedMusicFx: () => lastConnectedMusicFx,
+  setLastConnectedMusicFx: (val) => { lastConnectedMusicFx = val; },
+  getRemoteVoiceSourceNode: () => remoteVoiceSourceNode,
+  setRemoteVoiceSourceNode: (node) => { remoteVoiceSourceNode = node; },
+  getRemoteMusicSourceNodes: () => remoteMusicSourceNodes,
+  getRemoteAudioTracks: () => remoteAudioTracks,
+  isInCall: () => inCall,
+  getPreferences: () => prefs,
+  onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
+  onSetOutputDevice: (deviceId) => setOutputDevice(deviceId),
+  onSetCallStatus: (status) => setCallStatus(status),
+  isRtcVoiceStereo: () => rtc.isVoiceStereo(),
+  getRemoteVoiceMeter: () => remoteVoiceMeter,
+  setRemoteVoiceMeter: (meter) => { remoteVoiceMeter = meter; },
+  isRemoteMuted: () => remoteMuted,
+  onSetLastRemoteVoiceDb: (db) => { lastRemoteVoiceDb = db; },
+  onCheckActiveSpeaker: () => checkActiveSpeaker()
+});
 
 function handleRemoteMedia(media: MediaMetadata): void {
   handleRemoteMediaUi(media, {
@@ -2499,27 +2301,8 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   videoTrack = undefined;
   await musicMeter.stop();
 
-  // Clear track listeners and stop remote audio tracks
-  for (const [, item] of remoteAudioTracks) {
-    item.track.onended = null;
-    try { item.track.stop(); } catch {}
-  }
-  remoteAudioTracks.clear();
+  await cleanupRemoteAudioGraph();
 
-  // Stop remote voice bridge and disconnect remote source nodes
-  stopRemoteVoiceBridge();
-  try { remoteVoiceSourceNode?.disconnect(); } catch {}
-  remoteVoiceSourceNode = undefined;
-
-  for (const [, entry] of remoteMusicSourceNodes) {
-    try { entry.sourceNode.disconnect(); } catch {}
-  }
-  remoteMusicSourceNodes.clear();
-
-  if (remoteVoiceMeter) {
-    await remoteVoiceMeter.stop();
-    remoteVoiceMeter = undefined;
-  }
   lastLocalVoiceDb = -60;
   lastRemoteVoiceDb = -60;
   lastLocalMusicDb = -60;
@@ -2531,68 +2314,6 @@ async function leaveSession(endedMessage?: string): Promise<void> {
   closeSessionViewMenu();
   $('voice-in-indicator')?.classList.remove('active');
   $('music-in-indicator')?.classList.remove('active');
-
-  const voiceEl = $<HTMLAudioElement>('remote-voice-audio');
-  const musicEl = $<HTMLAudioElement>('remote-music-audio');
-  if (voiceEl) {
-    voiceEl.srcObject = null;
-    voiceEl.pause();
-  }
-  if (musicEl) {
-    musicEl.srcObject = null;
-    musicEl.pause();
-  }
-
-  // Close and release remoteAudioCtx cleanly
-  if (remoteAudioCtx && remoteAudioCtx.state !== 'closed') {
-    try {
-      await remoteAudioCtx.close();
-    } catch {}
-  }
-  remoteAudioCtx = undefined;
-  remoteVoiceGain = undefined;
-  remoteMusicGain = undefined;
-  remoteMasterGain = undefined;
-  remoteVoiceIsStereo = false;
-  try { remoteVoicePanner?.disconnect(); } catch {}
-  remoteVoicePanner = undefined;
-  try { remoteVoiceMeterSplitter?.disconnect(); } catch {}
-  remoteVoiceMeterSplitter = undefined;
-  try { remoteVoiceSplitter?.disconnect(); } catch {}
-  remoteVoiceSplitter = undefined;
-  try { remoteVoiceLeftGain?.disconnect(); } catch {}
-  remoteVoiceLeftGain = undefined;
-  try { remoteVoiceRightGain?.disconnect(); } catch {}
-  remoteVoiceRightGain = undefined;
-  try { remoteVoiceMerger?.disconnect(); } catch {}
-  remoteVoiceMerger = undefined;
-  try { remoteMusicSplitter?.disconnect(); } catch {}
-  remoteMusicSplitter = undefined;
-  try { remoteMusicLeftGain?.disconnect(); } catch {}
-  remoteMusicLeftGain = undefined;
-  try { remoteMusicRightGain?.disconnect(); } catch {}
-  remoteMusicRightGain = undefined;
-  try { remoteMusicMerger?.disconnect(); } catch {}
-  remoteMusicMerger = undefined;
-  remoteVoiceAnalyserL = undefined;
-  remoteVoiceAnalyserR = undefined;
-  remoteMusicAnalyserL = undefined;
-  remoteMusicAnalyserR = undefined;
-  remoteMasterAnalyserL = undefined;
-  remoteMasterAnalyserR = undefined;
-  for (const node of remoteVoiceFxNodes) {
-    try { node.disconnect(); } catch {}
-  }
-  remoteVoiceFxNodes = [];
-
-  for (const node of remoteMusicFxNodes) {
-    try { node.disconnect(); } catch {}
-  }
-  remoteMusicFxNodes = [];
-
-  remoteLimiter = undefined;
-  lastConnectedVoiceFx = '__uninitialized__';
-  lastConnectedMusicFx = '__uninitialized__';
   remoteMedia = undefined;
   currentCode = '';
 
