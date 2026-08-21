@@ -1,11 +1,11 @@
 import * as projectsApi from '../core/projects';
-import type { ProjectItem } from '../core/projects';
+import type { Project } from '@jameet/shared';
 import { closeProjectMenu } from '../navigation/projectMenuUi';
 
 export interface ProjectArchiveControllerOptions {
   getAuthToken: () => string | null;
-  getProject: () => ProjectItem | null | undefined;
-  onProjectUpdated: (updatedProject: ProjectItem) => void;
+  getProject: () => Project | null | undefined;
+  onProjectUpdated: (updatedProject: Project) => void;
   onRefreshProjectView: () => void;
   onRefreshProjectsList: () => Promise<void> | void;
 }
@@ -26,7 +26,7 @@ export async function handleArchiveProject(): Promise<void> {
   if (!token) return;
 
   try {
-    let updated: ProjectItem;
+    let updated: Project;
     if (project.archived) {
       updated = await projectsApi.unarchiveProject(token, project.id);
     } else {

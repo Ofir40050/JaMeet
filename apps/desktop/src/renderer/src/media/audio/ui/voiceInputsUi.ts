@@ -7,7 +7,7 @@ import {
   generateInputChannelOptions,
   formatDeviceDisplayName
 } from '../../devices/hardwareAudioDeviceUtils';
-import type { Preferences } from '@jameet/shared';
+import type { Preferences } from '../../../core/preferences';
 import type { StudioMixerChannel } from '../../mixer/studioMixerLogic';
 import type { LocalAudioSourceManager } from '../sources/audioSources';
 

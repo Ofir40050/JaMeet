@@ -22,7 +22,6 @@ export type ReadonlyTaskItem = Readonly<{
   subtasks?: readonly ReadonlySubtaskItem[];
   note?: string;
   dueDate?: string;
-  priority?: "none" | "low" | "medium" | "high" | "urgent";
   createdAt?: number;
   completedAt?: number;
   updatedAt?: number;
@@ -65,7 +64,6 @@ export interface TaskFieldUpdate {
   songTitle?: string | null;
   assigneeId?: string | null;
   assigneeName?: string | null;
-  priority?: "none" | "low" | "medium" | "high" | "urgent";
 }
 
 export interface TasksUiOptions {

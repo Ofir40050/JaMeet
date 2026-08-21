@@ -1,4 +1,4 @@
-import type { ProjectItem } from './projects';
+import type { Project } from '@jameet/shared';
 import {
   initProjectArchiveController,
   handleArchiveProject
@@ -25,8 +25,8 @@ import { openProjectView } from './projectOpenController';
 
 export interface ProjectManagementControllerOptions {
   getAuthToken: () => string | null;
-  getProject: () => ProjectItem | null | undefined;
-  onProjectUpdated: (updated: ProjectItem) => void;
+  getProject: () => Project | null | undefined;
+  onProjectUpdated: (updatedProject: Project) => void;
   onRefreshProjectView: () => void;
   onRefreshProjectsList: () => Promise<void> | void;
   onProjectDeleted: () => void;

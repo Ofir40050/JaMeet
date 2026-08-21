@@ -21,6 +21,7 @@ export function mutateDeleteLyricsDoc(
   const idx = docs.findIndex((d) => d.id === docId);
   if (idx !== -1) docs.splice(idx, 1);
   const nextDoc = docs[0];
+  if (!nextDoc) return null;
   project.workspace.lyrics.activeDocumentId = nextDoc.id;
   return { nextDocId: nextDoc.id };
 }

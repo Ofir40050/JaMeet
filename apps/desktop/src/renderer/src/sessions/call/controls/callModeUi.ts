@@ -49,7 +49,7 @@ export function updateMusicWarning(): void {
   }
 }
 
-export function updateCallMode(mode: AudioMode): void {
+export function updateCallMode(mode: AudioMode = 'music'): void {
   const music = mode === 'music';
   const label = $('mode-label');
   if (label) label.textContent = music ? 'Music Mode' : 'Talk Mode';

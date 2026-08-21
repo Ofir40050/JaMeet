@@ -40,7 +40,7 @@ export function initWorkspaceRealtimeDomainController(
     getSessionProjectId: () => options.getSessionProjectId(),
     getUser: () => options.getUser(),
     onRenderProjectActivities: (project, user) => {
-      options.onRenderProjectActivities(project, user);
+      options.onRenderProjectActivities(project ?? null, user ?? null);
     },
     getActiveLyricsDoc: () => options.getActiveLyricsDoc(),
     onRenderLyricsDocTabs: (doc) => {
@@ -88,7 +88,7 @@ export function initWorkspaceRealtimeDomainController(
     getActiveProject: () => options.getActiveProject(),
     getUser: () => options.getUser(),
     onRenderProjectActivities: (project, user) => {
-      options.onRenderProjectActivities(project, user);
+      options.onRenderProjectActivities(project ?? null, user ?? null);
     }
   });
 }

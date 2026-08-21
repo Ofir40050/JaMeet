@@ -64,6 +64,10 @@ export class SignalingClient {
     });
   }
 
+  isConnected(): boolean {
+    return Boolean(this.socket?.connected);
+  }
+
   on(event: string, listener: Listener): () => void {
     this.socket.on(event, listener);
     return () => this.socket.off(event, listener);

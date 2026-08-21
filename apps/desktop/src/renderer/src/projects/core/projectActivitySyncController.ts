@@ -1,5 +1,5 @@
 import type { Project, ProjectActivityItem, UserProfile } from '@jameet/shared';
-import type { SignalingClient } from '@jameet/signaling-client';
+import type { SignalingClient } from '../../media/remote/signaling';
 
 export interface ProjectActivitySyncOptions {
   signaling: SignalingClient;

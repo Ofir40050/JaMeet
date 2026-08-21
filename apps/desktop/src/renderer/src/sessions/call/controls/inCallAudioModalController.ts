@@ -1,4 +1,5 @@
 import type { AudioMode } from '@jameet/shared';
+import type { SettingsSection } from '../../../auth/settings/settingsUi';
 import { $ } from '../../../core/dom';
 
 export interface InCallAudioModalControllerOptions {
@@ -6,7 +7,7 @@ export interface InCallAudioModalControllerOptions {
   setModeRadios: (mode: AudioMode) => void;
   onEnumerateAndPopulate: () => Promise<void> | void;
   onUpdateMusicWarning: () => void;
-  onOpenSettings: (section: string) => void;
+  onOpenSettings: (section: SettingsSection) => void;
   isInCall: () => boolean;
   isCallViewVisible: () => boolean;
 }

@@ -3,7 +3,7 @@ import type {
   MeetingAck,
   WaitingParticipantItem
 } from '@jameet/shared';
-import type { SignalingClient } from '@jameet/signaling-client';
+import type { SignalingClient } from '../../../media/remote/signaling';
 
 export interface WaitingRoomControllerOptions {
   signaling: SignalingClient;
@@ -12,7 +12,7 @@ export interface WaitingRoomControllerOptions {
   getGuestName: () => string;
   getMetadata: () => MediaMetadata;
   onRenderWaitingBanner: (waitingList: WaitingParticipantItem[]) => void;
-  onInitializeActiveCall: (ack: MeetingAck) => Promise<void>;
+  onInitializeActiveCall: (ack: Extract<MeetingAck, { ok: true }>) => Promise<void>;
 }
 
 export function initWaitingRoomController(options: WaitingRoomControllerOptions): void {

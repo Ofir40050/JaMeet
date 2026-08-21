@@ -28,7 +28,7 @@ export interface WorkspaceCoreControllerOptions {
   hasNotesSaveTimeout: () => boolean;
   clearNotesSaveTimeout: () => void;
   getNotesFieldValues: () => { content?: string; bpm?: string; key?: string };
-  onSaveNotesWorkspace: (content?: string, bpm?: string, key?: string) => Promise<void>;
+  onSaveNotesWorkspace: (content?: string, bpm?: string, key?: string) => Promise<boolean | void> | void;
   getStructureStatus: () => 'saved' | 'saving' | 'unsaved';
   setStructureStatus: (status: 'saved' | 'saving' | 'unsaved') => void;
   hasStructureSaveTimeout: () => boolean;
@@ -40,7 +40,7 @@ export interface WorkspaceCoreControllerOptions {
   hasTasksSaveTimeout: () => boolean;
   clearTasksSaveTimeout: () => void;
   onSaveTasksWorkspace: () => Promise<void>;
-  onSaveSongsWorkspace: () => Promise<void>;
+  onSaveSongsWorkspace: () => Promise<boolean | void> | void;
   onApplyWorkspacePermissions: () => void;
 }
 

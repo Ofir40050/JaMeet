@@ -13,7 +13,7 @@ export interface ProfileUiControllerOptions {
 
 export function initProfileUiController(options: ProfileUiControllerOptions): void {
   initProfileUi({
-    getUser: () => options.getUser(),
+    getUser: () => options.getUser() ?? null,
     onOpenProfile: () => options.onOpenAccountSettings(),
     onOpenSettings: () => options.onOpenGeneralSettings(),
     onOpenGuestSettings: () => options.onOpenGeneralSettings(),

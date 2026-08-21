@@ -7,14 +7,20 @@ export interface Change {
 export function computeLcs(a: string[], b: string[]): Array<{ aIdx: number; bIdx: number }> {
   const m = a.length;
   const n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  const dp: number[][] = [];
+  for (let i = 0; i <= m; i++) {
+    dp.push(new Array(n + 1).fill(0));
+  }
 
   for (let i = 1; i <= m; i++) {
+    const row = dp[i];
+    const prevRow = dp[i - 1];
+    if (!row || !prevRow) continue;
     for (let j = 1; j <= n; j++) {
       if (a[i - 1] === b[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
+        row[j] = (prevRow[j - 1] ?? 0) + 1;
       } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+        row[j] = Math.max(prevRow[j] ?? 0, row[j - 1] ?? 0);
       }
     }
   }
@@ -22,11 +28,14 @@ export function computeLcs(a: string[], b: string[]): Array<{ aIdx: number; bIdx
   const matches: Array<{ aIdx: number; bIdx: number }> = [];
   let i = m, j = n;
   while (i > 0 && j > 0) {
+    const prevRow = dp[i - 1];
+    const currRow = dp[i];
+    if (!prevRow || !currRow) break;
     if (a[i - 1] === b[j - 1]) {
       matches.push({ aIdx: i - 1, bIdx: j - 1 });
       i--;
       j--;
-    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+    } else if ((prevRow[j] ?? 0) >= (currRow[j - 1] ?? 0)) {
       i--;
     } else {
       j--;
@@ -78,15 +87,20 @@ export function mergeIntervals(changesA: Change[], changesB: Change[], baseLengt
   for (const c of changesA) allIntervals.push({ start: c.baseStart, end: c.baseEnd });
   for (const c of changesB) allIntervals.push({ start: c.baseStart, end: c.baseEnd });
 
-  if (allIntervals.length === 0) return [];
+  const first = allIntervals[0];
+  if (!first) return [];
 
   allIntervals.sort((x, y) => x.start - y.start || x.end - y.end);
 
+  const firstSorted = allIntervals[0];
+  if (!firstSorted) return [];
+
   const merged: Array<{ start: number; end: number }> = [];
-  let curr = { ...allIntervals[0] };
+  let curr = { ...firstSorted };
 
   for (let i = 1; i < allIntervals.length; i++) {
     const next = allIntervals[i];
+    if (!next) continue;
     if (next.start < curr.end || (next.start === curr.end && (next.start === next.end || curr.start === curr.end || next.start < baseLength))) {
       curr.end = Math.max(curr.end, next.end);
     } else {

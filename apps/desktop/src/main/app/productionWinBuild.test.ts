@@ -2,10 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
-import {
-  getValidatedSignalingUrl,
-  verifyBundleContainsUrl
-} from '../../../../deploy/build-production-win.cjs';
+// @ts-expect-error - CommonJS packaging script has no .d.ts
+import { getValidatedSignalingUrl, verifyBundleContainsUrl } from '../../../../../deploy/build-production-win.cjs';
 
 describe('Windows Production Packaging Flow', () => {
   describe('getValidatedSignalingUrl', () => {

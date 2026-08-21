@@ -1,4 +1,4 @@
-import type { Preferences } from '@jameet/shared';
+import type { Preferences } from '../../../core/preferences';
 import type { RunningAudioApp } from '../sources/runningApplications';
 
 export function updateMusicAppIcon(app: RunningAudioApp | undefined): void {

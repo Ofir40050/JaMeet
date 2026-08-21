@@ -1,6 +1,6 @@
 import { cameraConstraints, effectiveVideoQuality } from './videoQuality';
 import { createDownscaledVideoTrack } from './videoTrackScaling';
-import type { Preferences } from '@jameet/shared';
+import type { Preferences } from '../../core/preferences';
 
 export interface LocalVideoContext {
   getPreferences: () => Preferences;

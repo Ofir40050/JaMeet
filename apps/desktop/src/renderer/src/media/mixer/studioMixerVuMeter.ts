@@ -32,11 +32,11 @@ export interface MixerVuMeterContext {
   isMixerOpen: () => boolean;
   getChannels: () => StudioMixerChannel[];
   getVoiceInputs: () => VoiceInputConfig[];
-  getVoiceMicAnalysers: (id: number) => { left: AnalyserNode | undefined; right: AnalyserNode | undefined };
-  getMusicAnalysers: () => { left: AnalyserNode | undefined; right: AnalyserNode | undefined };
-  getRemoteVoiceAnalysers: () => { left: AnalyserNode | undefined; right: AnalyserNode | undefined };
-  getRemoteMusicAnalysers: () => { left: AnalyserNode | undefined; right: AnalyserNode | undefined };
-  getRemoteMasterAnalysers: () => { left: AnalyserNode | undefined; right: AnalyserNode | undefined };
+  getVoiceMicAnalysers: (id: number) => { left?: AnalyserNode | undefined; right?: AnalyserNode | undefined };
+  getMusicAnalysers: () => { left?: AnalyserNode | undefined; right?: AnalyserNode | undefined };
+  getRemoteVoiceAnalysers: () => { left?: AnalyserNode | undefined; right?: AnalyserNode | undefined };
+  getRemoteMusicAnalysers: () => { left?: AnalyserNode | undefined; right?: AnalyserNode | undefined };
+  getRemoteMasterAnalysers: () => { left?: AnalyserNode | undefined; right?: AnalyserNode | undefined };
   isRemoteMuted: () => boolean;
 }
 

@@ -160,11 +160,11 @@ describe('Electron Renderer Trust Boundary & Sender Validation', () => {
       expect(listeners['will-navigate']).toBeDefined();
 
       const preventDefault = vi.fn();
-      listeners['will-navigate']({ preventDefault }, 'https://evil.com/phishing');
+      listeners['will-navigate']?.({ preventDefault }, 'https://evil.com/phishing');
       expect(preventDefault).toHaveBeenCalled();
 
       const preventDefaultAllowed = vi.fn();
-      listeners['will-navigate']({ preventDefault: preventDefaultAllowed }, 'jameet-app://bundle/presenter-toolbar.html');
+      listeners['will-navigate']?.({ preventDefault: preventDefaultAllowed }, 'jameet-app://bundle/presenter-toolbar.html');
       expect(preventDefaultAllowed).not.toHaveBeenCalled();
     });
 
@@ -183,11 +183,11 @@ describe('Electron Renderer Trust Boundary & Sender Validation', () => {
       expect(listeners['will-redirect']).toBeDefined();
 
       const preventDefault = vi.fn();
-      listeners['will-redirect']({ preventDefault }, 'https://evil.com/redirect-target');
+      listeners['will-redirect']?.({ preventDefault }, 'https://evil.com/redirect-target');
       expect(preventDefault).toHaveBeenCalled();
 
       const preventDefaultAllowed = vi.fn();
-      listeners['will-redirect']({ preventDefault: preventDefaultAllowed }, 'jameet-app://bundle/index.html');
+      listeners['will-redirect']?.({ preventDefault: preventDefaultAllowed }, 'jameet-app://bundle/index.html');
       expect(preventDefaultAllowed).not.toHaveBeenCalled();
     });
 
@@ -206,11 +206,11 @@ describe('Electron Renderer Trust Boundary & Sender Validation', () => {
       expect(listeners['will-frame-navigate']).toBeDefined();
 
       const preventDefault = vi.fn();
-      listeners['will-frame-navigate']({ preventDefault, url: 'https://evil.com/iframe' });
+      listeners['will-frame-navigate']?.({ preventDefault, url: 'https://evil.com/iframe' });
       expect(preventDefault).toHaveBeenCalled();
 
       const preventDefaultAllowed = vi.fn();
-      listeners['will-frame-navigate']({ preventDefault: preventDefaultAllowed, url: 'jameet-app://bundle/presenter-video.html' });
+      listeners['will-frame-navigate']?.({ preventDefault: preventDefaultAllowed, url: 'jameet-app://bundle/presenter-video.html' });
       expect(preventDefaultAllowed).not.toHaveBeenCalled();
     });
 

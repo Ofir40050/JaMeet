@@ -740,7 +740,7 @@ describe('JaMeet Secure Admin Panel', () => {
     });
 
     it('enforces per-user beta expiration in validateStoredUserSessionAccess', async () => {
-      const { validateStoredUserSessionAccess } = await import('./auth.js');
+      const { validateStoredUserSessionAccess } = await import('../auth/auth.js');
       const userStore = new UserStore(testDir);
       const reg = await userStore.register({
         username: 'musician_tim',

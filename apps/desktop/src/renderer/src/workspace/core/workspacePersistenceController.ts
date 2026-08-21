@@ -60,7 +60,7 @@ export function initWorkspacePersistenceController(
       options.onApplyAuthoritativeWorkspace(area, workspace);
     },
     onRenderProjectActivities: (project, user) => {
-      options.onRenderProjectActivities(project, user);
+      options.onRenderProjectActivities(project ?? null, user ?? null);
     }
   });
 
@@ -87,7 +87,7 @@ export function initWorkspacePersistenceController(
       options.onApplyAuthoritativeWorkspace(area, workspace);
     },
     onRenderProjectActivities: (project, user) => {
-      options.onRenderProjectActivities(project, user);
+      options.onRenderProjectActivities(project ?? null, user ?? null);
     }
   });
 }

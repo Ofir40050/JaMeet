@@ -15,6 +15,7 @@ export interface StructureSectionItem {
   note?: string;
   updatedAt?: number;
 }
+export type StructureSection = StructureSectionItem;
 
 export interface StructureSectionChange {
   name?: string;

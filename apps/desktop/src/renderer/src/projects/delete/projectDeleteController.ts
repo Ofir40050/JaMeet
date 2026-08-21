@@ -1,5 +1,5 @@
 import * as projectsApi from '../core/projects';
-import type { ProjectItem } from '../core/projects';
+import type { Project } from '@jameet/shared';
 import {
   openDeleteProjectModal,
   closeDeleteProjectModal,
@@ -10,7 +10,7 @@ import { closeProjectMenu } from '../navigation/projectMenuUi';
 
 export interface ProjectDeleteControllerOptions {
   getAuthToken: () => string | null;
-  getProject: () => ProjectItem | null | undefined;
+  getProject: () => Project | null | undefined;
   onProjectDeleted: () => void;
   onNavigateHome: () => void;
   onRefreshProjectsList: () => Promise<void> | void;

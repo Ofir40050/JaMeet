@@ -83,8 +83,10 @@ describe('Project Activity Engine & Helpers', () => {
       }
     ];
 
-    expect(activities[0].id).toBe('act_newest');
-    expect(activities[0].createdAt).toBeGreaterThan(activities[1].createdAt);
+    const first = activities[0];
+    const second = activities[1];
+    expect(first?.id).toBe('act_newest');
+    expect(first?.createdAt).toBeGreaterThan(second?.createdAt ?? 0);
   });
 
   it('returns valid svg icons for all activity types', () => {

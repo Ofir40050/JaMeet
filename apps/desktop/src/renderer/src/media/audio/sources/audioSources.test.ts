@@ -226,8 +226,8 @@ describe('LocalAudioSourceManager Multi-Voice Input', () => {
   it('allows Mic 1 and Mic 2 to coexist simultaneously with distinct mic IDs and tracks', async () => {
     const manager = new LocalAudioSourceManager();
 
-    await manager.acquireVoiceMic(1, 'device-mic-1', 'speech', { inputGain: 1.0, channelRoute: 'all' });
-    await manager.acquireVoiceMic(2, 'device-mic-2', 'speech', { inputGain: 0.8, channelRoute: 'all' });
+    await manager.acquireVoiceMic(1, 'device-mic-1', 'talk', { inputGain: 1.0, channelRoute: 'all' });
+    await manager.acquireVoiceMic(2, 'device-mic-2', 'talk', { inputGain: 0.8, channelRoute: 'all' });
 
     expect(manager.getVoiceMicsCount()).toBe(2);
 
@@ -241,8 +241,8 @@ describe('LocalAudioSourceManager Multi-Voice Input', () => {
   it('maintains independent gain states between Mic 1 and Mic 2 without cross-talk', async () => {
     const manager = new LocalAudioSourceManager();
 
-    await manager.acquireVoiceMic(1, 'device-mic-1', 'speech', { inputGain: 1.0, channelRoute: 'all' });
-    await manager.acquireVoiceMic(2, 'device-mic-2', 'speech', { inputGain: 0.5, channelRoute: 'all' });
+    await manager.acquireVoiceMic(1, 'device-mic-1', 'talk', { inputGain: 1.0, channelRoute: 'all' });
+    await manager.acquireVoiceMic(2, 'device-mic-2', 'talk', { inputGain: 0.5, channelRoute: 'all' });
 
     const mic1GainNode = manager.getVoiceMicNode(1) as unknown as MockGainNode;
     const mic2GainNode = manager.getVoiceMicNode(2) as unknown as MockGainNode;
@@ -264,8 +264,8 @@ describe('LocalAudioSourceManager Multi-Voice Input', () => {
   it('maintains independent pan states between Mic 1 and Mic 2', async () => {
     const manager = new LocalAudioSourceManager();
 
-    await manager.acquireVoiceMic(1, 'device-mic-1', 'speech', { inputGain: 1.0, channelRoute: 'all' });
-    await manager.acquireVoiceMic(2, 'device-mic-2', 'speech', { inputGain: 1.0, channelRoute: 'all' });
+    await manager.acquireVoiceMic(1, 'device-mic-1', 'talk', { inputGain: 1.0, channelRoute: 'all' });
+    await manager.acquireVoiceMic(2, 'device-mic-2', 'talk', { inputGain: 1.0, channelRoute: 'all' });
 
     const mic1Panner = (manager as any).voiceMics.get(1)?.pannerNode as MockPannerNode;
     const mic2Panner = (manager as any).voiceMics.get(2)?.pannerNode as MockPannerNode;
@@ -293,9 +293,9 @@ describe('LocalAudioSourceManager Multi-Voice Input', () => {
   it('keeps FX routing identity and channel IDs distinct (you-mic for Mic 1, you-mic-N for Mic N)', async () => {
     const manager = new LocalAudioSourceManager();
 
-    await manager.acquireVoiceMic(1, 'device-mic-1', 'speech', { inputGain: 1.0, channelRoute: 'all' });
-    await manager.acquireVoiceMic(2, 'device-mic-2', 'speech', { inputGain: 1.0, channelRoute: 'all' });
-    await manager.acquireVoiceMic(3, 'device-mic-3', 'speech', { inputGain: 1.0, channelRoute: 'all' });
+    await manager.acquireVoiceMic(1, 'device-mic-1', 'talk', { inputGain: 1.0, channelRoute: 'all' });
+    await manager.acquireVoiceMic(2, 'device-mic-2', 'talk', { inputGain: 1.0, channelRoute: 'all' });
+    await manager.acquireVoiceMic(3, 'device-mic-3', 'talk', { inputGain: 1.0, channelRoute: 'all' });
 
     manager.setVoiceMicFx(1, ['Chan EQ']);
     manager.setVoiceMicFx(2, ['Chan EQ']);
@@ -318,8 +318,8 @@ describe('LocalAudioSourceManager Multi-Voice Input', () => {
   it('removing Mic 2 does not remove, disconnect, or disrupt Mic 1', async () => {
     const manager = new LocalAudioSourceManager();
 
-    await manager.acquireVoiceMic(1, 'device-mic-1', 'speech', { inputGain: 0.9, channelRoute: 'all' });
-    await manager.acquireVoiceMic(2, 'device-mic-2', 'speech', { inputGain: 0.6, channelRoute: 'all' });
+    await manager.acquireVoiceMic(1, 'device-mic-1', 'talk', { inputGain: 0.9, channelRoute: 'all' });
+    await manager.acquireVoiceMic(2, 'device-mic-2', 'talk', { inputGain: 0.6, channelRoute: 'all' });
 
     const track1 = manager.getVoiceRawTrack(1);
     const track2 = manager.getVoiceRawTrack(2);
@@ -342,13 +342,13 @@ describe('LocalAudioSourceManager Multi-Voice Input', () => {
   it('acquiring or replacing Mic 2 does not overwrite Mic 1 state', async () => {
     const manager = new LocalAudioSourceManager();
 
-    await manager.acquireVoiceMic(1, 'device-mic-1', 'speech', { inputGain: 0.88, channelRoute: 'all' });
+    await manager.acquireVoiceMic(1, 'device-mic-1', 'talk', { inputGain: 0.88, channelRoute: 'all' });
     const track1 = manager.getVoiceRawTrack(1);
     const mic1GainNode = manager.getVoiceMicNode(1) as unknown as MockGainNode;
     expect(mic1GainNode.gain.value).toBe(0.88);
 
     // Acquire Mic 2
-    await manager.acquireVoiceMic(2, 'device-mic-2', 'speech', { inputGain: 0.4, channelRoute: 'all' });
+    await manager.acquireVoiceMic(2, 'device-mic-2', 'talk', { inputGain: 0.4, channelRoute: 'all' });
 
     // Re-acquire / replace Mic 2 with new settings
     await manager.acquireVoiceMic(2, 'device-mic-2-replaced', 'music', { inputGain: 0.75, channelRoute: 'all' });
@@ -361,9 +361,9 @@ describe('LocalAudioSourceManager Multi-Voice Input', () => {
   it('dynamically supports more than two microphones (Mic 1, Mic 2, Mic 3)', async () => {
     const manager = new LocalAudioSourceManager();
 
-    await manager.acquireVoiceMic(1, 'device-mic-1', 'speech', { inputGain: 1.0, channelRoute: 'all' });
-    await manager.acquireVoiceMic(2, 'device-mic-2', 'speech', { inputGain: 0.7, channelRoute: 'all' });
-    await manager.acquireVoiceMic(3, 'device-mic-3', 'speech', { inputGain: 0.4, channelRoute: 'all' });
+    await manager.acquireVoiceMic(1, 'device-mic-1', 'talk', { inputGain: 1.0, channelRoute: 'all' });
+    await manager.acquireVoiceMic(2, 'device-mic-2', 'talk', { inputGain: 0.7, channelRoute: 'all' });
+    await manager.acquireVoiceMic(3, 'device-mic-3', 'talk', { inputGain: 0.4, channelRoute: 'all' });
 
     expect(manager.getVoiceMicsCount()).toBe(3);
 

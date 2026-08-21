@@ -20,7 +20,7 @@ export interface TasksDomainControllerOptions {
   setTasksStatus: (status: 'saved' | 'saving' | 'unsaved') => void;
   onUpdateSignaling: (projectId: string, payload: { area: string; tasks?: ProjectTaskItem[]; workspace?: any }, token?: string) => Promise<any>;
   onApplyAuthoritativeWorkspace: (area: string, workspace: any) => void;
-  onUpdateSongCustomization: (songId: string, changes: Partial<{ structureColor: string; lyricsFontSize: number }>) => void;
+  onUpdateSongCustomization: (songId: string, changes: { icon?: string; color?: string }) => void;
 }
 
 export function initTasksDomainController(options: TasksDomainControllerOptions): void {

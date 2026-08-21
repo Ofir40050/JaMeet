@@ -7,7 +7,9 @@ export function mutateReorderSongs(project: Project, sourceId: string, targetId:
   const toIdx = songs.findIndex((s) => s && s.id === targetId);
   if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return false;
 
-  const [moved] = songs.splice(fromIdx, 1);
+  const moved = songs[fromIdx];
+  if (!moved) return false;
+  songs.splice(fromIdx, 1);
   songs.splice(toIdx, 0, moved);
   songs.forEach((s, i) => { s.order = i; });
   return true;

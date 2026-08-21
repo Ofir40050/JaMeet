@@ -126,7 +126,6 @@ export function updateTaskField(
   if (changes.songTitle !== undefined) task.songTitle = changes.songTitle || undefined;
   if (changes.assigneeId !== undefined) task.assigneeId = changes.assigneeId || undefined;
   if (changes.assigneeName !== undefined) task.assigneeName = changes.assigneeName || undefined;
-  if (changes.priority !== undefined) task.priority = changes.priority;
 
   task.updatedAt = Date.now();
 
@@ -158,7 +157,10 @@ export function reorderTasks(
   const targetIndex = tasks.findIndex((t) => t.id === targetTaskId);
   if (draggedIndex === -1 || targetIndex === -1) return;
 
-  const [draggedItem] = tasks.splice(draggedIndex, 1);
+  const draggedItem = tasks[draggedIndex];
+  if (!draggedItem) return;
+
+  tasks.splice(draggedIndex, 1);
 
   if (inheritedChanges) {
     if (inheritedChanges.songId !== undefined) {

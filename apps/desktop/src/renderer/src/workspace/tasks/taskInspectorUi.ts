@@ -50,19 +50,6 @@ export function openTaskInspector(task: ReadonlyTaskItem, anchorEl: HTMLElement)
           </label>
         </div>
       </div>
-      <div class="inspector-row">
-        <div class="inspector-row-left">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
-          <span>Priority</span>
-        </div>
-        <select class="inspector-select inspector-priority-select">
-          <option value="none" ${task.priority === "none" || !task.priority ? "selected" : ""}>None</option>
-          <option value="low" ${task.priority === "low" ? "selected" : ""}>Low</option>
-          <option value="medium" ${task.priority === "medium" ? "selected" : ""}>Medium</option>
-          <option value="high" ${task.priority === "high" ? "selected" : ""}>High</option>
-          <option value="urgent" ${task.priority === "urgent" ? "selected" : ""}>Urgent</option>
-        </select>
-      </div>
     </div>
 
     <!-- Organization -->
@@ -146,10 +133,12 @@ export function openTaskInspector(task: ReadonlyTaskItem, anchorEl: HTMLElement)
       if (!tasksUiOptions) return;
       if (dateToggle.checked) {
         dateInput?.classList.remove("hidden");
-        const today = new Date().toISOString().split("T")[0];
+        const today = new Date().toISOString().split("T")[0] || "";
         const newDue = dateInput?.value || today;
-        if (dateInput) dateInput.value = newDue;
-        tasksUiOptions.onCommitTaskField(task.id, { dueDate: newDue }, { rerender: true });
+        if (dateInput && newDue) dateInput.value = newDue;
+        if (newDue) {
+          tasksUiOptions.onCommitTaskField(task.id, { dueDate: newDue }, { rerender: true });
+        }
       } else {
         dateInput?.classList.add("hidden");
         tasksUiOptions.onCommitTaskField(task.id, { dueDate: null }, { rerender: true });
@@ -158,11 +147,6 @@ export function openTaskInspector(task: ReadonlyTaskItem, anchorEl: HTMLElement)
 
     dateInput?.addEventListener("change", () => {
       tasksUiOptions?.onCommitTaskField(task.id, { dueDate: dateInput.value || null }, { rerender: true });
-    });
-
-    const prioritySelect = popover.querySelector<HTMLSelectElement>(".inspector-priority-select");
-    prioritySelect?.addEventListener("change", () => {
-      tasksUiOptions?.onCommitTaskField(task.id, { priority: prioritySelect.value as any }, { rerender: true });
     });
 
     const songSelect = popover.querySelector<HTMLSelectElement>(".inspector-song-select");

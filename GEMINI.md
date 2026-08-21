@@ -2,8 +2,8 @@
 
 ## Testing and GitHub Policy
 - NEVER run automated test suites unless explicitly requested by the user.
-- NEVER commit or push changes to GitHub unless explicitly requested by the user.
-- Apply code changes and let Vite/Electron HMR reload the UI instantly without extra test/git overhead.
+- Always commit and push changes to GitHub at the end of each action/task.
+- Apply code changes and let Vite/Electron HMR reload the UI instantly without extra test overhead.
 
 ## Architecture & Code Design Rules
 

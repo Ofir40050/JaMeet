@@ -246,13 +246,15 @@ function parseHtmlToMiniDom(html: string): MiniNode {
   while ((match = tagRegex.exec(html)) !== null) {
     const textBefore = html.slice(lastIndex, match.index);
     if (textBefore.length > 0) {
-      stack[stack.length - 1].appendChild(new MiniNode(3, '#text', textBefore));
+      const top = stack[stack.length - 1];
+      if (top) top.appendChild(new MiniNode(3, '#text', textBefore));
     }
     lastIndex = tagRegex.lastIndex;
 
     const fullMatch = match[0];
     if (fullMatch.startsWith('<!--')) {
-      stack[stack.length - 1].appendChild(new MiniNode(8, '#comment', fullMatch.slice(4, -3)));
+      const top = stack[stack.length - 1];
+      if (top) top.appendChild(new MiniNode(8, '#comment', fullMatch.slice(4, -3)));
       continue;
     }
 
@@ -264,7 +266,8 @@ function parseHtmlToMiniDom(html: string): MiniNode {
     if (closeTag) {
       const closeUpper = closeTag.toUpperCase();
       for (let i = stack.length - 1; i > 0; i--) {
-        if (stack[i].tagName === closeUpper) {
+        const node = stack[i];
+        if (node && node.tagName === closeUpper) {
           stack.length = i;
           break;
         }
@@ -276,6 +279,7 @@ function parseHtmlToMiniDom(html: string): MiniNode {
 
       while ((attrMatch = attrRegex.exec(rawAttrs)) !== null) {
         const attrName = attrMatch[1];
+        if (!attrName) continue;
         const attrVal = attrMatch[2] ?? attrMatch[3] ?? attrMatch[4] ?? '';
         elem.setAttribute(attrName, attrVal);
         if (attrName.toLowerCase() === 'style') {
@@ -291,7 +295,8 @@ function parseHtmlToMiniDom(html: string): MiniNode {
         }
       }
 
-      stack[stack.length - 1].appendChild(elem);
+      const top = stack[stack.length - 1];
+      if (top) top.appendChild(elem);
       if (!isSelfClosing) {
         stack.push(elem);
       }
@@ -300,7 +305,8 @@ function parseHtmlToMiniDom(html: string): MiniNode {
 
   const trailingText = html.slice(lastIndex);
   if (trailingText.length > 0) {
-    stack[stack.length - 1].appendChild(new MiniNode(3, '#text', trailingText));
+    const top = stack[stack.length - 1];
+    if (top) top.appendChild(new MiniNode(3, '#text', trailingText));
   }
 
   return root;
@@ -310,7 +316,7 @@ function parseHtmlToMiniDom(html: string): MiniNode {
  * Recursively applies allowlist sanitization on a DOM node tree.
  */
 function cleanDomNode(node: Node | MiniNode): void {
-  const childNodes = Array.from(node.childNodes) as Array<HTMLElement | MiniNode>;
+  const childNodes = Array.from(node.childNodes as ArrayLike<any>) as Array<HTMLElement | MiniNode>;
 
   for (const child of childNodes) {
     if (child.nodeType === 8 /* COMMENT_NODE */) {

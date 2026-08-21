@@ -25,9 +25,9 @@ export interface ScreenSharingContext {
   onReplaceRtcVideoTrack: (track: MediaStreamTrack) => Promise<void>;
   onSetRtcVideoTrack: (track: MediaStreamTrack | undefined) => void;
   onRemoveRtcVideoTrack: () => Promise<void>;
-  onAddAudioExternal: (id: string, purpose: 'music', track: MediaStreamTrack) => Promise<void>;
-  onRemoveAudioExternal: (id: string) => Promise<void>;
-  onRtcAudioSourceChanged: (id: string) => Promise<void>;
+  onAddAudioExternal: (id: string, purpose: 'music', track: MediaStreamTrack) => Promise<any> | void;
+  onRemoveAudioExternal: (id: string) => Promise<any> | void;
+  onRtcAudioSourceChanged: (id: 'music' | 'screen-audio') => Promise<any> | void;
   onSignalingUpdateMedia: (code: string, meta: MediaMetadata) => void;
   onAcquireVideo: (cameraId?: string) => Promise<MediaStreamTrack>;
   onUpdateLocalPreviews: () => void;
@@ -56,7 +56,7 @@ export function createScreenSharingController(ctx: ScreenSharingContext) {
     // 1. For entire display sharing on macOS, use native ScreenCaptureKit capture with SCContentFilter app exclusion
     if (sourceId.startsWith('screen:') && desktopApi?.platform === 'darwin') {
       try {
-        const displayIndex = parseInt(sourceId.split(':')[1], 10) || 0;
+        const displayIndex = parseInt(sourceId.split(':')[1] ?? '0', 10) || 0;
         next = await presenter.createScreenCaptureTrack(displayIndex, { fps, width: targetRes.width, height: targetRes.height });
       } catch (err) {
         console.warn('Native ScreenCaptureKit failed, falling back to standard getDisplayMedia:', err);

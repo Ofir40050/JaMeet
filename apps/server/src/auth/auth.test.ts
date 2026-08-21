@@ -737,7 +737,7 @@ describe('Session Access State & Centralized Authorization', () => {
 
   it('denies unauthenticated or invalid tokens with AUTH_REQUIRED', async () => {
     const store = new UserStore(testDir);
-    const { loadConfig } = await import('./config.js');
+    const { loadConfig } = await import('../core/config.js');
     const { authorizeSessionAccess } = await import('./auth.js');
     const config = loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'test-secret-at-least-16-chars' });
 
@@ -762,7 +762,7 @@ describe('Session Access State & Centralized Authorization', () => {
 
   it('denies blocked users with ACCESS_DENIED', async () => {
     const store = new UserStore(testDir);
-    const { loadConfig } = await import('./config.js');
+    const { loadConfig } = await import('../core/config.js');
     const { authorizeSessionAccess } = await import('./auth.js');
     const config = loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'test-secret-at-least-16-chars' });
 
@@ -784,7 +784,7 @@ describe('Session Access State & Centralized Authorization', () => {
 
   it('denies unsupported or malformed sessionAccess values with ACCESS_DENIED (fail closed)', async () => {
     const store = new UserStore(testDir);
-    const { loadConfig } = await import('./config.js');
+    const { loadConfig } = await import('../core/config.js');
     const { authorizeSessionAccess } = await import('./auth.js');
     const config = loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'test-secret-at-least-16-chars' });
 
@@ -806,7 +806,7 @@ describe('Session Access State & Centralized Authorization', () => {
 
   it('authorizes active beta users when BETA_END_AT is unset', async () => {
     const store = new UserStore(testDir);
-    const { loadConfig } = await import('./config.js');
+    const { loadConfig } = await import('../core/config.js');
     const { authorizeSessionAccess } = await import('./auth.js');
     const config = loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'test-secret-at-least-16-chars' });
 
@@ -830,7 +830,7 @@ describe('Session Access State & Centralized Authorization', () => {
 
   it('authorizes beta users before BETA_END_AT and denies them with BETA_ENDED after expiration', async () => {
     const store = new UserStore(testDir);
-    const { loadConfig } = await import('./config.js');
+    const { loadConfig } = await import('../core/config.js');
     const { authorizeSessionAccess } = await import('./auth.js');
     const betaEndIso = '2026-12-31T23:59:59Z';
     const config = loadConfig({
@@ -871,7 +871,7 @@ describe('Session Access State & Centralized Authorization', () => {
 
   it('authorizes paid users even when BETA_END_AT is expired', async () => {
     const store = new UserStore(testDir);
-    const { loadConfig } = await import('./config.js');
+    const { loadConfig } = await import('../core/config.js');
     const { authorizeSessionAccess } = await import('./auth.js');
     const betaEndIso = '2026-01-01T00:00:00Z';
     const config = loadConfig({
@@ -899,7 +899,7 @@ describe('Session Access State & Centralized Authorization', () => {
   });
 
   it('validates ISO 8601 with timezone and rejects invalid or ambiguous formats in loadConfig', async () => {
-    const { loadConfig } = await import('./config.js');
+    const { loadConfig } = await import('../core/config.js');
 
     // Valid formats
     expect(() => loadConfig({ NODE_ENV: 'test', TURN_SHARED_SECRET: 'secret-123456789012', BETA_END_AT: '2026-12-31T23:59:59Z' })).not.toThrow();

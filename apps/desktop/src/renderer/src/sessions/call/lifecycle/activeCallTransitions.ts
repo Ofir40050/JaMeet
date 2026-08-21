@@ -12,7 +12,7 @@ export interface ActiveCallUiControllerOptions {
 }
 
 export async function transitionToActiveCallUi(
-  ack: MeetingAck,
+  ack: Extract<MeetingAck, { ok: true }>,
   options: ActiveCallUiControllerOptions
 ): Promise<void> {
   options.onResetChatUi();

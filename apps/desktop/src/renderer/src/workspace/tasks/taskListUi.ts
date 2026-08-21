@@ -152,8 +152,8 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
     let sTitle: string | null = null;
     if (val) {
       const parts = val.split("|");
-      sId = parts[0];
-      sTitle = parts[1];
+      sId = parts[0] ?? null;
+      sTitle = parts[1] ?? null;
     }
     if (tasksState.currentTasksGrouping === "song") {
       tasksState.currentSelectedTaskId = task.id;
@@ -168,8 +168,8 @@ export function renderListCard(task: ReadonlyTaskItem): HTMLElement {
     let aName: string | null = null;
     if (val) {
       const parts = val.split("|");
-      aId = parts[0];
-      aName = parts[1];
+      aId = parts[0] ?? null;
+      aName = parts[1] ?? null;
     }
     tasksUiOptions?.onCommitTaskField(task.id, { assigneeId: aId, assigneeName: aName });
   });
@@ -408,9 +408,12 @@ export function renderGroupSection(group: {
   section.className = `reminders-group-section ${tasksState.tasksCollapsedGroups.has(group.id) ? "collapsed" : ""}`;
   section.dataset.groupId = group.id;
 
+  const defaultMusicIcon = SONG_ICONS["music"];
+  if (!defaultMusicIcon) return section;
+
   const iconKey = group.songRef?.icon || group.iconKey || "music";
   const colorHex = group.songRef?.color || group.colorHex || "#f43f5e";
-  const iconSvg = SONG_ICONS[iconKey]?.svg || group.iconSvg || SONG_ICONS.music.svg;
+  const iconSvg = SONG_ICONS[iconKey]?.svg || group.iconSvg || defaultMusicIcon.svg;
 
   const header = document.createElement("div");
   header.className = "reminders-group-header";
@@ -606,21 +609,30 @@ export function renderTasksIntoList(
       defaultSongId?: string;
     }[] = [];
 
-    songs.forEach((s, idx) => {
+    const defaultMusicIcon = SONG_ICONS["music"];
+    const tagIcon = SONG_ICONS["tag"];
+    if (!defaultMusicIcon || !tagIcon) return;
+
+    for (let idx = 0; idx < songs.length; idx++) {
+      const s = songs[idx];
+      if (!s) continue;
       const sTasks = filteredTasks.filter((t) => t.songId === s.id);
-      const color = s.color || defaultTrackPalette[idx % defaultTrackPalette.length];
+      const paletteColor = defaultTrackPalette[idx % defaultTrackPalette.length];
+      const color = s.color || paletteColor;
+      if (!color) continue;
       const iconKey = s.icon || "music";
+      const iconDef = SONG_ICONS[iconKey] || defaultMusicIcon;
       trackGroups.push({
         id: `song_${s.id}`,
         title: s.title || `Song ${idx + 1}`,
         songRef: s,
         iconKey,
         colorHex: color,
-        iconSvg: SONG_ICONS[iconKey]?.svg || SONG_ICONS.music.svg,
+        iconSvg: iconDef.svg,
         tasks: sTasks,
         defaultSongId: s.id
       });
-    });
+    }
 
     const unassignedTasks = filteredTasks.filter((t) => !t.songId || !songs.some((s) => s.id === t.songId));
     trackGroups.push({
@@ -628,7 +640,7 @@ export function renderTasksIntoList(
       title: "General Tasks",
       iconKey: "tag",
       colorHex: "#94a3b8",
-      iconSvg: SONG_ICONS.tag.svg,
+      iconSvg: tagIcon.svg,
       tasks: unassignedTasks,
       defaultSongId: ""
     });

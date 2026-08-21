@@ -35,13 +35,13 @@ export function handleNotesChange(values: { content?: string; bpm?: string; key?
       project.workspace.notes = { revision: 1, content: '', updatedAt: 0 };
     }
   }
-  project.workspace.notes.content = values.content;
+  project.workspace.notes.content = values.content || '';
   project.workspace.notes.bpm = values.bpm;
   project.workspace.notes.key = values.key;
 
   const activeSong = controllerOptions.getActiveSong();
   if (activeSong.notes) {
-    activeSong.notes.content = values.content;
+    activeSong.notes.content = values.content || '';
     activeSong.notes.bpm = values.bpm;
     activeSong.notes.key = values.key;
     activeSong.notes.updatedAt = Date.now();

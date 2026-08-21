@@ -1,5 +1,5 @@
 import type { ParticipantIdentity } from '@jameet/shared';
-import type { SignalingClient } from '@jameet/signaling-client';
+import type { SignalingClient } from '../../../media/remote/signaling';
 import { $ } from '../../../core/dom';
 
 export interface SessionModerationOptions {

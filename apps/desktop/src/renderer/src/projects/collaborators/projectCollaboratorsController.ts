@@ -1,10 +1,10 @@
 import * as projectsApi from '../core/projects';
-import type { ProjectItem, ProjectRole } from '../core/projects';
+import type { Project, ProjectRole } from '@jameet/shared';
 
 export interface ProjectCollaboratorsControllerOptions {
   getAuthToken: () => string | null;
-  getProject: () => ProjectItem | null;
-  onProjectUpdated: (updatedProject: ProjectItem) => void;
+  getProject: () => Project | null;
+  onProjectUpdated: (updatedProject: Project) => void;
   onRefreshProjectView: () => void;
   onRefreshCollaboratorsView: () => void;
 }

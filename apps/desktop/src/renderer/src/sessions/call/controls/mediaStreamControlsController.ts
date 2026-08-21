@@ -4,7 +4,8 @@ import { logger } from '../../../core/logger';
 import { updateCameraButtonUi } from './cameraUi';
 import { effectiveVideoQuality } from '../../../media/video/videoQuality';
 import { getEffectiveMusicBitrate } from '../../../media/devices/mediaPreferenceCalculations';
-import type { AudioMode, MediaMetadata, PerformanceMode, Preferences, VideoQuality } from '@jameet/shared';
+import type { AudioMode, MediaMetadata, PerformanceMode, VideoQuality } from '@jameet/shared';
+import type { Preferences } from '../../../core/preferences';
 
 export interface MediaStreamControlsContext {
   getPreferences: () => Preferences;

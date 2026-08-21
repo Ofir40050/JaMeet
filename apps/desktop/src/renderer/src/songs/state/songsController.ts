@@ -25,7 +25,7 @@ export interface SongsControllerOptions {
   getProject: () => Project | null | undefined;
   canEdit: () => boolean;
   onSyncWorkspaceInputs: (forceAll?: boolean) => void;
-  onSaveSongsWorkspace: () => Promise<boolean> | void;
+  onSaveSongsWorkspace: () => Promise<boolean | void> | void;
   onRenderTasksWorkspace: () => void;
 }
 
@@ -133,10 +133,12 @@ export function deleteSong(songId: string): void {
   ws.songs.splice(idx, 1);
   if (ws.activeSongId === songId) {
     const nextSong = ws.songs[Math.max(0, idx - 1)] || ws.songs[0];
-    ws.activeSongId = nextSong.id;
-    ws.lyrics = nextSong.lyrics;
-    ws.notes = nextSong.notes;
-    ws.structure = nextSong.structure;
+    if (nextSong) {
+      ws.activeSongId = nextSong.id;
+      ws.lyrics = nextSong.lyrics;
+      ws.notes = nextSong.notes;
+      ws.structure = nextSong.structure;
+    }
   }
 
   controllerOptions.onSyncWorkspaceInputs(true);

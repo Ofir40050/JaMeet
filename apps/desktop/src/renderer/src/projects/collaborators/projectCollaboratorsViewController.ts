@@ -17,8 +17,8 @@ export function initProjectCollaboratorsViewController(
 
 export function renderProjectCollaboratorsView(): void {
   if (!controllerOptions) return;
-  const project = controllerOptions.getProject();
-  const user = controllerOptions.getUser();
+  const project = controllerOptions.getProject() ?? null;
+  const user = controllerOptions.getUser() ?? null;
 
   renderProjectCollaborators(project, user, {
     onUpdateRole: (userId: string, targetRole: ProjectCollaboratorRole) => {

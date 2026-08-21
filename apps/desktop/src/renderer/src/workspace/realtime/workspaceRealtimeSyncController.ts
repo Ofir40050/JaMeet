@@ -1,5 +1,5 @@
 import type { Project, UserProfile } from '@jameet/shared';
-import type { SignalingClient } from '@jameet/signaling-client';
+import type { SignalingClient } from '../../media/remote/signaling';
 import { $ } from '../../core/dom';
 import { sanitizeLyricsHtml } from '../../core/htmlSecurity';
 import type { LyricsDocItem } from '../lyrics/lyricsDocumentState';
@@ -66,15 +66,17 @@ export function initWorkspaceRealtimeSync(options: WorkspaceRealtimeSyncOptions)
     if (!activeProject) return;
     if (!activeProject.workspace) {
       activeProject.workspace = {
+        songs: [],
         lyrics: {
+          revision: 0,
           activeDocumentId: 'doc-main',
           documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: Date.now() }],
           content: '',
           updatedAt: Date.now()
         },
-        notes: { content: '', updatedAt: Date.now() },
-        structure: { sections: [], updatedAt: Date.now() },
-        tasks: { tasks: [], updatedAt: Date.now() }
+        notes: { revision: 0, content: '', updatedAt: Date.now() },
+        structure: { revision: 0, sections: [], updatedAt: Date.now() },
+        tasks: { revision: 0, tasks: [], updatedAt: Date.now() }
       };
     }
 

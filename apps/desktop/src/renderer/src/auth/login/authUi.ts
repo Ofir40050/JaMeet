@@ -190,9 +190,10 @@ export function initAuthUi(options: AuthUiOptions = {}): void {
     if (!identifier) missing.push('view-login-identifier');
     if (!password) missing.push('view-login-password');
 
-    if (missing.length > 0) {
+    const firstMissing = missing[0];
+    if (firstMissing) {
       showAuthFormError('view-login-error', 'Please enter your username/email and password.', missing);
-      $<HTMLInputElement>(missing[0])?.focus();
+      $<HTMLInputElement>(firstMissing)?.focus();
       return;
     }
 
@@ -235,9 +236,10 @@ export function initAuthUi(options: AuthUiOptions = {}): void {
     if (!password) missing.push('view-reg-password');
     if (!passwordConfirm) missing.push('view-reg-password-confirm');
 
-    if (missing.length > 0) {
+    const firstRegMissing = missing[0];
+    if (firstRegMissing) {
       showAuthFormError('view-reg-error', 'Please fill out all registration fields.', missing);
-      $<HTMLInputElement>(missing[0])?.focus();
+      $<HTMLInputElement>(firstRegMissing)?.focus();
       return;
     }
     if (!/^[a-zA-Z0-9 .'-]+$/.test(displayName!)) {

@@ -8,8 +8,9 @@ import { handleSessionProjectWorkspace } from '../workspace/sessionProjectWorksp
 import * as projectsApi from '../../../projects/core/projects';
 import { transitionToActiveCallUi } from './activeCallTransitions';
 import { enterSession as enterSessionDomain } from '../../setup/sessionEntryController';
-import type { AudioMode, MediaMetadata, MeetingAck, ParticipantIdentity, Preferences, Project, VideoQuality } from '@jameet/shared';
-import type { PendingAction } from '../setup/sessionSetupTypes';
+import type { AudioMode, MediaMetadata, MeetingAck, ParticipantIdentity, Project, VideoQuality } from '@jameet/shared';
+import type { Preferences } from '../../../core/preferences';
+import type { PendingAction } from '../../setup/studioPreparation';
 
 export interface ActiveCallControllerOptions {
   getVideoTrack: () => MediaStreamTrack | undefined;
@@ -44,12 +45,12 @@ export interface ActiveCallControllerOptions {
   isStudioMixerOpen: () => boolean;
   onRenderStudioMixer: () => void;
   onApplyMixerAudioRouting: () => void;
-  onHandleSessionProjectWorkspace: (ack: MeetingAck) => void;
-  onTransitionToActiveCallUi: (ack: MeetingAck) => Promise<void>;
+  onHandleSessionProjectWorkspace: (ack: Extract<MeetingAck, { ok: true }>) => void;
+  onTransitionToActiveCallUi: (ack: Extract<MeetingAck, { ok: true }>) => Promise<void>;
 }
 
 export async function initializeActiveCallDomain(
-  ack: MeetingAck,
+  ack: Extract<MeetingAck, { ok: true }>,
   options: ActiveCallControllerOptions
 ): Promise<void> {
   options.onSetCurrentCode(ack.code);
@@ -128,13 +129,13 @@ export interface ActiveCallContext {
   getMetadata: () => MediaMetadata;
   getActiveProjectId: () => string | undefined;
   setSessionProjectId: (id?: string) => void;
-  onResetWorkspaceGenerations: () => void;
+  onResetWorkspaceGenerations: () => void | number;
   getWorkspaceContextGen: () => number;
   getActiveProject: () => Project | undefined;
   setActiveProject: (p?: Project) => void;
   setActiveProjectId: (id?: string) => void;
   onSyncWorkspaceInputsFromProject: (force?: boolean) => void;
-  onJoinProjectWorkspace: (projectId: string, token: string) => void;
+  onJoinProjectWorkspace: (projectId: string, token: string) => Promise<any>;
   onResetChatUi: () => void;
   getIsSessionLocked: () => boolean;
   onSetIsSessionLocked: (locked: boolean) => void;
@@ -142,15 +143,15 @@ export interface ActiveCallContext {
   onStartSessionTimer: () => void;
   getPendingPeerMedia: () => MediaMetadata | undefined;
   clearPendingPeerMedia: () => void;
-  onPeerReady: (media?: MediaMetadata) => void;
+  onPeerReady: (media: MediaMetadata) => Promise<void> | void;
   getPendingAction: () => PendingAction | null;
   hasPrimaryAudio: () => boolean;
   isAudioOnly: () => boolean;
   setBusy: (busy: boolean) => void;
-  onSignalingCreate: (pId: string, meta: MediaMetadata, token: string | null, guestName: string | null, projId?: string, waitingRoom?: boolean) => void;
-  onSignalingJoin: (code: string, pId: string, meta: MediaMetadata, token: string | null, guestName: string | null) => void;
+  onSignalingCreate: (pId: string, meta: MediaMetadata, token: string | null | undefined, guestName: string | null | undefined, projId?: string, waitingRoom?: boolean) => Promise<MeetingAck>;
+  onSignalingJoin: (code: string, pId: string, meta: MediaMetadata, token: string | null | undefined, guestName: string | null | undefined) => Promise<MeetingAck>;
   onSignalingLeave: () => void;
-  onOpenAuthView: (tab: 'login' | 'signup') => void;
+  onOpenAuthView: (tab: 'login' | 'register' | 'signup') => void;
   getRemoteMedia: () => MediaMetadata | undefined;
   setRemoteMedia: (media?: MediaMetadata) => void;
   getRemoteVideoStream: () => MediaStream | undefined;
@@ -193,7 +194,7 @@ export function createActiveCallController(ctx: ActiveCallContext) {
     });
   }
 
-  async function initializeActiveCall(ack: MeetingAck): Promise<void> {
+  async function initializeActiveCall(ack: Extract<MeetingAck, { ok: true }>): Promise<void> {
     const prefs = ctx.getPreferences();
     await initializeActiveCallDomain(ack, {
       getVideoTrack: () => ctx.getVideoTrack(),
@@ -273,7 +274,9 @@ export function createActiveCallController(ctx: ActiveCallContext) {
           onClearPendingPeerMedia: () => {
             ctx.clearPendingPeerMedia();
           },
-          onPeerReady: (media) => ctx.onPeerReady(media)
+          onPeerReady: async (media) => {
+            await ctx.onPeerReady(media);
+          }
         });
       }
     });
@@ -281,7 +284,7 @@ export function createActiveCallController(ctx: ActiveCallContext) {
 
   async function enterSession(): Promise<void> {
     await enterSessionDomain({
-      getPendingAction: () => ctx.getPendingAction(),
+      getPendingAction: () => ctx.getPendingAction() ?? undefined,
       hasPrimaryAudio: () => ctx.hasPrimaryAudio(),
       isAudioOnly: () => ctx.isAudioOnly(),
       hasVideoTrack: () => Boolean(ctx.getVideoTrack()),

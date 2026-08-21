@@ -1,11 +1,11 @@
-import type { Project, UserProfile } from '@jameet/shared';
+import type { Project, ProjectCollaboratorRole, UserProfile } from '@jameet/shared';
 import { safeAvatarColor, escapeHtml } from '../../core/htmlSecurity';
 import { applyAvatarToElement } from '../../auth/profile/profileUi';
 import { icons } from '../../core/icons';
 import { $ } from '../../core/dom';
 
 export interface ProjectCollaboratorsUiOptions {
-  onUpdateRole?: (collaboratorUserId: string, newRole: string) => Promise<void>;
+  onUpdateRole?: (collaboratorUserId: string, newRole: ProjectCollaboratorRole) => void | Promise<void>;
   onRemoveCollaborator?: (collaboratorUserId: string) => void | Promise<void>;
 }
 
@@ -60,13 +60,14 @@ export function createCollaboratorItem(
   applyAvatarToElement(avatarEl, member.displayName, member.avatarColor, member.avatarUrl);
 
   const roleDropdown = item.querySelector<HTMLSelectElement>('.collab-role-dropdown');
-  if (roleDropdown && options?.onUpdateRole) {
+  const onUpdateRole = options?.onUpdateRole;
+  if (roleDropdown && onUpdateRole) {
     roleDropdown.addEventListener('change', async (e) => {
       e.stopPropagation();
-      const targetRole = roleDropdown.value;
+      const targetRole = roleDropdown.value as ProjectCollaboratorRole;
       try {
         roleDropdown.disabled = true;
-        await options.onUpdateRole!(member.userId, targetRole);
+        await onUpdateRole(member.userId, targetRole);
       } finally {
         roleDropdown.disabled = false;
       }
@@ -74,10 +75,11 @@ export function createCollaboratorItem(
   }
 
   const removeBtn = item.querySelector<HTMLButtonElement>('.collab-remove-btn');
-  if (removeBtn && options?.onRemoveCollaborator) {
+  const onRemoveCollaborator = options?.onRemoveCollaborator;
+  if (removeBtn && onRemoveCollaborator) {
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      void options.onRemoveCollaborator!(member.userId);
+      void onRemoveCollaborator(member.userId);
     });
   }
 

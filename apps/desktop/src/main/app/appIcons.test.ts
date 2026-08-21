@@ -3,7 +3,7 @@ import { existsSync, statSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 describe('JaMeet Official Application Icon Integration', () => {
-  const desktopRoot = join(__dirname, '../..');
+  const desktopRoot = join(__dirname, '../../..');
 
   it('provides all macOS, Windows, Linux, and Electron build icon assets', () => {
     const buildIcns = join(desktopRoot, 'build/icon.icns');

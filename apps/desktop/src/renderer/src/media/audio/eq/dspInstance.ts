@@ -112,16 +112,22 @@ export class ChannelEqDspInstance {
       }
     }
 
-    if (activeFilters.length === 0) {
+    const firstFilter = activeFilters[0];
+    const lastFilter = activeFilters[activeFilters.length - 1];
+    if (!firstFilter || !lastFilter) {
       this.filterChainIn.connect(this.wetGainNode);
       return;
     }
 
-    this.filterChainIn.connect(activeFilters[0]!);
+    this.filterChainIn.connect(firstFilter);
     for (let i = 0; i < activeFilters.length - 1; i++) {
-      activeFilters[i]!.connect(activeFilters[i + 1]!);
+      const current = activeFilters[i];
+      const next = activeFilters[i + 1];
+      if (current && next) {
+        current.connect(next);
+      }
     }
-    activeFilters[activeFilters.length - 1]!.connect(this.wetGainNode);
+    lastFilter.connect(this.wetGainNode);
   }
 
   setBandEnabled(bandId: number, enabled: boolean): void {
@@ -179,7 +185,7 @@ export class ChannelEqDspInstance {
    * Evaluates BiquadFilterNode.getFrequencyResponse across all active filter nodes.
    * Returns combined dB magnitude values in combinedDbArray.
    */
-  getCombinedFrequencyResponse(frequencies: Float32Array, combinedDbArray: Float32Array): void {
+  getCombinedFrequencyResponse(frequencies: Float32Array<ArrayBuffer>, combinedDbArray: Float32Array<ArrayBuffer>): void {
     const len = frequencies.length;
     combinedDbArray.fill(0);
 
@@ -198,18 +204,20 @@ export class ChannelEqDspInstance {
       try {
         filter.getFrequencyResponse(frequencies, tempMag, tempPhase);
         for (let i = 0; i < len; i++) {
-          const magVal = tempMag[i]!;
-          if (magVal > 1e-6) {
-            combinedDbArray[i] += 20 * Math.log10(magVal);
+          const magVal = tempMag[i];
+          if (magVal !== undefined && magVal > 1e-6) {
+            const currentDb = combinedDbArray[i] ?? 0;
+            combinedDbArray[i] = currentDb + 20 * Math.log10(magVal);
           } else {
-            combinedDbArray[i] += -120;
+            const currentDb = combinedDbArray[i] ?? 0;
+            combinedDbArray[i] = currentDb - 120;
           }
         }
       } catch {}
     }
   }
 
-  getAnalyserByteFrequencyData(output: Uint8Array): void {
+  getAnalyserByteFrequencyData(output: Uint8Array<ArrayBuffer>): void {
     if (this.isDisposed || !this.analyserNode) return;
     try {
       this.analyserNode.getByteFrequencyData(output);

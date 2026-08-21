@@ -103,7 +103,9 @@ export function moveStructureSection(id: string, direction: 'up' | 'down'): void
   const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
   if (targetIdx < 0 || targetIdx >= sections.length) return;
 
-  const [moved] = sections.splice(idx, 1);
+  const moved = sections[idx];
+  if (!moved) return;
+  sections.splice(idx, 1);
   sections.splice(targetIdx, 0, moved);
   controllerOptions.onRenderStructureWorkspace();
   controllerOptions.onDebounceSaveStructure();
@@ -115,6 +117,7 @@ export function duplicateStructureSection(id: string): void {
   const idx = sections.findIndex((s) => s.id === id);
   if (idx === -1) return;
   const source = sections[idx];
+  if (!source) return;
   const newId = `sec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
   sections.splice(idx + 1, 0, {

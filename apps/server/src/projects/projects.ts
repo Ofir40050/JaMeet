@@ -382,7 +382,7 @@ export class ProjectStore {
       }
 
       const snapshot = JSON.parse(JSON.stringify(project)) as Project;
-      const { changed } = applyWorkspaceUpdates({
+      const result = applyWorkspaceUpdates({
         project,
         user,
         updates,
@@ -390,7 +390,12 @@ export class ProjectStore {
           this.recordActivity(pId, u, type, summary, title, metadata, persist)
       });
 
-      if (changed) {
+      if (!result) {
+        this.projects.set(projectId, snapshot);
+        return null;
+      }
+
+      if (result.changed) {
         const now = Date.now();
         project.updatedAt = now;
         project.lastActivityAt = now;

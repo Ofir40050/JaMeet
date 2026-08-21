@@ -129,7 +129,8 @@ int main(int argc, char* argv[]) {
       clearInterval(interval);
 
       expect(consumerOutput).toContain('NON_ZERO_MATCHES=');
-      expect(Number(consumerOutput.split('NON_ZERO_MATCHES=')[1].trim())).toBeGreaterThanOrEqual(960);
+      const matchPart = consumerOutput.split('NON_ZERO_MATCHES=')[1];
+      expect(Number(matchPart?.trim())).toBeGreaterThanOrEqual(960);
 
       // 4. Send stop command
       const stopPacket = Buffer.allocUnsafe(12);

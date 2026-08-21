@@ -230,14 +230,7 @@ export function registerMeetingSocketHandlers(socket: Socket, context: MeetingSo
     const parsed = joinMeetingSchema.safeParse(raw);
     if (!parsed.success) return ack(failure('BAD_REQUEST', 'Invalid session code or participant'));
     if (socketData.code) {
-      try {
-        if (socketData.participantId) rooms.leave(socketData.code, socketData.participantId);
-        void socket.leave(socketData.code);
-      } catch { /* ignore */ }
-      delete socketData.code;
-      delete socketData.participantId;
-      delete socketData.identity;
-      delete socketData.isWaiting;
+      return ack(failure('BAD_REQUEST', 'Already in a session'));
     }
     
     const authResult = authorizeSessionAccess(userStore, parsed.data.authToken, config, false);

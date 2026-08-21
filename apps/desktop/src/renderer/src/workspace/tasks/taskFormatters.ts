@@ -29,9 +29,14 @@ export function formatShortDate(d: string): string {
     const parts = d.split("-");
     if (parts.length === 3) {
       const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const month = months[parseInt(parts[1], 10) - 1] || parts[1];
-      const day = parseInt(parts[2], 10);
-      return `${month} ${day}`;
+      const p1 = parts[1];
+      const p2 = parts[2];
+      if (p1 !== undefined && p2 !== undefined) {
+        const monthIndex = parseInt(p1, 10) - 1;
+        const month = (monthIndex >= 0 && monthIndex < months.length ? months[monthIndex] : undefined) || p1;
+        const day = parseInt(p2, 10);
+        return `${month} ${day}`;
+      }
     }
   } catch {
     // ignore

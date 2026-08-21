@@ -56,15 +56,16 @@ export function computeSongDeletion(
     const nextSong = remaining[Math.max(0, idx - 1)] || remaining[0];
     return {
       songs: remaining,
-      nextActiveSongId: nextSong.id,
+      nextActiveSongId: nextSong?.id || 'song-1',
       wasActive: true,
       shouldSwitchActiveSong: true
     };
   }
 
+  const fallbackRemaining = remaining[0];
   return {
     songs: remaining,
-    nextActiveSongId: activeSongId || remaining[0].id,
+    nextActiveSongId: activeSongId || fallbackRemaining?.id || 'song-1',
     wasActive: false,
     shouldSwitchActiveSong: false
   };

@@ -1,4 +1,15 @@
-import type { AudioMode, MediaMetadata, ParticipantIdentity, Project } from '@jameet/shared';
+import type { AudioMode, MediaMetadata, ParticipantIdentity, Project, ProjectSongItem } from '@jameet/shared';
+import { getNotesStatus, setNotesStatus, syncNotesControls } from './workspace/notes/notesUi';
+import { getLyricsStatus, setLyricsStatus, renderLyricsDocTabs, updateLyricsStatsFromHtml } from './workspace/lyrics/lyricsUi';
+import { getStructureStatus } from './workspace/structure/structureUi';
+import { getTasksStatus } from './workspace/tasks/tasksUi';
+import { hasTasksSaveTimeout } from './workspace/tasks/tasksPersistence';
+import { debounceSaveNotesRetry } from './workspace/notes/notesPersistence';
+import { initSessionViewSelectorUi } from './sessions/call/view/sessionViewSelectorUi';
+import { initInviteLinkController } from './sessions/call/moderation/inviteLinkController';
+import { isShortcutsModalOpen, closeShortcutsModal } from './sessions/call/controls/callShortcutsUi';
+import { isSessionWorkspaceOpen, setSessionWorkspaceOpen } from './sessions/call/workspace/workspaceDrawerUi';
+import { resetChatUi } from './sessions/call/chat/chat';
 import * as projectsApi from './projects/core/projects';
 import { setScheduledApiBase } from './sessions/scheduled/scheduledApi';
 import {
@@ -17,7 +28,8 @@ import {
   loadProjects
 } from './projects/core/projectsListController';
 import {
-  renderProjectCollaboratorsView
+  renderProjectCollaboratorsView,
+  initProjectCollaboratorsViewController
 } from './projects/collaborators/projectCollaboratorsViewController';
 import {
   renderSessionSummaryModal,
@@ -392,7 +404,7 @@ initWorkspaceCoreController({
   },
   getNotesFieldValues: () => getNotesFieldValues(),
   onSaveNotesWorkspace: (content, bpm, key) => {
-    return saveNotesWorkspace(content, bpm, key);
+    return saveNotesWorkspace(content ?? '', bpm, key);
   },
   getStructureStatus: () => getStructureStatus(),
   setStructureStatus: (status) => {
@@ -456,7 +468,7 @@ initWorkspacePersistenceController({
     return signaling.updateProjectWorkspace(projectId, payload, token);
   },
   onApplyAuthoritativeWorkspace: (area, workspace) => {
-    applyAuthoritativeWorkspaceUpdate(area, workspace);
+    applyAuthoritativeWorkspaceUpdate(area as 'lyrics' | 'notes' | 'structure' | 'tasks', workspace);
   },
   onRenderProjectActivities: (project, user) => {
     renderProjectActivities(project, user);
@@ -491,7 +503,7 @@ initWorkspaceRealtimeDomainController({
     syncNotesControls(values);
   },
   onScheduleNotesSaveRetry: (content, bpm, key) => {
-    debounceSaveNotesRetry(content, bpm, key);
+    debounceSaveNotesRetry(content ?? '', bpm, key);
   },
   getStructureStatus: () => getStructureStatus(),
   setStructureStatus: (status) => {
@@ -530,21 +542,16 @@ initAuthNavigation({
 initParticipantIdentityUi({
   getUser: () => auth.getUser(),
   getGuestName: () => auth.getGuestName(),
-  getMyIdentity: () => myIdentity,
-  getPeerIdentity: () => peerIdentity,
+  getMyIdentity: () => myIdentity || undefined,
+  getPeerIdentity: () => peerIdentity || undefined,
   getCurrentRole: () => currentRole,
-  getPeerParticipantId: () => peerParticipantId,
+  getPeerParticipantId: () => peerParticipantId || undefined,
   onUpdateSessionViewButton: () => updateSessionViewButton(),
   onRenderSessionViewMenu: () => renderSessionViewMenu()
 });
 initSessionViewSelectorUi({
   onToggleSessionViewMenu: (e) => toggleSessionViewMenu(e),
   onCloseSessionViewMenu: () => closeSessionViewMenu()
-});
-initSessionConnection({
-  signaling,
-  isInCall: () => inCall,
-  onSetCallStatus: (status) => setCallStatus(status)
 });
 initWaitingRoomController({
   signaling,
@@ -717,10 +724,10 @@ initTasksDomainController({
     setTasksStatus(status);
   },
   onUpdateSignaling: async (projectId, payload, token) => {
-    return signaling.updateProjectWorkspace(projectId, payload, token);
+    return signaling.updateProjectWorkspace(projectId, payload as any, token);
   },
   onApplyAuthoritativeWorkspace: (area, workspace) => {
-    applyAuthoritativeWorkspaceUpdate(area, workspace);
+    applyAuthoritativeWorkspaceUpdate(area as 'lyrics' | 'notes' | 'structure' | 'tasks', workspace);
   },
   onUpdateSongCustomization: (songId, changes) => {
     updateSongCustomization(songId, changes);
@@ -755,7 +762,7 @@ initSongsDomainController({
   },
   getNotesFieldValues: () => getNotesFieldValues(),
   onSaveNotesWorkspace: (content, bpm, key) => {
-    void saveNotesWorkspace(content, bpm, key);
+    void saveNotesWorkspace(content ?? '', bpm, key);
   },
   hasStructureSaveTimeout: () => hasStructureSaveTimeout(),
   clearStructureSaveTimeout: () => {
@@ -864,7 +871,7 @@ initNotesDomainController({
     incrementNotesEditGen();
   },
   onSaveNotesWorkspace: async (content, bpm, key) => {
-    await saveNotesWorkspace(content, bpm, key);
+    await saveNotesWorkspace(content ?? '', bpm, key);
   }
 });
 initProjectsDomainController({
@@ -998,7 +1005,6 @@ let hostIdentity: ParticipantIdentity | null = null;
 let peerParticipantId: string | null = null;
 
 export type { VoiceInputConfig };
-type PendingAction = { type: 'create' } | { type: 'join'; code: string };
 
 let prefs: Preferences = readPreferences();
 let pending: PendingAction | undefined;
@@ -1255,7 +1261,7 @@ const {
   getMetadata: () => metadata(),
   getLastRemoteVoiceDb: () => lastRemoteVoiceDb,
   getLastLocalVoiceDb: () => lastLocalVoiceDb,
-  getUserName: () => auth.getUser()?.name || auth.getGuestName() || 'You',
+  getUserName: () => auth.getUser()?.displayName || auth.getGuestName() || 'You',
   onReplaceRtcVideoTrack: (track) => rtc.replaceVideoTrack(track),
   onSetRtcVideoTrack: (track) => rtc.setVideoTrack(track),
   onRemoveRtcVideoTrack: () => rtc.removeVideoTrack(),
@@ -1344,16 +1350,16 @@ const {
   getPendingPeerMedia: () => pendingPeerMedia,
   clearPendingPeerMedia: () => { pendingPeerMedia = undefined; },
   onPeerReady: (media) => rtc.peerReady(media),
-  getPendingAction: () => pending,
+  getPendingAction: () => pending || null,
   hasPrimaryAudio: () => Boolean(audio.primary),
   isAudioOnly: () => audioOnly,
   setBusy: (busy) => setBusy(busy),
   onSignalingCreate: (pId, meta, token, guestName, projId, waitingRoom) =>
-    signaling.create(pId, meta, token, guestName, projId, waitingRoom),
+    signaling.create(pId, meta, token || undefined, guestName || undefined, projId, waitingRoom),
   onSignalingJoin: (code, pId, meta, token, guestName) =>
-    signaling.join(code, pId, meta, token, guestName),
+    signaling.join(code, pId, meta, token || undefined, guestName || undefined),
   onSignalingLeave: () => signaling.leave(),
-  onOpenAuthView: (tab) => openAuthView(tab),
+  onOpenAuthView: (tab) => openAuthView(tab === 'signup' || tab === 'register' ? 'register' : 'login'),
   getRemoteMedia: () => remoteMedia,
   setRemoteMedia: (media) => { remoteMedia = media; },
   getRemoteVideoStream: () => remoteVideoStream,

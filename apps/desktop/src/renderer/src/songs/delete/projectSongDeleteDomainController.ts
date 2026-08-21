@@ -8,7 +8,7 @@ export interface ProjectSongDeleteDomainControllerOptions {
   onRenderProjectSongsSelector: () => void;
   onRenderProjectOverviewSongsList: () => void;
   onApplyWorkspacePermissions: () => void;
-  onSaveSongsWorkspace: () => Promise<void>;
+  onSaveSongsWorkspace: () => Promise<boolean | void> | void;
 }
 
 export function initProjectSongDeleteDomainController(

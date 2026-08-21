@@ -17,8 +17,15 @@ export function getActiveLyricsDocState(
     ws.activeDocumentId = 'doc-main';
   }
 
-  const activeId = ws.activeDocumentId || ws.documents[0].id;
-  const doc = ws.documents.find((d) => d && d.id === activeId) || ws.documents[0];
+  const fallbackDoc = ws.documents[0];
+  const activeId = ws.activeDocumentId || fallbackDoc?.id || 'doc-main';
+  const doc = ws.documents.find((d) => d && d.id === activeId) || fallbackDoc;
+  if (!doc) {
+    const mainDoc = { id: 'doc-main', title: 'Main Lyrics', content: ws.content || '', updatedAt: ws.updatedAt || now };
+    ws.documents = [mainDoc];
+    ws.activeDocumentId = 'doc-main';
+    return mainDoc;
+  }
   ws.activeDocumentId = doc.id;
   return doc;
 }

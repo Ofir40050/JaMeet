@@ -1,5 +1,5 @@
 import * as projectsApi from '../core/projects';
-import type { ProjectItem } from '../core/projects';
+import type { Project } from '@jameet/shared';
 import {
   openRenameProjectModal,
   closeRenameProjectModal,
@@ -10,8 +10,8 @@ import { closeProjectMenu } from '../navigation/projectMenuUi';
 
 export interface ProjectRenameControllerOptions {
   getAuthToken: () => string | null;
-  getProject: () => ProjectItem | null | undefined;
-  onProjectUpdated: (updatedProject: ProjectItem) => void;
+  getProject: () => Project | null | undefined;
+  onProjectUpdated: (updatedProject: Project) => void;
   onRefreshProjectView: () => void;
   onRefreshProjectsList: () => Promise<void> | void;
 }

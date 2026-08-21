@@ -1,10 +1,10 @@
-import type { MeetingAck, Project, WorkspaceSyncResponse } from '@jameet/shared';
+import type { MeetingAck, Project, UpdateProjectWorkspaceResponse } from '@jameet/shared';
 import { $, setText } from '../../../core/dom';
 
 export interface SessionProjectWorkspaceControllerOptions {
   getAuthToken: () => string | null | undefined;
   onSetSessionProjectId: (id: string | undefined) => void;
-  onResetWorkspaceGenerations: () => number;
+  onResetWorkspaceGenerations: () => void | number;
   getWorkspaceContextGen: () => number;
   onFetchProject: (token: string, projectId: string) => Promise<Project>;
   getActiveProject: () => Project | null | undefined;
@@ -14,18 +14,19 @@ export interface SessionProjectWorkspaceControllerOptions {
   onJoinProjectWorkspace: (
     projectId: string,
     token: string
-  ) => Promise<WorkspaceSyncResponse | undefined>;
+  ) => Promise<UpdateProjectWorkspaceResponse | undefined>;
 }
 
 export function handleSessionProjectWorkspace(
-  ack: MeetingAck,
+  ack: Extract<MeetingAck, { ok: true }>,
   options: SessionProjectWorkspaceControllerOptions
 ): void {
   if (ack.projectId) {
     options.onSetSessionProjectId(ack.projectId);
     const t = options.getAuthToken();
     if (t) {
-      const loadContextGen = options.onResetWorkspaceGenerations();
+      options.onResetWorkspaceGenerations();
+      const loadContextGen = options.getWorkspaceContextGen();
       void options
         .onFetchProject(t, ack.projectId)
         .then((p) => {

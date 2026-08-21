@@ -1,6 +1,6 @@
 import { $ } from '../../core/dom';
 import { testSpeakers as testSpeakersHelper, testMicrophone as testMicrophoneHelper, getMicrophonePlayback } from './audioDeviceTesting';
-import type { Preferences } from '@jameet/shared';
+import type { Preferences } from '../../core/preferences';
 
 export interface AudioOutputRoutingContext {
   getPreferences: () => Preferences;

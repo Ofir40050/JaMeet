@@ -16,7 +16,7 @@ export interface ProjectSongDeleteControllerOptions {
   onRenderProjectSongsSelector: () => void;
   onRenderProjectOverviewSongsList: () => void;
   onApplyWorkspacePermissions: () => void;
-  onSaveSongsWorkspace: () => Promise<boolean> | void;
+  onSaveSongsWorkspace: () => Promise<boolean | void> | void;
 }
 
 export function initProjectSongDeleteController(

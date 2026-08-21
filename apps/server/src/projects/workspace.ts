@@ -21,7 +21,7 @@ export function applyWorkspaceUpdates(context: {
     metadata?: Record<string, unknown>,
     persist?: boolean
   ) => Promise<ProjectActivityItem | null>;
-}): { changed: boolean } {
+}): { changed: boolean } | null {
   const { project, user, updates, recordActivity } = context;
 
   // 1. Enforce workspace storage and field limits on raw client inputs before any normalization, mutation, or persistence
@@ -297,7 +297,7 @@ export function applyWorkspaceUpdates(context: {
         typeof updates.lyrics.documentId !== 'string' ||
         updates.lyrics.documentId.trim().length === 0
       ) {
-        return { changed: false };
+        return null;
       }
       updates.lyrics.documentId = updates.lyrics.documentId.trim();
     }
@@ -306,10 +306,10 @@ export function applyWorkspaceUpdates(context: {
       const seenDocIds = new Set<string>();
       for (const d of updates.lyrics.documents) {
         if (!d.id || typeof d.id !== 'string' || d.id.trim().length === 0) {
-          return { changed: false };
+          return null;
         }
         if (seenDocIds.has(d.id)) {
-          return { changed: false };
+          return null;
         }
         seenDocIds.add(d.id);
       }
@@ -320,10 +320,10 @@ export function applyWorkspaceUpdates(context: {
     const seenSectionIds = new Set<string>();
     for (const s of updates.structure.sections) {
       if (!s.id || typeof s.id !== 'string' || s.id.trim().length === 0) {
-        return { changed: false };
+        return null;
       }
       if (seenSectionIds.has(s.id)) {
-        return { changed: false };
+        return null;
       }
       seenSectionIds.add(s.id);
     }
@@ -333,30 +333,30 @@ export function applyWorkspaceUpdates(context: {
     const seenTaskIds = new Set<string>();
     for (const t of updates.tasks.tasks) {
       if (!t.id || typeof t.id !== 'string' || t.id.trim().length === 0) {
-        return { changed: false };
+        return null;
       }
       if (seenTaskIds.has(t.id)) {
-        return { changed: false };
+        return null;
       }
       seenTaskIds.add(t.id);
 
       if (t.dueDate !== undefined) {
         if (typeof t.dueDate !== 'string') {
-          return { changed: false };
+          return null;
         }
         const trimmedDue = t.dueDate.trim();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDue)) {
-          return { changed: false };
+          return null;
         }
         const parts = trimmedDue.split('-');
         if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
-          return { changed: false };
+          return null;
         }
         const y = parseInt(parts[0], 10);
         const m = parseInt(parts[1], 10);
         const d = parseInt(parts[2], 10);
         if (m < 1 || m > 12 || d < 1 || d > 31) {
-          return { changed: false };
+          return null;
         }
         const date = new Date(Date.UTC(y, m - 1, d));
         if (
@@ -364,7 +364,7 @@ export function applyWorkspaceUpdates(context: {
           date.getUTCMonth() !== m - 1 ||
           date.getUTCDate() !== d
         ) {
-          return { changed: false };
+          return null;
         }
         t.dueDate = trimmedDue;
       }
@@ -381,7 +381,7 @@ export function applyWorkspaceUpdates(context: {
         }
 
         if (!memberName) {
-          return { changed: false };
+          return null;
         }
         t.assigneeName = memberName;
       } else {
@@ -656,7 +656,7 @@ export function applyWorkspaceUpdates(context: {
             project.id,
             user,
             'lyrics_doc_deleted',
-            `${user.displayName} deleted lyrics "${initialDoc.title}"`,
+            `${user.displayName} deleted lyrics draft "${initialDoc.title}"`,
             initialDoc.title,
             undefined,
             false

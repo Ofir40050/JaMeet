@@ -35,6 +35,7 @@ export function getNativeBinaryPath(name: string, options?: ResolveBinaryOptions
       candidates.push(join(appPath, 'bin', binaryName));
     }
   } else {
+    candidates.push(join(baseDir, '../../../bin', binaryName));
     candidates.push(join(baseDir, '../../bin', binaryName));
     candidates.push(join(baseDir, '../bin', binaryName));
     if (!options?.baseDir) {
@@ -58,5 +59,5 @@ export function getNativeBinaryPath(name: string, options?: ResolveBinaryOptions
   if (isPackaged && resourcesPath) {
     return join(resourcesPath, 'bin', binaryName);
   }
-  return join(baseDir, '../../bin', binaryName);
+  return join(baseDir, '../../../bin', binaryName);
 }

@@ -98,8 +98,9 @@ export function renderProjectSessions(): void {
 
   // 1. Calculate & Render Stats
   const totalSec = sessions.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
-  const lastActiveText = sessions.length > 0
-    ? formatRelativeTime(sessions[0].startedAt)
+  const firstSession = sessions[0];
+  const lastActiveText = firstSession
+    ? formatRelativeTime(firstSession.startedAt)
     : '—';
 
   setText('project-stat-sessions-time', `${formatTotalDuration(totalSec)} studio time`);

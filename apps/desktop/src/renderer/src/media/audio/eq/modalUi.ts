@@ -585,7 +585,7 @@ export class ChannelEqPluginModal {
       if (readoutPill) readoutPill.classList.add('hidden');
     };
 
-    const getPointerBandHandle = (e: PointerEvent): ChannelEqBandConfig | null => {
+    const getPointerBandHandle = (e: MouseEvent | PointerEvent): ChannelEqBandConfig | null => {
       if (!this.currentTarget) return null;
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -597,7 +597,8 @@ export class ChannelEqPluginModal {
       const HANDLE_RADIUS = 16;
 
       for (let i = config.bands.length - 1; i >= 0; i--) {
-        const band = config.bands[i]!;
+        const band = config.bands[i];
+        if (!band) continue;
         const hx = this.freqToX(band.frequency, width);
         const hy = (band.type === 'highpass' || band.type === 'lowpass')
           ? this.dbToY(0, height)
@@ -642,8 +643,10 @@ export class ChannelEqPluginModal {
         const x = e.clientX - rect.left;
         const clickedFreq = this.xToFreq(x, width);
         const config = getChannelEqConfig(this.currentTarget.channelId, this.currentTarget.slotIndex);
+        const firstBand = config.bands[0];
+        if (!firstBand) return;
 
-        let closestBand = config.bands[0]!;
+        let closestBand = firstBand;
         let minDiff = Math.abs(Math.log10(clickedFreq) - Math.log10(closestBand.frequency));
 
         for (const b of config.bands) {

@@ -24,7 +24,7 @@ export interface SongsDomainControllerOptions {
   clearStructureSaveTimeout: () => void;
   onSaveStructureWorkspace: () => Promise<void> | void;
   onSyncWorkspaceInputs: (forceAll: boolean) => void;
-  onSaveSongsWorkspace: () => Promise<void>;
+  onSaveSongsWorkspace: () => Promise<boolean | void> | void;
   onRenderTasksWorkspace: () => void;
 }
 
@@ -76,7 +76,7 @@ export function initSongsDomainController(options: SongsDomainControllerOptions)
       void options.onSaveStructureWorkspace();
     },
     onSyncWorkspaceInputs: (forceAll) => {
-      options.onSyncWorkspaceInputs(forceAll);
+      options.onSyncWorkspaceInputs(Boolean(forceAll));
     },
     onSaveSongsWorkspace: () => {
       return options.onSaveSongsWorkspace();
@@ -87,7 +87,7 @@ export function initSongsDomainController(options: SongsDomainControllerOptions)
     getProject: () => options.getProject(),
     canEdit: () => options.canUserEditProject(),
     onSyncWorkspaceInputs: (forceAll) => {
-      options.onSyncWorkspaceInputs(forceAll);
+      options.onSyncWorkspaceInputs(Boolean(forceAll));
     },
     onSaveSongsWorkspace: () => {
       return options.onSaveSongsWorkspace();

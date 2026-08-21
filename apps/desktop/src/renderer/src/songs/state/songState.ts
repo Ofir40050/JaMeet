@@ -41,8 +41,21 @@ export function getActiveSongState(project: Project | null | undefined, now: num
     ws.activeSongId = 'song-1';
   }
 
-  const activeId = ws.activeSongId || ws.songs[0].id;
-  const song = ws.songs.find((s) => s && s.id === activeId) || ws.songs[0];
+  const fallbackSong = ws.songs[0];
+  const activeId = ws.activeSongId || fallbackSong?.id || 'song-1';
+  const song = ws.songs.find((s) => s && s.id === activeId) || fallbackSong;
+  if (!song) {
+    return {
+      id: 'song-1',
+      title: 'Song 1',
+      order: 0,
+      lyrics: { revision: 1, activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: 0 }], content: '', updatedAt: 0 },
+      notes: { revision: 1, content: '', updatedAt: 0 },
+      structure: { revision: 1, sections: [], updatedAt: 0 },
+      createdAt: 0,
+      updatedAt: 0
+    };
+  }
   ws.activeSongId = song.id;
 
   // Mirror active song's data to top-level workspace for seamless subsystem compatibility

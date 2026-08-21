@@ -1,7 +1,8 @@
+import type { ProjectRole } from '@jameet/shared';
 import { $, setText } from '../../core/dom';
 
 export interface ProjectCollaboratorModalUiOptions {
-  onAddCollaborator?: (values: { usernameOrEmail: string; role: string }) => Promise<void> | void;
+  onAddCollaborator?: (values: { usernameOrEmail: string; role: ProjectRole }) => Promise<void> | void;
 }
 
 let modalOptions: ProjectCollaboratorModalUiOptions = {};
@@ -25,9 +26,9 @@ export function setAddCollaboratorError(error: string): void {
   setText('add-collab-error', error);
 }
 
-export function getAddCollaboratorFormValues(): { usernameOrEmail: string; role: string } {
+export function getAddCollaboratorFormValues(): { usernameOrEmail: string; role: ProjectRole } {
   const usernameOrEmail = $<HTMLInputElement>('add-collab-username')?.value.trim() || '';
-  const role = $<HTMLSelectElement>('add-collab-role')?.value || 'editor';
+  const role = ($<HTMLSelectElement>('add-collab-role')?.value as ProjectRole) || 'editor';
   return { usernameOrEmail, role };
 }
 

@@ -1,4 +1,5 @@
 import type { UpdateProfileRequest } from '@jameet/shared';
+import type { ProfileFormValues } from './profileUi';
 import {
   getEditingAvatarColor,
   getEditingAvatarUrl,
@@ -16,17 +17,7 @@ export function initProfileController(options: ProfileControllerOptions): void {
   controllerOptions = options;
 }
 
-export async function handleSaveProfile(formValues: {
-  displayName?: string;
-  role?: string;
-  location?: string;
-  primaryDaw?: string;
-  genres?: string;
-  bio?: string;
-  socialHandle?: string;
-  currentPassword?: string;
-  newPassword?: string;
-}): Promise<void> {
+export async function handleSaveProfile(formValues: ProfileFormValues): Promise<void> {
   if (!controllerOptions) return;
 
   try {

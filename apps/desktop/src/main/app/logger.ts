@@ -512,7 +512,7 @@ export class DesktopLogger {
       });
     });
 
-    wc.on('plugin-crashed', (_event, name, version) => {
+    wc.on('plugin-crashed' as any, (_event: unknown, name?: string, version?: string) => {
       this.recordCrash({
         process: 'renderer',
         reason: `plugin-crashed (${name})`,

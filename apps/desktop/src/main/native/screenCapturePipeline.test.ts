@@ -30,8 +30,9 @@ describe('ScreenCaptureKit Main Process Pipeline Framing & Backlog Mitigation', 
       let cur = 0;
       for (let i = 0; i < chunks.length; i++) {
         const c = chunks[i];
+        if (!c) continue;
         if (offset < cur + c.length) {
-          return c[offset - cur];
+          return c[offset - cur] ?? 0;
         }
         cur += c.length;
       }
@@ -42,6 +43,7 @@ describe('ScreenCaptureKit Main Process Pipeline Framing & Backlog Mitigation', 
       let cur = 0;
       for (let i = 0; i < chunks.length; i++) {
         const c = chunks[i];
+        if (!c) continue;
         if (offset < cur + c.length) {
           const local = offset - cur;
           if (local + 4 <= c.length) {
@@ -60,15 +62,16 @@ describe('ScreenCaptureKit Main Process Pipeline Framing & Backlog Mitigation', 
 
     function consumeBytes(count: number): Buffer {
       if (count <= 0) return Buffer.alloc(0);
-      if (chunks.length === 1 && chunks[0].length === count) {
-        const buf = chunks[0];
+      const firstChunk = chunks[0];
+      if (chunks.length === 1 && firstChunk && firstChunk.length === count) {
+        const buf = firstChunk;
         chunks = [];
         totalBuffered = 0;
         return buf;
       }
-      if (chunks.length === 1 && chunks[0].length > count) {
-        const buf = chunks[0].subarray(0, count);
-        chunks[0] = chunks[0].subarray(count);
+      if (chunks.length === 1 && firstChunk && firstChunk.length > count) {
+        const buf = firstChunk.subarray(0, count);
+        chunks[0] = firstChunk.subarray(count);
         totalBuffered -= count;
         return buf;
       }
@@ -76,6 +79,10 @@ describe('ScreenCaptureKit Main Process Pipeline Framing & Backlog Mitigation', 
       let copied = 0;
       while (copied < count && chunks.length > 0) {
         const head = chunks[0];
+        if (!head) {
+          chunks.shift();
+          continue;
+        }
         const needed = count - copied;
         if (head.length <= needed) {
           head.copy(result, copied);
@@ -170,12 +177,13 @@ describe('ScreenCaptureKit Main Process Pipeline Framing & Backlog Mitigation', 
     const { emittedFrames, remainingBuffered } = simulateMainProcessStream(chunks);
 
     expect(emittedFrames.length).toBe(1);
-    expect(emittedFrames[0].width).toBe(100);
-    expect(emittedFrames[0].height).toBe(100);
-    expect(emittedFrames[0].bytesPerRow).toBe(400);
-    expect(emittedFrames[0].timestamp).toBe(1000);
-    expect(emittedFrames[0].data.length).toBe(40000);
-    expect(emittedFrames[0].data[0]).toBe(0x42);
+    const frame0 = emittedFrames[0];
+    expect(frame0?.width).toBe(100);
+    expect(frame0?.height).toBe(100);
+    expect(frame0?.bytesPerRow).toBe(400);
+    expect(frame0?.timestamp).toBe(1000);
+    expect(frame0?.data.length).toBe(40000);
+    expect(frame0?.data[0]).toBe(0x42);
     expect(remainingBuffered).toBe(0);
   });
 
@@ -191,8 +199,9 @@ describe('ScreenCaptureKit Main Process Pipeline Framing & Backlog Mitigation', 
 
     // Only the latest frame (frame3) should be emitted to IPC
     expect(emittedFrames.length).toBe(1);
-    expect(emittedFrames[0].timestamp).toBe(1003);
-    expect(emittedFrames[0].data[0]).toBe(0x03);
+    const emitted0 = emittedFrames[0];
+    expect(emitted0?.timestamp).toBe(1003);
+    expect(emitted0?.data[0]).toBe(0x03);
     expect(remainingBuffered).toBe(0);
   });
 
@@ -204,9 +213,10 @@ describe('ScreenCaptureKit Main Process Pipeline Framing & Backlog Mitigation', 
     const { emittedFrames, remainingBuffered } = simulateMainProcessStream([stream]);
 
     expect(emittedFrames.length).toBe(1);
-    expect(emittedFrames[0].timestamp).toBe(5000);
-    expect(emittedFrames[0].width).toBe(10);
-    expect(emittedFrames[0].data[0]).toBe(0x99);
+    const recovered0 = emittedFrames[0];
+    expect(recovered0?.timestamp).toBe(5000);
+    expect(recovered0?.width).toBe(10);
+    expect(recovered0?.data[0]).toBe(0x99);
     expect(remainingBuffered).toBe(0);
   });
 

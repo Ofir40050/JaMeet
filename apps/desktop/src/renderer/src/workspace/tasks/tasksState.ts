@@ -7,14 +7,21 @@ export function normalizeProjectTasks(
   if (!project) return [];
   if (!project.workspace) {
     project.workspace = {
-      lyrics: { activeDocumentId: 'doc-main', documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }], content: '', updatedAt: now },
-      notes: { content: '', updatedAt: now },
-      structure: { sections: [], updatedAt: now },
-      tasks: { tasks: [], updatedAt: now }
+      songs: [],
+      lyrics: {
+        revision: 0,
+        activeDocumentId: 'doc-main',
+        documents: [{ id: 'doc-main', title: 'Main Lyrics', content: '', updatedAt: now }],
+        content: '',
+        updatedAt: now
+      },
+      notes: { revision: 0, content: '', updatedAt: now },
+      structure: { revision: 0, sections: [], updatedAt: now },
+      tasks: { revision: 0, tasks: [], updatedAt: now }
     };
   }
   if (!project.workspace.tasks) {
-    project.workspace.tasks = { tasks: [], updatedAt: now };
+    project.workspace.tasks = { revision: 0, tasks: [], updatedAt: now };
   }
   if (!Array.isArray(project.workspace.tasks.tasks)) {
     project.workspace.tasks.tasks = [];

@@ -8,13 +8,13 @@ export interface SongSwitchControllerOptions {
   onSaveLyricsWorkspace: (content: string, id: string, title: string) => Promise<void> | void;
   hasNotesSaveTimeout: () => boolean;
   clearNotesSaveTimeout: () => void;
-  getNotesFieldValues: () => { content: string; bpm: string; key: string };
-  onSaveNotesWorkspace: (content: string, bpm: string, key: string) => Promise<void> | void;
+  getNotesFieldValues: () => { content?: string; bpm?: string; key?: string };
+  onSaveNotesWorkspace: (content?: string, bpm?: string, key?: string) => Promise<void> | void;
   hasStructureSaveTimeout: () => boolean;
   clearStructureSaveTimeout: () => void;
-  onSaveStructureWorkspace: (sections: any[]) => Promise<void> | void;
-  onSyncWorkspaceInputs: (forceAll: boolean) => void;
-  onSaveSongsWorkspace: () => Promise<boolean> | void;
+  onSaveStructureWorkspace: (sections?: any[]) => Promise<void> | void;
+  onSyncWorkspaceInputs: (forceAll?: boolean) => void;
+  onSaveSongsWorkspace: () => Promise<boolean | void> | void;
 }
 
 let controllerOptions: SongSwitchControllerOptions | null = null;

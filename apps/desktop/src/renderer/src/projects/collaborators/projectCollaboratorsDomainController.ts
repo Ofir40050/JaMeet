@@ -1,4 +1,4 @@
-import type { ProjectItem } from '../core/projects';
+import type { Project } from '@jameet/shared';
 import {
   initProjectCollaboratorsController,
   handleAddCollaborator
@@ -11,8 +11,8 @@ import {
 
 export interface ProjectCollaboratorsDomainControllerOptions {
   getAuthToken: () => string | null;
-  getProject: () => ProjectItem | null | undefined;
-  onProjectUpdated: (updatedProject: ProjectItem) => void;
+  getProject: () => Project | null | undefined;
+  onProjectUpdated: (updatedProject: Project) => void;
   onRefreshProjectView: () => void;
   onRefreshCollaboratorsView: () => void;
 }

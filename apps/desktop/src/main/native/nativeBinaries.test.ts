@@ -33,13 +33,13 @@ describe('Native Binary Path Resolution', () => {
       platform: 'darwin'
     });
 
-    expect(resolved).toBe(join(__dirname, '../../bin', 'jameet-screen-capture'));
+    expect(resolved).toBe(join(__dirname, '../../../bin', 'jameet-screen-capture'));
   });
 
 
   if (process.platform === 'darwin') {
     it('verifies that all native helpers are compiled in apps/desktop/bin on macOS', () => {
-      const binDir = join(__dirname, '../../bin');
+      const binDir = join(__dirname, '../../../bin');
       const expectedHelpers = [
         'set-rate',
         'jameet-hardware-input',

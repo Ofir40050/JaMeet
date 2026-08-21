@@ -9,16 +9,16 @@ export interface WorkspaceFlushControllerOptions {
   onSaveLyricsWorkspace: (content: string, id: string, title: string) => Promise<void>;
   hasNotesSaveTimeout: () => boolean;
   clearNotesSaveTimeout: () => void;
-  getNotesFieldValues: () => { content: string; bpm: string; key: string };
-  onSaveNotesWorkspace: (content: string, bpm: string, key: string) => Promise<void>;
+  getNotesFieldValues: () => { content?: string; bpm?: string; key?: string };
+  onSaveNotesWorkspace: (content?: string, bpm?: string, key?: string) => Promise<boolean | void> | void;
   hasStructureSaveTimeout: () => boolean;
   clearStructureSaveTimeout: () => void;
   getStructureSections: () => any[];
-  onSaveStructureWorkspace: (sections: any[]) => Promise<void>;
+  onSaveStructureWorkspace: (sections?: any[]) => Promise<void>;
   hasTasksSaveTimeout: () => boolean;
   clearTasksSaveTimeout: () => void;
   onSaveTasksWorkspace: () => Promise<void>;
-  onSaveSongsWorkspace: () => Promise<boolean>;
+  onSaveSongsWorkspace: () => Promise<boolean | void> | void;
 }
 
 let controllerOptions: WorkspaceFlushControllerOptions | null = null;
@@ -44,7 +44,7 @@ export async function flushAllWorkspacePendingSaves(): Promise<void> {
     controllerOptions.clearNotesSaveTimeout();
     const vals = controllerOptions.getNotesFieldValues();
     promises.push(
-      controllerOptions.onSaveNotesWorkspace(vals.content, vals.bpm, vals.key)
+      Promise.resolve(controllerOptions.onSaveNotesWorkspace(vals.content, vals.bpm, vals.key))
     );
   }
   if (controllerOptions.hasStructureSaveTimeout()) {
@@ -58,7 +58,7 @@ export async function flushAllWorkspacePendingSaves(): Promise<void> {
   promises.push(controllerOptions.onSaveTasksWorkspace());
 
   if (project.workspace.songs) {
-    promises.push(controllerOptions.onSaveSongsWorkspace());
+    promises.push(Promise.resolve(controllerOptions.onSaveSongsWorkspace()));
   }
 
   await Promise.allSettled(promises);

@@ -1,6 +1,7 @@
 import type { MediaMetadata, MeetingAck, ParticipantIdentity } from '@jameet/shared';
 import { $, setText } from '../../core/dom';
 import { showSessionErrorModal } from './sessionErrorUi';
+import { parseSessionError } from './sessionErrorParser';
 import type { PendingAction } from './studioPreparation';
 
 export interface SessionEntryControllerOptions {
@@ -36,7 +37,7 @@ export interface SessionEntryControllerOptions {
   onSetHostIdentity: (identity: ParticipantIdentity | null) => void;
   onSetMyIdentity: (identity: ParticipantIdentity | null) => void;
   onShowWaitingView: () => void;
-  onInitializeActiveCall: (ack: MeetingAck) => Promise<void>;
+  onInitializeActiveCall: (ack: Extract<MeetingAck, { ok: true }>) => Promise<void>;
 }
 
 let isEnteringSession = false;
@@ -146,7 +147,7 @@ export async function enterSession(options: SessionEntryControllerOptions): Prom
           type: 'warning',
           actionLabel: 'OK'
         });
-      } else if (ack.code === 'LOCKED') {
+      } else if (ack.code === 'ROOM_LOCKED') {
         showSessionErrorModal({
           title: 'Session is Locked',
           message: 'The host has locked this session to prevent new participants from joining.',
@@ -154,7 +155,7 @@ export async function enterSession(options: SessionEntryControllerOptions): Prom
           type: 'warning',
           actionLabel: 'OK'
         });
-      } else if (ack.code === 'NOT_FOUND') {
+      } else if (ack.code === 'INVALID_CODE') {
         showSessionErrorModal({
           title: 'Session Not Found',
           message: 'The session code is invalid or has already ended.',

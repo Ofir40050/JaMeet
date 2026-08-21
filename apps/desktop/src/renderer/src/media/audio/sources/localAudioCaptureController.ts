@@ -1,9 +1,10 @@
 import { $ } from '../../../core/dom';
 import { logger } from '../../../core/logger';
 import { fetchRunningAudioApps, type RunningAudioApp } from './runningApplications';
-import type { AudioMode, MediaMetadata, Preferences } from '@jameet/shared';
+import type { AudioMode, MediaMetadata } from '@jameet/shared';
+import type { Preferences } from '../../../core/preferences';
 import type { LevelMeter, LevelReading } from '../meter/levelMeter';
-import type { HardwareAudioDeviceInfo } from './hardwareDeviceTypes';
+import type { HardwareAudioDeviceInfo } from '../../devices/hardwareAudioDeviceUtils';
 import type { LocalAudioSourceManager } from './audioSources';
 
 export interface LocalAudioCaptureContext {
@@ -33,7 +34,7 @@ export interface LocalAudioCaptureContext {
   getMetadata: () => MediaMetadata;
   onSignalingUpdateMedia: (code: string, metadata: MediaMetadata) => void;
   onRtcAudioChanged: (mode: AudioMode) => Promise<void>;
-  onRtcAudioSourceChanged: (source: string) => Promise<void>;
+  onRtcAudioSourceChanged: (source: 'music' | 'screen-audio') => Promise<void>;
 }
 
 export function createLocalAudioCaptureController(ctx: LocalAudioCaptureContext) {

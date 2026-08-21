@@ -60,7 +60,7 @@ export function clearNotesSaveTimeout(): void {
   }
 }
 
-export function debounceSaveNotesRetry(content: string, bpm: string, key: string): void {
+export function debounceSaveNotesRetry(content?: string, bpm?: string, key?: string): void {
   if (notesSaveTimeout) {
     clearTimeout(notesSaveTimeout);
   }
@@ -74,9 +74,9 @@ export function debounceSaveNotesRetry(content: string, bpm: string, key: string
 }
 
 export async function saveNotesWorkspace(
-  content: string,
-  bpm: string,
-  key: string
+  content?: string,
+  bpm?: string,
+  key?: string
 ): Promise<void> {
   if (!persistenceOptions || !persistenceOptions.canEdit()) return;
   const activeProject = persistenceOptions.getProject();
@@ -96,13 +96,13 @@ export async function saveNotesWorkspace(
   const baseRevision = activeSong.notes?.revision ?? 1;
 
   if (activeSong.notes) {
-    activeSong.notes.content = content;
+    activeSong.notes.content = content || '';
     activeSong.notes.bpm = bpm;
     activeSong.notes.key = key;
     activeSong.updatedAt = Date.now();
   }
   if (activeProject.workspace?.notes) {
-    activeProject.workspace.notes.content = content;
+    activeProject.workspace.notes.content = content || '';
     activeProject.workspace.notes.bpm = bpm;
     activeProject.workspace.notes.key = key;
   }

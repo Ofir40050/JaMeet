@@ -74,19 +74,19 @@ export function applyParticipantViewLayout(): void {
 
   if (isAnySharing) {
     workspace.classList.add('stage-mode');
-    if (currentScreenViewMode === 'side-by-side') {
+    if (getScreenViewMode() === 'side-by-side') {
       workspace.classList.add('screen-view-side-by-side');
-    } else if (currentScreenViewMode === 'screen-focus') {
+    } else if (getScreenViewMode() === 'screen-focus') {
       workspace.classList.add('screen-view-focus');
     } else {
       workspace.classList.add('screen-view-standard');
     }
   } else {
     workspace.classList.remove('stage-mode');
-    if (currentCameraViewMode === 'speaker') {
+    if (getCameraViewMode() === 'speaker') {
       workspace.classList.add('view-speaker');
       videoGrid.classList.add('layout-speaker');
-      const dominant = currentActiveSpeaker;
+      const dominant = getActiveSpeaker();
       videoGrid.classList.add(dominant === 'remote' ? 'dominant-remote' : 'dominant-local');
       if (dominant === 'remote') {
         remoteTile.classList.add('dominant-tile');
@@ -97,10 +97,10 @@ export function applyParticipantViewLayout(): void {
         remoteTile.classList.add('secondary-tile');
         remoteTile.setAttribute('title', `Click to switch focus to ${state.peerIdentity?.displayName || 'Musician'}`);
       }
-    } else if (currentCameraViewMode === 'focus') {
+    } else if (getCameraViewMode() === 'focus') {
       workspace.classList.add('view-focus');
       videoGrid.classList.add('layout-focus');
-      const dominant = currentFocusTarget;
+      const dominant = getFocusTarget();
       videoGrid.classList.add(dominant === 'remote' ? 'dominant-remote' : 'dominant-local');
       if (dominant === 'remote') {
         remoteTile.classList.add('dominant-tile');
@@ -134,11 +134,11 @@ export function updateSessionViewButton(): void {
   if (!btn || !iconEl) return;
 
   if (isAnySharing) {
-    if (currentScreenViewMode === 'side-by-side') {
+    if (getScreenViewMode() === 'side-by-side') {
       iconEl.innerHTML = icons.sideBySide({ size: 18 });
       if (labelEl) labelEl.textContent = 'Side by Side';
       btn.title = 'Stage Layout: Side by Side View';
-    } else if (currentScreenViewMode === 'screen-focus') {
+    } else if (getScreenViewMode() === 'screen-focus') {
       iconEl.innerHTML = icons.maximize({ size: 18 });
       if (labelEl) labelEl.textContent = 'Screen Focus';
       btn.title = 'Stage Layout: Screen Focus View';
@@ -148,13 +148,13 @@ export function updateSessionViewButton(): void {
       btn.title = 'Stage Layout: Screen View';
     }
   } else {
-    if (currentCameraViewMode === 'speaker') {
+    if (getCameraViewMode() === 'speaker') {
       iconEl.innerHTML = icons.layoutSpeaker({ size: 18 });
       if (labelEl) labelEl.textContent = 'Speaker';
       btn.title = 'Stage Layout: Speaker View';
-    } else if (currentCameraViewMode === 'focus') {
+    } else if (getCameraViewMode() === 'focus') {
       iconEl.innerHTML = icons.pin({ size: 18 });
-      const targetName = currentFocusTarget === 'remote' ? (state.peerIdentity?.displayName || 'Musician') : 'You';
+      const targetName = getFocusTarget() === 'remote' ? (state.peerIdentity?.displayName || 'Musician') : 'You';
       if (labelEl) labelEl.textContent = `Focus: ${targetName}`;
       btn.title = `Stage Layout: Focus (${targetName})`;
     } else {
@@ -182,20 +182,20 @@ export function renderSessionViewMenu(): void {
   if (isAnySharing) {
     html += `
       <div class="view-menu-section-header">SCREEN VIEW</div>
-      <button type="button" class="view-menu-item ${currentScreenViewMode === 'screen' ? 'active' : ''}" data-screen-mode="screen">
+      <button type="button" class="view-menu-item ${getScreenViewMode() === 'screen' ? 'active' : ''}" data-screen-mode="screen">
         <span class="menu-item-icon">${icons.monitor({ size: 14 })}</span>
         <span class="menu-item-text">Screen View</span>
-        ${currentScreenViewMode === 'screen' ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
+        ${getScreenViewMode() === 'screen' ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
       </button>
-      <button type="button" class="view-menu-item ${currentScreenViewMode === 'side-by-side' ? 'active' : ''}" data-screen-mode="side-by-side">
+      <button type="button" class="view-menu-item ${getScreenViewMode() === 'side-by-side' ? 'active' : ''}" data-screen-mode="side-by-side">
         <span class="menu-item-icon">${icons.sideBySide({ size: 14 })}</span>
         <span class="menu-item-text">Side by Side View</span>
-        ${currentScreenViewMode === 'side-by-side' ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
+        ${getScreenViewMode() === 'side-by-side' ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
       </button>
-      <button type="button" class="view-menu-item ${currentScreenViewMode === 'screen-focus' ? 'active' : ''}" data-screen-mode="screen-focus">
+      <button type="button" class="view-menu-item ${getScreenViewMode() === 'screen-focus' ? 'active' : ''}" data-screen-mode="screen-focus">
         <span class="menu-item-icon">${icons.maximize({ size: 14 })}</span>
         <span class="menu-item-text">Screen Focus View</span>
-        ${currentScreenViewMode === 'screen-focus' ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
+        ${getScreenViewMode() === 'screen-focus' ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
       </button>
       <div class="view-menu-divider"></div>
       <div class="view-menu-section-header">PARTICIPANT TILES</div>
@@ -205,27 +205,27 @@ export function renderSessionViewMenu(): void {
   }
 
   html += `
-    <button type="button" class="view-menu-item ${(!isAnySharing && currentCameraViewMode === 'gallery') ? 'active' : ''}" data-camera-mode="gallery">
+    <button type="button" class="view-menu-item ${(!isAnySharing && getCameraViewMode() === 'gallery') ? 'active' : ''}" data-camera-mode="gallery">
       <span class="menu-item-icon">${icons.layoutGrid({ size: 14 })}</span>
       <span class="menu-item-text">Gallery View</span>
-      ${(!isAnySharing && currentCameraViewMode === 'gallery') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
+      ${(!isAnySharing && getCameraViewMode() === 'gallery') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
     </button>
-    <button type="button" class="view-menu-item ${(!isAnySharing && currentCameraViewMode === 'speaker') ? 'active' : ''}" data-camera-mode="speaker">
+    <button type="button" class="view-menu-item ${(!isAnySharing && getCameraViewMode() === 'speaker') ? 'active' : ''}" data-camera-mode="speaker">
       <span class="menu-item-icon">${icons.layoutSpeaker({ size: 14 })}</span>
       <span class="menu-item-text">Speaker View</span>
-      ${(!isAnySharing && currentCameraViewMode === 'speaker') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
+      ${(!isAnySharing && getCameraViewMode() === 'speaker') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
     </button>
     <div class="view-menu-divider"></div>
     <div class="view-menu-section-header">FOCUS PIN</div>
-    <button type="button" class="view-menu-item ${(!isAnySharing && currentCameraViewMode === 'focus' && currentFocusTarget === 'remote') ? 'active' : ''}" data-camera-mode="focus" data-focus-target="remote">
+    <button type="button" class="view-menu-item ${(!isAnySharing && getCameraViewMode() === 'focus' && getFocusTarget() === 'remote') ? 'active' : ''}" data-camera-mode="focus" data-focus-target="remote">
       <span class="menu-item-icon">${icons.pin({ size: 14 })}</span>
       <span class="menu-item-text">Focus: ${escapeHtml(remoteName)}</span>
-      ${(!isAnySharing && currentCameraViewMode === 'focus' && currentFocusTarget === 'remote') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
+      ${(!isAnySharing && getCameraViewMode() === 'focus' && getFocusTarget() === 'remote') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
     </button>
-    <button type="button" class="view-menu-item ${(!isAnySharing && currentCameraViewMode === 'focus' && currentFocusTarget === 'local') ? 'active' : ''}" data-camera-mode="focus" data-focus-target="local">
+    <button type="button" class="view-menu-item ${(!isAnySharing && getCameraViewMode() === 'focus' && getFocusTarget() === 'local') ? 'active' : ''}" data-camera-mode="focus" data-focus-target="local">
       <span class="menu-item-icon">${icons.pin({ size: 14 })}</span>
       <span class="menu-item-text">Focus: ${escapeHtml(localName)}</span>
-      ${(!isAnySharing && currentCameraViewMode === 'focus' && currentFocusTarget === 'local') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
+      ${(!isAnySharing && getCameraViewMode() === 'focus' && getFocusTarget() === 'local') ? `<span class="menu-item-check">${icons.check({ size: 13 })}</span>` : ''}
     </button>
   `;
 
@@ -239,12 +239,12 @@ export function renderSessionViewMenu(): void {
       const focusTarget = item.getAttribute('data-focus-target') as ParticipantTarget | null;
 
       if (screenMode) {
-        currentScreenViewMode = screenMode;
+        setScreenViewMode(screenMode);
       }
       if (cameraMode) {
-        currentCameraViewMode = cameraMode;
+        setCameraViewMode(cameraMode);
         if (focusTarget) {
-          currentFocusTarget = focusTarget;
+          setFocusTarget(focusTarget);
         }
       }
       applyParticipantViewLayout();
@@ -291,12 +291,12 @@ export function setupParticipantTileInteractions(): void {
 
   remoteTile?.addEventListener('click', () => {
     if (remoteTile.classList.contains('secondary-tile')) {
-      if (currentCameraViewMode === 'focus') {
-        currentFocusTarget = 'remote';
+      if (getCameraViewMode() === 'focus') {
+        setFocusTarget('remote');
         applyParticipantViewLayout();
-      } else if (currentCameraViewMode === 'speaker') {
-        currentCameraViewMode = 'focus';
-        currentFocusTarget = 'remote';
+      } else if (getCameraViewMode() === 'speaker') {
+        setCameraViewMode('focus');
+        setFocusTarget('remote');
         applyParticipantViewLayout();
       }
     }
@@ -304,12 +304,12 @@ export function setupParticipantTileInteractions(): void {
 
   localTile?.addEventListener('click', () => {
     if (localTile.classList.contains('secondary-tile')) {
-      if (currentCameraViewMode === 'focus') {
-        currentFocusTarget = 'local';
+      if (getCameraViewMode() === 'focus') {
+        setFocusTarget('local');
         applyParticipantViewLayout();
-      } else if (currentCameraViewMode === 'speaker') {
-        currentCameraViewMode = 'focus';
-        currentFocusTarget = 'local';
+      } else if (getCameraViewMode() === 'speaker') {
+        setCameraViewMode('focus');
+        setFocusTarget('local');
         applyParticipantViewLayout();
       }
     }

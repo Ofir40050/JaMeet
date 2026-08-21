@@ -302,7 +302,7 @@ export function createRemoteAudioGraphController(ctx: RemoteAudioGraphContext) {
       ctx.setRemoteVoiceStereo(ctx.isRtcVoiceStereo());
 
       let remoteVoiceSourceNode = ctx.getRemoteVoiceSourceNode();
-      if (!remoteVoiceSourceNode || remoteVoiceSourceNode.mediaStream.getAudioTracks()[0] !== voiceTrack) {
+      if (voiceTrack && (!remoteVoiceSourceNode || remoteVoiceSourceNode.mediaStream.getAudioTracks()[0] !== voiceTrack)) {
         try { remoteVoiceSourceNode?.disconnect(); } catch {}
         const voiceStream = new MediaStream([voiceTrack]);
         remoteVoiceSourceNode = audioCtx.createMediaStreamSource(voiceStream);

@@ -10,6 +10,7 @@ export function mutateDuplicateTask(
   const index = tasks.findIndex((t) => t.id === taskId);
   if (index === -1) return null;
   const original = tasks[index];
+  if (!original) return null;
   const copy: ProjectTaskItem = {
     ...original,
     id: newTaskId,

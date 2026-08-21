@@ -1,4 +1,5 @@
 import type { ProjectSessionItem } from '@jameet/shared';
+export type { ProjectSessionItem };
 import { formatRelativeTime, formatSessionDuration } from '../../core/dateTimeFormatters';
 import { escapeHtml } from '../../core/htmlSecurity';
 import { icons } from '../../core/icons';
