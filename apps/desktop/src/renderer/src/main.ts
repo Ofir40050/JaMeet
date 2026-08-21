@@ -3423,6 +3423,9 @@ function renderStudioMixer(): void {
     getVoiceInputs: () => prefs.voiceInputs,
     onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
     onSavePreferences: () => savePreferences(),
+    onSetInputGain: (val) => {
+      prefs.inputGain = val;
+    },
     getVoiceMicEqDsp: (micIdx, slotIdx) => audio.getVoiceMicEqDsp(micIdx, slotIdx),
     getMusicEqDsp: (slotIdx) => audio.getMusicEqDsp(slotIdx),
     onToggleStudioMixer: (forceOpen) => toggleStudioMixer(forceOpen)
@@ -3434,6 +3437,9 @@ initStudioMixerPopoversAndControls({
   getVoiceInputs: () => prefs.voiceInputs,
   onApplyMixerAudioRouting: () => applyMixerAudioRouting(),
   onSavePreferences: () => savePreferences(),
+  onSetInputGain: (val) => {
+    prefs.inputGain = val;
+  },
   getVoiceMicEqDsp: (micIdx, slotIdx) => audio.getVoiceMicEqDsp(micIdx, slotIdx),
   getMusicEqDsp: (slotIdx) => audio.getMusicEqDsp(slotIdx),
   onToggleStudioMixer: (forceOpen) => toggleStudioMixer(forceOpen)

@@ -133,6 +133,7 @@ export interface StudioMixerUiContext {
   getVoiceInputs: () => VoiceInputConfig[];
   onApplyMixerAudioRouting: () => void;
   onSavePreferences: () => void;
+  onSetInputGain?: (val: number) => void;
   getVoiceMicEqDsp: (micIdx: number, slotIdx: number) => any;
   getMusicEqDsp: (slotIdx: number) => any;
   onToggleStudioMixer: (forceOpen?: boolean) => void;
@@ -419,6 +420,7 @@ export function renderStudioMixer(ctx: StudioMixerUiContext): void {
         const mic = voiceInputs.find((m) => m.id === micIdx);
         if (mic) {
           mic.gain = 1.0;
+          if (micIdx === 1 && ctx.onSetInputGain) ctx.onSetInputGain(1.0);
           ctx.onSavePreferences();
         }
       }
@@ -496,6 +498,7 @@ export function renderStudioMixer(ctx: StudioMixerUiContext): void {
         const mic = voiceInputs.find((m) => m.id === micIdx);
         if (mic) {
           mic.gain = gainVal;
+          if (micIdx === 1 && ctx.onSetInputGain) ctx.onSetInputGain(gainVal);
           ctx.onSavePreferences();
         }
       }
@@ -573,6 +576,7 @@ export function renderStudioMixer(ctx: StudioMixerUiContext): void {
         const mic = voiceInputs.find((m) => m.id === micIdx);
         if (mic) {
           mic.gain = 1.0;
+          if (micIdx === 1 && ctx.onSetInputGain) ctx.onSetInputGain(1.0);
           ctx.onSavePreferences();
         }
       }
@@ -597,6 +601,7 @@ export function renderStudioMixer(ctx: StudioMixerUiContext): void {
         const mic = voiceInputs.find((m) => m.id === micIdx);
         if (mic) {
           mic.gain = gainVal;
+          if (micIdx === 1 && ctx.onSetInputGain) ctx.onSetInputGain(gainVal);
           ctx.onSavePreferences();
         }
       }
