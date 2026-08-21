@@ -12,6 +12,7 @@ mkdir -p "${MACOS_DIR}"
 cp "${SCRIPT_DIR}/Info.plist" "${DRIVER_BUNDLE}/Contents/Info.plist"
 
 clang -O2 -Wall -Wextra \
+  -arch arm64 \
   -bundle \
   -fvisibility=hidden \
   -framework CoreFoundation \

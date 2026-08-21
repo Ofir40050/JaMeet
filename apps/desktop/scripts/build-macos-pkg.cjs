@@ -149,8 +149,12 @@ const appArchs = fs.existsSync(appBinary) ? getArchitectures(appBinary) : ['arm6
 const driverArchs = fs.existsSync(driverBinary) ? getArchitectures(driverBinary) : ['arm64'];
 
 const commonArchs = appArchs.filter((a) => driverArchs.includes(a));
-const hostArchString = commonArchs.length > 0 ? commonArchs.join(',') : appArchs.join(',');
-console.log(`[build-macos-pkg] Detected architectures: App=[${appArchs.join(',')}], Driver=[${driverArchs.join(',')}]. Target=[${hostArchString}]`);
+if (commonArchs.length === 0) {
+  console.error(`[build-macos-pkg] Error: Architecture mismatch between JaMeet.app ([${appArchs.join(',')}]) and JaMeetRemote.driver ([${driverArchs.join(',')}])`);
+  process.exit(1);
+}
+const hostArchString = commonArchs.join(',');
+console.log(`[build-macos-pkg] Detected matching architecture(s): App=[${appArchs.join(',')}], Driver=[${driverArchs.join(',')}]. Target=[${hostArchString}]`);
 
 // 4. Driver Bundle Code Signing
 if (!isPreview) {

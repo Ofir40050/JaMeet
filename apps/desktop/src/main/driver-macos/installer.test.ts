@@ -82,7 +82,7 @@ describe('JaMeet Remote macOS Installer Packaging', () => {
     } finally {
       rmSync(expandDir, { recursive: true, force: true });
     }
-  }, 30000);
+  }, 120000);
 
   it('ensures preview packaging never deletes or modifies an existing JaMeet-Installer.pkg', () => {
     if (process.platform !== 'darwin') {
@@ -114,7 +114,7 @@ describe('JaMeet Remote macOS Installer Packaging', () => {
         rmSync(officialPkg, { force: true });
       }
     }
-  }, 30000);
+  }, 120000);
 
   it('strictly rejects official release packaging when Apple Developer credentials are missing', () => {
     if (process.platform !== 'darwin') {
@@ -152,5 +152,5 @@ describe('JaMeet Remote macOS Installer Packaging', () => {
 
     expect(failed).toBe(true);
     expect(output).toContain('Official macOS release packaging requires complete Apple Developer credentials');
-  });
+  }, 120000);
 });

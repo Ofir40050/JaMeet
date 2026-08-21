@@ -13,6 +13,17 @@ case "$url" in */) url=${url%/} ;; esac
 
 export VITE_SIGNALING_URL="$url"
 export VITE_ICE_TRANSPORT_POLICY=all
+
+# Remove stale official installer before any build steps begin; failure MUST stop the release
+stale_pkg="apps/desktop/release/JaMeet-Installer.pkg"
+if [ -f "$stale_pkg" ]; then
+  echo "Removing stale official installer: $stale_pkg"
+  rm -f "$stale_pkg" || {
+    echo "Error: Failed to remove stale official installer at $stale_pkg" >&2
+    exit 1
+  }
+fi
+
 echo "Building official macOS production PKG installer..."
 npm run build -w @jameet/shared
 npm run package:mac:pkg -w @jameet/desktop
