@@ -11,12 +11,12 @@ export type {
   ChannelEqBandType,
   ChannelEqBandConfig,
   ChannelEqConfig
-} from './channelEq/types';
+} from './types';
 
 export {
   BAND_TYPE_NAMES,
   BAND_COLORS
-} from './channelEq/constants';
+} from './constants';
 
 export {
   createDefaultChannelEqConfig,
@@ -26,17 +26,17 @@ export {
   removeChannelEqConfig,
   exportAllChannelEqConfigs,
   importAllChannelEqConfigs
-} from './channelEq/config';
+} from './config';
 
-export { ChannelEqDspInstance } from './channelEq/dspInstance';
+export { ChannelEqDspInstance } from './dspInstance';
 
 export {
   ChannelEqDspRegistry,
   channelEqDspRegistry
-} from './channelEq/registry';
+} from './registry';
 
 export {
   ChannelEqPluginModal,
   channelEqPluginModal,
   openChannelEqPlugin
-} from './channelEq/modalUi';
+} from './modalUi';

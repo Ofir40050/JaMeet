@@ -1,7 +1,7 @@
 import type { AudioMode, IceServerConfig, MediaMetadata, MeetingRole, VideoQuality } from '@jameet/shared';
-import { opusBitrate } from '../audio/audioProfiles';
-import { LocalAudioSourceManager } from '../audio/audioSources';
-import { applyOpusPolicy } from '../audio/opus';
+import { opusBitrate } from '../audio/profiles/audioProfiles';
+import { LocalAudioSourceManager } from '../audio/sources/audioSources';
+import { applyOpusPolicy } from '../audio/profiles/opus';
 import { SignalingClient } from './signaling';
 import { lowerQuality, VIDEO_QUALITY } from '../video/videoQuality';
 import { logger } from '../../core/logger';

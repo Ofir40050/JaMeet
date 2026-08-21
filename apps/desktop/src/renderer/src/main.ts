@@ -69,7 +69,7 @@ import { bindDeviceSelect } from './media/devices/deviceChangeController';
 import { initAuthDomainController } from './auth/authDomainController';
 import { createScreenSharingController } from './sessions/call/controls/screenSharingController';
 import { createVoiceInputsUiController } from './sessions/setup/voiceInputsUiController';
-import { createLocalAudioCaptureController } from './media/audio/localAudioCaptureController';
+import { createLocalAudioCaptureController } from './media/audio/sources/localAudioCaptureController';
 import { createLocalVideoController } from './media/video/localVideoController';
 import { createStudioPreparationController } from './sessions/setup/studioPreparationController';
 import { createAudioOutputRoutingController } from './media/devices/audioOutputRoutingController';
@@ -279,8 +279,8 @@ import {
   renderSongStudioHeader
 } from './songs/studio/songsUi';
 import { ScheduledNotificationManager } from './sessions/scheduled/scheduledNotifications';
-import { LocalAudioSourceManager } from './media/audio/audioSources';
-import { LevelMeter } from './media/audio/levelMeter';
+import { LocalAudioSourceManager } from './media/audio/sources/audioSources';
+import { LevelMeter } from './media/audio/meter/levelMeter';
 import { SignalingClient } from './media/remote/signaling';
 import { AuthManager } from './auth/auth';
 import { WebRtcSession } from './media/remote/webrtc';

@@ -1,5 +1,5 @@
 import { $ } from '../../core/dom';
-import { channelEqDspRegistry } from '../audio/channelEq';
+import { channelEqDspRegistry } from '../audio/eq/channelEq';
 import {
   type StudioMixerChannel,
   computeMixerRouting
@@ -17,7 +17,7 @@ import {
   renderStudioMixer as renderStudioMixerHelper
 } from './studioMixerUi';
 import type { Preferences } from '../../core/preferences';
-import type { LocalAudioSourceManager } from '../audio/audioSources';
+import type { LocalAudioSourceManager } from '../audio/sources/audioSources';
 
 export interface StudioMixerControllerContext {
   getChannels: () => StudioMixerChannel[];

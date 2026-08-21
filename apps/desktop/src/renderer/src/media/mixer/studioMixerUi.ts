@@ -4,7 +4,7 @@ import {
   channelEqDspRegistry,
   openChannelEqPlugin,
   removeChannelEqConfig
-} from '../audio/channelEq';
+} from '../audio/eq/channelEq';
 import {
   dbToFaderTopPercent,
   dbToGain,

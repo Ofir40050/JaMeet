@@ -5,8 +5,8 @@ import { closeSessionViewMenu } from '../view/sessionView';
 import { hideWaitingBanner } from '../waiting/waitingRoomUi';
 import { setSessionWorkspaceOpen } from '../workspace/workspaceDrawerUi';
 import { resetChatUi } from '../chat/chat';
-import type { LevelMeter } from '../../../media/audio/levelMeter';
-import type { LocalAudioSourceManager } from '../../../media/audio/audioSources';
+import type { LevelMeter } from '../../../media/audio/meter/levelMeter';
+import type { LocalAudioSourceManager } from '../../../media/audio/sources/audioSources';
 import type { StudioMixerChannel } from '../../../media/mixer/studioMixerLogic';
 import type { MediaMetadata, ParticipantIdentity, Project, UserProfile } from '@jameet/shared';
 

@@ -1,6 +1,6 @@
 import { $ } from '../../core/dom';
 import { icons } from '../../core/icons';
-import { LevelMeter, type LevelReading } from '../../media/audio/levelMeter';
+import { LevelMeter, type LevelReading } from '../../media/audio/meter/levelMeter';
 import type { HardwareAudioDeviceInfo } from '../../media/devices/hardwareDeviceUtils';
 import {
   findHardwareDevice,
@@ -9,7 +9,7 @@ import {
 } from '../../media/devices/hardwareDeviceUtils';
 import type { Preferences } from '../../core/preferences';
 import type { StudioMixerChannel } from '../../media/mixer/studioMixerLogic';
-import type { LocalAudioSourceManager } from '../../media/audio/audioSources';
+import type { LocalAudioSourceManager } from '../../media/audio/sources/audioSources';
 
 export interface VoiceInputsUiContext {
   getPreferences: () => Preferences;

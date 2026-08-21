@@ -1,4 +1,4 @@
-import type { Preferences } from '../../core/preferences';
+import type { Preferences } from '../../../core/preferences';
 import { audioLimitations } from './audioProfiles';
 
 export interface AudioLimitationsUiOptions {

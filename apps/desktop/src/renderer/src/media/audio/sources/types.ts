@@ -1,5 +1,5 @@
 import type { AudioMode } from '@jameet/shared';
-import type { AudioCapturePreferences, EffectiveAudioSettings } from '../audioProfiles';
+import type { AudioCapturePreferences, EffectiveAudioSettings } from '../profiles/audioProfiles';
 
 export type AudioSourcePurpose = 'voice' | 'music';
 

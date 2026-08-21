@@ -1,8 +1,8 @@
-import { $ } from '../../core/dom';
-import { logger } from '../../core/logger';
-import { refreshRunningApps as refreshRunningAppsHelper } from '../devices/runningApplicationsController';
+import { $ } from '../../../core/dom';
+import { logger } from '../../../core/logger';
+import { refreshRunningApps as refreshRunningAppsHelper } from '../../devices/runningApplicationsController';
 import type { AudioMode, MediaMetadata, Preferences } from '@jameet/shared';
-import type { LevelMeter, LevelReading } from './levelMeter';
+import type { LevelMeter, LevelReading } from '../meter/levelMeter';
 import type { HardwareAudioDeviceInfo } from './hardwareDeviceTypes';
 import type { LocalAudioSourceManager } from './audioSources';
 

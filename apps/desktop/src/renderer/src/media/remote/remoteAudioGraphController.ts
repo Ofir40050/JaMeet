@@ -1,6 +1,6 @@
 import { $ } from '../../core/dom';
 import { deviceError } from '../devices/deviceError';
-import { LevelMeter } from '../audio/levelMeter';
+import { LevelMeter } from '../audio/meter/levelMeter';
 import { startRemoteVoiceBridge, stopRemoteVoiceBridge } from './remoteVoiceBridge';
 import type { Preferences } from '../../core/preferences';
 

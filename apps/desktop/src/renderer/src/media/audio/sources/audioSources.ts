@@ -1,26 +1,26 @@
 import type { AudioMode, AudioSourceMetadata } from '@jameet/shared';
-import { audioConstraints, effectiveSettings, type AudioCapturePreferences, type EffectiveAudioSettings } from './audioProfiles';
-import { channelEqDspRegistry, type ChannelEqDspInstance } from './channelEq';
+import { audioConstraints, effectiveSettings, type AudioCapturePreferences, type EffectiveAudioSettings } from '../profiles/audioProfiles';
+import { channelEqDspRegistry, type ChannelEqDspInstance } from '../eq/channelEq';
 
 export {
   type AudioSourcePurpose,
   type AudioSourceConfig
-} from './audioSources/types';
+} from './types';
 
 import type {
   AudioSourcePurpose,
   AudioSourceConfig,
   VoiceMicChannel
-} from './audioSources/types';
-import { getDesktopApi } from './audioSources/desktopApi';
-import { getStereoBalanceGains } from './audioSources/stereoBalance';
+} from './types';
+import { getDesktopApi } from './desktopApi';
+import { getStereoBalanceGains } from './stereoBalance';
 import {
   safeDisconnect,
   cleanupVoiceMicNodes,
   cleanupMusicNodes
-} from './audioSources/disconnectUtils';
-import { routeHardwareAudioChunk } from './audioSources/hardwareAudio';
-import { attachAppAudioLoopback } from './audioSources/loopback';
+} from './disconnectUtils';
+import { routeHardwareAudioChunk } from './hardwareAudio';
+import { attachAppAudioLoopback } from './loopback';
 
 export class LocalAudioSourceManager {
   private sources = new Map<string, AudioSourceConfig>();
