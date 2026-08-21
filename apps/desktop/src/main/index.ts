@@ -2,18 +2,18 @@ import { app, BrowserWindow, clipboard, ipcMain, net, protocol, session, Notific
 import { existsSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { logger } from './logger';
-import { isTrustedOrigin, isTrustedSender, setupWebContentsSecurity } from './trustBoundary';
-import { safeSend } from './windowUtils';
-import { getAppIconPath, createTray } from './appIcon';
-import { findDeepLink, deliverDeepLink, registerDeepLinkHandler } from './deepLink';
-import { getDesktopAppVersion, getDesktopAppPlatform } from './appInfo';
-import { isPresenterActive, closePresenterWindows, registerPresenterIpc } from './presenter';
-import { isNativeScreenCaptureActive, stopActiveNativeScreenCapture, registerScreenCaptureIpc } from './nativeMedia/screenCapture';
-import { isAudioCaptureActive, stopActiveAudioTap, stopActiveHardwareAudio, registerAudioCaptureIpc } from './nativeMedia/audioCapture';
-import { isRemoteVoiceActive, stopRemoteVoiceProducer, registerRemoteVoiceIpc } from './nativeMedia/remoteVoice';
-import { registerAuthSessionIpc } from './authSessionStorage';
-import { setupDisplayMediaRequestHandler, registerDisplayMediaIpc } from './displayMedia';
+import { logger } from './app/logger';
+import { isTrustedOrigin, isTrustedSender, setupWebContentsSecurity } from './security/trustBoundary';
+import { safeSend } from './app/windowUtils';
+import { getAppIconPath, createTray } from './app/appIcon';
+import { findDeepLink, deliverDeepLink, registerDeepLinkHandler } from './deepLink/deepLink';
+import { getDesktopAppVersion, getDesktopAppPlatform } from './app/appInfo';
+import { isPresenterActive, closePresenterWindows, registerPresenterIpc } from './native/presenter';
+import { isNativeScreenCaptureActive, stopActiveNativeScreenCapture, registerScreenCaptureIpc } from './native/nativeMedia/screenCapture';
+import { isAudioCaptureActive, stopActiveAudioTap, stopActiveHardwareAudio, registerAudioCaptureIpc } from './native/nativeMedia/audioCapture';
+import { isRemoteVoiceActive, stopRemoteVoiceProducer, registerRemoteVoiceIpc } from './native/nativeMedia/remoteVoice';
+import { registerAuthSessionIpc } from './auth/authSessionStorage';
+import { setupDisplayMediaRequestHandler, registerDisplayMediaIpc } from './native/displayMedia';
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'jameet-app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },

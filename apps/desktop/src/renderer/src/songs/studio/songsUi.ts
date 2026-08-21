@@ -1,5 +1,5 @@
-import { $, setText } from '../core/dom';
-import { escapeHtml } from '../core/htmlSecurity';
+import { $, setText } from '../../core/dom';
+import { escapeHtml } from '../../core/htmlSecurity';
 
 // ========================================================
 // TYPES & READONLY PRESENTATION INTERFACES

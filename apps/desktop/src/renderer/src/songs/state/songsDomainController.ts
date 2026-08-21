@@ -1,8 +1,8 @@
 import type { Project } from '@jameet/shared';
-import type { LyricsDocItem } from '../workspace/lyrics/lyricsDocumentState';
-import { initSongDeleteController } from './delete/songDeleteController';
-import { initSongStudioUi } from './studio/songStudioUi';
-import { initSongSwitchController } from './state/songSwitchController';
+import type { LyricsDocItem } from '../../workspace/lyrics/lyricsDocumentState';
+import { initSongDeleteController } from '../delete/songDeleteController';
+import { initSongStudioUi } from '../studio/songStudioUi';
+import { initSongSwitchController } from './songSwitchController';
 import { initSongsController } from './songsController';
 
 export interface SongsDomainControllerOptions {

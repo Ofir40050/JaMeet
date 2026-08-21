@@ -13,7 +13,7 @@ import {
   sanitizeLogString,
   serializeError
 } from '@jameet/shared';
-import { isTrustedSender } from './trustBoundary';
+import { isTrustedSender } from '../security/trustBoundary';
 
 const MAX_LOG_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 const MAX_CRASH_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB

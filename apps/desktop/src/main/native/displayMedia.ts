@@ -1,5 +1,5 @@
 import { desktopCapturer, ipcMain, type Session } from 'electron';
-import { isTrustedOrigin, isTrustedSender } from './trustBoundary';
+import { isTrustedOrigin, isTrustedSender } from '../security/trustBoundary';
 
 let pendingDisplaySource: { id: string; expiresAt: number } | null = null;
 

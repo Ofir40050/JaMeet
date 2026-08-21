@@ -50,12 +50,12 @@ import { initDeepLinkDomainController } from './sessions/join/deepLinkDomainCont
 import { initSessionUtilityUiController } from './sessions/call/sessionUtilityUiController';
 import { initProjectNavigationDomainController } from './projects/navigation/projectNavigationDomainController';
 import { initProjectSongDeleteDomainController } from './songs/delete/projectSongDeleteDomainController';
-import { initSongsDomainController } from './songs/songsDomainController';
+import { initSongsDomainController } from './songs/state/songsDomainController';
 import { initTasksDomainController } from './workspace/tasks/tasksDomainController';
 import { initStructurePersistenceController } from './workspace/structure/structurePersistenceController';
 import { initWorkspaceCoreController } from './workspace/core/workspaceCoreController';
 import { initWorkspacePersistenceController } from './workspace/core/workspacePersistenceController';
-import { initWorkspaceRealtimeDomainController } from './workspace/core/workspaceRealtimeDomainController';
+import { initWorkspaceRealtimeDomainController } from './workspace/realtime/workspaceRealtimeDomainController';
 import { updateLocalPreviews as updateLocalPreviewsHelper } from './media/video/localPreviewUi';
 import { createSessionMetadata, createCurrentStream, performCheckActiveSpeaker } from './sessions/call/sessionMediaStateController';
 import { deviceError } from './media/devices/deviceError';
@@ -225,7 +225,7 @@ import {
 } from './songs/state/songSwitchController';
 import {
   updateSongCustomization
-} from './songs/songsController';
+} from './songs/state/songsController';
 import {
   initLyricsDocumentsController,
   getActiveLyricsDoc
@@ -277,7 +277,7 @@ import {
   renderProjectOverviewSongsList,
   renderProjectSongsSelector,
   renderSongStudioHeader
-} from './songs/songsUi';
+} from './songs/studio/songsUi';
 import { ScheduledNotificationManager } from './sessions/scheduled/scheduledNotifications';
 import { LocalAudioSourceManager } from './media/audio/audioSources';
 import { LevelMeter } from './media/audio/levelMeter';

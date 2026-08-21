@@ -1,9 +1,9 @@
 import { BrowserWindow, ipcMain, screen } from 'electron';
 import { join } from 'node:path';
-import { getAppIconPath } from './appIcon';
-import { logger } from './logger';
-import { isTrustedSender, setupWebContentsSecurity } from './trustBoundary';
-import { safeSend } from './windowUtils';
+import { getAppIconPath } from '../app/appIcon';
+import { logger } from '../app/logger';
+import { isTrustedSender, setupWebContentsSecurity } from '../security/trustBoundary';
+import { safeSend } from '../app/windowUtils';
 
 let presenterToolbarWindow: BrowserWindow | null = null;
 let presenterVideoWindow: BrowserWindow | null = null;

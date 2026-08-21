@@ -1,4 +1,4 @@
-import { $, setText } from '../core/dom';
+import { $, setText } from '../../core/dom';
 
 export interface ProjectSongDeleteUiOptions {
   getSongTitle?: () => string | undefined;

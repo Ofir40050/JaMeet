@@ -1,5 +1,5 @@
 import type { ProjectSongItem } from '@jameet/shared';
-import { renderDeleteSongModal } from '../projectSongDeleteUi';
+import { renderDeleteSongModal } from './projectSongDeleteUi';
 
 export interface SongDeleteControllerOptions {
   canEdit: () => boolean;

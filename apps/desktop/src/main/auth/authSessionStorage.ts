@@ -1,7 +1,7 @@
 import { app, ipcMain, safeStorage } from 'electron';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { isTrustedSender } from './trustBoundary';
+import { isTrustedSender } from '../security/trustBoundary';
 
 export function registerAuthSessionIpc(): void {
   const sessionPath = join(app.getPath('userData'), 'auth-session.bin');

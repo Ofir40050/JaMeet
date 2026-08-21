@@ -1,7 +1,7 @@
 import { app, ipcMain } from 'electron';
 import type { ChildProcess } from 'node:child_process';
 import { getNativeBinaryPath } from '../binaryUtils';
-import { isTrustedSender } from '../trustBoundary';
+import { isTrustedSender } from '../../security/trustBoundary';
 
 let remoteVoiceProducerProcess: ChildProcess | null = null;
 let isRemoteVoiceProducerDraining = false;

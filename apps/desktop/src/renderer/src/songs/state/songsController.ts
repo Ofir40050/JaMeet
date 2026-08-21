@@ -3,23 +3,23 @@ import {
   initSongsUi,
   renderProjectOverviewSongsList,
   renderProjectSongsSelector
-} from './songsUi';
+} from '../studio/songsUi';
 import {
   openSongStudio as openSongStudioUiView,
   closeSongStudio,
   getCurrentSongStudioTab,
   type SongStudioTab
-} from './studio/songStudioUi';
-import { switchActiveSong } from './state/songSwitchController';
-import { mutateCreateSong } from './state/songCreation';
-import { mutateDuplicateSong } from './state/songDuplication';
-import { mutateReorderSongs } from './state/songReorder';
+} from '../studio/songStudioUi';
+import { switchActiveSong } from './songSwitchController';
+import { mutateCreateSong } from './songCreation';
+import { mutateDuplicateSong } from './songDuplication';
+import { mutateReorderSongs } from './songReorder';
 import {
   mutateRenameSong,
   mutateToggleArchiveSong,
   mutateSongCustomization
-} from './state/songMetadata';
-import { openDeleteSongModal } from './delete/songDeleteController';
+} from './songMetadata';
+import { openDeleteSongModal } from '../delete/songDeleteController';
 
 export interface SongsControllerOptions {
   getProject: () => Project | null | undefined;

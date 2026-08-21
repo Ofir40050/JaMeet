@@ -2,12 +2,12 @@ import type { Project } from '@jameet/shared';
 import {
   initProjectSongDeleteUi,
   closeDeleteSongModal
-} from '../projectSongDeleteUi';
+} from './projectSongDeleteUi';
 import {
   getSongPendingDeletion,
   clearSongPendingDeletion
 } from './songDeleteController';
-import { computeSongDeletion } from '../songDeletion';
+import { computeSongDeletion } from './songDeletion';
 
 export interface ProjectSongDeleteControllerOptions {
   getProject: () => Project | null | undefined;

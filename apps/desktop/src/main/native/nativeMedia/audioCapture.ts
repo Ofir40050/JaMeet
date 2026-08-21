@@ -1,7 +1,7 @@
 import { app, ipcMain, type BrowserWindow } from 'electron';
 import { getNativeBinaryPath } from '../binaryUtils';
-import { isTrustedSender } from '../trustBoundary';
-import { safeSend } from '../windowUtils';
+import { isTrustedSender } from '../../security/trustBoundary';
+import { safeSend } from '../../app/windowUtils';
 
 let activeAudioTapProcess: any = null;
 let activeHardwareAudioProcess: any = null;

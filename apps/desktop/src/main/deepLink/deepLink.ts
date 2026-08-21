@@ -1,6 +1,6 @@
 import { app, type BrowserWindow } from 'electron';
 import { resolve } from 'node:path';
-import { safeSend } from './windowUtils';
+import { safeSend } from '../app/windowUtils';
 
 export function findDeepLink(args: string[]): string | null {
   return args.find((arg) => /^(jameet|musiczoom):\/\/join\/[a-z0-9]+/i.test(arg)) ?? null;

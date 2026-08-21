@@ -15,7 +15,7 @@ import {
   setLastSyncedNotes,
   setLastSyncedNotesBpm,
   setLastSyncedNotesKey
-} from './workspaceSyncState';
+} from '../core/workspaceSyncState';
 
 export interface WorkspaceRealtimeSyncOptions {
   signaling: SignalingClient;
