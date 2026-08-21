@@ -1,4 +1,4 @@
-import type { AudioMode, MediaMetadata, MeetingAck, PerformanceMode, VideoQuality, ParticipantIdentity, UserProfile, UpdateProfileRequest, Project, ProjectSessionItem, SessionHistoryItem, ProjectTaskItem, ProjectTaskStatus, ProjectTaskStage, ProjectTaskSubtask, ProjectActivityItem, ProjectActivityType, SessionChatMessage, WaitingParticipantItem, ScheduledSession } from '@jameet/shared';
+import type { AudioMode, MediaMetadata, ParticipantIdentity, Project } from '@jameet/shared';
 import * as projectsApi from './projects/core/projects';
 import {
   loadScheduledSessions
@@ -7,54 +7,21 @@ import {
   loadRecentSessions
 } from './sessions/recent/recentSessions';
 import {
-  applyAvatarToElement,
-  highlightActiveSwatch,
-  updateProfileLivePreview,
-  switchProfileSubtab,
-  showProfileFeedback,
-  closeAccountMenu,
-  getEditingAvatarColor,
-  setEditingAvatarColor,
-  getEditingAvatarUrl,
-  setEditingAvatarUrl,
-  clearProfilePasswordInputs
+  closeAccountMenu
 } from './auth/profile/profileUi';
 import {
-  switchSettingsSection,
-  type SettingsSection
-} from './auth/settings/settingsUi';
-import {
-  switchAuthViewTab,
-  showAuthFormError,
-  clearAuthFormError
-} from './auth/authUi';
-import {
-  renderWaitingBanner,
-  hideWaitingBanner
+  renderWaitingBanner
 } from './sessions/call/waitingRoomUi';
 import {
   loadProjects
 } from './projects/core/projectsListController';
 import {
-  renderProjectsGrid
-} from './projects/core/projectsListUi';
-import { renderProjectHeader } from './projects/header/projectHeaderUi';
-import {
-  initProjectCollaboratorsViewController,
   renderProjectCollaboratorsView
 } from './projects/collaborators/projectCollaboratorsViewController';
-import {
-  createOverviewSessionItem,
-  createProjectSessionCard
-} from './projects/sessions/projectSessionsUi';
 import {
   renderSessionSummaryModal,
   initProjectSessionSummaryUi
 } from './projects/sessions/projectSessionSummaryUi';
-import {
-  renderProjectSessions,
-  resetProjectSessionsPage
-} from './projects/sessions/projectSessionsListUi';
 import {
   renderProjectView
 } from './projects/core/projectViewController';
@@ -64,7 +31,6 @@ import {
 import { initDialogUi } from './core/dialogUi';
 import {
   canUserEditProject,
-  isProjectOwner,
   applyWorkspacePermissions
 } from './workspace/core/workspacePermissionsController';
 import { initScheduledSessionsController } from './sessions/scheduled/scheduledSessionsController';
@@ -96,17 +62,8 @@ import { deviceError } from './media/deviceError';
 import { initInCallAudioModalController } from './sessions/call/inCallAudioModalController';
 import { initCallToolbarController } from './sessions/call/callToolbarController';
 import { initSessionUtilityBindingsController } from './sessions/call/sessionUtilityBindingsController';
-import { refreshRunningApps as refreshRunningAppsHelper, updateAppIconBadge, getCachedRunningApps } from './media/runningApplicationsController';
-import {
-  type HardwareAudioDeviceInfo,
-  findHardwareDevice,
-  formatDeviceDisplayName,
-  formatOutputChannelName,
-  generateInputChannelOptions,
-  generateOutputChannelOptions,
-  type ChannelDropdownOption
-} from './media/hardwareDeviceUtils';
-import { fillSelects, populateChannelDropdowns } from './media/deviceSelectUi';
+import { updateAppIconBadge } from './media/runningApplicationsController';
+import { type HardwareAudioDeviceInfo } from './media/hardwareDeviceUtils';
 import { getMeterInterval, getEffectiveMusicBitrate } from './media/mediaPreferenceController';
 import { bindDeviceSelect } from './media/deviceChangeController';
 import { initAuthDomainController } from './auth/authDomainController';
@@ -128,40 +85,29 @@ import {
   getLyricsSaveGen,
   incrementLyricsEditGen,
   incrementLyricsSaveGen,
-  setLyricsSaveGen,
   getNotesEditGen,
   getNotesSaveGen,
   incrementNotesEditGen,
   incrementNotesSaveGen,
-  setNotesSaveGen,
   getStructureEditGen,
   getStructureSaveGen,
   incrementStructureEditGen,
   incrementStructureSaveGen,
-  setStructureSaveGen,
   getTasksEditGen,
   getTasksSaveGen,
   incrementTasksEditGen,
-  incrementTasksSaveGen,
-  setTasksSaveGen
+  incrementTasksSaveGen
 } from './workspace/core/workspaceGenerationState';
 import {
   initAuthNavigation,
   openAuthView,
   openSettings,
-  openAuthDialog,
   getLastActiveViewBeforeSettings
 } from './auth/authNavigationController';
 import {
   initParticipantIdentityUi,
   updateParticipantIdentityUi
 } from './sessions/call/participantIdentityUi';
-import {
-  initSessionViewSelectorUi
-} from './sessions/call/sessionViewSelectorUi';
-import {
-  initSessionConnection
-} from './sessions/call/sessionConnectionController';
 import {
   initWaitingRoomController
 } from './sessions/call/waitingRoomController';
@@ -170,9 +116,6 @@ import {
   getIsSessionLocked,
   setIsSessionLocked
 } from './sessions/call/sessionModerationController';
-import {
-  initInviteLinkController
-} from './sessions/call/inviteLinkController';
 import {
   initCallNavigation
 } from './sessions/call/callNavigationController';
@@ -193,9 +136,6 @@ import {
 import {
   initDesktopLifecycle
 } from './core/desktopLifecycleController';
-import {
-  handleScheduledSessionNotificationClick
-} from './sessions/scheduled/scheduledNotificationUi';
 import {
   hasLyricsSaveTimeout,
   clearLyricsSaveTimeout
@@ -220,7 +160,6 @@ import {
 } from './workspace/lyrics/lyricsPersistence';
 import {
   saveNotesWorkspace,
-  debounceSaveNotesRetry,
   hasNotesSaveTimeout,
   clearNotesSaveTimeout
 } from './workspace/notes/notesPersistence';
@@ -255,10 +194,6 @@ import {
   updateCallMode
 } from './sessions/call/callModeUiController';
 import {
-  effectiveVideoQuality
-} from './sessions/call/sessionMetadataController';
-import {
-  type SessionErrorModalOptions,
   parseSessionError
 } from './sessions/setup/sessionErrorParser';
 import {
@@ -280,51 +215,24 @@ import {
   initProjectSessionsController
 } from './projects/sessions/projectSessionsController';
 import {
-  closeSongStudio,
-  isSongStudioVisible,
-  setIsSongStudioVisible,
-  getCurrentSongStudioTab,
-  type SongStudioTab
+  setIsSongStudioVisible
 } from './songs/studio/songStudioUi';
 import {
   switchActiveSong
 } from './songs/state/songSwitchController';
 import {
-  openSongStudio,
-  createNewSong,
-  duplicateSong,
-  deleteSong,
-  reorderSongs,
-  renameSong,
-  toggleArchiveSong,
   updateSongCustomization
 } from './songs/songsController';
 import {
   initLyricsDocumentsController,
-  getActiveLyricsDoc,
-  duplicateLyricsDoc,
-  deleteLyricsDoc,
-  switchActiveLyricsDoc
+  getActiveLyricsDoc
 } from './workspace/lyrics/lyricsDocumentsController';
 import {
-  getProjectTasks,
-  createTask,
-  quickToggleTask,
-  updateTaskStatus,
-  deleteTask,
-  duplicateTask,
-  updateTaskField,
-  reorderTasks,
-  moveTaskToGroup,
-  addSubtask,
-  toggleSubtask,
-  deleteSubtask,
-  updateSubtaskTitle
+  getProjectTasks
 } from './workspace/tasks/tasksController';
 import {
   debounceSaveTasks,
   saveTasksWorkspace,
-  hasTasksSaveTimeout,
   clearTasksSaveTimeout
 } from './workspace/tasks/tasksPersistence';
 import {
@@ -337,104 +245,47 @@ import {
   flushAllWorkspacePendingSaves
 } from './workspace/core/workspaceFlushController';
 import {
-  isSessionWorkspaceOpen,
-  setSessionWorkspaceOpen
-} from './sessions/call/workspaceDrawerUi';
-import {
-  openDeleteSongModal,
-  getSongPendingDeletion,
-  clearSongPendingDeletion
-} from './songs/delete/songDeleteController';
-import {
   handleDeepLink
 } from './sessions/join/deepLinkController';
-import {
-  reconcileNotesWorkspace,
-  type NotesStateValues,
-  type NotesReconciliationResult
-} from './workspace/notes/notesReconciliation';
 import {
   switchProjectTab,
   resetProjectTabsUi,
   initProjectTabsUi
 } from './projects/navigation/projectTabsUi';
 import {
-  initProjectSongDeleteUi,
-  renderDeleteSongModal,
-  closeDeleteSongModal
-} from './songs/projectSongDeleteUi';
-import {
-  computeSongDeletion
-} from './songs/songDeletion';
-import {
-  initCallShortcutsUi,
-  toggleShortcutsModal,
-  closeShortcutsModal,
-  isShortcutsModalOpen
+  toggleShortcutsModal
 } from './sessions/call/callShortcutsUi';
 import {
-  initGuestJoinUi,
-  closeGuestJoinDialog
-} from './auth/guestJoinUi';
-import { initProjectNavigationUi } from './projects/navigation/projectNavigationUi';
-import {
-  getLyricsStatus,
-  setLyricsStatus,
-  renderLyricsDocTabs,
-  updateLyricsDocumentPagination,
-  updateLyricsStatsFromHtml
+  updateLyricsDocumentPagination
 } from './workspace/lyrics/lyricsUi';
 import {
   renderStructureWorkspace,
-  getStructureStatus,
   setStructureStatus,
   focusStructureSection
 } from './workspace/structure/structureUi';
 import {
-  getNotesStatus,
-  setNotesStatus,
-  syncNotesControls,
   getNotesFieldValues
 } from './workspace/notes/notesUi';
 import {
-  initTasksUi,
   renderTasksWorkspace,
-  getTasksStatus,
-  setTasksStatus,
-  type TaskCollaboratorOption,
-  type TaskFieldUpdate
+  setTasksStatus
 } from './workspace/tasks/tasksUi';
 import {
-  initSongsUi,
   renderProjectOverviewSongsList,
   renderProjectSongsSelector,
-  renderSongStudioHeader,
-  showSongContextMenu,
-  type ReadonlySongItem
+  renderSongStudioHeader
 } from './songs/songsUi';
 import { ScheduledNotificationManager } from './sessions/scheduled/scheduledNotifications';
-import { meetingCodeSchema, normalizeMeetingCode } from '@jameet/shared';
-import { audioLimitations } from './media/audioProfiles';
 import { LocalAudioSourceManager } from './media/audioSources';
-import { LevelMeter, type LevelReading } from './media/levelMeter';
+import { LevelMeter } from './media/levelMeter';
 import { SignalingClient } from './media/signaling';
 import { AuthManager } from './auth/auth';
 import { WebRtcSession } from './media/webrtc';
-import { icons } from './core/icons';
 import { presenter } from './media/presenter';
-import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor, findSectionCard, findTimelineBlocks, findTimelineBlock } from './core/htmlSecurity';
 import { initActivityHistory, renderProjectActivities } from './sessions/call/activity';
-import { initSessionChat, resetChatUi, setSessionChatOpen, isSessionChatOpen, setOnChatOpenCallback } from './sessions/call/chat';
-import { startRemoteVoiceBridge, stopRemoteVoiceBridge } from './media/remoteVoiceBridge';
+import { initSessionChat, setSessionChatOpen, setOnChatOpenCallback } from './sessions/call/chat';
+import { stopRemoteVoiceBridge } from './media/remoteVoiceBridge';
 import { logger } from './core/logger';
-import {
-  type ChannelEqConfig,
-  channelEqDspRegistry,
-  openChannelEqPlugin,
-  getChannelEqConfig,
-  setChannelEqConfig,
-  removeChannelEqConfig
-} from './media/channelEq';
 import { type StudioMixerChannel } from './media/studioMixerLogic';
 import { hydrateStudioMixerEqPersistence } from './media/studioMixerStorage';
 import { initStudioMixerPopoversAndControls } from './media/studioMixerUi';
@@ -443,7 +294,6 @@ import { initPresenterCoordinationController } from './sessions/call/presenterCo
 import { initMediaHardwareControlsController } from './media/mediaHardwareControlsController';
 import { initCallSignalingListenersController } from './sessions/call/callSignalingListenersController';
 import {
-  getStereoBalanceGains,
   createRemoteAudioGraphController
 } from './media/remoteAudioGraphController';
 import {
