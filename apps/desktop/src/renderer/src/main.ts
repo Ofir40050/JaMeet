@@ -91,7 +91,6 @@ import { initWorkspaceCoreController } from './workspace/core/workspaceCoreContr
 import { initWorkspacePersistenceController } from './workspace/core/workspacePersistenceController';
 import { initWorkspaceRealtimeDomainController } from './workspace/core/workspaceRealtimeDomainController';
 import { updateLocalPreviews as updateLocalPreviewsHelper } from './sessions/call/localPreviewUi';
-import { createDownscaledVideoTrack } from './sessions/call/videoTrackScaling';
 import { createSessionMetadata, createCurrentStream, performCheckActiveSpeaker } from './sessions/call/sessionMediaStateController';
 import { deviceError } from './media/deviceError';
 import { initInCallAudioModalController } from './sessions/call/inCallAudioModalController';
@@ -117,6 +116,7 @@ import { initAuthDomainController } from './auth/authDomainController';
 import { createScreenSharingController } from './sessions/call/screenSharingController';
 import { createVoiceInputsUiController } from './media/voiceInputsUiController';
 import { createLocalAudioCaptureController } from './media/localAudioCaptureController';
+import { createLocalVideoController } from './media/localVideoController';
 import { createMediaStreamControlsController } from './media/mediaStreamControlsController';
 import { updateCameraButtonUi } from './sessions/call/cameraUi';
 import { testSpeakers as testSpeakersController, testMicrophone as testMicrophoneController, getMicrophonePlayback } from './media/deviceTestController';
@@ -421,7 +421,6 @@ import { LevelMeter, type LevelReading } from './media/levelMeter';
 import { SignalingClient } from './media/signaling';
 import { AuthManager } from './auth/auth';
 import { WebRtcSession } from './media/webrtc';
-import { cameraConstraints, performanceVideoQuality } from './media/videoQuality';
 import { icons } from './core/icons';
 import { presenter } from './media/presenter';
 import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor, findSectionCard, findTimelineBlocks, findTimelineBlock } from './core/htmlSecurity';
@@ -1257,57 +1256,22 @@ function updateLocalPreviews(): void {
   });
 }
 
-async function acquireVideo(deviceId?: string): Promise<MediaStreamTrack> {
-  let stream: MediaStream | undefined;
-  const quality = effectiveVideoQuality(prefs.cameraQuality);
-  
-  if (deviceId) {
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: cameraConstraints(quality, deviceId),
-        audio: false
-      });
-    } catch {
-      // Fall through to generic camera constraints
-    }
-  }
-  if (!stream) {
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: cameraConstraints(quality, undefined),
-        audio: false
-      });
-    } catch {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    }
-  }
-  const rawTrack = stream.getVideoTracks()[0];
-  if (!rawTrack) throw new Error('The selected camera did not provide video.');
-
-  let finalTrack = rawTrack;
-  if (quality === 'low') {
-    finalTrack = createDownscaledVideoTrack(rawTrack, 640, 360, 15);
-  } else if (quality === 'standard') {
-    finalTrack = createDownscaledVideoTrack(rawTrack, 960, 540, 24);
-  }
-
-  finalTrack.enabled = cameraEnabled;
-  return finalTrack;
-}
-
-async function replaceCamera(deviceId?: string): Promise<void> {
-  if (screenTrack) throw new Error('Stop screen sharing before changing the camera.');
-  const next = await acquireVideo(deviceId);
-  try { if (inCall) await rtc.replaceVideoTrack(next); }
-  catch (error) { next.stop(); throw error; }
-  videoTrack?.stop();
-  videoTrack = next;
-  rtc.setVideoTrack(next);
-  prefs.cameraId = deviceId;
-  savePreferences();
-  updateCameraButtonState();
-  updateLocalPreviews();
-}
+const {
+  acquireVideo,
+  replaceCamera
+} = createLocalVideoController({
+  getPreferences: () => prefs,
+  onSavePreferences: () => savePreferences(),
+  isCameraEnabled: () => cameraEnabled,
+  getScreenTrack: () => screenTrack,
+  getVideoTrack: () => videoTrack,
+  setVideoTrack: (track) => { videoTrack = track; },
+  isInCall: () => inCall,
+  onReplaceRtcVideoTrack: (track) => rtc.replaceVideoTrack(track),
+  onSetRtcVideoTrack: (track) => rtc.setVideoTrack(track),
+  onUpdateCameraButtonState: () => updateCameraButtonState(),
+  onUpdateLocalPreviews: () => updateLocalPreviews()
+});
 
 let cachedHardwareDevices: HardwareAudioDeviceInfo[] = [];
 
