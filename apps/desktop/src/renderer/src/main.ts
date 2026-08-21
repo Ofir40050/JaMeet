@@ -57,12 +57,12 @@ import { initWorkspaceCoreController } from './workspace/core/workspaceCoreContr
 import { initWorkspacePersistenceController } from './workspace/core/workspacePersistenceController';
 import { initWorkspaceRealtimeDomainController } from './workspace/realtime/workspaceRealtimeDomainController';
 import { updateLocalPreviews as updateLocalPreviewsHelper } from './media/video/localPreviewUi';
-import { createSessionMetadata, createCurrentStream, performCheckActiveSpeaker } from './sessions/call/view/sessionMediaAdapters';
+import { createSessionMetadata, createCurrentStream, performCheckActiveSpeaker } from './sessions/call/view/sessionMediaHelpers';
 import { deviceError } from './media/devices/deviceError';
 import { initInCallAudioModalController } from './sessions/call/controls/inCallAudioModalController';
 import { initCallToolbarController } from './sessions/call/controls/callToolbarController';
 import { initSessionUtilityBindingsController } from './sessions/call/view/sessionUtilityBindingsController';
-import { updateAppIconBadge } from './core/appBadgeController';
+import { updateAppIconBadge } from './media/audio/sources/runningApplications';
 import { type HardwareAudioDeviceInfo } from './media/devices/hardwareDeviceUtils';
 import { getMeterInterval, getEffectiveMusicBitrate } from './media/devices/mediaPreferenceController';
 import { bindDeviceSelect } from './media/devices/deviceChangeController';

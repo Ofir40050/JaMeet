@@ -1,6 +1,6 @@
 import { $ } from '../../../core/dom';
 import { logger } from '../../../core/logger';
-import { refreshRunningApps as refreshRunningAppsHelper } from '../../../core/appBadgeController';
+import { refreshRunningApps as refreshRunningAppsHelper } from './runningApplications';
 import type { AudioMode, MediaMetadata, Preferences } from '@jameet/shared';
 import type { LevelMeter, LevelReading } from '../meter/levelMeter';
 import type { HardwareAudioDeviceInfo } from './hardwareDeviceTypes';

@@ -1,4 +1,4 @@
-import type { Preferences } from './preferences';
+import type { Preferences } from '@jameet/shared';
 
 export interface RunningAudioApp {
   pid: number;
