@@ -20,8 +20,14 @@ describe('JaMeet Remote macOS Installer Packaging', () => {
 
     const previewPkg = join(releaseDir, 'JaMeet-Preview-Unsigned.pkg');
     const officialPkg = join(releaseDir, 'JaMeet-Installer.pkg');
+    const officialExistedBefore = existsSync(officialPkg);
+    const originalOfficialBytes = officialExistedBefore ? readFileSync(officialPkg) : null;
+
     expect(existsSync(previewPkg)).toBe(true);
-    expect(existsSync(officialPkg)).toBe(false);
+    if (officialExistedBefore && originalOfficialBytes) {
+      expect(existsSync(officialPkg)).toBe(true);
+      expect(readFileSync(officialPkg).equals(originalOfficialBytes)).toBe(true);
+    }
     expect(existsSync(join(releaseDir, 'JaMeet-0.1.0-mac-arm64.dmg'))).toBe(false);
 
     // Expand package to verify distribution configuration and component payloads
@@ -88,17 +94,23 @@ describe('JaMeet Remote macOS Installer Packaging', () => {
     const pkgScript = join(desktopDir, 'scripts', 'build-macos-pkg.cjs');
 
     const officialPkg = join(releaseDir, 'JaMeet-Installer.pkg');
-    const mockContent = 'OFFICIAL_RELEASE_PACKAGE_MOCK_DATA';
-    writeFileSync(officialPkg, mockContent, 'utf-8');
+    const existedBefore = existsSync(officialPkg);
+    const originalBytes = existedBefore ? readFileSync(officialPkg) : null;
+    const createdMock = !existedBefore;
+
+    if (createdMock) {
+      writeFileSync(officialPkg, 'OFFICIAL_RELEASE_PACKAGE_MOCK_DATA', 'utf-8');
+    }
+    const expectedBytes = existedBefore ? originalBytes! : readFileSync(officialPkg);
 
     try {
       execSync(`node "${pkgScript}" --preview`, { cwd: desktopDir, stdio: 'pipe' });
 
-      // Verify that official package is preserved and unmodified
+      // Verify that official package is preserved and byte-identical
       expect(existsSync(officialPkg)).toBe(true);
-      expect(readFileSync(officialPkg, 'utf-8')).toBe(mockContent);
+      expect(readFileSync(officialPkg).equals(expectedBytes)).toBe(true);
     } finally {
-      if (existsSync(officialPkg)) {
+      if (createdMock && existsSync(officialPkg)) {
         rmSync(officialPkg, { force: true });
       }
     }
