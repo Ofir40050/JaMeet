@@ -1,5 +1,6 @@
 import type { AudioMode, MediaMetadata, ParticipantIdentity, Project } from '@jameet/shared';
 import * as projectsApi from './projects/core/projects';
+import { setScheduledApiBase } from './sessions/scheduled/scheduledApi';
 import {
   loadScheduledSessions
 } from './sessions/scheduled/scheduledSessions';
@@ -44,15 +45,16 @@ import { initProjectOpenDomainController } from './projects/core/projectOpenDoma
 import { initProjectCollaboratorsDomainController } from './projects/collaborators/projectCollaboratorsDomainController';
 import { initProjectManagementController } from './projects/core/projectManagementController';
 import { initSessionStatsController } from './sessions/call/view/sessionStatsController';
-import { initWaitingRoomUiController } from './sessions/call/waiting/waitingRoomUiController';
+import { initWaitingRoomUi } from './sessions/call/waiting/waitingRoomUi';
 import { initSessionViewStateController } from './sessions/call/view/sessionViewStateController';
 import { initDeepLinkDomainController } from './sessions/join/deepLinkDomainController';
-import { initSessionUtilityUiController } from './sessions/call/view/sessionUtilityUiController';
+import { initCallShortcutsUi } from './sessions/call/controls/callShortcutsUi';
+import { initGuestJoinController } from './auth/guest/guestJoinController';
 import { initProjectNavigationDomainController } from './projects/navigation/projectNavigationDomainController';
 import { initProjectSongDeleteDomainController } from './songs/delete/projectSongDeleteDomainController';
 import { initSongsDomainController } from './songs/state/songsDomainController';
 import { initTasksDomainController } from './workspace/tasks/tasksDomainController';
-import { initStructurePersistenceController } from './workspace/structure/structurePersistenceController';
+import { initStructurePersistence } from './workspace/structure/structurePersistence';
 import { initWorkspaceCoreController } from './workspace/core/workspaceCoreController';
 import { initWorkspacePersistenceController } from './workspace/core/workspacePersistenceController';
 import { initWorkspaceRealtimeDomainController } from './workspace/realtime/workspaceRealtimeDomainController';
@@ -196,7 +198,7 @@ import {
   setModeRadios,
   updateMusicWarning,
   updateCallMode
-} from './sessions/call/controls/callModeUiController';
+} from './sessions/call/controls/callModeUi';
 import {
   parseSessionError
 } from './sessions/setup/sessionErrorParser';
@@ -212,9 +214,6 @@ import {
 import {
   initProfileUiController
 } from './auth/profile/profileUiController';
-import {
-  initAuthUiController
-} from './auth/login/authUiController';
 import {
   initProjectSessionsController
 } from './projects/sessions/projectSessionsController';
@@ -338,6 +337,9 @@ scheduledNotifications.onSessionClick((sessionId) => {
 
 logger.initGlobalErrorHandling();
 logger.info('renderer_startup', 'JaMeet renderer application initialized', { participantId });
+
+projectsApi.setApiBase(signalingUrl);
+setScheduledApiBase(signalingUrl);
 
 const auth = new AuthManager(signalingUrl);
 const signaling = new SignalingClient(signalingUrl);
@@ -663,10 +665,9 @@ initStructureDomainController({
     debounceSaveStructure();
   }
 });
-initStructurePersistenceController({
+initStructurePersistence({
   getProject: () => activeProject,
   getAuthToken: () => auth.getToken(),
-  getUser: () => auth.getUser(),
   canEdit: () => canUserEditProject(),
   getActiveSong: () => getActiveSong(),
   getStructureSections: () => getStructureSections(),
@@ -684,8 +685,8 @@ initStructurePersistenceController({
   onApplyAuthoritativeWorkspace: (area, workspace) => {
     applyAuthoritativeWorkspaceUpdate(area, workspace);
   },
-  onRenderProjectActivities: (project, user) => {
-    renderProjectActivities(project, user);
+  onRenderProjectActivities: (project) => {
+    renderProjectActivities(project, auth.getUser());
   }
 });
 initTasksDomainController({
@@ -964,7 +965,8 @@ initProjectSongDeleteDomainController({
   onApplyWorkspacePermissions: () => applyWorkspacePermissions(),
   onSaveSongsWorkspace: () => saveSongsWorkspace()
 });
-initSessionUtilityUiController({
+initCallShortcutsUi();
+initGuestJoinController({
   onOpenSignIn: () => {
     openAuthView('login');
   },
@@ -1059,8 +1061,8 @@ initSessionStatsController({
   })
 });
 
-initWaitingRoomUiController({
-  onAdmitParticipant: async (participantId) => signaling.admitParticipant(currentCode, participantId)
+initWaitingRoomUi({
+  onAdmit: async (participantId) => signaling.admitParticipant(currentCode, participantId)
 });
 let remoteVoiceMeter: LevelMeter | undefined = undefined;
 let lastLocalVoiceDb = -60;

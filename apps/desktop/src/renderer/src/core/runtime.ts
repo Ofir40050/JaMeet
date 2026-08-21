@@ -1,6 +1,3 @@
-import * as projectsApi from '../projects/core/projects';
-import { setScheduledApiBase } from '../sessions/scheduled/scheduledApi';
-
 const DEFAULT_PROD_SIGNALING_URL = 'https://jameet-jwi8.onrender.com';
 const DEFAULT_DEV_SIGNALING_URL = 'http://localhost:3000';
 const PARTICIPANT_STORAGE_KEY = 'jameet-participant';
@@ -11,12 +8,6 @@ export function resolveSignalingUrl(): string {
     import.meta.env.VITE_SIGNALING_URL ||
     (import.meta.env.PROD ? DEFAULT_PROD_SIGNALING_URL : DEFAULT_DEV_SIGNALING_URL)
   ).replace(/\/+$/, '');
-}
-
-export function initApiBases(url: string = resolveSignalingUrl()): string {
-  projectsApi.setApiBase(url);
-  setScheduledApiBase(url);
-  return url;
 }
 
 export function initParticipantId(): string {
@@ -31,5 +22,5 @@ export function initParticipantId(): string {
   return participantId;
 }
 
-export const signalingUrl = initApiBases(resolveSignalingUrl());
+export const signalingUrl = resolveSignalingUrl();
 export const participantId = initParticipantId();

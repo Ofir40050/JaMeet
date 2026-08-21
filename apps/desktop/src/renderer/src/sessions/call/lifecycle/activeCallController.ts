@@ -1,12 +1,12 @@
 import { $, setText } from '../../../core/dom';
 import { logger } from '../../../core/logger';
 import { deviceError } from '../../../media/devices/deviceError';
-import { handleRemoteMediaUi } from '../view/remoteMediaUiController';
+import { handleRemoteMediaUi } from '../view/remoteMediaUi';
 import { effectiveVideoQuality } from '../view/sessionMetadata';
 import { updateLockUi as updateLockUiHelper } from '../moderation/sessionLockUi';
 import { handleSessionProjectWorkspace } from '../workspace/sessionProjectWorkspaceController';
 import * as projectsApi from '../../../projects/core/projects';
-import { transitionToActiveCallUi } from './activeCallUiController';
+import { transitionToActiveCallUi } from './activeCallTransitions';
 import { enterSession as enterSessionDomain } from '../../setup/sessionEntryController';
 import type { AudioMode, MediaMetadata, MeetingAck, ParticipantIdentity, Preferences, Project, VideoQuality } from '@jameet/shared';
 import type { PendingAction } from '../setup/sessionSetupTypes';

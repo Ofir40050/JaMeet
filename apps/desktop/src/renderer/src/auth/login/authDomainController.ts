@@ -12,7 +12,7 @@ import {
   handleRegister,
   handleLogout
 } from './authController';
-import { initAuthUiController } from './authUiController';
+import { initAuthUi } from './authUi';
 
 export interface AuthDomainControllerOptions {
   auth: AuthManager;
@@ -73,7 +73,7 @@ export function initAuthDomainController(options: AuthDomainControllerOptions): 
     }
   });
 
-  initAuthUiController({
+  initAuthUi({
     onOpenSignIn: () => options.onOpenAuthView('login'),
     onOpenRegister: () => options.onOpenAuthView('register'),
     onNavigateHome: () => options.onShowHomeView(),
