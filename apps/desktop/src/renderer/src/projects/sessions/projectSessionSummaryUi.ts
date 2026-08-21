@@ -1,5 +1,5 @@
 import type { Project, ProjectSessionItem } from '@jameet/shared';
-import { formatSessionDuration, formatRelativeTime } from '../core/projects';
+import { formatSessionDuration, formatRelativeTime } from '../../core/dateTimeFormatters';
 import { escapeHtml } from '../../core/htmlSecurity';
 import { $, setText } from '../../core/dom';
 

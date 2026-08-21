@@ -1,7 +1,7 @@
 import type { Project, ProjectActivityItem, ProjectActivityType } from '@jameet/shared';
 import { escapeHtml, safeAvatarColor } from '../../../core/htmlSecurity';
-
-export { formatRelativeTime } from '../../../core/dateTimeFormatters';
+import { formatRelativeTime } from '../../../core/dateTimeFormatters';
+import { applyAvatarToElement } from '../../../auth/profile/profileUi';
 
 export function filterActivities(activities: ProjectActivityItem[], query: string): ProjectActivityItem[] {
   const q = query.trim().toLowerCase();
@@ -50,7 +50,6 @@ export function getActivityIconSvg(type: ProjectActivityType): string {
   }
 }
 
-export { applyAvatarToElement } from '../../../auth/profile/profileUi';
 
 export function resolveUserAvatar(
   activeProject: Project | null,

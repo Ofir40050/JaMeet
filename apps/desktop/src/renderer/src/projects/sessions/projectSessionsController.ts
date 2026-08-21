@@ -4,7 +4,6 @@ import type { ProjectSessionItem } from './projectSessionsUi';
 
 export interface ProjectSessionsControllerOptions {
   getProject: () => Project | null | undefined;
-  formatRelativeTime: (timestamp: number) => string;
   onOpenSummary: (project: Project, session: ProjectSessionItem) => void;
   onFlushPendingSaves: () => Promise<void>;
   onSetActiveProjectId: (id: string) => void;
@@ -16,7 +15,6 @@ export function initProjectSessionsController(
 ): void {
   initProjectSessionsListUi({
     getSessions: () => options.getProject()?.sessions || [],
-    formatRelativeTime: (t) => options.formatRelativeTime(t),
     onOpenSummary: (session) => {
       const project = options.getProject();
       if (project) {

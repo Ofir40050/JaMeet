@@ -2,7 +2,7 @@ import { $ } from '../../../core/dom';
 import { icons } from '../../../core/icons';
 import { logger } from '../../../core/logger';
 import { updateCameraButtonUi } from './cameraUi';
-import { effectiveVideoQuality } from '../view/sessionMetadata';
+import { effectiveVideoQuality } from '../../../media/video/videoQuality';
 import { getEffectiveMusicBitrate } from '../../../media/devices/mediaPreferenceCalculations';
 import type { AudioMode, MediaMetadata, PerformanceMode, Preferences, VideoQuality } from '@jameet/shared';
 

@@ -916,7 +916,6 @@ initProjectTabsUi({
 });
 initProjectSessionsController({
   getProject: () => activeProject,
-  formatRelativeTime: (t) => projectsApi.formatRelativeTime(t),
   onOpenSummary: (project, session) => renderSessionSummaryModal(project, session),
   onFlushPendingSaves: () => flushAllWorkspacePendingSaves(),
   onSetActiveProjectId: (id) => {

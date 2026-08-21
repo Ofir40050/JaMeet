@@ -2,7 +2,7 @@ import { $, setText } from '../../../core/dom';
 import { logger } from '../../../core/logger';
 import { deviceError } from '../../../media/devices/deviceError';
 import { handleRemoteMediaUi } from '../view/remoteMediaUi';
-import { effectiveVideoQuality } from '../view/sessionMetadata';
+import { effectiveVideoQuality } from '../../../media/video/videoQuality';
 import { updateLockUi as updateLockUiHelper } from '../moderation/sessionLockUi';
 import { handleSessionProjectWorkspace } from '../workspace/sessionProjectWorkspaceController';
 import * as projectsApi from '../../../projects/core/projects';

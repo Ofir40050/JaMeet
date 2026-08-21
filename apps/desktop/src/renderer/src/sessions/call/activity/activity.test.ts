@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { ProjectActivityItem } from '@jameet/shared';
-import { formatRelativeTime, filterActivities, getActivityIconSvg } from './activity';
+import { formatRelativeTime } from '../../../core/dateTimeFormatters';
+import { filterActivities, getActivityIconSvg } from './activity';
 
 describe('Project Activity Engine & Helpers', () => {
   it('correctly calculates human-readable relative timestamps', () => {

@@ -2,6 +2,7 @@ import type { SessionHistoryItem, UserProfile } from '@jameet/shared';
 import { icons } from '../../core/icons';
 import { escapeHtml, safeAvatarColor } from '../../core/htmlSecurity';
 import { $, setText } from '../../core/dom';
+import { formatSessionDate, formatDuration } from '../../core/dateTimeFormatters';
 
 export interface RecentSessionsOptions {
   getUser: () => UserProfile | null;
@@ -42,7 +43,7 @@ export function initRecentSessions(opts: RecentSessionsOptions): void {
   });
 }
 
-export { formatSessionDate, formatDuration } from '../../core/dateTimeFormatters';
+
 
 export function openSessionSummaryDialog(session: SessionHistoryItem): void {
   const dialog = $<HTMLDialogElement>('session-summary-dialog');

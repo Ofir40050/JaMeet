@@ -4,9 +4,6 @@ import { LevelMeter } from '../audio/meter/levelMeter';
 import { startRemoteVoiceBridge, stopRemoteVoiceBridge } from './remoteVoiceBridge';
 import type { Preferences } from '../../core/preferences';
 
-import { getStereoBalanceGains } from '../audio/sources/stereoBalance';
-export { getStereoBalanceGains };
-
 export interface RemoteAudioGraphContext {
   getRemoteAudioCtx: () => AudioContext | undefined;
   setRemoteAudioCtx: (ctx: AudioContext | undefined) => void;

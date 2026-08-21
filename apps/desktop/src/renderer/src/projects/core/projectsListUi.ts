@@ -1,5 +1,5 @@
 import type { Project, UserProfile } from '@jameet/shared';
-import { formatRelativeTime } from './projects';
+import { formatRelativeTime } from '../../core/dateTimeFormatters';
 import { escapeHtml, safeAvatarColor } from '../../core/htmlSecurity';
 import { icons } from '../../core/icons';
 import { $ } from '../../core/dom';

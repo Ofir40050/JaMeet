@@ -1,4 +1,5 @@
 import { $, setText } from '../../core/dom';
+import { formatRelativeTime } from '../../core/dateTimeFormatters';
 import {
   createOverviewSessionItem,
   createProjectSessionCard,
@@ -15,7 +16,6 @@ export interface ProjectSessionsPaginationInfo {
 
 export interface ProjectSessionsListUiOptions {
   getSessions?: () => readonly ProjectSessionItem[];
-  formatRelativeTime?: (timestamp: number) => string;
   onOpenSummary?: (session: ProjectSessionItem) => void;
   onStartSession?: () => Promise<void> | void;
 }
@@ -107,8 +107,8 @@ export function renderProjectSessions(): void {
 
   // 1. Calculate & Render Stats
   const totalSec = sessions.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
-  const lastActiveText = sessions.length > 0 && listOptions.formatRelativeTime
-    ? listOptions.formatRelativeTime(sessions[0].startedAt)
+  const lastActiveText = sessions.length > 0
+    ? formatRelativeTime(sessions[0].startedAt)
     : '—';
 
   setText('project-stat-sessions-time', `${formatTotalStudioTime(totalSec)} studio time`);

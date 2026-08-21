@@ -1,5 +1,5 @@
 import type { Project, UserProfile } from '@jameet/shared';
-import { formatRelativeTime } from '../core/projects';
+import { formatRelativeTime } from '../../core/dateTimeFormatters';
 import { icons } from '../../core/icons';
 import { $, setText } from '../../core/dom';
 
