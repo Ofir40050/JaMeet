@@ -324,7 +324,7 @@ import {
   updateSessionViewButton,
   renderSessionViewMenu
 } from './sessions/call/view/sessionView';
-import './style.css';
+import './styles/index.css';
 
 export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
 
