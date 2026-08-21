@@ -11,7 +11,7 @@ import {
 } from './auth/profile/profileUi';
 import {
   renderWaitingBanner
-} from './sessions/call/waitingRoomUi';
+} from './sessions/call/waiting/waitingRoomUi';
 import {
   loadProjects
 } from './projects/core/projectsListController';
@@ -35,7 +35,7 @@ import {
 } from './workspace/core/workspacePermissionsController';
 import { initScheduledSessionsController } from './sessions/scheduled/scheduledSessionsController';
 import { initRecentSessionsController } from './sessions/recent/recentSessionsController';
-import { initWorkspaceDrawerController } from './sessions/call/workspaceDrawerController';
+import { initWorkspaceDrawerController } from './sessions/call/workspace/workspaceDrawerController';
 import { initLyricsDomainController } from './workspace/lyrics/lyricsDomainController';
 import { initNotesDomainController } from './workspace/notes/notesDomainController';
 import { initStructureDomainController } from './workspace/structure/structureDomainController';
@@ -43,11 +43,11 @@ import { initProjectsDomainController } from './projects/core/projectsDomainCont
 import { initProjectOpenDomainController } from './projects/core/projectOpenDomainController';
 import { initProjectCollaboratorsDomainController } from './projects/collaborators/projectCollaboratorsDomainController';
 import { initProjectManagementController } from './projects/core/projectManagementController';
-import { initSessionStatsController } from './sessions/call/sessionStatsController';
-import { initWaitingRoomUiController } from './sessions/call/waitingRoomUiController';
-import { initSessionViewStateController } from './sessions/call/sessionViewStateController';
+import { initSessionStatsController } from './sessions/call/view/sessionStatsController';
+import { initWaitingRoomUiController } from './sessions/call/waiting/waitingRoomUiController';
+import { initSessionViewStateController } from './sessions/call/view/sessionViewStateController';
 import { initDeepLinkDomainController } from './sessions/join/deepLinkDomainController';
-import { initSessionUtilityUiController } from './sessions/call/sessionUtilityUiController';
+import { initSessionUtilityUiController } from './sessions/call/view/sessionUtilityUiController';
 import { initProjectNavigationDomainController } from './projects/navigation/projectNavigationDomainController';
 import { initProjectSongDeleteDomainController } from './songs/delete/projectSongDeleteDomainController';
 import { initSongsDomainController } from './songs/state/songsDomainController';
@@ -57,25 +57,25 @@ import { initWorkspaceCoreController } from './workspace/core/workspaceCoreContr
 import { initWorkspacePersistenceController } from './workspace/core/workspacePersistenceController';
 import { initWorkspaceRealtimeDomainController } from './workspace/realtime/workspaceRealtimeDomainController';
 import { updateLocalPreviews as updateLocalPreviewsHelper } from './media/video/localPreviewUi';
-import { createSessionMetadata, createCurrentStream, performCheckActiveSpeaker } from './sessions/call/sessionMediaStateController';
+import { createSessionMetadata, createCurrentStream, performCheckActiveSpeaker } from './sessions/call/view/sessionMediaStateController';
 import { deviceError } from './media/devices/deviceError';
-import { initInCallAudioModalController } from './sessions/call/inCallAudioModalController';
-import { initCallToolbarController } from './sessions/call/callToolbarController';
-import { initSessionUtilityBindingsController } from './sessions/call/sessionUtilityBindingsController';
+import { initInCallAudioModalController } from './sessions/call/controls/inCallAudioModalController';
+import { initCallToolbarController } from './sessions/call/controls/callToolbarController';
+import { initSessionUtilityBindingsController } from './sessions/call/view/sessionUtilityBindingsController';
 import { updateAppIconBadge } from './media/devices/runningApplicationsController';
 import { type HardwareAudioDeviceInfo } from './media/devices/hardwareDeviceUtils';
 import { getMeterInterval, getEffectiveMusicBitrate } from './media/devices/mediaPreferenceController';
 import { bindDeviceSelect } from './media/devices/deviceChangeController';
 import { initAuthDomainController } from './auth/authDomainController';
-import { createScreenSharingController } from './sessions/call/screenSharingController';
+import { createScreenSharingController } from './sessions/call/controls/screenSharingController';
 import { createVoiceInputsUiController } from './sessions/setup/voiceInputsUiController';
 import { createLocalAudioCaptureController } from './media/audio/localAudioCaptureController';
 import { createLocalVideoController } from './media/video/localVideoController';
 import { createStudioPreparationController } from './sessions/setup/studioPreparationController';
 import { createAudioOutputRoutingController } from './media/devices/audioOutputRoutingController';
 import { createMediaActiveStateController } from './media/devices/mediaActiveStateController';
-import { createMediaStreamControlsController } from './sessions/call/mediaStreamControlsController';
-import { updateCameraButtonUi } from './sessions/call/cameraUi';
+import { createMediaStreamControlsController } from './sessions/call/controls/mediaStreamControlsController';
+import { updateCameraButtonUi } from './sessions/call/controls/cameraUi';
 import { initMediaSettingsBindings } from './media/devices/mediaSettingsBindingsController';
 import {
   getWorkspaceContextGen,
@@ -107,29 +107,29 @@ import {
 import {
   initParticipantIdentityUi,
   updateParticipantIdentityUi
-} from './sessions/call/participantIdentityUi';
+} from './sessions/call/moderation/participantIdentityUi';
 import {
   initWaitingRoomController
-} from './sessions/call/waitingRoomController';
+} from './sessions/call/waiting/waitingRoomController';
 import {
   initSessionModeration,
   getIsSessionLocked,
   setIsSessionLocked
-} from './sessions/call/sessionModerationController';
+} from './sessions/call/moderation/sessionModerationController';
 import {
   initCallNavigation
-} from './sessions/call/callNavigationController';
+} from './sessions/call/lifecycle/callNavigationController';
 import {
   initSessionTimer,
   startSessionTimer,
   stopSessionTimer
-} from './sessions/call/sessionTimer';
+} from './sessions/call/lifecycle/sessionTimer';
 import {
   setCallStatus
-} from './sessions/call/sessionStatusUi';
+} from './sessions/call/view/sessionStatusUi';
 import {
   initSessionKeyboard
-} from './sessions/call/sessionKeyboardController';
+} from './sessions/call/controls/sessionKeyboardController';
 import {
   startRendererApp
 } from './core/startupController';
@@ -195,7 +195,7 @@ import {
   setModeRadios,
   updateMusicWarning,
   updateCallMode
-} from './sessions/call/callModeUiController';
+} from './sessions/call/controls/callModeUiController';
 import {
   parseSessionError
 } from './sessions/setup/sessionErrorParser';
@@ -204,10 +204,10 @@ import {
 } from './sessions/setup/sessionErrorUi';
 import {
   createActiveCallController
-} from './sessions/call/activeCallController';
+} from './sessions/call/lifecycle/activeCallController';
 import {
   createCallTerminationController
-} from './sessions/call/callTerminationController';
+} from './sessions/call/lifecycle/callTerminationController';
 import {
   initProfileUiController
 } from './auth/profile/profileUiController';
@@ -257,7 +257,7 @@ import {
 } from './projects/navigation/projectTabsUi';
 import {
   toggleShortcutsModal
-} from './sessions/call/callShortcutsUi';
+} from './sessions/call/controls/callShortcutsUi';
 import {
   updateLyricsDocumentPagination
 } from './workspace/lyrics/lyricsUi';
@@ -286,17 +286,17 @@ import { AuthManager } from './auth/auth';
 import { WebRtcSession } from './media/remote/webrtc';
 import { presenter } from './media/video/presenter';
 import { escapeHtml, sanitizeLyricsHtml, safeAvatarColor } from './core/htmlSecurity';
-import { initActivityHistory, renderProjectActivities } from './sessions/call/activity';
-import { initSessionChat, setSessionChatOpen, setOnChatOpenCallback } from './sessions/call/chat';
+import { initActivityHistory, renderProjectActivities } from './sessions/call/activity/activity';
+import { initSessionChat, setSessionChatOpen, setOnChatOpenCallback } from './sessions/call/chat/chat';
 import { stopRemoteVoiceBridge } from './media/remote/remoteVoiceBridge';
 import { logger } from './core/logger';
 import { type StudioMixerChannel } from './media/mixer/studioMixerLogic';
 import { hydrateStudioMixerEqPersistence } from './media/mixer/studioMixerStorage';
 import { initStudioMixerPopoversAndControls } from './media/mixer/studioMixerUi';
 import { createStudioMixerController } from './media/mixer/studioMixerController';
-import { initPresenterCoordinationController } from './sessions/call/presenterCoordinationController';
+import { initPresenterCoordinationController } from './sessions/call/view/presenterCoordinationController';
 import { initMediaHardwareControlsController } from './media/devices/mediaHardwareControlsController';
-import { initCallSignalingListenersController } from './sessions/call/callSignalingListenersController';
+import { initCallSignalingListenersController } from './sessions/call/lifecycle/callSignalingListenersController';
 import {
   createRemoteAudioGraphController
 } from './media/remote/remoteAudioGraphController';
@@ -323,7 +323,7 @@ import {
   toggleSessionLayout,
   updateSessionViewButton,
   renderSessionViewMenu
-} from './sessions/call/sessionView';
+} from './sessions/call/view/sessionView';
 import './style.css';
 
 export { escapeHtml, sanitizeLyricsHtml, safeAvatarColor };
