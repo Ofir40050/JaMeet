@@ -330,5 +330,3 @@ export function createVoiceInputsUi(ctx: VoiceInputsUiContext) {
     renderVoiceInputControls
   };
 }
-
-export const createVoiceInputsUiController = createVoiceInputsUi;
