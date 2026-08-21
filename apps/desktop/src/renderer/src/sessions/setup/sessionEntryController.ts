@@ -1,7 +1,7 @@
 import type { MediaMetadata, MeetingAck, ParticipantIdentity } from '@jameet/shared';
 import { $, setText } from '../../core/dom';
 import { showSessionErrorModal } from './sessionErrorUi';
-import type { PendingAction } from './studioPreparationController';
+import type { PendingAction } from './studioPreparation';
 
 export interface SessionEntryControllerOptions {
   getPendingAction: () => PendingAction | undefined;

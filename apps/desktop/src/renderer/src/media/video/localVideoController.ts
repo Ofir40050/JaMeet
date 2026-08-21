@@ -1,5 +1,5 @@
 import { cameraConstraints } from './videoQuality';
-import { createDownscaledVideoTrack } from '../../sessions/call/videoTrackScaling';
+import { createDownscaledVideoTrack } from './videoTrackScaling';
 import { effectiveVideoQuality } from '../../sessions/call/sessionMetadataController';
 import type { Preferences } from '@jameet/shared';
 

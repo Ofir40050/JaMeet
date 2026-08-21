@@ -71,7 +71,7 @@ import { createScreenSharingController } from './sessions/call/screenSharingCont
 import { createVoiceInputsUiController } from './media/audio/voiceInputsUiController';
 import { createLocalAudioCaptureController } from './media/audio/localAudioCaptureController';
 import { createLocalVideoController } from './media/video/localVideoController';
-import { createStudioPreparationController } from './media/devices/studioPreparationController';
+import { createStudioPreparationController } from './sessions/setup/studioPreparationController';
 import { createAudioOutputRoutingController } from './media/devices/audioOutputRoutingController';
 import { createMediaActiveStateController } from './media/devices/mediaActiveStateController';
 import { createMediaStreamControlsController } from './media/devices/mediaStreamControlsController';
@@ -189,7 +189,7 @@ import {
 } from './sessions/setup/studioSetupController';
 import {
   type PendingAction
-} from './sessions/setup/studioPreparationController';
+} from './sessions/setup/studioPreparation';
 import {
   initCallModeUi,
   setModeRadios,

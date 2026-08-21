@@ -2,7 +2,7 @@ import type { AudioMode } from '@jameet/shared';
 import {
   prepareStudio as prepareStudioController,
   type PendingAction
-} from './studioPreparationController';
+} from './studioPreparation';
 import { parseSessionError } from './sessionErrorParser';
 import { showSessionErrorModal } from './sessionErrorUi';
 

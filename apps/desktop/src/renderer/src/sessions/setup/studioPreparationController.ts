@@ -1,75 +1,90 @@
-import type { AudioMode } from '@jameet/shared';
-import { $, setMessage, setText } from '../../core/dom';
+import { enumerateAndPopulateDevices } from '../../media/devices/deviceEnumerationController';
+import { prepareStudioDomain } from './studioPreparationDomainController';
+import { renderAudioLimitations as renderAudioLimitationsUi } from '../../media/audio/audioLimitationsUi';
+import type { AudioMode, Preferences } from '@jameet/shared';
+import type { HardwareAudioDeviceInfo } from '../../media/devices/hardwareDeviceUtils';
+import type { PendingAction } from './studioPreparation';
 
-export type PendingAction = { type: 'create' } | { type: 'join'; code: string };
-
-export interface StudioPreparationOptions {
-  onSetPendingAction: (action: PendingAction) => void;
-  getCurrentCode: () => string;
-  onSetCurrentCode: (code: string) => void;
-  onShowSetupView: () => void;
-  onSetBusy: (busy: boolean) => void;
-  getAudioMode: () => AudioMode;
-  getCameraId: () => string | undefined;
+export interface StudioPreparationContext {
+  getPreferences: () => Preferences;
+  onSavePreferences: () => void;
+  getCachedHardwareDevices: () => HardwareAudioDeviceInfo[];
+  setCachedHardwareDevices: (devices: HardwareAudioDeviceInfo[]) => void;
+  onRefreshRunningApps: () => Promise<void>;
+  onRenderVoiceInputControls: (audioInputs: MediaDeviceInfo[]) => void;
+  onSetMessage: (id: string, text: string, isError?: boolean) => void;
+  isInCall: () => boolean;
   isAudioOnly: () => boolean;
   onSetModeRadios: (mode: AudioMode) => void;
+  setPendingAction: (act?: PendingAction) => void;
+  getCurrentCode: () => string;
+  setCurrentCode: (code: string) => void;
+  onShowView: (view: 'home-view' | 'setup-view' | 'waiting-view' | 'call-view' | 'project-view') => void;
+  setBusy: (busy: boolean) => void;
   onUpdateMusicWarning: () => void;
   onUpdateCameraButtonState: () => void;
   onUpdateLocalPreviews: () => void;
-  onEnumerateAndPopulate: () => Promise<void>;
-  onSyncAllVoiceMics: (mode: AudioMode) => Promise<void>;
-  onReplaceCamera: (cameraId?: string) => Promise<void>;
+  onSyncAllVoiceMics: (mode?: AudioMode) => Promise<void>;
+  onReplaceCamera: (camId?: string) => Promise<void>;
   onReplaceMusicInput: () => Promise<void>;
-  onShowSessionError: (error: unknown) => void;
+  getPrimaryAudioSource: () => any;
 }
 
-export async function prepareStudio(
-  action: PendingAction,
-  options: StudioPreparationOptions
-): Promise<void> {
-  options.onSetPendingAction(action);
-  let code = options.getCurrentCode();
-  if (action.type === 'join') {
-    code = action.code;
-    options.onSetCurrentCode(code);
-  } else if (!code) {
-    code = (
-      Math.random().toString(36).substring(2, 6) +
-      Math.random().toString(36).substring(2, 6)
-    )
-      .slice(0, 8)
-      .toUpperCase();
-    options.onSetCurrentCode(code);
+export function createStudioPreparationController(ctx: StudioPreparationContext) {
+  async function enumerateAndPopulate(): Promise<void> {
+    await enumerateAndPopulateDevices({
+      getPreferences: () => ctx.getPreferences(),
+      onSavePreferences: () => ctx.onSavePreferences(),
+      getCachedHardwareDevices: () => ctx.getCachedHardwareDevices(),
+      onSetCachedHardwareDevices: (devices) => {
+        ctx.setCachedHardwareDevices(devices);
+      },
+      onRefreshRunningApps: () => ctx.onRefreshRunningApps(),
+      onRenderVoiceInputControls: (audioInputs) => ctx.onRenderVoiceInputControls(audioInputs),
+      onSetMessage: (id, text) => ctx.onSetMessage(id, text),
+      isInCall: () => ctx.isInCall(),
+      isAudioOnly: () => ctx.isAudioOnly(),
+      onSetModeRadios: (mode) => ctx.onSetModeRadios(mode)
+    });
   }
 
-  options.onShowSetupView();
-  setText('setup-code', code);
-  $('setup-waiting-room-group')?.classList.add('hidden');
-  setMessage('setup-status', '');
-  options.onSetBusy(true);
-
-  // Immediately render default UI state so everything is visible
-  options.onSetModeRadios(options.getAudioMode());
-  options.onUpdateMusicWarning();
-  options.onUpdateCameraButtonState();
-  options.onUpdateLocalPreviews();
-
-  try {
-    // 1. Quick device enumeration
-    await options.onEnumerateAndPopulate().catch((e) => console.warn('enumerateAndPopulate error:', e));
-
-    // 2. Parallel acquisition of microphone, camera, and music inputs for instantaneous loading!
-    await Promise.all([
-      options.onSyncAllVoiceMics(options.getAudioMode()).catch((e) => console.warn('syncAllVoiceMics error:', e)),
-      (!options.isAudioOnly() ? options.onReplaceCamera(options.getCameraId()) : Promise.resolve()).catch((e) => console.warn('replaceCamera error:', e)),
-      options.onReplaceMusicInput().catch((e) => console.warn('replaceMusicInput error:', e))
-    ]);
-
-    options.onUpdateLocalPreviews();
-    setMessage('setup-status', '');
-  } catch (error) {
-    options.onShowSessionError(error);
-  } finally {
-    options.onSetBusy(false);
+  async function prepareStudio(action: PendingAction): Promise<void> {
+    const prefs = ctx.getPreferences();
+    await prepareStudioDomain(action, {
+      onSetPendingAction: (act) => {
+        ctx.setPendingAction(act);
+      },
+      getCurrentCode: () => ctx.getCurrentCode(),
+      onSetCurrentCode: (code) => {
+        ctx.setCurrentCode(code);
+      },
+      onShowSetupView: () => ctx.onShowView('setup-view'),
+      onSetBusy: (busy) => ctx.setBusy(busy),
+      getAudioMode: () => prefs.mode,
+      getCameraId: () => prefs.cameraId,
+      isAudioOnly: () => ctx.isAudioOnly(),
+      onSetModeRadios: (mode) => ctx.onSetModeRadios(mode),
+      onUpdateMusicWarning: () => ctx.onUpdateMusicWarning(),
+      onUpdateCameraButtonState: () => ctx.onUpdateCameraButtonState(),
+      onUpdateLocalPreviews: () => ctx.onUpdateLocalPreviews(),
+      onEnumerateAndPopulate: () => enumerateAndPopulate(),
+      onSyncAllVoiceMics: (mode) => ctx.onSyncAllVoiceMics(mode),
+      onReplaceCamera: (camId) => ctx.onReplaceCamera(camId),
+      onReplaceMusicInput: () => ctx.onReplaceMusicInput()
+    });
   }
+
+  function renderAudioLimitations(): void {
+    renderAudioLimitationsUi({
+      getPrimaryAudioSource: () => ctx.getPrimaryAudioSource(),
+      getPreferences: () => ctx.getPreferences(),
+      onSetMessage: (id, text, isError) => ctx.onSetMessage(id, text, isError)
+    });
+  }
+
+  return {
+    enumerateAndPopulate,
+    prepareStudio,
+    renderAudioLimitations
+  };
 }
