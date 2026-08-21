@@ -69,7 +69,7 @@ import { getMeterInterval, getEffectiveMusicBitrate } from './media/devices/medi
 import { bindDeviceSelect } from './media/devices/deviceChangeController';
 import { initAuthDomainController } from './auth/login/authDomainController';
 import { createScreenSharingController } from './sessions/call/controls/screenSharingController';
-import { createVoiceInputsUiController } from './sessions/setup/voiceInputsUiController';
+import { createVoiceInputsUiController } from './media/audio/ui/voiceInputsUi';
 import { createLocalAudioCaptureController } from './media/audio/sources/localAudioCaptureController';
 import { createLocalVideoController } from './media/video/localVideoController';
 import { createStudioPreparationController } from './sessions/setup/studioPreparationController';
