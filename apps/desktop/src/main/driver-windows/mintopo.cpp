@@ -19,9 +19,11 @@ static const PKSDATARANGE PinDataRangeBridgePointers[] = {
 };
 
 /*
- * Topology Pins:
- * Pin 0: Bridge Pin (connected to WaveRT pin 1)
- * Pin 1: Physical Pin (Mic / Recording source endpoint)
+ * Topology Pins for Full-Duplex:
+ * Pin 0: Capture Bridge Pin (connected to WaveRT pin 1)
+ * Pin 1: Physical Mic Pin (Recording source endpoint)
+ * Pin 2: Render Bridge Pin (connected to WaveRT pin 3)
+ * Pin 3: Physical Speaker Pin (Playback destination endpoint)
  */
 static const PCPIN_DESCRIPTOR TopoPins[] = {
     {
@@ -53,6 +55,36 @@ static const PCPIN_DESCRIPTOR TopoPins[] = {
             (GUID*)&KSNODETYPE_MICROPHONE,
             0
         }
+    },
+    {
+        0, 0, 0,
+        NULL,
+        {
+            0, NULL,
+            0, NULL,
+            SIZEOF_ARRAY(PinDataRangeBridgePointers),
+            PinDataRangeBridgePointers,
+            KSPIN_DATAFLOW_IN,
+            KSPIN_COMMUNICATION_NONE,
+            (GUID*)&KSCATEGORY_AUDIO,
+            NULL,
+            0
+        }
+    },
+    {
+        0, 0, 0,
+        NULL,
+        {
+            0, NULL,
+            0, NULL,
+            SIZEOF_ARRAY(PinDataRangeBridgePointers),
+            PinDataRangeBridgePointers,
+            KSPIN_DATAFLOW_OUT,
+            KSPIN_COMMUNICATION_NONE,
+            (GUID*)&KSCATEGORY_AUDIO,
+            (GUID*)&KSNODETYPE_SPEAKER,
+            0
+        }
     }
 };
 
@@ -62,17 +94,26 @@ static const PCNODE_DESCRIPTOR TopoNodes[] = {
         NULL,
         (GUID*)&KSNODETYPE_ADC,
         NULL
+    },
+    {
+        0,
+        NULL,
+        (GUID*)&KSNODETYPE_DAC,
+        NULL
     }
 };
 
 static const PCCONNECTION_DESCRIPTOR TopoConnections[] = {
     { PCFILTER_NODE, 1, 0, 1 },
-    { 0, 0, PCFILTER_NODE, 0 }
+    { 0, 0, PCFILTER_NODE, 0 },
+    { PCFILTER_NODE, 2, 1, 1 },
+    { 1, 0, PCFILTER_NODE, 3 }
 };
 
 static const GUID TopoCategories[] = {
     STATICGUIDOF(KSCATEGORY_AUDIO),
     STATICGUIDOF(KSCATEGORY_CAPTURE),
+    STATICGUIDOF(KSCATEGORY_RENDER),
     STATICGUIDOF(KSCATEGORY_TOPOLOGY)
 };
 

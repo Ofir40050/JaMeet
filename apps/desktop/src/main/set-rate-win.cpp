@@ -8,6 +8,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
+
+static volatile int g_watchRunning = 1;
+
+static void watch_sig_handler(int signo) {
+    (void)signo;
+    g_watchRunning = 0;
+}
 
 static void json_escape_and_print(const char* str) {
     if (!str) {
@@ -203,6 +211,106 @@ static int set_input_volume(float volume) {
     return 0;
 }
 
+class CMMNotificationClient : public IMMNotificationClient {
+private:
+    LONG m_cRef;
+public:
+    CMMNotificationClient() : m_cRef(1) {}
+    virtual ~CMMNotificationClient() {}
+
+    ULONG STDMETHODCALLTYPE AddRef() {
+        return InterlockedIncrement(&m_cRef);
+    }
+
+    ULONG STDMETHODCALLTYPE Release() {
+        ULONG ulRef = InterlockedDecrement(&m_cRef);
+        if (0 == ulRef) {
+            delete this;
+        }
+        return ulRef;
+    }
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, VOID** ppvInterface) {
+        if (IID_IUnknown == riid) {
+            AddRef();
+            *ppvInterface = (IUnknown*)this;
+        } else if (__uuidof(IMMNotificationClient) == riid) {
+            AddRef();
+            *ppvInterface = (IMMNotificationClient*)this;
+        } else {
+            *ppvInterface = NULL;
+            return E_NOINTERFACE;
+        }
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(LPCWSTR pwstrDeviceId, DWORD dwNewState) {
+        (void)pwstrDeviceId;
+        (void)dwNewState;
+        printf("{\"event\": \"device-changed\", \"reason\": \"state\"}\n");
+        fflush(stdout);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR pwstrDeviceId) {
+        (void)pwstrDeviceId;
+        printf("{\"event\": \"device-changed\", \"reason\": \"added\"}\n");
+        fflush(stdout);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR pwstrDeviceId) {
+        (void)pwstrDeviceId;
+        printf("{\"event\": \"device-changed\", \"reason\": \"removed\"}\n");
+        fflush(stdout);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR pwstrDefaultDeviceId) {
+        (void)flow;
+        (void)role;
+        (void)pwstrDefaultDeviceId;
+        printf("{\"event\": \"device-changed\", \"reason\": \"default\"}\n");
+        fflush(stdout);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(LPCWSTR pwstrDeviceId, const PROPERTYKEY key) {
+        (void)pwstrDeviceId;
+        (void)key;
+        return S_OK;
+    }
+};
+
+static int watch_device_hotplug() {
+    signal(SIGINT, watch_sig_handler);
+    signal(SIGTERM, watch_sig_handler);
+
+    CoInitialize(NULL);
+    IMMDeviceEnumerator* pEnumerator = NULL;
+    HRESULT hr = CoCreateInstance(CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL, IID_IMMDeviceEnumerator, (void**)&pEnumerator);
+    if (FAILED(hr) || !pEnumerator) {
+        CoUninitialize();
+        return 1;
+    }
+
+    CMMNotificationClient* pClient = new CMMNotificationClient();
+    pEnumerator->RegisterEndpointNotificationCallback(pClient);
+
+    printf("{\"status\": \"watching\"}\n");
+    fflush(stdout);
+
+    while (g_watchRunning) {
+        Sleep(200);
+    }
+
+    pEnumerator->UnregisterEndpointNotificationCallback(pClient);
+    pClient->Release();
+    pEnumerator->Release();
+    CoUninitialize();
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     if (argc >= 2) {
         if (strcmp(argv[1], "devices") == 0 || strcmp(argv[1], "list") == 0) {
@@ -212,12 +320,15 @@ int main(int argc, char* argv[]) {
             float vol = (float)atof(argv[2]);
             return set_input_volume(vol);
         }
+        if (strcmp(argv[1], "watch") == 0) {
+            return watch_device_hotplug();
+        }
         double rate = atof(argv[1]);
         if (rate > 0) {
             printf("Requested sample rate %.0f Hz acknowledged on Windows audio endpoint.\n", rate);
             return 0;
         }
     }
-    printf("Usage: set-rate.exe [devices | volume <0.0-1.0> | <sampleRate>]\n");
+    printf("Usage: set-rate.exe [devices | volume <0.0-1.0> | watch | <sampleRate>]\n");
     return 0;
 }

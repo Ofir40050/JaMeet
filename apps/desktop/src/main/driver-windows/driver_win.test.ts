@@ -293,4 +293,31 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     expect(targetFrame).toBe(200);
     expect(targetFrame).toBeLessThanOrEqual(writeSequence);
   });
+
+  it('validates Full-Duplex WaveRT and Topology pin/node descriptors', () => {
+    const minwavePath = path.join(driverDir, 'minwave.cpp');
+    const mintopoPath = path.join(driverDir, 'mintopo.cpp');
+
+    expect(fs.existsSync(minwavePath)).toBe(true);
+    expect(fs.existsSync(mintopoPath)).toBe(true);
+
+    const minwaveContent = fs.readFileSync(minwavePath, 'utf-8');
+    const mintopoContent = fs.readFileSync(mintopoPath, 'utf-8');
+
+    // Wave filter Full-Duplex pins and nodes
+    expect(minwaveContent).toContain('PINNAME_RECORDING_SOURCE');
+    expect(minwaveContent).toContain('PINNAME_PLAYBACK_SOURCE');
+    expect(minwaveContent).toContain('KSNODETYPE_ADC');
+    expect(minwaveContent).toContain('KSNODETYPE_DAC');
+    expect(minwaveContent).toContain('STATICGUIDOF(KSCATEGORY_CAPTURE)');
+    expect(minwaveContent).toContain('STATICGUIDOF(KSCATEGORY_RENDER)');
+
+    // Topology filter Full-Duplex pins and nodes
+    expect(mintopoContent).toContain('KSNODETYPE_MICROPHONE');
+    expect(mintopoContent).toContain('KSNODETYPE_SPEAKER');
+    expect(mintopoContent).toContain('KSNODETYPE_ADC');
+    expect(mintopoContent).toContain('KSNODETYPE_DAC');
+    expect(mintopoContent).toContain('STATICGUIDOF(KSCATEGORY_CAPTURE)');
+    expect(mintopoContent).toContain('STATICGUIDOF(KSCATEGORY_RENDER)');
+  });
 });

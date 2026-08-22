@@ -16,6 +16,10 @@ export function initDesktopLifecycle(options: DesktopLifecycleOptions): void {
   const desktopBridge =
     typeof window !== 'undefined' ? (window.jameet || window.musiczoom) : undefined;
 
+  desktopBridge?.onHardwareDevicesChanged?.(() => {
+    options.onDeviceChange();
+  });
+
   desktopBridge?.onDeepLink?.((url: string) => {
     options.onHandleDeepLink(url);
   });

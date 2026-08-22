@@ -48,9 +48,11 @@ static const PKSDATARANGE PinDataRangePointers[] = {
 };
 
 /*
- * Pin descriptors for WaveRT filter:
- * Pin 0: WaveRT Capture Stream Pin (Streaming)
- * Pin 1: WaveRT Bridge Pin (connected to Topology)
+ * Pin descriptors for Full-Duplex WaveRT filter:
+ * Pin 0: WaveRT Capture Stream Pin (Streaming OUT to Windows apps)
+ * Pin 1: WaveRT Capture Bridge Pin (connected to Topology ADC)
+ * Pin 2: WaveRT Render Stream Pin (Streaming IN from Windows DAWs/apps)
+ * Pin 3: WaveRT Render Bridge Pin (connected to Topology DAC)
  */
 static const PCPIN_DESCRIPTOR WavePins[] = {
     {
@@ -82,6 +84,36 @@ static const PCPIN_DESCRIPTOR WavePins[] = {
             NULL,
             0
         }
+    },
+    {
+        1, 1, 0,
+        NULL,
+        {
+            0, NULL,
+            0, NULL,
+            SIZEOF_ARRAY(PinDataRangePointers),
+            PinDataRangePointers,
+            KSPIN_DATAFLOW_IN,
+            KSPIN_COMMUNICATION_BOTH,
+            (GUID*)&KSCATEGORY_AUDIO,
+            (GUID*)&PINNAME_PLAYBACK_SOURCE,
+            0
+        }
+    },
+    {
+        0, 0, 0,
+        NULL,
+        {
+            0, NULL,
+            0, NULL,
+            SIZEOF_ARRAY(PinDataRangePointers),
+            PinDataRangePointers,
+            KSPIN_DATAFLOW_OUT,
+            KSPIN_COMMUNICATION_NONE,
+            (GUID*)&KSCATEGORY_AUDIO,
+            NULL,
+            0
+        }
     }
 };
 
@@ -91,17 +123,26 @@ static const PCNODE_DESCRIPTOR WaveNodes[] = {
         NULL,
         (GUID*)&KSNODETYPE_ADC,
         NULL
+    },
+    {
+        0,
+        NULL,
+        (GUID*)&KSNODETYPE_DAC,
+        NULL
     }
 };
 
 static const PCCONNECTION_DESCRIPTOR WaveConnections[] = {
     { PCFILTER_NODE, 1, 0, 1 },
-    { 0, 0, PCFILTER_NODE, 0 }
+    { 0, 0, PCFILTER_NODE, 0 },
+    { PCFILTER_NODE, 2, 1, 1 },
+    { 1, 0, PCFILTER_NODE, 3 }
 };
 
 static const GUID WaveCategories[] = {
     STATICGUIDOF(KSCATEGORY_AUDIO),
     STATICGUIDOF(KSCATEGORY_CAPTURE),
+    STATICGUIDOF(KSCATEGORY_RENDER),
     STATICGUIDOF(KSCATEGORY_REALTIME)
 };
 

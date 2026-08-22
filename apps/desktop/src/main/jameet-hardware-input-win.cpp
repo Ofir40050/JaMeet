@@ -3,6 +3,7 @@
 #include <initguid.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <avrt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,6 +76,13 @@ int main(int argc, char* argv[]) {
 
     const char* targetDevice = (argc >= 2) ? argv[1] : "default";
 
+    // Elevate audio engine thread to MMCSS Pro Audio real-time priority
+    DWORD taskIndex = 0;
+    HANDLE hMmcss = AvSetMmThreadCharacteristicsW(L"Pro Audio", &taskIndex);
+    if (!hMmcss) {
+        hMmcss = AvSetMmThreadCharacteristicsW(L"Audio", &taskIndex);
+    }
+
     HRESULT hr = CoInitialize(NULL);
     if (FAILED(hr)) {
         fprintf(stderr, "[HardwareAudioCapture-Win] CoInitialize failed\n");
@@ -125,28 +133,50 @@ int main(int argc, char* argv[]) {
         (pwfx->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
          IsEqualGUID(((WAVEFORMATEXTENSIBLE*)pwfx)->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT));
 
-    fprintf(stderr, "[HardwareAudioCapture-Win] Capturing %d channels @ %d Hz (%d-bit %s)\n",
-        channels, sampleRate, bitsPerSample, isFloat ? "Float" : "PCM");
+    // Query device periodicity for ultra-low latency pro-audio buffer configuration
+    REFERENCE_TIME hnsDefaultPeriod = 100000;
+    REFERENCE_TIME hnsMinPeriod = 50000;
+    pAudioClient->GetDevicePeriod(&hnsDefaultPeriod, &hnsMinPeriod);
 
-    // 20ms buffer duration in 100-nanosecond units (200,000)
-    REFERENCE_TIME hnsBufferDuration = 200000;
+    REFERENCE_TIME hnsBufferDuration = (hnsMinPeriod > 0 && hnsMinPeriod <= 100000) ? hnsMinPeriod * 2 : 100000; // 5-10ms
+
+    fprintf(stderr, "[HardwareAudioCapture-Win] Capturing %d channels @ %d Hz (%d-bit %s, period %.1fms)\n",
+        channels, sampleRate, bitsPerSample, isFloat ? "Float" : "PCM", (double)hnsBufferDuration / 10000.0);
+
+    DWORD streamFlags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
+
     hr = pAudioClient->Initialize(
         AUDCLNT_SHAREMODE_SHARED,
-        0,
+        streamFlags,
         hnsBufferDuration,
         0,
         pwfx,
         NULL
     );
 
-    if (FAILED(hr)) {
-        fprintf(stderr, "[HardwareAudioCapture-Win] IAudioClient::Initialize failed (0x%08X)\n", (unsigned int)hr);
-        CoTaskMemFree(pwfx);
-        pAudioClient->Release();
-        pDevice->Release();
-        pEnumerator->Release();
-        CoUninitialize();
-        return 1;
+    HANDLE hAudioEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+    if (SUCCEEDED(hr)) {
+        pAudioClient->SetEventHandle(hAudioEvent);
+    } else {
+        // Fallback without event callback if specific audio driver doesn't support event mode
+        hr = pAudioClient->Initialize(
+            AUDCLNT_SHAREMODE_SHARED,
+            0,
+            hnsBufferDuration,
+            0,
+            pwfx,
+            NULL
+        );
+        if (FAILED(hr)) {
+            fprintf(stderr, "[HardwareAudioCapture-Win] IAudioClient::Initialize failed (0x%08X)\n", (unsigned int)hr);
+            CoTaskMemFree(pwfx);
+            pAudioClient->Release();
+            pDevice->Release();
+            pEnumerator->Release();
+            CloseHandle(hAudioEvent);
+            CoUninitialize();
+            return 1;
+        }
     }
 
     IAudioCaptureClient* pCaptureClient = NULL;
@@ -157,6 +187,7 @@ int main(int argc, char* argv[]) {
         pAudioClient->Release();
         pDevice->Release();
         pEnumerator->Release();
+        CloseHandle(hAudioEvent);
         CoUninitialize();
         return 1;
     }
@@ -169,6 +200,7 @@ int main(int argc, char* argv[]) {
         pAudioClient->Release();
         pDevice->Release();
         pEnumerator->Release();
+        CloseHandle(hAudioEvent);
         CoUninitialize();
         return 1;
     }
@@ -177,12 +209,17 @@ int main(int argc, char* argv[]) {
     float* floatBuffer = (float*)malloc(maxFrames * channels * sizeof(float));
 
     while (g_running) {
+        if (hAudioEvent) {
+            DWORD waitRes = WaitForSingleObject(hAudioEvent, 20);
+            if (waitRes == WAIT_TIMEOUT && !g_running) break;
+        }
+
         UINT32 packetLength = 0;
         hr = pCaptureClient->GetNextPacketSize(&packetLength);
         if (FAILED(hr)) break;
 
         if (packetLength == 0) {
-            Sleep(3);
+            if (!hAudioEvent) Sleep(2);
             continue;
         }
 
@@ -254,6 +291,8 @@ int main(int argc, char* argv[]) {
     pAudioClient->Release();
     pDevice->Release();
     pEnumerator->Release();
+    if (hAudioEvent) CloseHandle(hAudioEvent);
+    if (hMmcss) AvRevertMmThreadCharacteristics(hMmcss);
     CoUninitialize();
     return 0;
 }

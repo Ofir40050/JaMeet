@@ -47,6 +47,11 @@ const jameetApi = {
     ipcRenderer.on('hardware-audio-stopped', handler);
     return () => ipcRenderer.removeListener('hardware-audio-stopped', handler);
   },
+  onHardwareDevicesChanged: (listener: () => void) => {
+    const handler = () => listener();
+    ipcRenderer.on('hardware-devices-changed', handler);
+    return () => ipcRenderer.removeListener('hardware-devices-changed', handler);
+  },
   auth: {
     getSession: (): Promise<{ token?: string; user?: unknown } | null> => ipcRenderer.invoke('auth:get-session'),
     setSession: (session: { token: string; user: unknown }): Promise<boolean> => ipcRenderer.invoke('auth:set-session', session),

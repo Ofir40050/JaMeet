@@ -58,26 +58,31 @@ if (process.platform === 'darwin') {
   const winBuilds = [
     {
       name: 'set-rate.exe',
-      cmd: `clang++ -O2 "${path.join(rootDir, 'src/main/set-rate-win.cpp')}" -lole32 -lmmdevapi -lavrt -o bin/set-rate.exe`,
-      fallbackCmd: `g++ -O2 "${path.join(rootDir, 'src/main/set-rate-win.cpp')}" -lole32 -lmmdevapi -lavrt -o bin/set-rate.exe`
+      msvcCmd: `cl /nologo /O2 /EHsc /std:c++17 /Fe:"bin/set-rate.exe" "${path.join(rootDir, 'src/main/set-rate-win.cpp')}" ole32.lib mmdevapi.lib avrt.lib ksuser.lib advapi32.lib psapi.lib`,
+      cmd: `clang++ -O2 "${path.join(rootDir, 'src/main/set-rate-win.cpp')}" -lole32 -lmmdevapi -lavrt -lksuser -ladvapi32 -lpsapi -o bin/set-rate.exe`,
+      fallbackCmd: `g++ -O2 "${path.join(rootDir, 'src/main/set-rate-win.cpp')}" -lole32 -lmmdevapi -lavrt -lksuser -ladvapi32 -lpsapi -o bin/set-rate.exe`
     },
     {
       name: 'jameet-hardware-input.exe',
-      cmd: `clang++ -O2 "${path.join(rootDir, 'src/main/jameet-hardware-input-win.cpp')}" -lole32 -lmmdevapi -lavrt -o bin/jameet-hardware-input.exe`,
-      fallbackCmd: `g++ -O2 "${path.join(rootDir, 'src/main/jameet-hardware-input-win.cpp')}" -lole32 -lmmdevapi -lavrt -o bin/jameet-hardware-input.exe`
+      msvcCmd: `cl /nologo /O2 /EHsc /std:c++17 /Fe:"bin/jameet-hardware-input.exe" "${path.join(rootDir, 'src/main/jameet-hardware-input-win.cpp')}" ole32.lib mmdevapi.lib avrt.lib ksuser.lib advapi32.lib psapi.lib`,
+      cmd: `clang++ -O2 "${path.join(rootDir, 'src/main/jameet-hardware-input-win.cpp')}" -lole32 -lmmdevapi -lavrt -lksuser -ladvapi32 -lpsapi -o bin/jameet-hardware-input.exe`,
+      fallbackCmd: `g++ -O2 "${path.join(rootDir, 'src/main/jameet-hardware-input-win.cpp')}" -lole32 -lmmdevapi -lavrt -lksuser -ladvapi32 -lpsapi -o bin/jameet-hardware-input.exe`
     },
     {
       name: 'jameet-app-audio-tap.exe',
-      cmd: `clang++ -O2 "${path.join(rootDir, 'src/main/jameet-app-audio-tap-win.cpp')}" -lole32 -lmmdevapi -lavrt -o bin/jameet-app-audio-tap.exe`,
-      fallbackCmd: `g++ -O2 "${path.join(rootDir, 'src/main/jameet-app-audio-tap-win.cpp')}" -lole32 -lmmdevapi -lavrt -o bin/jameet-app-audio-tap.exe`
+      msvcCmd: `cl /nologo /O2 /EHsc /std:c++17 /Fe:"bin/jameet-app-audio-tap.exe" "${path.join(rootDir, 'src/main/jameet-app-audio-tap-win.cpp')}" ole32.lib mmdevapi.lib avrt.lib ksuser.lib advapi32.lib psapi.lib`,
+      cmd: `clang++ -O2 "${path.join(rootDir, 'src/main/jameet-app-audio-tap-win.cpp')}" -lole32 -lmmdevapi -lavrt -lksuser -ladvapi32 -lpsapi -o bin/jameet-app-audio-tap.exe`,
+      fallbackCmd: `g++ -O2 "${path.join(rootDir, 'src/main/jameet-app-audio-tap-win.cpp')}" -lole32 -lmmdevapi -lavrt -lksuser -ladvapi32 -lpsapi -o bin/jameet-app-audio-tap.exe`
     },
     {
       name: 'jameet-remote-producer.exe',
-      cmd: `clang -O2 -I"${bridgeDir}" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" -lcfgmgr32 -o bin/jameet-remote-producer.exe`,
-      fallbackCmd: `gcc -O2 -I"${bridgeDir}" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" -lcfgmgr32 -o bin/jameet-remote-producer.exe`
+      msvcCmd: `cl /nologo /O2 /I"${bridgeDir}" /Fe:"bin/jameet-remote-producer.exe" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" cfgmgr32.lib advapi32.lib`,
+      cmd: `clang -O2 -I"${bridgeDir}" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" -lcfgmgr32 -ladvapi32 -o bin/jameet-remote-producer.exe`,
+      fallbackCmd: `gcc -O2 -I"${bridgeDir}" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" -lcfgmgr32 -ladvapi32 -o bin/jameet-remote-producer.exe`
     },
     {
       name: 'jameet-device-installer.exe',
+      msvcCmd: `cl /nologo /O2 /I"${driverWinDir}" /Fe:"bin/jameet-device-installer.exe" "${path.join(driverWinDir, 'jameet-device-installer.c')}" setupapi.lib newdev.lib cfgmgr32.lib advapi32.lib`,
       cmd: `clang -O2 -I"${driverWinDir}" "${path.join(driverWinDir, 'jameet-device-installer.c')}" -lsetupapi -lnewdev -lcfgmgr32 -ladvapi32 -o bin/jameet-device-installer.exe`,
       fallbackCmd: `gcc -O2 -I"${driverWinDir}" "${path.join(driverWinDir, 'jameet-device-installer.c')}" -lsetupapi -lnewdev -lcfgmgr32 -ladvapi32 -o bin/jameet-device-installer.exe`
     }
@@ -86,10 +91,21 @@ if (process.platform === 'darwin') {
   for (const build of winBuilds) {
     try {
       console.log(`[build-native] Compiling ${build.name}...`);
-      try {
-        execSync(build.cmd, { cwd: rootDir, stdio: 'inherit' });
-      } catch {
-        execSync(build.fallbackCmd, { cwd: rootDir, stdio: 'inherit' });
+      let compiled = false;
+      if (build.msvcCmd) {
+        try {
+          execSync(build.msvcCmd, { cwd: rootDir, stdio: 'ignore' });
+          compiled = true;
+        } catch { }
+      }
+      if (!compiled) {
+        try {
+          execSync(build.cmd, { cwd: rootDir, stdio: 'inherit' });
+          compiled = true;
+        } catch {
+          execSync(build.fallbackCmd, { cwd: rootDir, stdio: 'inherit' });
+          compiled = true;
+        }
       }
       const dest = path.join(binDir, build.name);
       if (!fs.existsSync(dest)) {

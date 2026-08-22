@@ -6,6 +6,7 @@ import { safeSend } from '../../app/windowUtils';
 let activeAudioTapProcess: any = null;
 let activeHardwareAudioProcess: any = null;
 let activeHardwareDeviceId: string | undefined = undefined;
+let activeDeviceWatcherProcess: any = null;
 
 export function isAudioCaptureActive(): boolean {
   return Boolean(activeAudioTapProcess || activeHardwareAudioProcess);
@@ -26,8 +27,43 @@ export function stopActiveHardwareAudio(): void {
   }
 }
 
+export function startDeviceWatcher(getMainWindow: () => BrowserWindow | null): void {
+  if (activeDeviceWatcherProcess) return;
+  if (process.platform === 'win32') {
+    const { spawn } = require('child_process');
+    const binPath = getNativeBinaryPath('set-rate');
+    try {
+      const child = spawn(binPath, ['watch'], { stdio: ['ignore', 'pipe', 'ignore'] });
+      activeDeviceWatcherProcess = child;
+      let buffer = '';
+      child.stdout.on('data', (chunk: Buffer) => {
+        buffer += chunk.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (line.includes('device-changed')) {
+            const win = getMainWindow();
+            if (win && !win.isDestroyed()) {
+              safeSend(win, 'hardware-devices-changed');
+            }
+          }
+        }
+      });
+      child.on('close', () => {
+        if (activeDeviceWatcherProcess === child) activeDeviceWatcherProcess = null;
+      });
+      child.on('error', () => {
+        if (activeDeviceWatcherProcess === child) activeDeviceWatcherProcess = null;
+      });
+    } catch (e) {
+      console.warn('[DeviceWatcher] Failed to spawn device watcher:', e);
+    }
+  }
+}
+
 export function registerAudioCaptureIpc(context: { getMainWindow: () => BrowserWindow | null }): void {
   const { getMainWindow } = context;
+  startDeviceWatcher(getMainWindow);
 
   ipcMain.handle('open-system-audio-settings', async (event) => {
     if (!isTrustedSender(event)) return;
