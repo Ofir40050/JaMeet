@@ -33,6 +33,17 @@ function authHeaders(token?: string, hasBody = true): HeadersInit {
   return headers;
 }
 
+async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err: unknown) {
+    if (err instanceof TypeError && err.message === 'Failed to fetch') {
+      throw new Error('Unable to connect to the JaMeet server. Please check your network connection.');
+    }
+    throw err;
+  }
+}
+
 async function parseResponse<T>(res: Response, fallbackError: string): Promise<T> {
   const text = await res.text();
   let data: any = null;
@@ -70,19 +81,19 @@ async function parseResponse<T>(res: Response, fallbackError: string): Promise<T
 
 export async function fetchProjects(token: string, includeArchived = false): Promise<Project[]> {
   const url = `${getApiBase()}/api/projects${includeArchived ? '?archived=true' : ''}`;
-  const res = await fetch(url, { headers: authHeaders(token, false) });
+  const res = await apiFetch(url, { headers: authHeaders(token, false) });
   const data = await parseResponse<{ ok: boolean; projects: Project[] }>(res, 'Failed to load projects.');
   return (data.projects || []) as Project[];
 }
 
 export async function fetchProject(token: string, projectId: string): Promise<Project> {
-  const res = await fetch(`${getApiBase()}/api/projects/${projectId}`, { headers: authHeaders(token, false) });
+  const res = await apiFetch(`${getApiBase()}/api/projects/${projectId}`, { headers: authHeaders(token, false) });
   const data = await parseResponse<{ ok: boolean; project: Project }>(res, 'Project not found.');
   return data.project;
 }
 
 export async function createProject(token: string, req: CreateProjectRequest): Promise<Project> {
-  const res = await fetch(`${getApiBase()}/api/projects`, {
+  const res = await apiFetch(`${getApiBase()}/api/projects`, {
     method: 'POST',
     headers: authHeaders(token, true),
     body: JSON.stringify(req)
@@ -92,7 +103,7 @@ export async function createProject(token: string, req: CreateProjectRequest): P
 }
 
 export async function updateProject(token: string, projectId: string, req: UpdateProjectRequest): Promise<Project> {
-  const res = await fetch(`${getApiBase()}/api/projects/${projectId}`, {
+  const res = await apiFetch(`${getApiBase()}/api/projects/${projectId}`, {
     method: 'PATCH',
     headers: authHeaders(token, true),
     body: JSON.stringify(req)
@@ -106,7 +117,7 @@ export async function updateProjectWorkspace(
   projectId: string,
   req: UpdateProjectWorkspaceRequest
 ): Promise<{ project: Project; workspace: ProjectWorkspace }> {
-  const res = await fetch(`${getApiBase()}/api/projects/${projectId}/workspace`, {
+  const res = await apiFetch(`${getApiBase()}/api/projects/${projectId}/workspace`, {
     method: 'PUT',
     headers: authHeaders(token, true),
     body: JSON.stringify(req)
@@ -123,7 +134,7 @@ export async function unarchiveProject(token: string, projectId: string): Promis
 }
 
 export async function deleteProject(token: string, projectId: string): Promise<void> {
-  const res = await fetch(`${getApiBase()}/api/projects/${projectId}`, {
+  const res = await apiFetch(`${getApiBase()}/api/projects/${projectId}`, {
     method: 'DELETE',
     headers: authHeaders(token, false)
   });
@@ -131,7 +142,7 @@ export async function deleteProject(token: string, projectId: string): Promise<v
 }
 
 export async function addCollaborator(token: string, projectId: string, usernameOrEmail: string, role = 'editor'): Promise<Project> {
-  const res = await fetch(`${getApiBase()}/api/projects/${projectId}/collaborators`, {
+  const res = await apiFetch(`${getApiBase()}/api/projects/${projectId}/collaborators`, {
     method: 'POST',
     headers: authHeaders(token, true),
     body: JSON.stringify({ usernameOrEmail, role })
@@ -146,7 +157,7 @@ export async function updateCollaboratorRole(
   userId: string,
   role: string
 ): Promise<Project> {
-  const res = await fetch(`${getApiBase()}/api/projects/${projectId}/collaborators/${userId}`, {
+  const res = await apiFetch(`${getApiBase()}/api/projects/${projectId}/collaborators/${userId}`, {
     method: 'PATCH',
     headers: authHeaders(token, true),
     body: JSON.stringify({ role })
@@ -156,7 +167,7 @@ export async function updateCollaboratorRole(
 }
 
 export async function removeCollaborator(token: string, projectId: string, userId: string): Promise<Project> {
-  const res = await fetch(`${getApiBase()}/api/projects/${projectId}/collaborators/${userId}`, {
+  const res = await apiFetch(`${getApiBase()}/api/projects/${projectId}/collaborators/${userId}`, {
     method: 'DELETE',
     headers: authHeaders(token, false)
   });

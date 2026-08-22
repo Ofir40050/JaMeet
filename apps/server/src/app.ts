@@ -47,9 +47,13 @@ export async function createApp(
   });
   const origins = config.ALLOWED_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean);
   const isOriginAllowed = (origin?: string): boolean => {
-    if (!origin) return true;
+    if (!origin || origin === 'null') return true;
     if (config.NODE_ENV === 'production') {
-      return origins.includes(origin);
+      return (
+        origins.includes(origin) ||
+        origin === 'jameet-app://bundle' ||
+        origin === 'musiczoom-app://bundle'
+      );
     }
     return (
       origins.includes(origin) ||
