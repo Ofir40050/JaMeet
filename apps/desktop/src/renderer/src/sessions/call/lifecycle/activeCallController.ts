@@ -287,7 +287,7 @@ export function createActiveCallController(ctx: ActiveCallContext) {
       getPendingAction: () => ctx.getPendingAction() ?? undefined,
       hasPrimaryAudio: () => ctx.hasPrimaryAudio(),
       isAudioOnly: () => ctx.isAudioOnly(),
-      hasVideoTrack: () => Boolean(ctx.getVideoTrack()),
+      hasVideoTrack: () => Boolean(ctx.getVideoTrack?.()),
       setBusy: (busy) => ctx.setBusy(busy),
       getAuthToken: () => ctx.getAuthToken(),
       getGuestName: () => ctx.getGuestName(),

@@ -8,7 +8,7 @@ export interface SessionEntryControllerOptions {
   getPendingAction: () => PendingAction | undefined;
   hasPrimaryAudio: () => boolean;
   isAudioOnly: () => boolean;
-  hasVideoTrack: () => boolean;
+  hasVideoTrack?: () => boolean;
   setBusy: (busy: boolean) => void;
   getAuthToken: () => string | null | undefined;
   getGuestName: () => string | null | undefined;
@@ -49,8 +49,7 @@ export async function enterSession(options: SessionEntryControllerOptions): Prom
   const pending = options.getPendingAction();
   if (
     !pending ||
-    !options.hasPrimaryAudio() ||
-    (!options.isAudioOnly() && !options.hasVideoTrack())
+    !options.hasPrimaryAudio()
   ) {
     isEnteringSession = false;
     showSessionErrorModal({

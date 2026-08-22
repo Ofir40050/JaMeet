@@ -59,15 +59,18 @@ export class LocalAudioSourceManager {
   }
 
   hasActiveVoiceTrack(): boolean {
-    if (!this.primary?.track || this.primary.track.readyState !== 'live') {
-      return false;
-    }
     for (const mic of this.voiceMics.values()) {
-      if (mic.rawTrack && mic.rawTrack.readyState === 'live') {
+      if (
+        (mic.rawTrack && mic.rawTrack.readyState === 'live') ||
+        (mic.isolatedTrack && mic.isolatedTrack.readyState === 'live')
+      ) {
         return true;
       }
     }
-    return false;
+    if (this.primary?.track && this.primary.track.readyState === 'live') {
+      return true;
+    }
+    return this.hasActiveSources();
   }
 
   private async getOrCreateAudioContext(): Promise<AudioContext> {
