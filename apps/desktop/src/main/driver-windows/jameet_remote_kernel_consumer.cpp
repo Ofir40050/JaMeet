@@ -267,3 +267,93 @@ uint32_t JaMeetKernelConsumer_ReadInt16Frames(
 
     return frameCount;
 }
+
+uint32_t JaMeetKernelProducer_WriteFloatFrames(
+    JaMeetSharedSegment* segment,
+    const float* inFloatPcm,
+    uint32_t frameCount,
+    uint64_t nowMs
+) {
+    if (!segment || !inFloatPcm || frameCount == 0) return 0;
+
+    if (segment->header.magic != JAMEET_SHM_MAGIC ||
+        segment->header.abiVersion != JAMEET_ABI_VERSION) {
+        return 0;
+    }
+
+    uint64_t writeSeq = segment->header.writeSequence;
+    uint32_t framesWritten = 0;
+
+    while (framesWritten < frameCount) {
+        uint32_t slotIdx = (uint32_t)((writeSeq / JAMEET_SLOT_FRAMES) & JAMEET_SLOT_MASK);
+        uint32_t offsetInSlot = (uint32_t)(writeSeq % JAMEET_SLOT_FRAMES);
+        uint32_t spaceInSlot = JAMEET_SLOT_FRAMES - offsetInSlot;
+        uint32_t toCopy = MIN_VAL(frameCount - framesWritten, spaceInSlot);
+
+        JaMeetAudioSlot* slot = &segment->slots[slotIdx];
+
+        // Increment seqlock to odd (write in progress)
+        slot->publishSequence++;
+        #if defined(_WIN32) && defined(__KERNEL__)
+        _ReadWriteBarrier();
+        #elif defined(_WIN32)
+        MemoryBarrier();
+        #else
+        __sync_synchronize();
+        #endif
+
+        slot->producerGeneration = segment->header.producerGeneration;
+        slot->slotStartFrame = writeSeq - offsetInSlot;
+
+        for (uint32_t f = 0; f < toCopy; f++) {
+            slot->samples[(offsetInSlot + f) * JAMEET_CHANNELS + 0] = inFloatPcm[(framesWritten + f) * JAMEET_CHANNELS + 0];
+            slot->samples[(offsetInSlot + f) * JAMEET_CHANNELS + 1] = inFloatPcm[(framesWritten + f) * JAMEET_CHANNELS + 1];
+        }
+
+        slot->validFrames = offsetInSlot + toCopy;
+
+        #if defined(_WIN32) && defined(__KERNEL__)
+        _ReadWriteBarrier();
+        #elif defined(_WIN32)
+        MemoryBarrier();
+        #else
+        __sync_synchronize();
+        #endif
+        // Increment seqlock to even (write complete)
+        slot->publishSequence++;
+
+        writeSeq += toCopy;
+        framesWritten += toCopy;
+    }
+
+    segment->header.writeSequence = writeSeq;
+    segment->header.heartbeatMs = nowMs;
+    segment->header.isVoiceActive = 1;
+    return framesWritten;
+}
+
+uint32_t JaMeetKernelProducer_WriteInt16Frames(
+    JaMeetSharedSegment* segment,
+    const int16_t* inInt16Pcm,
+    uint32_t frameCount,
+    uint64_t nowMs
+) {
+    if (!segment || !inInt16Pcm || frameCount == 0) return 0;
+
+    float tempFloats[480 * 2];
+    uint32_t processed = 0;
+
+    while (processed < frameCount) {
+        uint32_t chunk = frameCount - processed;
+        if (chunk > 480) chunk = 480;
+
+        for (uint32_t i = 0; i < chunk * JAMEET_CHANNELS; i++) {
+            tempFloats[i] = (float)inInt16Pcm[(processed * JAMEET_CHANNELS) + i] / 32768.0f;
+        }
+
+        JaMeetKernelProducer_WriteFloatFrames(segment, tempFloats, chunk, nowMs);
+        processed += chunk;
+    }
+
+    return frameCount;
+}

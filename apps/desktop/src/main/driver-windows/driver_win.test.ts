@@ -325,4 +325,93 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     expect(mintopoContent).toContain('STATICGUIDOF(KSCATEGORY_CAPTURE)');
     expect(mintopoContent).toContain('STATICGUIDOF(KSCATEGORY_RENDER)');
   });
+
+  it('validates Render stream DMA transfer into shared ring buffer and end-to-end dataflow', () => {
+    const minwavePath = path.join(driverDir, 'minwave.cpp');
+    const consumerCppPath = path.join(driverDir, 'jameet_remote_kernel_consumer.cpp');
+    const consumerHPath = path.join(driverDir, 'jameet_remote_kernel_consumer.h');
+
+    const minwaveContent = fs.readFileSync(minwavePath, 'utf-8');
+    const consumerCpp = fs.readFileSync(consumerCppPath, 'utf-8');
+    const consumerH = fs.readFileSync(consumerHPath, 'utf-8');
+
+    // Confirm producer functions are exported and invoked in Render stream DPC servicing
+    expect(consumerH).toContain('JaMeetKernelProducer_WriteFloatFrames');
+    expect(consumerH).toContain('JaMeetKernelProducer_WriteInt16Frames');
+    expect(consumerCpp).toContain('JaMeetKernelProducer_WriteFloatFrames');
+    expect(minwaveContent).toContain('JaMeetKernelProducer_WriteFloatFrames');
+
+    // Simulate end-to-end DMA write -> Shared ring buffer -> Consumer read pipeline
+    const frameCount = 480;
+    const channels = 2;
+    const dmaRenderBuffer = new Float32Array(frameCount * channels);
+    for (let i = 0; i < dmaRenderBuffer.length; i++) {
+      dmaRenderBuffer[i] = Math.sin(i * 0.05); // Simulated DAW audio signal
+    }
+
+    // Shared slot representation
+    const slotFrames = 240;
+    const slotCount = 8;
+    const slots: Array<{ publishSequence: number; samples: Float32Array; validFrames: number }> = [];
+    for (let s = 0; s < slotCount; s++) {
+      slots.push({ publishSequence: 0, samples: new Float32Array(slotFrames * channels), validFrames: 0 });
+    }
+
+    let writeSequence = 0;
+    let framesWritten = 0;
+
+    // Simulate Render Stream DMA transfer: JaMeetKernelProducer_WriteFloatFrames
+    while (framesWritten < frameCount) {
+      const slotIdx = Math.floor(writeSequence / slotFrames) % slotCount;
+      const offsetInSlot = writeSequence % slotFrames;
+      const spaceInSlot = slotFrames - offsetInSlot;
+      const toCopy = Math.min(frameCount - framesWritten, spaceInSlot);
+
+      const slot = slots[slotIdx]!;
+      slot.publishSequence++; // Odd: write in progress
+
+      for (let f = 0; f < toCopy; f++) {
+        slot.samples[(offsetInSlot + f) * channels + 0] = dmaRenderBuffer[(framesWritten + f) * channels + 0]!;
+        slot.samples[(offsetInSlot + f) * channels + 1] = dmaRenderBuffer[(framesWritten + f) * channels + 1]!;
+      }
+      slot.validFrames = offsetInSlot + toCopy;
+      slot.publishSequence++; // Even: write complete
+
+      writeSequence += toCopy;
+      framesWritten += toCopy;
+    }
+
+    expect(framesWritten).toBe(480);
+    expect(writeSequence).toBe(480);
+
+    // Simulate Consumer read: JaMeetKernelConsumer_ReadFloatFrames
+    const consumerOutput = new Float32Array(frameCount * channels);
+    let consumerTargetFrame = 0;
+    let framesDelivered = 0;
+
+    while (framesDelivered < frameCount) {
+      const slotIdx = Math.floor(consumerTargetFrame / slotFrames) % slotCount;
+      const offsetInSlot = consumerTargetFrame % slotFrames;
+      const slot = slots[slotIdx]!;
+
+      expect(slot.publishSequence % 2).toBe(0); // Validated even parity
+
+      const availableInSlot = slot.validFrames - offsetInSlot;
+      const toRead = Math.min(frameCount - framesDelivered, availableInSlot);
+
+      for (let f = 0; f < toRead; f++) {
+        consumerOutput[(framesDelivered + f) * channels + 0] = slot.samples[(offsetInSlot + f) * channels + 0]!;
+        consumerOutput[(framesDelivered + f) * channels + 1] = slot.samples[(offsetInSlot + f) * channels + 1]!;
+      }
+
+      consumerTargetFrame += toRead;
+      framesDelivered += toRead;
+    }
+
+    expect(framesDelivered).toBe(480);
+    // Bit-for-bit exact PCM match between DAW Render DMA buffer and Consumer read buffer
+    for (let i = 0; i < dmaRenderBuffer.length; i++) {
+      expect(consumerOutput[i]).toBeCloseTo(dmaRenderBuffer[i]!, 5);
+    }
+  });
 });

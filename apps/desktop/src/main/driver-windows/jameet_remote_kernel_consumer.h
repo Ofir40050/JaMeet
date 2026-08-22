@@ -55,6 +55,27 @@ uint32_t JaMeetKernelConsumer_ReadInt16Frames(
     uint64_t nowMs
 );
 
+/**
+ * Write Float32 stereo PCM frames from Render stream DMA buffer into
+ * the kernel shared ring buffer segment.
+ */
+uint32_t JaMeetKernelProducer_WriteFloatFrames(
+    JaMeetSharedSegment* segment,
+    const float* inFloatPcm,
+    uint32_t frameCount,
+    uint64_t nowMs
+);
+
+/**
+ * Write Int16 stereo PCM frames into the kernel shared ring buffer segment.
+ */
+uint32_t JaMeetKernelProducer_WriteInt16Frames(
+    JaMeetSharedSegment* segment,
+    const int16_t* inInt16Pcm,
+    uint32_t frameCount,
+    uint64_t nowMs
+);
+
 #ifdef __cplusplus
 }
 #endif

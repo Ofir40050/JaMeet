@@ -1,5 +1,26 @@
 import type { VoiceMicChannel } from './types';
 
+interface ClockRecoveryState {
+  filteredError: number;
+  integralError: number;
+  resampleRatio: number;
+}
+
+const clockRecoveryMap = new WeakMap<VoiceMicChannel, ClockRecoveryState>();
+
+function getClockRecoveryState(mic: VoiceMicChannel): ClockRecoveryState {
+  let state = clockRecoveryMap.get(mic);
+  if (!state) {
+    state = {
+      filteredError: 0,
+      integralError: 0,
+      resampleRatio: 1.0
+    };
+    clockRecoveryMap.set(mic, state);
+  }
+  return state;
+}
+
 export function routeHardwareAudioChunk(
   ctx: AudioContext,
   chunk: Uint8Array,
@@ -19,13 +40,36 @@ export function routeHardwareAudioChunk(
   if (floatSamples.length < frameCount * totalChannels) return;
 
   const now = ctx.currentTime;
+  const TARGET_LEAD_TIME = 0.025; // 25ms optimal jitter window
 
   for (const [, mic] of voiceMics.entries()) {
     const route = mic.preferences.channelRoute || '1';
     const isStereo = mic.preferences.stereo !== false && (route === '1-2' || route === '3-4' || route === '5-6' || route === '7-8');
     const outChannels = isStereo ? 2 : 1;
 
-    const audioBuffer = ctx.createBuffer(outChannels, frameCount, 48000);
+    // 1. Continuous Fractional PLL Clock Recovery
+    const clockState = getClockRecoveryState(mic);
+    if (mic.nextPlayTime === undefined || mic.nextPlayTime < now) {
+      // Re-anchor upon initial startup or hard starvation
+      mic.nextPlayTime = now + TARGET_LEAD_TIME;
+      clockState.filteredError = 0;
+      clockState.integralError = 0;
+      clockState.resampleRatio = 1.0;
+    } else {
+      const currentLead = mic.nextPlayTime - now;
+      const timingError = currentLead - TARGET_LEAD_TIME;
+      // Proportional-Integral low-pass filtering
+      clockState.filteredError = 0.95 * clockState.filteredError + 0.05 * timingError;
+      clockState.integralError = Math.max(-0.05, Math.min(0.05, clockState.integralError + clockState.filteredError * 0.001));
+
+      // Calculate micro-resampling ratio (clamped within ±0.15% to guarantee pitch transparency)
+      const correction = (clockState.filteredError * 0.15) + (clockState.integralError * 0.05);
+      clockState.resampleRatio = Math.max(0.9985, Math.min(1.0015, 1.0 - correction));
+    }
+
+    // 2. Compute Output Frames with Fractional Micro-Resampling
+    const outFrames = Math.max(1, Math.round(frameCount * clockState.resampleRatio));
+    const audioBuffer = ctx.createBuffer(outChannels, outFrames, 48000);
 
     if (isStereo) {
       let leftIdx = 0;
@@ -39,9 +83,20 @@ export function routeHardwareAudioChunk(
 
       const leftData = audioBuffer.getChannelData(0);
       const rightData = audioBuffer.getChannelData(1);
-      for (let f = 0; f < frameCount; f++) {
-        leftData[f] = floatSamples[f * totalChannels + leftIdx]!;
-        rightData[f] = floatSamples[f * totalChannels + rightIdx]!;
+
+      for (let o = 0; o < outFrames; o++) {
+        const srcPos = (o / outFrames) * (frameCount - 1);
+        const i0 = Math.floor(srcPos);
+        const frac = srcPos - i0;
+        const i1 = Math.min(i0 + 1, frameCount - 1);
+
+        const l0 = floatSamples[i0 * totalChannels + leftIdx]!;
+        const l1 = floatSamples[i1 * totalChannels + leftIdx]!;
+        const r0 = floatSamples[i0 * totalChannels + rightIdx]!;
+        const r1 = floatSamples[i1 * totalChannels + rightIdx]!;
+
+        leftData[o] = l0 * (1 - frac) + l1 * frac;
+        rightData[o] = r0 * (1 - frac) + r1 * frac;
       }
     } else if (route === '1-2' || route === '3-4' || route === '5-6' || route === '7-8') {
       let leftIdx = 0;
@@ -54,8 +109,16 @@ export function routeHardwareAudioChunk(
       rightIdx = Math.min(rightIdx, totalChannels - 1);
 
       const monoData = audioBuffer.getChannelData(0);
-      for (let f = 0; f < frameCount; f++) {
-        monoData[f] = 0.5 * (floatSamples[f * totalChannels + leftIdx]! + floatSamples[f * totalChannels + rightIdx]!);
+      for (let o = 0; o < outFrames; o++) {
+        const srcPos = (o / outFrames) * (frameCount - 1);
+        const i0 = Math.floor(srcPos);
+        const frac = srcPos - i0;
+        const i1 = Math.min(i0 + 1, frameCount - 1);
+
+        const m0 = 0.5 * (floatSamples[i0 * totalChannels + leftIdx]! + floatSamples[i0 * totalChannels + rightIdx]!);
+        const m1 = 0.5 * (floatSamples[i1 * totalChannels + leftIdx]! + floatSamples[i1 * totalChannels + rightIdx]!);
+
+        monoData[o] = m0 * (1 - frac) + m1 * frac;
       }
     } else {
       let chIdx = 0;
@@ -75,8 +138,16 @@ export function routeHardwareAudioChunk(
 
       chIdx = Math.min(chIdx, totalChannels - 1);
       const monoData = audioBuffer.getChannelData(0);
-      for (let f = 0; f < frameCount; f++) {
-        monoData[f] = floatSamples[f * totalChannels + chIdx]!;
+      for (let o = 0; o < outFrames; o++) {
+        const srcPos = (o / outFrames) * (frameCount - 1);
+        const i0 = Math.floor(srcPos);
+        const frac = srcPos - i0;
+        const i1 = Math.min(i0 + 1, frameCount - 1);
+
+        const s0 = floatSamples[i0 * totalChannels + chIdx]!;
+        const s1 = floatSamples[i1 * totalChannels + chIdx]!;
+
+        monoData[o] = s0 * (1 - frac) + s1 * frac;
       }
     }
 
@@ -84,21 +155,6 @@ export function routeHardwareAudioChunk(
     sourceNode.buffer = audioBuffer;
     sourceNode.connect(mic.gainNode);
 
-    // Adaptive Phase-Locked Loop (PLL) clock drift tracking:
-    // Maintains a stable 20ms-30ms lead window between hardware stream and Web Audio timeline
-    const TARGET_LEAD_TIME = 0.025;
-    if (mic.nextPlayTime === undefined || mic.nextPlayTime < now) {
-      mic.nextPlayTime = now + TARGET_LEAD_TIME;
-    } else {
-      const currentLead = mic.nextPlayTime - now;
-      if (currentLead > 0.045) {
-        // Hardware stream slightly faster than Web Audio clock: gently trim 1ms lead to prevent latency buildup
-        mic.nextPlayTime -= 0.001;
-      } else if (currentLead < 0.012) {
-        // Hardware stream slightly slower: gently advance by 1ms to prevent starvation underrun
-        mic.nextPlayTime += 0.001;
-      }
-    }
     sourceNode.start(mic.nextPlayTime);
     mic.nextPlayTime += audioBuffer.duration;
   }

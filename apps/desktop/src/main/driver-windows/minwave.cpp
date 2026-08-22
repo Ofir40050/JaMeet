@@ -829,6 +829,23 @@ public:
         if (totalBytesToTransfer > m_ulDmaBufferSize) return;
 
         ULONG currentPos = m_ulPosition;
+
+        /* Transfer rendered PCM frames from DMA cyclic buffer into kernel shared ring buffer */
+        JaMeetSharedSegment* seg = JaMeetDispatch_GetKernelSharedSegment();
+        if (seg) {
+            LARGE_INTEGER tickCount;
+            KeQueryTickCount(&tickCount);
+            ULONGLONG nowMs = (tickCount.QuadPart * KeQueryTimeIncrement()) / 10000;
+
+            if (m_bFloatFormat) {
+                const float* pIn = (const float*)((PUCHAR)m_pDmaBuffer + currentPos);
+                JaMeetKernelProducer_WriteFloatFrames(seg, pIn, framesToProcess, nowMs);
+            } else {
+                const int16_t* pIn = (const int16_t*)((PUCHAR)m_pDmaBuffer + currentPos);
+                JaMeetKernelProducer_WriteInt16Frames(seg, pIn, framesToProcess, nowMs);
+            }
+        }
+
         m_ulPosition = (currentPos + totalBytesToTransfer) % m_ulDmaBufferSize;
         m_ullLinearPosition += framesToProcess;
 
