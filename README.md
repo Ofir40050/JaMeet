@@ -83,7 +83,7 @@ JaMeet supports two TURN relay providers:
      - `TURN_PROVIDER=cloudflare`
      - `CLOUDFLARE_TURN_KEY_ID`: Cloudflare Calls TURN Key ID.
      - `CLOUDFLARE_TURN_API_TOKEN`: Cloudflare API Token with `Calls:Edit` permission.
-     - `TURN_CREDENTIAL_TTL_SECONDS`: Temporary credential lifetime in seconds (default: `3600`, max: `172800`).
+     - `TURN_CREDENTIAL_TTL_SECONDS`: Temporary credential lifetime in seconds (default: `86400`, max: `172800`).
 
 2. **Self-Hosted Coturn (`TURN_PROVIDER=self_hosted`) [Dedicated Host/VM]**:
    - Uses a dedicated Coturn instance with shared HMAC secret credentials.

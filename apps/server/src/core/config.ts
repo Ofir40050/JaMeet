@@ -16,7 +16,7 @@ const schema = z.object({
   TURN_TLS_ENABLED: z.string().default('false').transform((v) => v === 'true'),
   TURN_REALM: z.string().default('jameet.local'),
   TURN_SHARED_SECRET: z.string().min(16).default('development-secret-change-me'),
-  TURN_CREDENTIAL_TTL_SECONDS: z.coerce.number().int().min(60).max(172800).default(3600),
+  TURN_CREDENTIAL_TTL_SECONDS: z.coerce.number().int().min(60).max(172800).default(86400),
   DISCONNECT_GRACE_MS: z.coerce.number().int().min(0).default(30000),
   EMPTY_ROOM_TTL_MS: z.coerce.number().int().min(60000).default(28800000),
   JAMEET_ADMIN_SECRET: z.string().optional()

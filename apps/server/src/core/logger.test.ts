@@ -89,6 +89,20 @@ describe('Server Production Structured Logging & Error Handling', () => {
     expect(entry.message).toContain('credential=[REDACTED]');
   });
 
+  it('redacts CLOUDFLARE_TURN_API_TOKEN and CLOUDFLARE_TURN_KEY_ID in raw log messages', () => {
+    const entry = serverLogger.info(
+      'cloudflare_config_check',
+      'Config check: CLOUDFLARE_TURN_API_TOKEN=v2_secret_token_123456789 and CLOUDFLARE_TURN_KEY_ID=cf_key_abcdef123456 and {"CLOUDFLARE_TURN_API_TOKEN": "secret_in_json"}'
+    );
+
+    expect(entry.message).not.toContain('v2_secret_token_123456789');
+    expect(entry.message).not.toContain('cf_key_abcdef123456');
+    expect(entry.message).not.toContain('secret_in_json');
+    expect(entry.message).toContain('CLOUDFLARE_TURN_API_TOKEN=[REDACTED]');
+    expect(entry.message).toContain('CLOUDFLARE_TURN_KEY_ID=[REDACTED]');
+    expect(entry.message).toContain('"CLOUDFLARE_TURN_API_TOKEN":"[REDACTED]"');
+  });
+
   it('redacts TURN credential in iceServers while preserving username and urls', () => {
     const entry = serverLogger.info('session_ice_created', 'Ice servers created for participant', {
       iceServers: [

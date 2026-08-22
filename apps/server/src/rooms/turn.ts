@@ -98,11 +98,9 @@ export async function generateCloudflareIceServers(
     });
 
     if (!res.ok) {
-      const errorText = await res.text().catch(() => '');
       logger.error('cloudflare_turn_request_failed', 'Cloudflare TURN API returned non-OK status', {
         status: res.status,
-        statusText: res.statusText,
-        errorSnippet: errorText ? errorText.slice(0, 200) : undefined
+        statusText: res.statusText
       });
       return SAFE_DEFAULT_STUN_SERVERS;
     }

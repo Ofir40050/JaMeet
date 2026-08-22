@@ -385,7 +385,8 @@ describe('signaling integration', () => {
       NODE_ENV: 'production',
       DATA_DIR: tmpDataDir,
       ALLOWED_ORIGINS: 'jameet-app://bundle,musiczoom-app://bundle,http://localhost:5173',
-      TURN_SHARED_SECRET: 'a-secure-test-secret-at-least-32-chars!'
+      TURN_SHARED_SECRET: 'a-secure-test-secret-at-least-32-chars!',
+      TURN_HOST: 'turn.example.com'
     }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address() as AddressInfo;
