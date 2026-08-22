@@ -1,22 +1,39 @@
 /* --- DEDICATED SETTINGS & ACCOUNT WORKSPACE VIEW --- */
 #settings-view {
-  overflow-y: auto;
-  overflow-x: hidden;
-  height: 100vh;
-  max-height: 100vh;
-  box-sizing: border-box;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  box-sizing: border-box !important;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-medium) transparent;
+}
+
+#settings-view::-webkit-scrollbar {
+  width: 8px;
+}
+
+#settings-view::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#settings-view::-webkit-scrollbar-thumb {
+  background-color: var(--border-medium);
+  border-radius: 4px;
 }
 
 .settings-view-container {
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 0 0 40px 0;
+  padding: 0 0 60px 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 0;
   min-height: min-content;
+  flex: 1;
 }
 
 .settings-topbar {

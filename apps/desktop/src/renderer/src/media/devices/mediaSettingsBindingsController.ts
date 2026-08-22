@@ -28,104 +28,115 @@ export function initMediaSettingsBindings(options: MediaSettingsBindingsOptions)
 
   // 1. Speaker & Mic Tests
   for (const id of ['speaker-test', 'in-call-speaker-test']) {
-    document.getElementById(id)?.addEventListener('click', () => {
-      void options.onTestSpeakers()
-        .then(() => options.onSetMessage('setup-status', 'Speaker test complete.'))
-        .catch((error) => options.onShowSessionError(error));
+    document.querySelectorAll(`#${id}`).forEach((btn) => {
+      btn.addEventListener('click', () => {
+        void options.onTestSpeakers()
+          .then(() => options.onSetMessage('setup-status', 'Speaker test complete.'))
+          .catch((error) => options.onShowSessionError(error));
+      });
     });
   }
   for (const id of ['microphone-test', 'in-call-microphone-test']) {
-    document.getElementById(id)?.addEventListener('click', () => {
-      void options.onTestMicrophone()
-        .catch((error) => options.onShowSessionError(error));
+    document.querySelectorAll(`#${id}`).forEach((btn) => {
+      btn.addEventListener('click', () => {
+        void options.onTestMicrophone()
+          .catch((error) => options.onShowSessionError(error));
+      });
     });
   }
 
   // 2. Add Voice Mic Buttons
   for (const id of ['add-voice-mic-btn', 'call-add-voice-mic-btn']) {
-    document.getElementById(id)?.addEventListener('click', async () => {
-      const newId = (prefs.voiceInputs.reduce((max, m) => Math.max(max, m.id), 0) || 0) + 1;
-      const channelSuggestion = String(Math.min(32, newId));
-      const newMic: VoiceInputConfig = {
-        id: newId,
-        name: `Microphone ${newId} (Singer / Musician / Room)`,
-        deviceId: prefs.voiceInputs[0]?.deviceId,
-        channelRoute: channelSuggestion,
-        gain: 1.0,
-        enabled: true
-      };
-      prefs.voiceInputs.push(newMic);
-      options.onSavePreferences();
-      try {
-        await options.onSyncAllVoiceMics();
-      } catch (err) {
-        console.warn(`Could not immediately initialize added microphone ${newId}:`, err);
-      }
-      await options.onEnumerateAndPopulate();
-      options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', `Microphone ${newId} added.`);
+    document.querySelectorAll(`#${id}`).forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const newId = (prefs.voiceInputs.reduce((max, m) => Math.max(max, m.id), 0) || 0) + 1;
+        const channelSuggestion = String(Math.min(32, newId));
+        const newMic: VoiceInputConfig = {
+          id: newId,
+          name: `Microphone ${newId} (Singer / Musician / Room)`,
+          deviceId: prefs.voiceInputs[0]?.deviceId,
+          channelRoute: channelSuggestion,
+          gain: 1.0,
+          enabled: true
+        };
+        prefs.voiceInputs.push(newMic);
+        options.onSavePreferences();
+        try {
+          await options.onSyncAllVoiceMics();
+        } catch (err) {
+          console.warn(`Could not immediately initialize added microphone ${newId}:`, err);
+        }
+        await options.onEnumerateAndPopulate();
+        options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', `Microphone ${newId} added.`);
+      });
     });
   }
 
   // 3. Music Source Type Selects
   for (const id of ['music-source-type-select', 'call-music-source-type-select']) {
-    (document.getElementById(id) as HTMLSelectElement | null)?.addEventListener('change', async (event) => {
-      const val = (event.currentTarget as HTMLSelectElement).value as 'app' | 'interface' | 'system' | 'none';
-      prefs.musicSourceType = val;
-      options.onSavePreferences();
-      for (const other of ['music-source-type-select', 'call-music-source-type-select']) {
-        const el = document.getElementById(other) as HTMLSelectElement | null;
-        if (el && el !== event.currentTarget) el.value = val;
-      }
-      const isApp = val === 'app';
-      const isInterface = val === 'interface';
-      const isSystem = val === 'system';
-      document.getElementById('music-app-group')?.classList.toggle('hidden', !isApp);
-      document.getElementById('call-music-app-group')?.classList.toggle('hidden', !isApp);
-      document.getElementById('music-interface-group')?.classList.toggle('hidden', !isInterface);
-      document.getElementById('call-music-interface-group')?.classList.toggle('hidden', !isInterface);
-      document.getElementById('music-system-group')?.classList.toggle('hidden', !isSystem);
-      document.getElementById('call-music-system-group')?.classList.toggle('hidden', !isSystem);
+    document.querySelectorAll<HTMLSelectElement>(`#${id}`).forEach((sel) => {
+      sel.addEventListener('change', async (event) => {
+        const val = (event.currentTarget as HTMLSelectElement).value as 'app' | 'interface' | 'system' | 'none';
+        prefs.musicSourceType = val;
+        options.onSavePreferences();
+        for (const other of ['music-source-type-select', 'call-music-source-type-select']) {
+          document.querySelectorAll<HTMLSelectElement>(`#${other}`).forEach((el) => {
+            if (el !== event.currentTarget) el.value = val;
+          });
+        }
+        const isApp = val === 'app';
+        const isInterface = val === 'interface';
+        const isSystem = val === 'system';
+        document.querySelectorAll('#music-app-group, #call-music-app-group').forEach((el) => el.classList.toggle('hidden', !isApp));
+        document.querySelectorAll('#music-interface-group, #call-music-interface-group').forEach((el) => el.classList.toggle('hidden', !isInterface));
+        document.querySelectorAll('#music-system-group, #call-music-system-group').forEach((el) => el.classList.toggle('hidden', !isSystem));
 
-      try {
-        await options.onReplaceMusicInput();
-        options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', `Music Source: ${val === 'app' ? 'Application Audio' : val === 'interface' ? 'Audio Interface Output' : val === 'system' ? 'Computer Audio' : 'Disabled'}`);
-      } catch (error) {
-        options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', deviceError(error), true);
-      }
+        try {
+          await options.onReplaceMusicInput();
+          options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', `Music Source: ${val === 'app' ? 'Application Audio' : val === 'interface' ? 'Audio Interface Output' : val === 'system' ? 'Computer Audio' : 'Disabled'}`);
+        } catch (error) {
+          options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', deviceError(error), true);
+        }
+      });
     });
   }
 
   // 4. Music App Selects
   for (const id of ['music-app-select', 'call-music-app-select']) {
-    (document.getElementById(id) as HTMLSelectElement | null)?.addEventListener('change', async (event) => {
-      const pid = Number((event.currentTarget as HTMLSelectElement).value);
-      prefs.musicAppPid = pid;
-      const matched = getCachedRunningApps().find((a) => a.pid === pid);
-      if (matched) prefs.musicAppName = matched.name;
-      options.onSavePreferences();
-      options.onUpdateAppIconBadge(pid);
-      for (const other of ['music-app-select', 'call-music-app-select']) {
-        const el = document.getElementById(other) as HTMLSelectElement | null;
-        if (el && el !== event.currentTarget) el.value = String(pid);
-      }
-      try {
-        await options.onReplaceMusicInput();
-        options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', `Capturing ${prefs.musicAppName || 'App'}`);
-      } catch (error) {
-        options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', deviceError(error), true);
-      }
+    document.querySelectorAll<HTMLSelectElement>(`#${id}`).forEach((sel) => {
+      sel.addEventListener('change', async (event) => {
+        const pid = Number((event.currentTarget as HTMLSelectElement).value);
+        prefs.musicAppPid = pid;
+        const matched = getCachedRunningApps().find((a) => a.pid === pid);
+        if (matched) prefs.musicAppName = matched.name;
+        options.onSavePreferences();
+        options.onUpdateAppIconBadge(pid);
+        for (const other of ['music-app-select', 'call-music-app-select']) {
+          document.querySelectorAll<HTMLSelectElement>(`#${other}`).forEach((el) => {
+            if (el !== event.currentTarget) el.value = String(pid);
+          });
+        }
+        try {
+          await options.onReplaceMusicInput();
+          options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', `Capturing ${prefs.musicAppName || 'App'}`);
+        } catch (error) {
+          options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', deviceError(error), true);
+        }
+      });
     });
   }
 
   // 5. Refresh Apps Buttons
   for (const id of ['refresh-apps-button', 'call-refresh-apps-button']) {
-    document.getElementById(id)?.addEventListener('click', async () => {
-      try {
-        await options.onRefreshRunningApps();
-        options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', 'Refreshed running audio applications.');
-      } catch (error) {
-        options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', deviceError(error), true);
-      }
+    document.querySelectorAll(`#${id}`).forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        try {
+          await options.onRefreshRunningApps();
+          options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', 'Refreshed running audio applications.');
+        } catch (error) {
+          options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', deviceError(error), true);
+        }
+      });
     });
   }
 

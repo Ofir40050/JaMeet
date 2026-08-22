@@ -321,6 +321,16 @@ export function createRemoteAudioGraphController(ctx: RemoteAudioGraphContext) {
           ctx.onCheckActiveSpeaker();
         });
       }
+
+      // Ensure HTMLAudioElement receives the MediaStream to keep Chromium WebRTC decoder active
+      const voiceEl = $<HTMLAudioElement>('remote-voice-audio');
+      if (voiceEl && voiceTrack) {
+        if (voiceEl.srcObject !== remoteVoiceSourceNode?.mediaStream) {
+          voiceEl.srcObject = new MediaStream([voiceTrack]);
+          voiceEl.volume = 0; // Muted since Web Audio API graph handles output destination
+          voiceEl.play().catch(() => {});
+        }
+      }
     } else {
       ctx.setRemoteVoiceStereo(false);
       stopRemoteVoiceBridge();
@@ -334,6 +344,12 @@ export function createRemoteAudioGraphController(ctx: RemoteAudioGraphContext) {
       }
       ctx.onSetLastRemoteVoiceDb(-60);
       ctx.onCheckActiveSpeaker();
+
+      const voiceEl = $<HTMLAudioElement>('remote-voice-audio');
+      if (voiceEl) {
+        voiceEl.srcObject = null;
+        voiceEl.pause();
+      }
     }
 
     // Reconcile Remote Music & Screen Audio sources
@@ -370,17 +386,12 @@ export function createRemoteAudioGraphController(ctx: RemoteAudioGraphContext) {
         try { entry.sourceNode.disconnect(); } catch {}
       }
       remoteMusicSourceNodes.clear();
-    }
 
-    const voiceEl = $<HTMLAudioElement>('remote-voice-audio');
-    const musicEl = $<HTMLAudioElement>('remote-music-audio');
-    if (voiceEl) {
-      voiceEl.srcObject = null;
-      voiceEl.pause();
-    }
-    if (musicEl) {
-      musicEl.srcObject = null;
-      musicEl.pause();
+      const musicEl = $<HTMLAudioElement>('remote-music-audio');
+      if (musicEl) {
+        musicEl.srcObject = null;
+        musicEl.pause();
+      }
     }
 
     ctx.onApplyMixerAudioRouting();

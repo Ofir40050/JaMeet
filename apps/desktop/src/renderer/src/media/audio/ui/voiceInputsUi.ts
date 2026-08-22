@@ -107,24 +107,19 @@ export function createVoiceInputsUi(ctx: VoiceInputsUiContext) {
   function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
     const prefs = ctx.getPreferences();
     const cachedHardwareDevices = ctx.getCachedHardwareDevices();
-    const setupMicsList = document.getElementById('voice-mics-list');
-    const inCallMicsList = document.getElementById('call-voice-mics-list');
-    const setupMetersList = document.getElementById('setup-meters-list');
-    const inCallMetersList = document.getElementById('in-call-meters-list');
-    const topbarMicsBar = document.getElementById('call-topbar-mics-bar');
+    const setupMicsLists = Array.from(document.querySelectorAll<HTMLElement>('#voice-mics-list'));
+    const inCallMicsLists = Array.from(document.querySelectorAll<HTMLElement>('#call-voice-mics-list'));
+    const setupMetersLists = Array.from(document.querySelectorAll<HTMLElement>('#setup-meters-list'));
+    const inCallMetersLists = Array.from(document.querySelectorAll<HTMLElement>('#in-call-meters-list'));
+    const topbarMicsBars = Array.from(document.querySelectorAll<HTMLElement>('#call-topbar-mics-bar'));
 
-    if (setupMicsList) setupMicsList.replaceChildren();
-    if (inCallMicsList) inCallMicsList.replaceChildren();
-    if (setupMetersList) setupMetersList.replaceChildren();
-    if (inCallMetersList) inCallMetersList.replaceChildren();
-    if (topbarMicsBar) topbarMicsBar.replaceChildren();
+    [...setupMicsLists, ...inCallMicsLists, ...setupMetersLists, ...inCallMetersLists, ...topbarMicsBars].forEach((el) => el.replaceChildren());
 
-    const countBadge = document.getElementById('voice-count-badge');
-    const callCountBadge = document.getElementById('call-voice-count-badge');
     const activeCount = prefs.voiceInputs.filter((v) => v.enabled).length;
     const countText = `${activeCount} Active ${activeCount === 1 ? 'Mic' : 'Mics'}`;
-    if (countBadge) countBadge.textContent = countText;
-    if (callCountBadge) callCountBadge.textContent = countText;
+    document.querySelectorAll('#voice-count-badge, #call-voice-count-badge').forEach((badge) => {
+      badge.textContent = countText;
+    });
 
     prefs.voiceInputs.forEach((mic, index) => {
       if (!mic.enabled) return;
@@ -138,9 +133,12 @@ export function createVoiceInputsUi(ctx: VoiceInputsUiContext) {
       const channelOptions = generateInputChannelOptions(totalInChannels, channelNames);
 
       // 1. Setup & In-Call Channel Card
-      for (const container of [setupMicsList, inCallMicsList]) {
-        if (!container) continue;
-        const isCall = container === inCallMicsList;
+      const targetContainers = [
+        ...setupMicsLists.map((c) => ({ container: c, isCall: false })),
+        ...inCallMicsLists.map((c) => ({ container: c, isCall: true }))
+      ];
+
+      for (const { container, isCall } of targetContainers) {
         const card = document.createElement('div');
         card.className = `mic-unit ${isPrimary ? 'primary-mic-unit' : 'secondary-mic-unit'}`;
 
@@ -296,9 +294,12 @@ export function createVoiceInputsUi(ctx: VoiceInputsUiContext) {
       }
 
       // 2. Setup & In-Call Left Column Studio Meter Card
-      for (const metersList of [setupMetersList, inCallMetersList]) {
-        if (!metersList) continue;
-        const prefix = metersList === inCallMetersList ? 'call-' : 'setup-';
+      const targetMetersLists = [
+        ...setupMetersLists.map((m) => ({ list: m, prefix: 'setup-' })),
+        ...inCallMetersLists.map((m) => ({ list: m, prefix: 'call-' }))
+      ];
+
+      for (const { list: metersList, prefix } of targetMetersLists) {
         const studioCard = document.createElement('div');
         studioCard.className = `studio-meter-card ${isPrimary ? '' : 'secondary-meter-card'}`;
         studioCard.innerHTML = `
@@ -326,7 +327,7 @@ export function createVoiceInputsUi(ctx: VoiceInputsUiContext) {
       }
 
       // 3. Topbar Mini Meter Pill
-      if (topbarMicsBar) {
+      for (const topbarMicsBar of topbarMicsBars) {
         const topbarPill = document.createElement('div');
         topbarPill.className = 'topbar-meter-unit';
         topbarPill.innerHTML = `
