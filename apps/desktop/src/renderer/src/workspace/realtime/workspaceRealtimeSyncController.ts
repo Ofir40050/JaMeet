@@ -80,6 +80,33 @@ export function initWorkspaceRealtimeSync(options: WorkspaceRealtimeSyncOptions)
       };
     }
 
+    // 0. Update songs list and active song if present
+    if (Array.isArray(data.workspace.songs)) {
+      activeProject.workspace.songs = data.workspace.songs;
+      if (data.workspace.activeSongId) {
+        activeProject.workspace.activeSongId = data.workspace.activeSongId;
+      }
+    }
+
+    // Ensure activeSong's sub-objects (lyrics, notes, structure) reflect incoming workspace
+    const ws = activeProject.workspace;
+    const activeSong =
+      Array.isArray(ws.songs) && ws.songs.length > 0
+        ? ws.songs.find((s) => s && s.id === (ws.activeSongId || ws.songs[0]?.id)) || ws.songs[0]
+        : undefined;
+
+    if (activeSong) {
+      if (data.workspace.lyrics) {
+        activeSong.lyrics = data.workspace.lyrics;
+      }
+      if (data.workspace.notes) {
+        activeSong.notes = data.workspace.notes;
+      }
+      if (data.workspace.structure) {
+        activeSong.structure = data.workspace.structure;
+      }
+    }
+
     // 1. Sync Lyrics Documents & Active Document
     const hasPendingLyrics =
       options.hasLyricsSaveTimeout() ||
@@ -169,6 +196,15 @@ export function initWorkspaceRealtimeSync(options: WorkspaceRealtimeSyncOptions)
             activeProject.workspace.notes.revision = data.workspace.notes.revision;
           }
         }
+        if (activeSong) {
+          activeSong.notes = {
+            revision: data.workspace.notes?.revision ?? activeSong.notes?.revision ?? 1,
+            content: reconciliation.content,
+            bpm: reconciliation.bpm,
+            key: reconciliation.key,
+            updatedAt: Date.now()
+          };
+        }
 
         const hasLocalRemainingChanges =
           reconciliation.content !== incomingNotesContent ||
@@ -189,6 +225,9 @@ export function initWorkspaceRealtimeSync(options: WorkspaceRealtimeSyncOptions)
       if (data.workspace.notes) {
         if (activeProject.workspace?.notes) {
           activeProject.workspace.notes = data.workspace.notes;
+        }
+        if (activeSong) {
+          activeSong.notes = data.workspace.notes;
         }
         setLastSyncedNotes(incomingNotesContent);
         setLastSyncedNotesBpm(incomingNotesBpm);
@@ -219,6 +258,9 @@ export function initWorkspaceRealtimeSync(options: WorkspaceRealtimeSyncOptions)
 
       if (!activeInputInStructure) {
         activeProject.workspace.structure = data.workspace.structure;
+        if (activeSong) {
+          activeSong.structure = data.workspace.structure;
+        }
         options.onRenderStructureWorkspace();
         options.setStructureStatus('saved');
       }
