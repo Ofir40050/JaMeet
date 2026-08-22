@@ -5,9 +5,12 @@ function createMockTrack(id: string): MediaStreamTrack {
   return {
     id,
     kind: 'audio',
+    readyState: 'live',
     enabled: true,
     contentHint: '',
     stop: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
     getSettings: () => ({ channelCount: 2, sampleRate: 48000 })
   } as unknown as MediaStreamTrack;
 }

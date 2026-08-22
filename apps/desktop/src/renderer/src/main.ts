@@ -1189,6 +1189,7 @@ const {
   getAudio: () => audio,
   getCachedHardwareDevices: () => cachedHardwareDevices,
   onSyncAllVoiceMics: () => syncAllVoiceMics(),
+  onUpdateVoiceInputTransaction: (micId, updates) => updateVoiceInputTransaction(micId, updates),
   onEnumerateAndPopulate: () => enumerateAndPopulate(),
   getStudioMixerChannels: () => studioMixerChannels,
   isStudioMixerOpen: () => studioMixerOpen,
@@ -1202,6 +1203,7 @@ const {
 const {
   syncAllVoiceMics,
   replaceAudioInput,
+  updateVoiceInputTransaction,
   refreshRunningApps,
   replaceMusicInput
 } = createLocalAudioCaptureController({

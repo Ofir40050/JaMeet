@@ -130,6 +130,49 @@ export function createLocalAudioCaptureController(ctx: LocalAudioCaptureContext)
     }
   }
 
+  async function updateVoiceInputTransaction(
+    micId: number,
+    updates: { deviceId?: string; channelRoute?: string; gain?: number },
+    mode = ctx.getPreferences().mode
+  ): Promise<void> {
+    const prefs = ctx.getPreferences();
+    const mic = prefs.voiceInputs.find((m) => m.id === micId);
+    if (!mic) throw new Error(`Microphone ${micId} not found`);
+
+    const prevMicState = { ...mic };
+    const prevAudioInputId = prefs.audioInputId;
+    const prevVoiceChannel = prefs.voiceChannel;
+    const prevInputGain = prefs.inputGain;
+
+    if (updates.deviceId !== undefined) {
+      mic.deviceId = updates.deviceId;
+      if (micId === 1) prefs.audioInputId = updates.deviceId;
+    }
+    if (updates.channelRoute !== undefined) {
+      mic.channelRoute = updates.channelRoute;
+      if (micId === 1) prefs.voiceChannel = updates.channelRoute;
+    }
+    if (updates.gain !== undefined) {
+      mic.gain = updates.gain;
+      if (micId === 1) prefs.inputGain = updates.gain;
+    }
+
+    try {
+      await syncAllVoiceMics(mode);
+      ctx.onSavePreferences();
+    } catch (err) {
+      console.warn(`Failed to update microphone ${micId} preferences:`, err);
+      Object.assign(mic, prevMicState);
+      if (micId === 1) {
+        prefs.audioInputId = prevAudioInputId;
+        prefs.voiceChannel = prevVoiceChannel;
+        prefs.inputGain = prevInputGain;
+      }
+      ctx.onSavePreferences();
+      throw err;
+    }
+  }
+
   async function refreshRunningApps(): Promise<void> {
     const apps = await fetchRunningAudioApps();
     const prefs = ctx.getPreferences();
@@ -171,7 +214,12 @@ export function createLocalAudioCaptureController(ctx: LocalAudioCaptureContext)
           await audio.remove('music');
           for (const statusId of ['music-app-status', 'call-music-app-status']) {
             const el = document.getElementById(statusId);
-            if (el) el.textContent = `Waiting for application audio output`;
+            if (el) {
+              const isUnsupported = err instanceof Error && (err.message.includes('not supported') || err.message.includes('not available'));
+              el.textContent = isUnsupported
+                ? 'DAW App capture unavailable on this platform (Use physical input)'
+                : 'Waiting for application audio output';
+            }
           }
         }
       } else {
@@ -237,6 +285,7 @@ export function createLocalAudioCaptureController(ctx: LocalAudioCaptureContext)
   return {
     syncAllVoiceMics,
     replaceAudioInput,
+    updateVoiceInputTransaction,
     refreshRunningApps,
     replaceMusicInput
   };

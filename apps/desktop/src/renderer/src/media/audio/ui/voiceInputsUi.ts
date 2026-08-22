@@ -121,21 +121,21 @@ export function createVoiceInputsUi(ctx: VoiceInputsUiContext) {
     if (countBadge) countBadge.textContent = countText;
     if (callCountBadge) callCountBadge.textContent = countText;
 
-    const cachedHardwareDevices = ctx.getCachedHardwareDevices();
-
-    prefs.voiceInputs.forEach((mic) => {
-      const isPrimary = mic.id === 1;
-      const badgeClass = isPrimary ? '' : mic.id === 2 ? 'secondary' : mic.id === 3 ? 'guest' : 'room';
-      const shortTitle = isPrimary ? 'Microphone 1 (Lead)' : mic.id === 2 ? 'Microphone 2 (Singer / Co-Host)' : mic.id === 3 ? 'Microphone 3 (Guest)' : `Microphone ${mic.id} (Room)`;
+    prefs.voiceInputs.forEach((mic, index) => {
+      if (!mic.enabled) return;
+      const isPrimary = mic.id === 1 || index === 0;
+      const shortTitle = isPrimary ? 'Primary (Lead)' : `Input ${mic.id}`;
+      const badgeClass = isPrimary ? 'primary-pill' : 'secondary-pill';
 
       const hw = findHardwareDevice(mic.deviceId, audioInputs, cachedHardwareDevices);
-      const channels = hw?.inputChannels ?? 2;
-      const channelOptions = generateInputChannelOptions(channels, hw?.inputChannelNames);
+      const totalInChannels = hw?.inputChannels ?? 1;
+      const channelNames = hw?.inputChannelNames;
+      const channelOptions = generateInputChannelOptions(totalInChannels, channelNames);
 
-      // 1. Setup & In-call Dialog Unit Cards
-      for (const container of [voiceMicsList, callVoiceMicsList]) {
+      // 1. Setup & In-Call Channel Card
+      for (const container of [setupMicsList, inCallMicsList]) {
         if (!container) continue;
-        const isCall = container === callVoiceMicsList;
+        const isCall = container === inCallMicsList;
         const card = document.createElement('div');
         card.className = `mic-unit ${isPrimary ? 'primary-mic-unit' : 'secondary-mic-unit'}`;
 
@@ -168,26 +168,24 @@ export function createVoiceInputsUi(ctx: VoiceInputsUiContext) {
 
         devSelect.addEventListener('change', async () => {
           const prevDeviceId = mic.deviceId;
-          const prevAudioInputId = prefs.audioInputId;
           const targetDeviceId = devSelect.value || undefined;
 
-          mic.deviceId = targetDeviceId;
-          if (isPrimary) prefs.audioInputId = targetDeviceId;
-
           try {
-            await ctx.onSyncAllVoiceMics();
-            ctx.onSavePreferences();
+            if (ctx.onUpdateVoiceInputTransaction) {
+              await ctx.onUpdateVoiceInputTransaction(mic.id, { deviceId: targetDeviceId });
+            } else {
+              mic.deviceId = targetDeviceId;
+              if (isPrimary) prefs.audioInputId = targetDeviceId;
+              await ctx.onSyncAllVoiceMics();
+              ctx.onSavePreferences();
+            }
             await ctx.onEnumerateAndPopulate();
           } catch (err) {
             console.warn(`Failed to switch microphone ${mic.id} to ${targetDeviceId}:`, err);
-            mic.deviceId = prevDeviceId;
-            if (isPrimary) prefs.audioInputId = prevAudioInputId;
-            ctx.onSavePreferences();
             if (prevDeviceId && audioInputs.some((d) => d.deviceId === prevDeviceId)) {
               devSelect.value = prevDeviceId;
             }
             ctx.onSetMessage(ctx.isInCall() ? 'device-dialog-status' : 'setup-status', `Could not connect microphone: ${err instanceof Error ? err.message : 'Device unavailable'}`);
-            await ctx.onSyncAllVoiceMics().catch(() => {});
             await ctx.onEnumerateAndPopulate().catch(() => {});
           }
         });
@@ -206,26 +204,24 @@ export function createVoiceInputsUi(ctx: VoiceInputsUiContext) {
 
         chSelect.addEventListener('change', async () => {
           const prevRoute = mic.channelRoute;
-          const prevVoiceChannel = prefs.voiceChannel;
           const targetRoute = chSelect.value;
 
-          mic.channelRoute = targetRoute;
-          if (isPrimary) prefs.voiceChannel = targetRoute;
-
           try {
-            await ctx.onSyncAllVoiceMics();
-            ctx.onSavePreferences();
+            if (ctx.onUpdateVoiceInputTransaction) {
+              await ctx.onUpdateVoiceInputTransaction(mic.id, { channelRoute: targetRoute });
+            } else {
+              mic.channelRoute = targetRoute;
+              if (isPrimary) prefs.voiceChannel = targetRoute;
+              await ctx.onSyncAllVoiceMics();
+              ctx.onSavePreferences();
+            }
             await ctx.onEnumerateAndPopulate();
           } catch (err) {
             console.warn(`Failed to switch channel for microphone ${mic.id}:`, err);
-            mic.channelRoute = prevRoute;
-            if (isPrimary) prefs.voiceChannel = prevVoiceChannel;
-            ctx.onSavePreferences();
             if (prevRoute && channelOptions.some((opt) => opt.value === prevRoute)) {
               chSelect.value = prevRoute;
             }
             ctx.onSetMessage(ctx.isInCall() ? 'device-dialog-status' : 'setup-status', `Could not route microphone channel.`);
-            await ctx.onSyncAllVoiceMics().catch(() => {});
             await ctx.onEnumerateAndPopulate().catch(() => {});
           }
         });
