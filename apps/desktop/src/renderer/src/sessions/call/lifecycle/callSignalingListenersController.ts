@@ -96,6 +96,12 @@ export function initCallSignalingListenersController(ctx: CallSignalingListeners
     }
   });
 
+  ctx.signaling.onInternal('session:resumeFailed', (payload?: { code?: string; reason?: string }) => {
+    if (ctx.isInCall()) {
+      void ctx.onLeaveSession(`Session reconnection failed: ${payload?.reason || 'The session is no longer active.'}`);
+    }
+  });
+
   $('btn-leave-waiting')?.addEventListener('click', async () => {
     ctx.signaling.leave();
     ctx.setIsInCall(false);

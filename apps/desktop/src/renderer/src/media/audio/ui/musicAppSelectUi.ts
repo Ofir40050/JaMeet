@@ -32,7 +32,11 @@ export function populateMusicAppSelectOptions(
     select.replaceChildren();
 
     if (!runningApps.length) {
-      select.add(new Option('No running audio apps found', ''));
+      const isWin = typeof window !== 'undefined' && ((window as any).jameet || (window as any).musiczoom)?.platform === 'win32';
+      const label = isWin
+        ? 'Direct DAW tap coming in Windows update (Use Virtual Cable)'
+        : 'No running audio apps found';
+      select.add(new Option(label, ''));
       continue;
     }
 

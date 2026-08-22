@@ -51,82 +51,130 @@ export function createScreenSharingController(ctx: ScreenSharingContext) {
     const targetRes = isMotion ? { width: 1280, height: 720 } : { width: 1920, height: 1080 };
 
     let next: MediaStreamTrack | undefined;
+    let displayAudio: MediaStreamTrack | undefined;
+    let audioExternalAdded = false;
+    let rtcVideoReplaced = false;
+    let uiActivated = false;
+
     const desktopApi = typeof window !== 'undefined' ? ((window as any).jameet || (window as any).musiczoom) : undefined;
 
-    // 1. For entire display sharing on macOS, use native ScreenCaptureKit capture with SCContentFilter app exclusion
-    if (sourceId.startsWith('screen:') && desktopApi?.platform === 'darwin') {
-      try {
-        const displayIndex = parseInt(sourceId.split(':')[1] ?? '0', 10) || 0;
-        next = await presenter.createScreenCaptureTrack(displayIndex, { fps, width: targetRes.width, height: targetRes.height });
-      } catch (err) {
-        console.warn('Native ScreenCaptureKit failed, falling back to standard getDisplayMedia:', err);
+    try {
+      // 1. For entire display sharing on macOS, use native ScreenCaptureKit capture with SCContentFilter app exclusion
+      if (sourceId.startsWith('screen:') && desktopApi?.platform === 'darwin') {
+        try {
+          const displayIndex = parseInt(sourceId.split(':')[1] ?? '0', 10) || 0;
+          next = await presenter.createScreenCaptureTrack(displayIndex, { fps, width: targetRes.width, height: targetRes.height });
+        } catch (err) {
+          console.warn('Native ScreenCaptureKit failed, falling back to standard getDisplayMedia:', err);
+        }
       }
-    }
 
-    // 2. Standard getDisplayMedia fallback or window sharing
-    if (!next) {
-      const selected = desktopApi?.selectDisplaySource ? desktopApi.selectDisplaySource(sourceId) : true;
-      if (!selected) throw new Error('The selected screen could not be authorized.');
-      
-      const fpsConstraint = isMotion ? { ideal: 30, max: 30 } : { ideal: 15, max: 15 };
-      const resConstraint = isMotion ? { width: { ideal: 1280 }, height: { ideal: 720 } } : { width: { ideal: 1920 }, height: { ideal: 1080 } };
+      // 2. Standard getDisplayMedia fallback or window sharing
+      if (!next) {
+        const selected = desktopApi?.selectDisplaySource ? desktopApi.selectDisplaySource(sourceId) : true;
+        if (!selected) throw new Error('The selected screen could not be authorized.');
+        
+        const fpsConstraint = isMotion ? { ideal: 30, max: 30 } : { ideal: 15, max: 15 };
+        const resConstraint = isMotion ? { width: { ideal: 1280 }, height: { ideal: 720 } } : { width: { ideal: 1920 }, height: { ideal: 1080 } };
 
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { ...resConstraint, frameRate: fpsConstraint },
-          audio: true
-        });
-      } catch {
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { ...resConstraint, frameRate: fpsConstraint },
-          audio: false
-        });
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { ...resConstraint, frameRate: fpsConstraint },
+            audio: true
+          });
+        } catch {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { ...resConstraint, frameRate: fpsConstraint },
+            audio: false
+          });
+        }
+        next = stream.getVideoTracks()[0];
+        if (!next) throw new Error('Screen sharing did not provide a video track.');
+        displayAudio = stream.getAudioTracks()[0];
+        if (displayAudio) {
+          await ctx.onAddAudioExternal('screen-audio', 'music', displayAudio);
+          await ctx.onRtcAudioSourceChanged('screen-audio');
+          audioExternalAdded = true;
+        }
       }
-      next = stream.getVideoTracks()[0];
-      if (!next) throw new Error('Screen sharing did not provide a video track.');
-      const displayAudio = stream.getAudioTracks()[0];
+
+      next.contentHint = isMotion ? 'motion' : 'detail';
+      await ctx.onReplaceRtcVideoTrack(next);
+      rtcVideoReplaced = true;
+
+      ctx.setScreenTrack(next);
+      ctx.onSetRtcVideoTrack(next);
+      next.onended = () => void stopScreenShare();
+      setScreenSharingUi(true);
+      uiActivated = true;
+      ctx.onUpdateLocalPreviews();
+      ctx.onSetCallStatus(`Sharing: ${ctx.getCurrentSharingSourceTitle() || 'Screen'}`);
+      ctx.onSignalingUpdateMedia(ctx.getCurrentCode(), ctx.getMetadata());
+
+      // 3. Automatically transition into Presenter Mode
+      presenter.setRemoteVideoElement($<HTMLVideoElement>('remote-video'));
+      presenter.setLocalVideoElement($<HTMLVideoElement>('local-video'));
+      presenter.setParticipantInfo(
+        'Musician',
+        ctx.getUserName() || 'You',
+        ctx.getLastRemoteVoiceDb(),
+        ctx.getLastLocalVoiceDb()
+      );
+      $('session-presenter-banner')?.classList.add('hidden');
+      const prefs = ctx.getPreferences();
+      await presenter.enterPresenterMode({
+        micMuted: ctx.isMuted(),
+        camEnabled: ctx.isCameraEnabled(),
+        mode: prefs.mode,
+        paused: false,
+        pipVisible: true
+      });
+    } catch (error) {
+      // Resilient rollback: each cleanup step is protected independently
       if (displayAudio) {
-        await ctx.onAddAudioExternal('screen-audio', 'music', displayAudio);
-        await ctx.onRtcAudioSourceChanged('screen-audio');
+        try { displayAudio.stop(); } catch {}
       }
-    }
+      if (audioExternalAdded) {
+        try { await ctx.onRemoveAudioExternal('screen-audio'); } catch (e) { console.warn('Rollback remove audio external error:', e); }
+        try { await ctx.onRtcAudioSourceChanged('screen-audio'); } catch (e) { console.warn('Rollback rtc audio source error:', e); }
+      }
+      if (next) {
+        next.onended = null;
+        try { next.stop(); } catch {}
+      }
+      ctx.setScreenTrack(undefined);
 
-    next.contentHint = isMotion ? 'motion' : 'detail';
-    try { await ctx.onReplaceRtcVideoTrack(next); }
-    catch (error) {
-      next.stop();
-      await presenter.stopNativeCapture();
-      await presenter.exitPresenterMode();
+      if (rtcVideoReplaced) {
+        try {
+          if (ctx.isCameraEnabled() && ctx.getVideoTrack()) {
+            const videoTrack = ctx.getVideoTrack()!;
+            await ctx.onReplaceRtcVideoTrack(videoTrack);
+            ctx.onSetRtcVideoTrack(videoTrack);
+          } else {
+            await ctx.onRemoveRtcVideoTrack();
+            ctx.onSetRtcVideoTrack(undefined);
+          }
+        } catch (e) {
+          console.warn('Rollback rtc video error:', e);
+          try { await ctx.onRemoveRtcVideoTrack(); } catch {}
+          ctx.onSetRtcVideoTrack(undefined);
+        }
+      }
+
+      try { await presenter.stopNativeCapture(); } catch (e) { console.warn('Rollback stopNativeCapture error:', e); }
+      try { await presenter.exitPresenterMode(); } catch (e) { console.warn('Rollback exitPresenterMode error:', e); }
+      $('session-presenter-banner')?.classList.add('hidden');
+
+      ctx.setCurrentSharingSourceTitle('');
+      if (uiActivated) {
+        setScreenSharingUi(false);
+        ctx.onUpdateLocalPreviews();
+      }
+      try { ctx.onSignalingUpdateMedia(ctx.getCurrentCode(), ctx.getMetadata()); } catch {}
+
       throw error;
     }
-    ctx.setScreenTrack(next);
-    // NOTE: Keep videoTrack running so local camera remains visible in the camera strip!
-    ctx.onSetRtcVideoTrack(next);
-    next.onended = () => void stopScreenShare();
-    setScreenSharingUi(true);
-    ctx.onUpdateLocalPreviews();
-    ctx.onSetCallStatus(`Sharing: ${ctx.getCurrentSharingSourceTitle() || 'Screen'}`);
-    ctx.onSignalingUpdateMedia(ctx.getCurrentCode(), ctx.getMetadata());
-
-    // 3. Automatically transition into Presenter Mode
-    presenter.setRemoteVideoElement($<HTMLVideoElement>('remote-video'));
-    presenter.setLocalVideoElement($<HTMLVideoElement>('local-video'));
-    presenter.setParticipantInfo(
-      'Musician',
-      ctx.getUserName() || 'You',
-      ctx.getLastRemoteVoiceDb(),
-      ctx.getLastLocalVoiceDb()
-    );
-    $('session-presenter-banner')?.classList.add('hidden');
-    const prefs = ctx.getPreferences();
-    await presenter.enterPresenterMode({
-      micMuted: ctx.isMuted(),
-      camEnabled: ctx.isCameraEnabled(),
-      mode: prefs.mode,
-      paused: false,
-      pipVisible: true
-    });
   }
 
   async function stopScreenShare(): Promise<void> {
@@ -150,19 +198,19 @@ export function createScreenSharingController(ctx: ScreenSharingContext) {
         ctx.onSetRtcVideoTrack(undefined);
       }
     } catch (error) {
-      await ctx.onRemoveRtcVideoTrack();
+      try { await ctx.onRemoveRtcVideoTrack(); } catch {}
       ctx.onSetCallStatus(`Screen sharing stopped. ${deviceError(error)}`);
     } finally {
-      await ctx.onRemoveAudioExternal('screen-audio');
-      await ctx.onRtcAudioSourceChanged('screen-audio');
+      try { await ctx.onRemoveAudioExternal('screen-audio'); } catch {}
+      try { await ctx.onRtcAudioSourceChanged('screen-audio'); } catch {}
       ctx.setScreenTrack(undefined);
-      previous.stop();
-      await presenter.stopNativeCapture();
-      await presenter.exitPresenterMode();
+      try { previous.stop(); } catch {}
+      try { await presenter.stopNativeCapture(); } catch {}
+      try { await presenter.exitPresenterMode(); } catch {}
       $('session-presenter-banner')?.classList.add('hidden');
       setScreenSharingUi(false);
       ctx.onUpdateLocalPreviews();
-      ctx.onSignalingUpdateMedia(ctx.getCurrentCode(), ctx.getMetadata());
+      try { ctx.onSignalingUpdateMedia(ctx.getCurrentCode(), ctx.getMetadata()); } catch {}
     }
   }
 

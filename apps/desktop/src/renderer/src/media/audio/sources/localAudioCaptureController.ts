@@ -84,6 +84,10 @@ export function createLocalAudioCaptureController(ctx: LocalAudioCaptureContext)
       } catch (error) {
         logger.warn('audio_init_failure', `Failed to acquire microphone ${mic.id}`, { micId: mic.id, deviceId: mic.deviceId, sampleRate: prefs.sampleRate }, error);
         console.warn(`Failed to acquire microphone ${mic.id}:`, error);
+        const m = voiceMeters.get(mic.id);
+        if (m) await m.stop();
+        activeMicLevels.delete(mic.id);
+        activeMicPeaks.delete(mic.id);
       }
     }
 

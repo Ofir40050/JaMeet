@@ -1379,7 +1379,7 @@ const {
   clearPendingPeerMedia: () => { pendingPeerMedia = undefined; },
   onPeerReady: (media) => rtc.peerReady(media),
   getPendingAction: () => pending || null,
-  hasPrimaryAudio: () => Boolean(audio.primary),
+  hasPrimaryAudio: () => audio.hasActiveVoiceTrack(),
   isAudioOnly: () => audioOnly,
   setBusy: (busy) => setBusy(busy),
   onSignalingCreate: (pId, meta, token, guestName, projId, waitingRoom) =>

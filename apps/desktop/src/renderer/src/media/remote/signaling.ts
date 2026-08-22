@@ -8,6 +8,7 @@ export class SignalingClient {
   private socket: Socket;
   private resume?: { code: string; participantId: string; media: MediaMetadata; authToken?: string; guestDisplayName?: string; reconnectToken?: string };
   private activeProjectWorkspace?: { projectId: string; authToken?: string };
+  private internalListeners = new Map<string, Set<Listener>>();
 
   constructor(url: string) {
     this.socket = io(url, { autoConnect: false, reconnection: true, reconnectionDelayMax: 4000 });
@@ -23,10 +24,20 @@ export class SignalingClient {
               this.resume.reconnectToken = res.reconnectToken;
             }
           } else {
-            logger.warn('session_auto_reconnect_failure', 'Auto-reconnect failed', { code: this.resume?.code, reason: res?.message }, { sessionCode: this.resume?.code });
+            const failedCode = this.resume?.code;
+            const reason = res?.message || 'Session resume rejected by server';
+            logger.warn('session_auto_reconnect_failure', 'Auto-reconnect failed', { code: failedCode, reason }, { sessionCode: failedCode });
+            // Clear resume FIRST before notifying the application
+            this.resume = undefined;
+            this.emitInternal('session:resumeFailed', { code: failedCode, reason });
           }
         }).catch((err) => {
-          logger.warn('session_auto_reconnect_error', 'Auto-reconnect error', { code: this.resume?.code }, err, { sessionCode: this.resume?.code });
+          const failedCode = this.resume?.code;
+          const reason = err?.message || 'Auto-reconnect error';
+          logger.warn('session_auto_reconnect_error', 'Auto-reconnect error', { code: failedCode }, err, { sessionCode: failedCode });
+          // Clear resume FIRST before notifying the application
+          this.resume = undefined;
+          this.emitInternal('session:resumeFailed', { code: failedCode, reason });
         });
       }
       if (this.activeProjectWorkspace) {
@@ -71,6 +82,30 @@ export class SignalingClient {
   on(event: string, listener: Listener): () => void {
     this.socket.on(event, listener);
     return () => this.socket.off(event, listener);
+  }
+
+  onInternal(event: string, listener: Listener): () => void {
+    let set = this.internalListeners.get(event);
+    if (!set) {
+      set = new Set();
+      this.internalListeners.set(event, set);
+    }
+    set.add(listener);
+    return () => {
+      set?.delete(listener);
+    };
+  }
+
+  private emitInternal(event: string, ...args: any[]): void {
+    const set = this.internalListeners.get(event);
+    if (!set) return;
+    for (const listener of Array.from(set)) {
+      try {
+        listener(...args);
+      } catch (e) {
+        logger.warn('internal_event_listener_error', `Error in internal listener for ${event}`, undefined, e as Error);
+      }
+    }
   }
 
   private async connect(): Promise<void> {
@@ -194,12 +229,20 @@ export class SignalingClient {
   }
 
   async joinProjectWorkspace(projectId: string, authToken?: string): Promise<{ ok: boolean; workspace?: any; message?: string }> {
-    this.activeProjectWorkspace = { projectId, authToken };
+    if (this.activeProjectWorkspace && this.activeProjectWorkspace.projectId !== projectId) {
+      this.leaveProjectWorkspace(this.activeProjectWorkspace.projectId);
+    }
     await this.connect();
     return new Promise((resolve) => {
       this.socket.timeout(5_000).emit('project:workspace:join', { projectId, authToken }, (err: Error | null, res: any) => {
-        if (err || !res) resolve({ ok: false, message: err?.message || 'Timeout joining workspace' });
-        else resolve(res);
+        if (err || !res) {
+          resolve({ ok: false, message: err?.message || 'Timeout joining workspace' });
+        } else {
+          if (res.ok) {
+            this.activeProjectWorkspace = { projectId, authToken };
+          }
+          resolve(res);
+        }
       });
     });
   }

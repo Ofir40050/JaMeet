@@ -28,22 +28,16 @@ export async function prepareStudio(
   options: StudioPreparationOptions
 ): Promise<void> {
   options.onSetPendingAction(action);
-  let code = options.getCurrentCode();
   if (action.type === 'join') {
-    code = action.code;
+    const code = action.code;
     options.onSetCurrentCode(code);
-  } else if (!code) {
-    code = (
-      Math.random().toString(36).substring(2, 6) +
-      Math.random().toString(36).substring(2, 6)
-    )
-      .slice(0, 8)
-      .toUpperCase();
-    options.onSetCurrentCode(code);
+    setText('setup-code', code);
+  } else {
+    options.onSetCurrentCode('');
+    setText('setup-code', 'New Studio Session');
   }
 
   options.onShowSetupView();
-  setText('setup-code', code);
   $('setup-waiting-room-group')?.classList.add('hidden');
   setMessage('setup-status', '');
   options.onSetBusy(true);

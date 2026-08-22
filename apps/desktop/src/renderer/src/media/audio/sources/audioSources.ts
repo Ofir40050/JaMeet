@@ -58,6 +58,18 @@ export class LocalAudioSourceManager {
     return false;
   }
 
+  hasActiveVoiceTrack(): boolean {
+    if (!this.primary?.track || this.primary.track.readyState !== 'live') {
+      return false;
+    }
+    for (const mic of this.voiceMics.values()) {
+      if (mic.rawTrack && mic.rawTrack.readyState === 'live') {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private async getOrCreateAudioContext(): Promise<AudioContext> {
     if (!this.audioContext || this.audioContext.state === 'closed') {
       this.audioContext = new AudioContext({ sampleRate: 48000 });
@@ -124,11 +136,14 @@ export class LocalAudioSourceManager {
       this.voiceMics.delete(micIndex);
       this.gainNodes.delete(`voice-${micIndex}`);
     }
-    if (this.voiceMics.size === 0 && this.hardwareAudioCleanup) {
-      this.hardwareAudioCleanup();
-      this.hardwareAudioCleanup = undefined;
-      const api = getDesktopApi();
-      void api?.stopHardwareAudioCapture?.();
+    if (this.voiceMics.size === 0) {
+      this.sources.delete('voice');
+      if (this.hardwareAudioCleanup) {
+        this.hardwareAudioCleanup();
+        this.hardwareAudioCleanup = undefined;
+        const api = getDesktopApi();
+        void api?.stopHardwareAudioCapture?.();
+      }
     }
   }
 
@@ -143,17 +158,7 @@ export class LocalAudioSourceManager {
       this.voiceDestination = ctx.createMediaStreamDestination();
     }
 
-    // Stop previous mic if existing
     const prevMic = this.voiceMics.get(micIndex);
-    if (prevMic) {
-      cleanupVoiceMicNodes(prevMic);
-    }
-
-    const gainNode = ctx.createGain();
-    const gainVal = preferences.inputGain !== undefined ? preferences.inputGain : 1.0;
-    gainNode.gain.setValueAtTime(gainVal, ctx.currentTime);
-
-    const micDestination = ctx.createMediaStreamDestination();
 
     let stream: MediaStream;
     try {
@@ -166,207 +171,232 @@ export class LocalAudioSourceManager {
       }
     }
     const rawTrack = stream.getAudioTracks()[0];
-    if (!rawTrack) throw new Error(`Microphone ${micIndex} did not provide an audio track.`);
+    if (!rawTrack || rawTrack.readyState !== 'live') {
+      try { rawTrack?.stop(); } catch {}
+      throw new Error(`Microphone ${micIndex} did not provide a live audio track.`);
+    }
     rawTrack.contentHint = mode === 'music' ? 'music' : 'speech';
 
-    const sourceStream = new MediaStream([rawTrack]);
-    const sourceNode = ctx.createMediaStreamSource(sourceStream);
+    let newVoiceMicEntry: VoiceMicChannel | undefined;
+    try {
+      const gainNode = ctx.createGain();
+      const gainVal = preferences.inputGain !== undefined ? preferences.inputGain : 1.0;
+      gainNode.gain.setValueAtTime(gainVal, ctx.currentTime);
 
-    const route = preferences.channelRoute || 'all';
-    const isStereoRoute = preferences.stereo !== false && (route === '1-2' || route === '3-4' || route === '5-6' || route === '7-8' || (route === 'all' && (sourceNode.channelCount >= 2)));
-    const outChannels = isStereoRoute ? 2 : 1;
-    const micMerger = ctx.createChannelMerger(outChannels);
+      const micDestination = ctx.createMediaStreamDestination();
+      const sourceStream = new MediaStream([rawTrack]);
+      const sourceNode = ctx.createMediaStreamSource(sourceStream);
 
-    let downmixGainNode: GainNode | undefined;
-    if (!isStereoRoute && (route === '1-2' || route === '3-4' || route === '5-6' || route === '7-8' || (route === 'all' && sourceNode.channelCount >= 2))) {
-      downmixGainNode = ctx.createGain();
-      downmixGainNode.gain.setValueAtTime(0.5, ctx.currentTime);
-    }
+      const route = preferences.channelRoute || 'all';
+      const isStereoRoute = preferences.stereo !== false && (route === '1-2' || route === '3-4' || route === '5-6' || route === '7-8' || (route === 'all' && (sourceNode.channelCount >= 2)));
+      const outChannels = isStereoRoute ? 2 : 1;
+      const micMerger = ctx.createChannelMerger(outChannels);
 
-    if (route !== 'all') {
-      let splitter: ChannelSplitterNode;
-      try { splitter = ctx.createChannelSplitter(32); }
-      catch { try { splitter = ctx.createChannelSplitter(8); } catch { splitter = ctx.createChannelSplitter(2); } }
-      sourceNode.connect(splitter);
+      let downmixGainNode: GainNode | undefined;
+      if (!isStereoRoute && (route === '1-2' || route === '3-4' || route === '5-6' || route === '7-8' || (route === 'all' && sourceNode.channelCount >= 2))) {
+        downmixGainNode = ctx.createGain();
+        downmixGainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+      }
 
-      if (route === '1-2') {
-        if (outChannels > 1) {
-          splitter.connect(micMerger, 0, 0);
-          splitter.connect(micMerger, 1, 1);
-        } else if (downmixGainNode) {
-          splitter.connect(downmixGainNode, 0);
-          splitter.connect(downmixGainNode, 1);
-          downmixGainNode.connect(micMerger, 0, 0);
+      if (route !== 'all') {
+        let splitter: ChannelSplitterNode;
+        try { splitter = ctx.createChannelSplitter(32); }
+        catch { try { splitter = ctx.createChannelSplitter(8); } catch { splitter = ctx.createChannelSplitter(2); } }
+        sourceNode.connect(splitter);
+
+        if (route === '1-2') {
+          if (outChannels > 1) {
+            splitter.connect(micMerger, 0, 0);
+            splitter.connect(micMerger, 1, 1);
+          } else if (downmixGainNode) {
+            splitter.connect(downmixGainNode, 0);
+            splitter.connect(downmixGainNode, 1);
+            downmixGainNode.connect(micMerger, 0, 0);
+          } else {
+            splitter.connect(micMerger, 0, 0);
+          }
+        } else if (route === '3-4') {
+          if (outChannels > 1) {
+            splitter.connect(micMerger, 2, 0);
+            splitter.connect(micMerger, 3, 1);
+          } else if (downmixGainNode) {
+            splitter.connect(downmixGainNode, 2);
+            splitter.connect(downmixGainNode, 3);
+            downmixGainNode.connect(micMerger, 0, 0);
+          } else {
+            splitter.connect(micMerger, 2, 0);
+          }
+        } else if (route === '5-6') {
+          if (outChannels > 1) {
+            splitter.connect(micMerger, 4, 0);
+            splitter.connect(micMerger, 5, 1);
+          } else if (downmixGainNode) {
+            splitter.connect(downmixGainNode, 4);
+            splitter.connect(downmixGainNode, 5);
+            downmixGainNode.connect(micMerger, 0, 0);
+          } else {
+            splitter.connect(micMerger, 4, 0);
+          }
+        } else if (route === '7-8') {
+          if (outChannels > 1) {
+            splitter.connect(micMerger, 6, 0);
+            splitter.connect(micMerger, 7, 1);
+          } else if (downmixGainNode) {
+            splitter.connect(downmixGainNode, 6);
+            splitter.connect(downmixGainNode, 7);
+            downmixGainNode.connect(micMerger, 0, 0);
+          } else {
+            splitter.connect(micMerger, 6, 0);
+          }
         } else {
-          splitter.connect(micMerger, 0, 0);
+          let chIdx = 0;
+          const parsed = parseInt(route, 10);
+          if (!isNaN(parsed) && parsed >= 1 && parsed <= 32) {
+            chIdx = parsed - 1;
+          }
+          splitter.connect(micMerger, chIdx, 0);
         }
-      } else if (route === '3-4') {
-        if (outChannels > 1) {
-          splitter.connect(micMerger, 2, 0);
-          splitter.connect(micMerger, 3, 1);
-        } else if (downmixGainNode) {
-          splitter.connect(downmixGainNode, 2);
-          splitter.connect(downmixGainNode, 3);
-          downmixGainNode.connect(micMerger, 0, 0);
-        } else {
-          splitter.connect(micMerger, 2, 0);
-        }
-      } else if (route === '5-6') {
-        if (outChannels > 1) {
-          splitter.connect(micMerger, 4, 0);
-          splitter.connect(micMerger, 5, 1);
-        } else if (downmixGainNode) {
-          splitter.connect(downmixGainNode, 4);
-          splitter.connect(downmixGainNode, 5);
-          downmixGainNode.connect(micMerger, 0, 0);
-        } else {
-          splitter.connect(micMerger, 4, 0);
-        }
-      } else if (route === '7-8') {
-        if (outChannels > 1) {
-          splitter.connect(micMerger, 6, 0);
-          splitter.connect(micMerger, 7, 1);
-        } else if (downmixGainNode) {
-          splitter.connect(downmixGainNode, 6);
-          splitter.connect(downmixGainNode, 7);
-          downmixGainNode.connect(micMerger, 0, 0);
-        } else {
-          splitter.connect(micMerger, 6, 0);
-        }
+      } else if (downmixGainNode) {
+        let allSplitter: ChannelSplitterNode;
+        try { allSplitter = ctx.createChannelSplitter(2); } catch { allSplitter = ctx.createChannelSplitter(1); }
+        sourceNode.connect(allSplitter);
+        allSplitter.connect(downmixGainNode, 0);
+        try { allSplitter.connect(downmixGainNode, 1); } catch {}
+        downmixGainNode.connect(micMerger, 0, 0);
       } else {
-        let chIdx = 0;
-        const parsed = parseInt(route, 10);
-        if (!isNaN(parsed) && parsed >= 1 && parsed <= 32) {
-          chIdx = parsed - 1;
+        sourceNode.connect(micMerger);
+      }
+
+      micMerger.connect(gainNode);
+
+      let pannerNode: StereoPannerNode | undefined;
+      let stereoSplitter: ChannelSplitterNode | undefined;
+      let leftGainNode: GainNode | undefined;
+      let rightGainNode: GainNode | undefined;
+      let stereoMerger: ChannelMergerNode | undefined;
+      let meterSplitter: ChannelSplitterNode | undefined;
+      let meterAnalyserL: AnalyserNode | undefined;
+      let meterAnalyserR: AnalyserNode | undefined;
+
+      const panVal = preferences.pan !== undefined ? preferences.pan : 0.0;
+
+      if (isStereoRoute) {
+        // Stereo pair: Stereo Balance behavior (preserves discrete L/R without folding)
+        stereoSplitter = ctx.createChannelSplitter(2);
+        leftGainNode = ctx.createGain();
+        rightGainNode = ctx.createGain();
+        stereoMerger = ctx.createChannelMerger(2);
+
+        const { left, right } = getStereoBalanceGains(panVal);
+        leftGainNode.gain.setValueAtTime(left, ctx.currentTime);
+        rightGainNode.gain.setValueAtTime(right, ctx.currentTime);
+
+        gainNode.connect(stereoSplitter);
+        stereoSplitter.connect(leftGainNode, 0, 0);
+        stereoSplitter.connect(rightGainNode, 1, 0);
+        leftGainNode.connect(stereoMerger, 0, 0);
+        rightGainNode.connect(stereoMerger, 0, 1);
+
+        if (this.voiceDestination) {
+          stereoMerger.connect(this.voiceDestination);
         }
-        splitter.connect(micMerger, chIdx, 0);
+        stereoMerger.connect(micDestination);
+
+        // Studio Mixer Measurement Taps (post-Gain, post-FX, post-Balance)
+        meterAnalyserL = ctx.createAnalyser();
+        meterAnalyserL.fftSize = 256;
+        meterAnalyserR = ctx.createAnalyser();
+        meterAnalyserR.fftSize = 256;
+        leftGainNode.connect(meterAnalyserL);
+        rightGainNode.connect(meterAnalyserR);
+      } else {
+        // Mono hardware route: True Constant Power Mono-to-Stereo Panning
+        pannerNode = ctx.createStereoPanner();
+        pannerNode.pan.setValueAtTime(panVal, ctx.currentTime);
+
+        gainNode.connect(pannerNode);
+
+        if (this.voiceDestination) {
+          pannerNode.connect(this.voiceDestination);
+        }
+        pannerNode.connect(micDestination);
+
+        // Studio Mixer Measurement Taps (post-Gain, post-FX, post-Panner)
+        meterSplitter = ctx.createChannelSplitter(2);
+        meterAnalyserL = ctx.createAnalyser();
+        meterAnalyserL.fftSize = 256;
+        meterAnalyserR = ctx.createAnalyser();
+        meterAnalyserR.fftSize = 256;
+        pannerNode.connect(meterSplitter);
+        meterSplitter.connect(meterAnalyserL, 0);
+        meterSplitter.connect(meterAnalyserR, 1);
       }
-    } else if (downmixGainNode) {
-      let allSplitter: ChannelSplitterNode;
-      try { allSplitter = ctx.createChannelSplitter(2); } catch { allSplitter = ctx.createChannelSplitter(1); }
-      sourceNode.connect(allSplitter);
-      allSplitter.connect(downmixGainNode, 0);
-      try { allSplitter.connect(downmixGainNode, 1); } catch {}
-      downmixGainNode.connect(micMerger, 0, 0);
-    } else {
-      sourceNode.connect(micMerger);
+
+      // Create a persistent AnalyserNode connected to gainNode for VU metering from ANY audio path
+      const analyserNode = ctx.createAnalyser();
+      analyserNode.fftSize = 256;
+      analyserNode.smoothingTimeConstant = 0.7;
+      gainNode.connect(analyserNode);
+
+      const isolatedTrack = micDestination.stream.getAudioTracks()[0] || rawTrack;
+      isolatedTrack.contentHint = mode === 'music' ? 'music' : 'speech';
+
+      newVoiceMicEntry = {
+        rawTrack,
+        isolatedTrack,
+        sourceNode,
+        gainNode,
+        isStereo: isStereoRoute,
+        pannerNode,
+        stereoSplitter,
+        leftGainNode,
+        rightGainNode,
+        stereoMerger,
+        meterSplitter,
+        meterAnalyserL,
+        meterAnalyserR,
+        downmixGainNode,
+        fxNodes: [],
+        lastConnectedFx: '',
+        analyserNode,
+        micDestination,
+        preferences,
+        deviceId
+      };
+
+      const blendedTrack = this.voiceDestination.stream.getAudioTracks()[0] || isolatedTrack;
+      blendedTrack.contentHint = mode === 'music' ? 'music' : 'speech';
+
+      const effective: EffectiveAudioSettings = {
+        channelCount: preferences.stereo !== false ? 2 : 1,
+        sampleRate: preferences.sampleRate || 48000
+      };
+
+      const previous = this.sources.get('voice');
+      const wasEnabled = previous?.enabled ?? true;
+      blendedTrack.enabled = wasEnabled;
+
+      const next: AudioSourceConfig = { id: 'voice', purpose: 'voice', deviceId, mode, enabled: wasEnabled, track: blendedTrack, effective };
+      await this.senders.get('voice')?.replaceTrack(blendedTrack);
+
+      this.voiceMics.set(micIndex, newVoiceMicEntry);
+      this.gainNodes.set(`voice-${micIndex}`, gainNode);
+      this.sources.set('voice', next);
+
+      // Clean up previous mic now that new mic is committed
+      if (prevMic) {
+        cleanupVoiceMicNodes(prevMic);
+      }
+
+      return next;
+    } catch (error) {
+      if (newVoiceMicEntry) {
+        cleanupVoiceMicNodes(newVoiceMicEntry);
+      } else {
+        try { rawTrack.stop(); } catch {}
+      }
+      throw error;
     }
-
-    micMerger.connect(gainNode);
-
-    let pannerNode: StereoPannerNode | undefined;
-    let stereoSplitter: ChannelSplitterNode | undefined;
-    let leftGainNode: GainNode | undefined;
-    let rightGainNode: GainNode | undefined;
-    let stereoMerger: ChannelMergerNode | undefined;
-    let meterSplitter: ChannelSplitterNode | undefined;
-    let meterAnalyserL: AnalyserNode | undefined;
-    let meterAnalyserR: AnalyserNode | undefined;
-
-    const panVal = preferences.pan !== undefined ? preferences.pan : 0.0;
-
-    if (isStereoRoute) {
-      // Stereo pair: Stereo Balance behavior (preserves discrete L/R without folding)
-      stereoSplitter = ctx.createChannelSplitter(2);
-      leftGainNode = ctx.createGain();
-      rightGainNode = ctx.createGain();
-      stereoMerger = ctx.createChannelMerger(2);
-
-      const { left, right } = getStereoBalanceGains(panVal);
-      leftGainNode.gain.setValueAtTime(left, ctx.currentTime);
-      rightGainNode.gain.setValueAtTime(right, ctx.currentTime);
-
-      gainNode.connect(stereoSplitter);
-      stereoSplitter.connect(leftGainNode, 0, 0);
-      stereoSplitter.connect(rightGainNode, 1, 0);
-      leftGainNode.connect(stereoMerger, 0, 0);
-      rightGainNode.connect(stereoMerger, 0, 1);
-
-      if (this.voiceDestination) {
-        stereoMerger.connect(this.voiceDestination);
-      }
-      stereoMerger.connect(micDestination);
-
-      // Studio Mixer Measurement Taps (post-Gain, post-FX, post-Balance)
-      meterAnalyserL = ctx.createAnalyser();
-      meterAnalyserL.fftSize = 256;
-      meterAnalyserR = ctx.createAnalyser();
-      meterAnalyserR.fftSize = 256;
-      leftGainNode.connect(meterAnalyserL);
-      rightGainNode.connect(meterAnalyserR);
-    } else {
-      // Mono hardware route: True Constant Power Mono-to-Stereo Panning
-      pannerNode = ctx.createStereoPanner();
-      pannerNode.pan.setValueAtTime(panVal, ctx.currentTime);
-
-      gainNode.connect(pannerNode);
-
-      if (this.voiceDestination) {
-        pannerNode.connect(this.voiceDestination);
-      }
-      pannerNode.connect(micDestination);
-
-      // Studio Mixer Measurement Taps (post-Gain, post-FX, post-Panner)
-      meterSplitter = ctx.createChannelSplitter(2);
-      meterAnalyserL = ctx.createAnalyser();
-      meterAnalyserL.fftSize = 256;
-      meterAnalyserR = ctx.createAnalyser();
-      meterAnalyserR.fftSize = 256;
-      pannerNode.connect(meterSplitter);
-      meterSplitter.connect(meterAnalyserL, 0);
-      meterSplitter.connect(meterAnalyserR, 1);
-    }
-
-    // Create a persistent AnalyserNode connected to gainNode for VU metering from ANY audio path
-    const analyserNode = ctx.createAnalyser();
-    analyserNode.fftSize = 256;
-    analyserNode.smoothingTimeConstant = 0.7;
-    gainNode.connect(analyserNode);
-
-    const isolatedTrack = micDestination.stream.getAudioTracks()[0] || rawTrack;
-    isolatedTrack.contentHint = mode === 'music' ? 'music' : 'speech';
-
-    this.voiceMics.set(micIndex, {
-      rawTrack,
-      isolatedTrack,
-      sourceNode,
-      gainNode,
-      isStereo: isStereoRoute,
-      pannerNode,
-      stereoSplitter,
-      leftGainNode,
-      rightGainNode,
-      stereoMerger,
-      meterSplitter,
-      meterAnalyserL,
-      meterAnalyserR,
-      downmixGainNode,
-      fxNodes: [],
-      lastConnectedFx: '',
-      analyserNode,
-      micDestination,
-      preferences,
-      deviceId
-    });
-
-    this.gainNodes.set(`voice-${micIndex}`, gainNode);
-
-    const blendedTrack = this.voiceDestination.stream.getAudioTracks()[0] || isolatedTrack;
-    blendedTrack.contentHint = mode === 'music' ? 'music' : 'speech';
-
-    const effective: EffectiveAudioSettings = {
-      channelCount: preferences.stereo !== false ? 2 : 1,
-      sampleRate: preferences.sampleRate || 48000
-    };
-
-    const previous = this.sources.get('voice');
-    const wasEnabled = previous?.enabled ?? true;
-    blendedTrack.enabled = wasEnabled;
-
-    const next: AudioSourceConfig = { id: 'voice', purpose: 'voice', deviceId, mode, enabled: wasEnabled, track: blendedTrack, effective };
-    await this.senders.get('voice')?.replaceTrack(blendedTrack);
-    this.sources.set('voice', next);
-    return next;
   }
 
   async setVoiceMicGain(micIndex: number, gain: number): Promise<void> {
