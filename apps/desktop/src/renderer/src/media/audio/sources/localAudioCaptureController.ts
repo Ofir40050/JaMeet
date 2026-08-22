@@ -84,10 +84,15 @@ export function createLocalAudioCaptureController(ctx: LocalAudioCaptureContext)
       } catch (error) {
         logger.warn('audio_init_failure', `Failed to acquire microphone ${mic.id}`, { micId: mic.id, deviceId: mic.deviceId, sampleRate: prefs.sampleRate }, error);
         console.warn(`Failed to acquire microphone ${mic.id}:`, error);
-        const m = voiceMeters.get(mic.id);
-        if (m) await m.stop();
-        activeMicLevels.delete(mic.id);
-        activeMicPeaks.delete(mic.id);
+        const node = audio.getVoiceMicNode(mic.id);
+        const track = audio.getVoiceRawTrack(mic.id);
+        if (!node && !track) {
+          const m = voiceMeters.get(mic.id);
+          if (m) await m.stop();
+          activeMicLevels.delete(mic.id);
+          activeMicPeaks.delete(mic.id);
+        }
+        throw error;
       }
     }
 
@@ -104,6 +109,8 @@ export function createLocalAudioCaptureController(ctx: LocalAudioCaptureContext)
 
   async function replaceAudioInput(deviceId: string | undefined, mode = ctx.getPreferences().mode): Promise<void> {
     const prefs = ctx.getPreferences();
+    const prevDeviceId = prefs.voiceInputs[0]?.deviceId;
+    const prevAudioInputId = prefs.audioInputId;
     if (prefs.voiceInputs.length === 0) {
       prefs.voiceInputs.push({ id: 1, name: 'Microphone 1 (Primary · Lead)', deviceId, channelRoute: '1', gain: 1, enabled: true });
     } else {
@@ -111,8 +118,16 @@ export function createLocalAudioCaptureController(ctx: LocalAudioCaptureContext)
     }
     prefs.audioInputId = deviceId;
     prefs.mode = mode;
-    ctx.onSavePreferences();
-    await syncAllVoiceMics(mode);
+    try {
+      await syncAllVoiceMics(mode);
+      ctx.onSavePreferences();
+    } catch (err) {
+      console.warn('Failed to replace audio input:', err);
+      if (prefs.voiceInputs[0]) prefs.voiceInputs[0].deviceId = prevDeviceId;
+      prefs.audioInputId = prevAudioInputId;
+      ctx.onSavePreferences();
+      throw err;
+    }
   }
 
   async function refreshRunningApps(): Promise<void> {

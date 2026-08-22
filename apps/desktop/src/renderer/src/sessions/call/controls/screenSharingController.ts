@@ -94,8 +94,8 @@ export function createScreenSharingController(ctx: ScreenSharingContext) {
         displayAudio = stream.getAudioTracks()[0];
         if (displayAudio) {
           await ctx.onAddAudioExternal('screen-audio', 'music', displayAudio);
-          await ctx.onRtcAudioSourceChanged('screen-audio');
           audioExternalAdded = true;
+          await ctx.onRtcAudioSourceChanged('screen-audio');
         }
       }
 

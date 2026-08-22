@@ -1,11 +1,11 @@
 import { getDesktopApi } from './desktopApi';
 
-export function attachAppAudioLoopback(
+export async function attachAppAudioLoopback(
   ctx: AudioContext,
   targetNode: AudioNode,
   targetCapture: number | string = 'global',
   channelRoute?: string
-): () => void {
+): Promise<() => void> {
   const targetSampleRate = ctx.sampleRate;
   const ringCapacity = Math.round(targetSampleRate * 0.25); // 250ms ring capacity
   const maxBufferedFrames = Math.round(targetSampleRate * 0.08); // 80ms max target latency
@@ -67,7 +67,14 @@ export function attachAppAudioLoopback(
 
   const api = getDesktopApi();
   if (api?.startAppAudioCapture) {
-    void api.startAppAudioCapture(targetCapture, channelRoute);
+    const started = await api.startAppAudioCapture(targetCapture, channelRoute).catch(() => false);
+    if (!started) {
+      try { processor.disconnect(); } catch {}
+      throw new Error('Direct DAW or application audio capture is not supported or failed to start.');
+    }
+  } else {
+    try { processor.disconnect(); } catch {}
+    throw new Error('Native audio capture API is not available on this platform.');
   }
 
   const unsubscribeChunk = api?.onAppAudioChunk?.((chunk: Uint8Array) => {

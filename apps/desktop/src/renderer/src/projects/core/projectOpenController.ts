@@ -11,7 +11,7 @@ export interface ProjectOpenControllerOptions {
   onResetProjectTabs: () => void;
   onRenderProjectView: () => void;
   onSyncWorkspaceInputs: (forceAll: boolean) => void;
-  onJoinSignalingRoom: (projectId: string, token: string) => void;
+  onJoinSignalingRoom: (projectId: string, token: string) => Promise<{ ok: boolean; workspace?: any; message?: string }> | void;
 }
 
 let controllerOptions: ProjectOpenControllerOptions | null = null;
@@ -38,7 +38,10 @@ export async function openProjectView(projectId: string): Promise<void> {
     controllerOptions.onResetProjectTabs();
     controllerOptions.onRenderProjectView();
     controllerOptions.onSyncWorkspaceInputs(true);
-    controllerOptions.onJoinSignalingRoom(projectId, token);
+    const joinRes = await Promise.resolve(controllerOptions.onJoinSignalingRoom(projectId, token));
+    if (joinRes && !joinRes.ok) {
+      console.warn(`Realtime workspace sync unavailable for project ${projectId}:`, joinRes.message);
+    }
   } catch (err) {
     if (!controllerOptions.isContextGenCurrent(loadContextGen)) return;
     console.error('Failed to open project:', err);

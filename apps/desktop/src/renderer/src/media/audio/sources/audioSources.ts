@@ -454,12 +454,12 @@ export class LocalAudioSourceManager {
     }
   }
 
-  private attachLoopbackToNode(
+  private async attachLoopbackToNode(
     ctx: AudioContext,
     targetNode: AudioNode,
     targetCapture: number | string = 'global',
     channelRoute?: string
-  ): () => void {
+  ): Promise<() => void> {
     return attachAppAudioLoopback(ctx, targetNode, targetCapture, channelRoute);
   }
 
@@ -525,7 +525,28 @@ export class LocalAudioSourceManager {
 
     const channelRoute = preferences.channelRoute || '1-2';
     const targetCapture = `device:${deviceId}`;
-    const cleanupLoopback = this.attachLoopbackToNode(appCtx, musicGain, targetCapture, channelRoute);
+    let cleanupLoopback: () => void;
+    try {
+      cleanupLoopback = await this.attachLoopbackToNode(appCtx, musicGain, targetCapture, channelRoute);
+    } catch (err) {
+      cleanupMusicNodes({
+        musicGain,
+        musicFxNodes: this.musicFxNodes,
+        musicSplitter,
+        musicLeftGainNode: musicLeftGain,
+        musicRightGainNode: musicRightGain,
+        musicMerger,
+        musicMeterAnalyserL,
+        musicMeterAnalyserR,
+        musicSilentGain: silentGain
+      });
+      this.gainNodes.delete('music');
+      if (this.appAudioContext && this.appAudioContext.state !== 'closed') {
+        void this.appAudioContext.close().catch(() => {});
+        this.appAudioContext = undefined;
+      }
+      throw err;
+    }
 
     this.appAudioCleanup = () => {
       cleanupLoopback();
@@ -643,7 +664,28 @@ export class LocalAudioSourceManager {
     try { silentGain.connect(appCtx.destination); } catch {}
     this.musicSilentGain = silentGain;
 
-    const cleanupLoopback = this.attachLoopbackToNode(appCtx, musicGain, pid);
+    let cleanupLoopback: () => void;
+    try {
+      cleanupLoopback = await this.attachLoopbackToNode(appCtx, musicGain, pid);
+    } catch (err) {
+      cleanupMusicNodes({
+        musicGain,
+        musicFxNodes: this.musicFxNodes,
+        musicSplitter,
+        musicLeftGainNode: musicLeftGain,
+        musicRightGainNode: musicRightGain,
+        musicMerger,
+        musicMeterAnalyserL,
+        musicMeterAnalyserR,
+        musicSilentGain: silentGain
+      });
+      this.gainNodes.delete('music');
+      if (this.appAudioContext && this.appAudioContext.state !== 'closed') {
+        void this.appAudioContext.close().catch(() => {});
+        this.appAudioContext = undefined;
+      }
+      throw err;
+    }
 
     this.appAudioCleanup = () => {
       cleanupLoopback();
