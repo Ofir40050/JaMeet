@@ -2,6 +2,7 @@
   "name": "@jameet/desktop",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "description": "Two-person remote music sessions",
   "author": "JaMeet",
   "desktopName": "JaMeet",
