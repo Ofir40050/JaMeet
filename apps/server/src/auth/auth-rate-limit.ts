@@ -84,27 +84,27 @@ export function checkLoginRateLimit(
   return { allowed: true };
 }
 
+function setWithLruPromotion(map: Map<string, RateBucket>, key: string, bucket: RateBucket): void {
+  map.delete(key);
+  map.set(key, bucket);
+  enforceMapCapacity(map);
+}
+
 export function recordFailedLogin(ip: string, identifier: string): void {
   const now = Date.now();
   const lowerId = identifier.trim().toLowerCase();
 
-  // Record for identifier
+  // Record for identifier with LRU promotion
   const idBucket = failedLoginsByIdentifier.get(lowerId);
-  if (!idBucket || now > idBucket.resetAt) {
-    failedLoginsByIdentifier.set(lowerId, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
-  } else {
-    idBucket.count += 1;
-  }
-  enforceMapCapacity(failedLoginsByIdentifier);
+  const nextIdCount = (!idBucket || now > idBucket.resetAt) ? 1 : idBucket.count + 1;
+  const nextIdResetAt = (!idBucket || now > idBucket.resetAt) ? now + LOGIN_WINDOW_MS : idBucket.resetAt;
+  setWithLruPromotion(failedLoginsByIdentifier, lowerId, { count: nextIdCount, resetAt: nextIdResetAt });
 
-  // Record for IP
+  // Record for IP with LRU promotion
   const ipBucket = failedLoginsByIp.get(ip);
-  if (!ipBucket || now > ipBucket.resetAt) {
-    failedLoginsByIp.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
-  } else {
-    ipBucket.count += 1;
-  }
-  enforceMapCapacity(failedLoginsByIp);
+  const nextIpCount = (!ipBucket || now > ipBucket.resetAt) ? 1 : ipBucket.count + 1;
+  const nextIpResetAt = (!ipBucket || now > ipBucket.resetAt) ? now + LOGIN_WINDOW_MS : ipBucket.resetAt;
+  setWithLruPromotion(failedLoginsByIp, ip, { count: nextIpCount, resetAt: nextIpResetAt });
 }
 
 export function recordSuccessfulLogin(ip: string, identifier: string): void {
@@ -139,12 +139,9 @@ export function recordGuestCreation(ip: string): void {
   const now = Date.now();
   const ipBucket = guestCreationsByIp.get(ip);
 
-  if (!ipBucket || now > ipBucket.resetAt) {
-    guestCreationsByIp.set(ip, { count: 1, resetAt: now + GUEST_WINDOW_MS });
-  } else {
-    ipBucket.count += 1;
-  }
-  enforceMapCapacity(guestCreationsByIp);
+  const nextCount = (!ipBucket || now > ipBucket.resetAt) ? 1 : ipBucket.count + 1;
+  const nextResetAt = (!ipBucket || now > ipBucket.resetAt) ? now + GUEST_WINDOW_MS : ipBucket.resetAt;
+  setWithLruPromotion(guestCreationsByIp, ip, { count: nextCount, resetAt: nextResetAt });
 }
 
 export function resetAllAuthRateLimits(): void {

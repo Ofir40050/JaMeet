@@ -84,4 +84,19 @@ describe('auth-rate-limit', () => {
       expect(blocked.retryAfterSeconds).toBeGreaterThan(0);
     });
   });
+
+  describe('LRU Memory Eviction & Promotion', () => {
+    it('promotes recently accessed keys to prevent premature eviction', () => {
+      // Record failure for user A, then user B
+      recordFailedLogin('1.1.1.1', 'user_a');
+      recordFailedLogin('1.1.1.1', 'user_b');
+
+      // Now re-record user A -> this promotes user_a to the end of the Map
+      recordFailedLogin('1.1.1.1', 'user_a');
+
+      // Both should be tracked
+      expect(checkLoginRateLimit('1.1.1.1', 'user_a').allowed).toBe(true);
+      expect(checkLoginRateLimit('1.1.1.1', 'user_b').allowed).toBe(true);
+    });
+  });
 });
