@@ -213,10 +213,10 @@
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 36px 44px 44px 44px;
+  padding: 44px 54px 54px 54px;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 32px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -235,8 +235,8 @@
 }
 
 .settings-panel-header {
-  padding: 6px 4px 24px 4px;
-  margin-bottom: 6px;
+  padding: 10px 8px 30px 8px;
+  margin-bottom: 12px;
   border-bottom: 1px solid var(--border-subtle);
   width: 100%;
   box-sizing: border-box;
@@ -250,7 +250,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 20px;
   width: 100%;
 }
 
@@ -260,8 +260,8 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 34px;
-  padding: 0 18px;
+  height: 36px;
+  padding: 0 20px;
   background: var(--accent-primary);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -292,35 +292,35 @@
 }
 
 .settings-panel-header h3 {
-  font-size: 20px;
+  font-size: 21px;
   font-weight: 700;
   color: var(--text-main);
-  margin: 0 0 8px 0;
+  margin: 0 0 10px 0;
   letter-spacing: -0.01em;
 }
 
 .settings-panel-header p {
-  font-size: 13.5px;
+  font-size: 14px;
   color: var(--text-secondary);
   margin: 0;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 22px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 24px 28px;
+  padding: 28px 34px;
   margin: 0;
   width: 100%;
   box-sizing: border-box;
 }
 
 .settings-section + .settings-section {
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
 .settings-section-header {
@@ -333,12 +333,12 @@
 
 .settings-section-title,
 #settings-view .section-label {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.09em;
   color: var(--text-dim);
-  margin: 0 0 12px 0;
+  margin: 0 0 16px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -350,11 +350,11 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 24px 28px;
+  padding: 28px 34px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 .settings-video-wrap {
@@ -482,7 +482,7 @@ video.res-low,
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 12px 20px;
+  padding: 16px 24px;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -492,11 +492,11 @@ video.res-low,
 .settings-radio-row {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
+  gap: 16px;
   background: transparent !important;
   border: none !important;
   border-radius: 0 !important;
-  padding: 12px 6px;
+  padding: 14px 6px;
   cursor: pointer;
   box-sizing: border-box;
   transition: background 0.12s ease;
@@ -578,7 +578,7 @@ video.res-low,
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 16px 22px;
+  padding: 20px 26px;
   box-sizing: border-box;
   margin: 0;
   width: 100%;
@@ -643,10 +643,10 @@ video.res-low,
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 24px 28px;
+  padding: 28px 34px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
   box-sizing: border-box;
   width: 100%;
 }
@@ -807,12 +807,12 @@ video.res-low,
 #settings-view .profile-hero-preview {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 26px;
   background: var(--bg-elevated) !important;
   border: 1px solid var(--border-subtle) !important;
   border-radius: var(--radius-md) !important;
-  padding: 24px 30px !important;
-  margin: 0 0 12px 0 !important;
+  padding: 28px 34px !important;
+  margin: 0 0 18px 0 !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
   box-sizing: border-box;
   width: 100%;
