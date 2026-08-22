@@ -6,15 +6,37 @@ export const FAILED_LOGIN_DELAY_MS = 500; // 500ms progressive delay on auth fai
 export const MAX_GUEST_CREATIONS_PER_IP = 10;
 export const GUEST_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
+export const MAX_MAP_ENTRIES = 10_000;
+
 interface RateBucket {
   count: number;
   resetAt: number;
 }
 
-// In-memory rate limiting state
+// In-memory rate limiting state with bounded capacity
 const failedLoginsByIdentifier = new Map<string, RateBucket>();
 const failedLoginsByIp = new Map<string, RateBucket>();
 const guestCreationsByIp = new Map<string, RateBucket>();
+
+function enforceMapCapacity(map: Map<string, RateBucket>): void {
+  if (map.size <= MAX_MAP_ENTRIES) return;
+  // First clean expired entries
+  const now = Date.now();
+  for (const [key, bucket] of map.entries()) {
+    if (now > bucket.resetAt) {
+      map.delete(key);
+    }
+  }
+  // If still above capacity, evict oldest entries (FIFO from insertion order)
+  while (map.size > MAX_MAP_ENTRIES) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey !== undefined) {
+      map.delete(oldestKey);
+    } else {
+      break;
+    }
+  }
+}
 
 function cleanExpiredEntries(): void {
   const now = Date.now();
@@ -73,6 +95,7 @@ export function recordFailedLogin(ip: string, identifier: string): void {
   } else {
     idBucket.count += 1;
   }
+  enforceMapCapacity(failedLoginsByIdentifier);
 
   // Record for IP
   const ipBucket = failedLoginsByIp.get(ip);
@@ -81,6 +104,7 @@ export function recordFailedLogin(ip: string, identifier: string): void {
   } else {
     ipBucket.count += 1;
   }
+  enforceMapCapacity(failedLoginsByIp);
 }
 
 export function recordSuccessfulLogin(ip: string, identifier: string): void {
@@ -120,6 +144,7 @@ export function recordGuestCreation(ip: string): void {
   } else {
     ipBucket.count += 1;
   }
+  enforceMapCapacity(guestCreationsByIp);
 }
 
 export function resetAllAuthRateLimits(): void {
