@@ -151,9 +151,9 @@ describe('TURN credentials', () => {
     expect(servers).toEqual(SAFE_DEFAULT_STUN_SERVERS);
   });
 
-  it('defaults TURN_CREDENTIAL_TTL_SECONDS to 86400', () => {
+  it('defaults TURN_CREDENTIAL_TTL_SECONDS to 28800', () => {
     const config = loadConfig();
-    expect(config.TURN_CREDENTIAL_TTL_SECONDS).toBe(86400);
+    expect(config.TURN_CREDENTIAL_TTL_SECONDS).toBe(28800);
   });
 
   it('rejects TURN_CREDENTIAL_TTL_SECONDS values above Cloudflare maximum of 172800', () => {

@@ -30,7 +30,9 @@ export class TurnUsageGuard {
   private lastSuccessfulUsageBytes: number | null = null;
   private lastSuccessfulCheckTime = 0;
   private currentMonth = '';
+  private warned450GB = false;
   private warned500GB = false;
+  private warned550GB = false;
   private warned600GB = false;
   private warnedSoftLimit = false;
   private inFlightQueryMonth: string | null = null;
@@ -40,7 +42,9 @@ export class TurnUsageGuard {
     this.lastSuccessfulUsageBytes = null;
     this.lastSuccessfulCheckTime = 0;
     this.currentMonth = '';
+    this.warned450GB = false;
     this.warned500GB = false;
+    this.warned550GB = false;
     this.warned600GB = false;
     this.warnedSoftLimit = false;
     this.inFlightQueryMonth = null;
@@ -51,19 +55,39 @@ export class TurnUsageGuard {
     this.lastSuccessfulUsageBytes = null;
     this.lastSuccessfulCheckTime = 0;
     this.currentMonth = monthKey;
+    this.warned450GB = false;
     this.warned500GB = false;
+    this.warned550GB = false;
     this.warned600GB = false;
     this.warnedSoftLimit = false;
   }
 
   private evaluateMilestones(usageBytes: number, limitGb: number): void {
+    const bytes450GB = 450 * 1_000_000_000;
     const bytes500GB = 500 * 1_000_000_000;
+    const bytes550GB = 550 * 1_000_000_000;
     const bytes600GB = 600 * 1_000_000_000;
     const usageGB = Math.round((usageBytes / 1_000_000_000) * 100) / 100;
+
+    if (usageBytes >= bytes450GB && !this.warned450GB) {
+      this.warned450GB = true;
+      logger.warn('cloudflare_turn_usage_warning_450gb', 'Cloudflare TURN monthly usage crossed 450 GB milestone', {
+        usageGB,
+        limitGB: limitGb
+      });
+    }
 
     if (usageBytes >= bytes500GB && !this.warned500GB) {
       this.warned500GB = true;
       logger.warn('cloudflare_turn_usage_warning_500gb', 'Cloudflare TURN monthly usage crossed 500 GB milestone', {
+        usageGB,
+        limitGB: limitGb
+      });
+    }
+
+    if (usageBytes >= bytes550GB && !this.warned550GB) {
+      this.warned550GB = true;
+      logger.warn('cloudflare_turn_usage_warning_550gb', 'Cloudflare TURN monthly usage crossed 550 GB milestone', {
         usageGB,
         limitGB: limitGb
       });
@@ -211,7 +235,12 @@ export class TurnUsageGuard {
 
     const checkIntervalMs = config.TURN_USAGE_CHECK_INTERVAL_SECONDS * 1000;
     const nowMs = now.getTime();
+    const bytes500GB = 500 * 1_000_000_000;
+
+    // Once usage reaches 500 GB, always require a fresh query before issuing new TURN credentials
+    const isAbove500GB = this.lastSuccessfulUsageBytes !== null && this.lastSuccessfulUsageBytes >= bytes500GB;
     const isCacheValid =
+      !isAbove500GB &&
       this.lastSuccessfulUsageBytes !== null &&
       nowMs - this.lastSuccessfulCheckTime < checkIntervalMs;
 
@@ -235,16 +264,8 @@ export class TurnUsageGuard {
           this.evaluateMilestones(usageBytes, config.TURN_MONTHLY_SOFT_LIMIT_GB);
         }
       } catch (err: unknown) {
-        const gracePeriodMs = 15 * 60 * 1000; // 15 minutes
-        const hasGraceCache =
-          this.currentMonth === monthKey &&
-          this.lastSuccessfulUsageBytes !== null &&
-          nowMs - this.lastSuccessfulCheckTime <= gracePeriodMs;
-
-        if (!hasGraceCache) {
-          logger.warn('cloudflare_turn_usage_unverified', 'Cloudflare TURN credentials withheld because usage could not be verified');
-          return { allowed: false, reason: 'unverified' };
-        }
+        logger.warn('cloudflare_turn_usage_unverified', 'Cloudflare TURN credentials withheld because usage could not be verified');
+        return { allowed: false, reason: 'unverified' };
       }
     }
 
@@ -272,4 +293,5 @@ export class TurnUsageGuard {
 }
 
 export const defaultTurnUsageGuard = new TurnUsageGuard();
+
 

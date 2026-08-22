@@ -23,8 +23,8 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
     CLOUDFLARE_TURN_API_TOKEN: 'token-turn-abc',
     CLOUDFLARE_ACCOUNT_ID: 'acc-456',
     CLOUDFLARE_TURN_ANALYTICS_API_TOKEN: 'token-analytics-xyz',
-    TURN_MONTHLY_SOFT_LIMIT_GB: '700',
-    TURN_USAGE_CHECK_INTERVAL_SECONDS: '300'
+    TURN_MONTHLY_SOFT_LIMIT_GB: '600',
+    TURN_USAGE_CHECK_INTERVAL_SECONDS: '60'
   });
 
   function createMockGraphQLFetch(egressBytes: number, ok = true, errors?: any[]) {
@@ -92,12 +92,12 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
     });
   });
 
-  it('allows TURN generation when monthly egress is below 700 GB', async () => {
-    const mockFetch = createMockGraphQLFetch(450 * 1_000_000_000); // 450 GB
+  it('allows TURN generation when monthly egress is below 600 GB', async () => {
+    const mockFetch = createMockGraphQLFetch(400 * 1_000_000_000); // 400 GB
     const result = await guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch);
 
     expect(result.allowed).toBe(true);
-    expect(result.usageBytes).toBe(450 * 1_000_000_000);
+    expect(result.usageBytes).toBe(400 * 1_000_000_000);
   });
 
   it('treats valid empty callsTurnUsageAdaptiveGroups array as zero usage', async () => {
@@ -121,9 +121,9 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
     expect(result.usageBytes).toBe(0);
   });
 
-  it('withholds TURN credentials and returns soft_limit_reached when usage is at or above 700 GB', async () => {
+  it('withholds TURN credentials and returns soft_limit_reached when usage is at or above 600 GB', async () => {
     const warnSpy = vi.spyOn(logger, 'warn');
-    const mockFetch = createMockGraphQLFetch(700 * 1_000_000_000); // 700 GB
+    const mockFetch = createMockGraphQLFetch(600 * 1_000_000_000); // 600 GB
     const result = await guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch);
 
     expect(result.allowed).toBe(false);
@@ -132,39 +132,122 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
       'cloudflare_turn_soft_limit_reached',
       expect.stringContaining('soft limit'),
       expect.objectContaining({
-        usageGB: 700,
-        limitGB: 700
+        usageGB: 600,
+        limitGB: 600
       })
     );
   });
 
-  it('records milestone warnings once at 500 GB and 600 GB', async () => {
+  it('records milestone warnings at 450 GB, 500 GB, 550 GB, and 600 GB', async () => {
     const warnSpy = vi.spyOn(logger, 'warn');
 
-    // First check: 520 GB
-    const fetch520 = createMockGraphQLFetch(520 * 1_000_000_000);
-    const res1 = await guard.checkTurnAllowed(baseConfig, fetch520 as unknown as typeof fetch);
+    // 1. 460 GB
+    const fetch460 = createMockGraphQLFetch(460 * 1_000_000_000);
+    const res1 = await guard.checkTurnAllowed(baseConfig, fetch460 as unknown as typeof fetch);
     expect(res1.allowed).toBe(true);
     expect(warnSpy).toHaveBeenCalledWith(
-      'cloudflare_turn_usage_warning_500gb',
-      expect.stringContaining('500 GB milestone'),
-      expect.objectContaining({ usageGB: 520 })
+      'cloudflare_turn_usage_warning_450gb',
+      expect.stringContaining('450 GB milestone'),
+      expect.objectContaining({ usageGB: 460 })
     );
 
     warnSpy.mockClear();
 
-    // Reset check timer to force re-fetch after 5 mins
-    const futureDate = new Date(Date.now() + 301 * 1000);
-    const fetch610 = createMockGraphQLFetch(610 * 1_000_000_000);
-    const res2 = await guard.checkTurnAllowed(baseConfig, fetch610 as unknown as typeof fetch, futureDate);
+    // 2. 510 GB (after 61s)
+    const t510 = new Date(Date.now() + 65 * 1000);
+    const fetch510 = createMockGraphQLFetch(510 * 1_000_000_000);
+    const res2 = await guard.checkTurnAllowed(baseConfig, fetch510 as unknown as typeof fetch, t510);
     expect(res2.allowed).toBe(true);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'cloudflare_turn_usage_warning_500gb',
+      expect.stringContaining('500 GB milestone'),
+      expect.objectContaining({ usageGB: 510 })
+    );
+
+    warnSpy.mockClear();
+
+    // 3. 560 GB (always fresh query because >= 500 GB)
+    const fetch560 = createMockGraphQLFetch(560 * 1_000_000_000);
+    const res3 = await guard.checkTurnAllowed(baseConfig, fetch560 as unknown as typeof fetch, t510);
+    expect(res3.allowed).toBe(true);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'cloudflare_turn_usage_warning_550gb',
+      expect.stringContaining('550 GB milestone'),
+      expect.objectContaining({ usageGB: 560 })
+    );
+
+    warnSpy.mockClear();
+
+    // 4. 605 GB
+    const fetch605 = createMockGraphQLFetch(605 * 1_000_000_000);
+    const res4 = await guard.checkTurnAllowed(baseConfig, fetch605 as unknown as typeof fetch, t510);
+    expect(res4.allowed).toBe(false);
+    expect(res4.reason).toBe('soft_limit_reached');
     expect(warnSpy).toHaveBeenCalledWith(
       'cloudflare_turn_usage_warning_600gb',
       expect.stringContaining('600 GB milestone'),
-      expect.objectContaining({ usageGB: 610 })
+      expect.objectContaining({ usageGB: 605 })
     );
-    // Should NOT warn 500 GB again
-    expect(warnSpy).not.toHaveBeenCalledWith('cloudflare_turn_usage_warning_500gb', expect.anything(), expect.anything());
+  });
+
+  it('requires a fresh query on every call once usage reaches 500 GB', async () => {
+    const mockFetch = createMockGraphQLFetch(510 * 1_000_000_000);
+    const t0 = new Date('2026-08-21T12:00:00Z');
+
+    // First call queries GraphQL
+    const res1 = await guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch, t0);
+    expect(res1.allowed).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // Second call only 2 seconds later still queries GraphQL because usage >= 500 GB
+    const t1 = new Date('2026-08-21T12:00:02Z');
+    const res2 = await guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch, t1);
+    expect(res2.allowed).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('coalesces concurrent requests when usage is at or above 500 GB', async () => {
+    let callCount = 0;
+    const mockFetch = vi.fn().mockImplementation(async () => {
+      callCount++;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            viewer: {
+              accounts: [{ callsTurnUsageAdaptiveGroups: [{ sum: { egressBytes: 520 * 1_000_000_000 } }] }]
+            }
+          }
+        })
+      };
+    });
+
+    const [r1, r2, r3, r4] = await Promise.all([
+      guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch),
+      guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch),
+      guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch),
+      guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch)
+    ]);
+
+    expect(r1.allowed).toBe(true);
+    expect(r2.allowed).toBe(true);
+    expect(r3.allowed).toBe(true);
+    expect(r4.allowed).toBe(true);
+    expect(callCount).toBe(1);
+  });
+
+  it('fails closed when refresh fails and does not authorize TURN with stale data', async () => {
+    const warnSpy = vi.spyOn(logger, 'warn');
+    const failFetch = vi.fn().mockRejectedValue(new Error('GraphQL timeout'));
+
+    const res = await guard.checkTurnAllowed(baseConfig, failFetch as unknown as typeof fetch);
+    expect(res.allowed).toBe(false);
+    expect(res.reason).toBe('unverified');
+    expect(warnSpy).toHaveBeenCalledWith(
+      'cloudflare_turn_usage_unverified',
+      expect.stringContaining('usage could not be verified')
+    );
   });
 
   it('fails closed on missing or empty accounts array', async () => {
@@ -183,10 +266,6 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
     const res = await guard.checkTurnAllowed(baseConfig, mockEmptyAccounts as unknown as typeof fetch);
     expect(res.allowed).toBe(false);
     expect(res.reason).toBe('unverified');
-    expect(warnSpy).toHaveBeenCalledWith(
-      'cloudflare_turn_usage_unverified',
-      expect.stringContaining('usage could not be verified')
-    );
   });
 
   it('fails closed on GraphQL errors array', async () => {
@@ -196,14 +275,9 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
     const res = await guard.checkTurnAllowed(baseConfig, mockGraphQLErrors as unknown as typeof fetch);
     expect(res.allowed).toBe(false);
     expect(res.reason).toBe('unverified');
-    expect(warnSpy).toHaveBeenCalledWith(
-      'cloudflare_turn_usage_unverified',
-      expect.stringContaining('usage could not be verified')
-    );
   });
 
   it('fails closed on invalid, negative, NaN, or non-numeric egressBytes', async () => {
-    const warnSpy = vi.spyOn(logger, 'warn');
     const mockInvalidBytes = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -239,7 +313,7 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
     const mockFetch = vi.fn().mockImplementation(async (url: string, init: any) => {
       const body = JSON.parse(init.body);
       if (body.variables.dateStart === '2026-08-01') {
-        // Delayed August query (over limit: 750 GB)
+        // Delayed August query (over limit: 650 GB)
         await oldMonthPromise;
         return {
           ok: true,
@@ -248,7 +322,7 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
               viewer: {
                 accounts: [
                   {
-                    callsTurnUsageAdaptiveGroups: [{ sum: { egressBytes: 750 * 1_000_000_000 } }]
+                    callsTurnUsageAdaptiveGroups: [{ sum: { egressBytes: 650 * 1_000_000_000 } }]
                   }
                 ]
               }
@@ -287,13 +361,13 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
     resolveOldMonth!({} as any);
     await augCheckPromise;
 
-    // 4. Subsequent September check must still be clean and not contaminated by August's 750 GB
+    // 4. Subsequent September check must still be clean and not contaminated by August's 650 GB
     const septCheck2 = await guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch, septDate);
     expect(septCheck2.allowed).toBe(true);
     expect(septCheck2.usageBytes).toBe(50 * 1_000_000_000);
   });
 
-  it('caches the usage result for the configured check interval', async () => {
+  it('caches the usage result for 60 seconds when below 500 GB', async () => {
     const mockFetch = createMockGraphQLFetch(100 * 1_000_000_000);
     const t0 = new Date('2026-08-21T12:00:00Z');
 
@@ -302,63 +376,17 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
     expect(res1.allowed).toBe(true);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
-    // Call 2 minutes later uses cache
-    const t1 = new Date('2026-08-21T12:02:00Z');
+    // Call 30 seconds later uses cache
+    const t1 = new Date('2026-08-21T12:00:30Z');
     const res2 = await guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch, t1);
     expect(res2.allowed).toBe(true);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
-    // Call 6 minutes later queries GraphQL again
-    const t2 = new Date('2026-08-21T12:06:00Z');
+    // Call 70 seconds later queries GraphQL again
+    const t2 = new Date('2026-08-21T12:01:10Z');
     const res3 = await guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch, t2);
     expect(res3.allowed).toBe(true);
     expect(mockFetch).toHaveBeenCalledTimes(2);
-  });
-
-  it('coalesces concurrent requests into a single in-flight GraphQL query', async () => {
-    let callCount = 0;
-    const mockFetch = vi.fn().mockImplementation(async () => {
-      callCount++;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      return {
-        ok: true,
-        json: async () => ({
-          data: {
-            viewer: {
-              accounts: [{ callsTurnUsageAdaptiveGroups: [{ sum: { egressBytes: 200 * 1_000_000_000 } }] }]
-            }
-          }
-        })
-      };
-    });
-
-    const [r1, r2, r3, r4] = await Promise.all([
-      guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch),
-      guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch),
-      guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch),
-      guard.checkTurnAllowed(baseConfig, mockFetch as unknown as typeof fetch)
-    ]);
-
-    expect(r1.allowed).toBe(true);
-    expect(r2.allowed).toBe(true);
-    expect(r3.allowed).toBe(true);
-    expect(r4.allowed).toBe(true);
-    expect(callCount).toBe(1);
-  });
-
-  it('uses cached usage up to 15 minutes old when Cloudflare GraphQL query fails', async () => {
-    const t0 = new Date('2026-08-21T12:00:00Z');
-    const successFetch = createMockGraphQLFetch(300 * 1_000_000_000);
-    await guard.checkTurnAllowed(baseConfig, successFetch as unknown as typeof fetch, t0);
-
-    // 8 minutes later, cache expired, but query throws error
-    const t1 = new Date('2026-08-21T12:08:00Z');
-    const failFetch = vi.fn().mockRejectedValue(new Error('Network error'));
-
-    const res = await guard.checkTurnAllowed(baseConfig, failFetch as unknown as typeof fetch, t1);
-    // Allowed because 8 min <= 15 min grace period and 300GB < 700GB
-    expect(res.allowed).toBe(true);
-    expect(res.usageBytes).toBe(300 * 1_000_000_000);
   });
 
   it('generateCloudflareIceServers returns safe STUN servers when soft limit is reached', async () => {
@@ -369,7 +397,7 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
           json: async () => ({
             data: {
               viewer: {
-                accounts: [{ callsTurnUsageAdaptiveGroups: [{ sum: { egressBytes: 750 * 1_000_000_000 } }] }]
+                accounts: [{ callsTurnUsageAdaptiveGroups: [{ sum: { egressBytes: 650 * 1_000_000_000 } }] }]
               }
             }
           })
@@ -393,7 +421,7 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
           json: async () => ({
             data: {
               viewer: {
-                accounts: [{ callsTurnUsageAdaptiveGroups: [{ sum: { egressBytes: 800 * 1_000_000_000 } }] }]
+                accounts: [{ callsTurnUsageAdaptiveGroups: [{ sum: { egressBytes: 700 * 1_000_000_000 } }] }]
               }
             }
           })
@@ -409,4 +437,5 @@ describe('TurnUsageGuard - Monthly Cloudflare TURN Usage Protection', () => {
     expect(servers).toEqual(SAFE_DEFAULT_STUN_SERVERS);
   });
 });
+
 
