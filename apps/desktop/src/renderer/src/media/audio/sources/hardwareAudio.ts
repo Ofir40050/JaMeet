@@ -4,6 +4,7 @@ interface ClockRecoveryState {
   filteredError: number;
   integralError: number;
   resampleRatio: number;
+  phase: number;
 }
 
 const clockRecoveryMap = new WeakMap<VoiceMicChannel, ClockRecoveryState>();
@@ -14,7 +15,8 @@ function getClockRecoveryState(mic: VoiceMicChannel): ClockRecoveryState {
     state = {
       filteredError: 0,
       integralError: 0,
-      resampleRatio: 1.0
+      resampleRatio: 1.0,
+      phase: 0
     };
     clockRecoveryMap.set(mic, state);
   }
@@ -55,6 +57,7 @@ export function routeHardwareAudioChunk(
       clockState.filteredError = 0;
       clockState.integralError = 0;
       clockState.resampleRatio = 1.0;
+      clockState.phase = 0;
     } else {
       const currentLead = mic.nextPlayTime - now;
       const timingError = currentLead - TARGET_LEAD_TIME;
@@ -67,9 +70,10 @@ export function routeHardwareAudioChunk(
       clockState.resampleRatio = Math.max(0.9985, Math.min(1.0015, 1.0 - correction));
     }
 
-    // 2. Compute Output Frames with Fractional Micro-Resampling
-    const outFrames = Math.max(1, Math.round(frameCount * clockState.resampleRatio));
-    const audioBuffer = ctx.createBuffer(outChannels, outFrames, 48000);
+    // 2. Fixed-Size Output Buffer (Guarantees steady 10ms Opus chunks without fragmentation)
+    const audioBuffer = ctx.createBuffer(outChannels, frameCount, 48000);
+    const step = clockState.resampleRatio;
+    let currPhase = clockState.phase;
 
     if (isStereo) {
       let leftIdx = 0;
@@ -84,8 +88,8 @@ export function routeHardwareAudioChunk(
       const leftData = audioBuffer.getChannelData(0);
       const rightData = audioBuffer.getChannelData(1);
 
-      for (let o = 0; o < outFrames; o++) {
-        const srcPos = (o / outFrames) * (frameCount - 1);
+      for (let o = 0; o < frameCount; o++) {
+        const srcPos = Math.max(0, Math.min(currPhase, frameCount - 1));
         const i0 = Math.floor(srcPos);
         const frac = srcPos - i0;
         const i1 = Math.min(i0 + 1, frameCount - 1);
@@ -97,6 +101,7 @@ export function routeHardwareAudioChunk(
 
         leftData[o] = l0 * (1 - frac) + l1 * frac;
         rightData[o] = r0 * (1 - frac) + r1 * frac;
+        currPhase += step;
       }
     } else if (route === '1-2' || route === '3-4' || route === '5-6' || route === '7-8') {
       let leftIdx = 0;
@@ -109,8 +114,8 @@ export function routeHardwareAudioChunk(
       rightIdx = Math.min(rightIdx, totalChannels - 1);
 
       const monoData = audioBuffer.getChannelData(0);
-      for (let o = 0; o < outFrames; o++) {
-        const srcPos = (o / outFrames) * (frameCount - 1);
+      for (let o = 0; o < frameCount; o++) {
+        const srcPos = Math.max(0, Math.min(currPhase, frameCount - 1));
         const i0 = Math.floor(srcPos);
         const frac = srcPos - i0;
         const i1 = Math.min(i0 + 1, frameCount - 1);
@@ -119,6 +124,7 @@ export function routeHardwareAudioChunk(
         const m1 = 0.5 * (floatSamples[i1 * totalChannels + leftIdx]! + floatSamples[i1 * totalChannels + rightIdx]!);
 
         monoData[o] = m0 * (1 - frac) + m1 * frac;
+        currPhase += step;
       }
     } else {
       let chIdx = 0;
@@ -138,8 +144,8 @@ export function routeHardwareAudioChunk(
 
       chIdx = Math.min(chIdx, totalChannels - 1);
       const monoData = audioBuffer.getChannelData(0);
-      for (let o = 0; o < outFrames; o++) {
-        const srcPos = (o / outFrames) * (frameCount - 1);
+      for (let o = 0; o < frameCount; o++) {
+        const srcPos = Math.max(0, Math.min(currPhase, frameCount - 1));
         const i0 = Math.floor(srcPos);
         const frac = srcPos - i0;
         const i1 = Math.min(i0 + 1, frameCount - 1);
@@ -148,8 +154,14 @@ export function routeHardwareAudioChunk(
         const s1 = floatSamples[i1 * totalChannels + chIdx]!;
 
         monoData[o] = s0 * (1 - frac) + s1 * frac;
+        currPhase += step;
       }
     }
+
+    // Keep fractional phase offset bounded within [-1, 1] frame
+    clockState.phase = currPhase - frameCount;
+    if (clockState.phase < -1.0) clockState.phase = -1.0;
+    if (clockState.phase > 1.0) clockState.phase = 1.0;
 
     const sourceNode = ctx.createBufferSource();
     sourceNode.buffer = audioBuffer;
