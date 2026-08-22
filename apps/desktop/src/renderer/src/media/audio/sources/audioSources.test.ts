@@ -400,4 +400,65 @@ describe('LocalAudioSourceManager Multi-Voice Input', () => {
     expect(manager.getVoiceRawTrack(3)).toBeDefined();
     expect(manager.voice).toBeDefined();
   });
+
+  it('preserves previous working microphone when replacement acquisition fails with device error', async () => {
+    const manager = new LocalAudioSourceManager();
+
+    // 1. Acquire initial working microphone
+    await manager.acquireVoiceMic(1, 'working-mic-1', 'talk', { inputGain: 0.9, channelRoute: 'all' });
+    const initialTrack = manager.getVoiceRawTrack(1);
+    const initialGainNode = manager.getVoiceMicNode(1);
+
+    expect(manager.getVoiceMicsCount()).toBe(1);
+    expect(initialTrack).toBeDefined();
+    expect(manager.hasActiveVoiceTrack()).toBe(true);
+
+    // 2. Mock getUserMedia failure for next attempt
+    const getUserMediaSpy = vi.spyOn(navigator.mediaDevices, 'getUserMedia')
+      .mockRejectedValueOnce(new Error('Requested device not found'));
+
+    // 3. Attempt to replace with failing device
+    await expect(
+      manager.acquireVoiceMic(1, 'failing-broken-device', 'talk', { inputGain: 0.5, channelRoute: 'all' })
+    ).rejects.toThrow('Requested device not found');
+
+    // 4. Verify previous microphone is completely preserved and still functional
+    expect(manager.getVoiceMicsCount()).toBe(1);
+    expect(manager.getVoiceRawTrack(1)).toBe(initialTrack);
+    expect(manager.getVoiceMicNode(1)).toBe(initialGainNode);
+    expect(initialTrack?.stop).not.toHaveBeenCalled();
+    expect(manager.hasActiveVoiceTrack()).toBe(true);
+
+    getUserMediaSpy.mockRestore();
+  });
+
+  it('preserves previous working microphone when new track is ended or invalid', async () => {
+    const manager = new LocalAudioSourceManager();
+
+    // 1. Acquire initial working microphone
+    await manager.acquireVoiceMic(1, 'working-mic-1', 'talk', { inputGain: 0.8, channelRoute: 'all' });
+    const initialTrack = manager.getVoiceRawTrack(1);
+
+    // 2. Mock getUserMedia returning dead stream
+    const deadTrack = createMockTrack('dead-track');
+    Object.defineProperty(deadTrack, 'readyState', { value: 'ended', configurable: true });
+    class DeadStream {
+      getAudioTracks() { return [deadTrack]; }
+    }
+    const getUserMediaSpy = vi.spyOn(navigator.mediaDevices, 'getUserMedia')
+      .mockResolvedValueOnce(new DeadStream() as unknown as MediaStream);
+
+    // 3. Attempt to replace
+    await expect(
+      manager.acquireVoiceMic(1, 'dead-device', 'talk', { inputGain: 0.8, channelRoute: 'all' })
+    ).rejects.toThrow('did not provide a live audio track');
+
+    // 4. Verify old track is intact and still live
+    expect(manager.getVoiceMicsCount()).toBe(1);
+    expect(manager.getVoiceRawTrack(1)).toBe(initialTrack);
+    expect(initialTrack?.stop).not.toHaveBeenCalled();
+    expect(manager.hasActiveVoiceTrack()).toBe(true);
+
+    getUserMediaSpy.mockRestore();
+  });
 });
