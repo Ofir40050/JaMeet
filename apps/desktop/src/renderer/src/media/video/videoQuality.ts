@@ -38,60 +38,11 @@ export function effectiveVideoQuality(selected: VideoQuality, mode: PerformanceM
 }
 
 export function cameraConstraints(quality: VideoQuality, deviceId?: string): MediaTrackConstraints {
-  if (quality === 'low') {
-    return {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      width: { ideal: 640, max: 640 },
-      height: { ideal: 360, max: 360 },
-      frameRate: { ideal: 15, max: 15 }
-    };
-  }
-  if (quality === 'standard') {
-    return {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      width: { ideal: 960, max: 960 },
-      height: { ideal: 540, max: 540 },
-      frameRate: { ideal: 24, max: 24 }
-    };
-  }
-  if (quality === 'high') {
-    return {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      width: { ideal: 1280, max: 1280 },
-      height: { ideal: 720, max: 720 },
-      frameRate: { ideal: 30, max: 30 }
-    };
-  }
-  if (quality === 'fhd') {
-    return {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      width: { ideal: 1920, min: 1280 },
-      height: { ideal: 1080, min: 720 },
-      frameRate: { ideal: 30, max: 30 }
-    };
-  }
-  if (quality === 'qhd') {
-    return {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      width: { ideal: 2560, min: 1920 },
-      height: { ideal: 1440, min: 1080 },
-      frameRate: { ideal: 30, max: 30 }
-    };
-  }
-  if (quality === 'uhd') {
-    return {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      width: { ideal: 3840, min: 1920 },
-      height: { ideal: 2160, min: 1080 },
-      frameRate: { ideal: 30, max: 30 }
-    };
-  }
-
-  // auto / adaptive
+  const profile = VIDEO_QUALITY[quality] ?? VIDEO_QUALITY.high;
   return {
-    deviceId: deviceId ? { exact: deviceId } : undefined,
-    width: { ideal: 1920 },
-    height: { ideal: 1080 },
-    frameRate: { ideal: 30, max: 30 }
+    deviceId: deviceId ? { ideal: deviceId } : undefined,
+    width: { ideal: profile.width },
+    height: { ideal: profile.height },
+    frameRate: { ideal: profile.frameRate, max: 30 }
   };
 }

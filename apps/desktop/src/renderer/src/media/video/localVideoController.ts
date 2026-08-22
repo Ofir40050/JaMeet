@@ -45,15 +45,8 @@ export function createLocalVideoController(ctx: LocalVideoContext) {
     const rawTrack = stream.getVideoTracks()[0];
     if (!rawTrack) throw new Error('The selected camera did not provide video.');
 
-    let finalTrack = rawTrack;
-    if (quality === 'low') {
-      finalTrack = createDownscaledVideoTrack(rawTrack, 640, 360, 15);
-    } else if (quality === 'standard') {
-      finalTrack = createDownscaledVideoTrack(rawTrack, 960, 540, 24);
-    }
-
-    finalTrack.enabled = ctx.isCameraEnabled();
-    return finalTrack;
+    rawTrack.enabled = ctx.isCameraEnabled();
+    return rawTrack;
   }
 
   async function replaceCamera(deviceId?: string): Promise<void> {

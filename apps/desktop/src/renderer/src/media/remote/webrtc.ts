@@ -80,13 +80,16 @@ export class WebRtcSession {
     signaling.on('signal:candidate', (candidate: RTCIceCandidateInit | null) => void this.receiveCandidate(candidate));
     signaling.on('signal:renegotiate', () => { if (this.role === 'host') void this.negotiate(); });
     signaling.on('media:update', (media: MediaMetadata) => {
+      const prevSessionMode = this.sessionMode();
       this.remoteMode = media.audioSources[0]?.mode ?? 'talk';
       this.remoteHasMusic = media.audioSources.some((source) => source.purpose === 'music');
       this.remoteReceiveVideoQuality = media.preferredReceiveVideoQuality ?? 'low';
       this.remoteAudioOnly = media.audioOnly ?? false;
       if (this.videoTrack) void this.updateVideoSenderParameters(this.videoTrack);
       this.onRemoteMedia(media);
-      if (this.role === 'host') void this.negotiate();
+      if (this.role === 'host' && prevSessionMode !== this.sessionMode()) {
+        void this.negotiate();
+      }
     });
   }
 
@@ -412,12 +415,18 @@ export class WebRtcSession {
   }
 
   async replaceVideoTrack(track: MediaStreamTrack): Promise<void> {
+    console.log(`[WebRTC] replaceVideoTrack called: trackId=${track.id}, enabled=${track.enabled}`);
     this.videoTrack = track;
     const pc = this.ensurePeer();
     const sender = this.videoSender ?? pc.getSenders().find((value) => value.track?.kind === 'video');
-    if (sender) await sender.replaceTrack(track);
-    else this.videoSender = pc.addTrack(track, new MediaStream([track]));
-    if (sender) this.videoSender = sender;
+    if (sender) {
+      console.log(`[WebRTC] Replacing track on existing video sender`);
+      await sender.replaceTrack(track);
+      this.videoSender = sender;
+    } else {
+      console.log(`[WebRTC] Adding new video track to RTCPeerConnection`);
+      this.videoSender = pc.addTrack(track, new MediaStream([track]));
+    }
     await this.updateVideoSenderParameters(track);
     if (this.role === 'host') await this.negotiate();
     else this.signaling.requestRenegotiation(this.code);
