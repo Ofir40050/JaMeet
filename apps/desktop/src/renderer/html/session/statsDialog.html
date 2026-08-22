@@ -9,7 +9,7 @@
               </span>
               <div>
                 <h2>Session Diagnostics</h2>
-                <p class="dialog-subtitle-top">Real-time bitrates, audio packet loss, latency, and hardware clock.</p>
+                <p class="dialog-subtitle-top">Real-time WebRTC telemetry, ICE transport, bitrates, and hardware clock.</p>
               </div>
             </div>
             <button value="cancel" class="dialog-close" aria-label="Close">
@@ -21,37 +21,59 @@
             <!-- IN-CALL TELEMETRY CARDS -->
             <div class="stats-grid">
               <div class="stat-card">
-                <span class="stat-label">Audio Latency (RTT)</span>
+                <span class="stat-label">Connection State</span>
+                <span id="stat-conn-state" class="stat-value">Standby</span>
+                <span class="stat-sub">WebRTC signaling state</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">ICE Transport / Relay</span>
+                <span id="stat-ice-state" class="stat-value">Not Connected</span>
+                <span class="stat-sub">Selected candidate pair</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Round Trip Time (RTT)</span>
                 <span id="stat-rtt" class="stat-value">-- ms</span>
                 <span class="stat-sub">Round-trip audio ping</span>
               </div>
               <div class="stat-card">
                 <span class="stat-label">Audio Packet Loss</span>
-                <span id="stat-audio-loss" class="stat-value">0.0%</span>
+                <span id="stat-loss" class="stat-value">0.0%</span>
                 <span class="stat-sub">Voice & Music channels</span>
               </div>
               <div class="stat-card">
-                <span class="stat-label">Music Channel Bitrate</span>
-                <span id="stat-music-bitrate" class="stat-value">-- kbps</span>
-                <span class="stat-sub">High-fidelity Opus stream</span>
+                <span class="stat-label">Audio Stream Bitrate</span>
+                <span id="stat-audio-bitrate" class="stat-value">-- kbps</span>
+                <span class="stat-sub">Opus stream Tx / Rx</span>
               </div>
               <div class="stat-card">
-                <span class="stat-label">Video FPS / Resolution</span>
-                <span id="stat-video-res" class="stat-value">-- / --</span>
-                <span class="stat-sub">Sent camera stream</span>
+                <span class="stat-label">Audio Jitter</span>
+                <span id="stat-jitter" class="stat-value">0 ms</span>
+                <span class="stat-sub">Audio packet jitter buffer</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Sent Video / Screen</span>
+                <span id="stat-video-out" class="stat-value">-- / --</span>
+                <span class="stat-sub">Resolution &amp; frame rate</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Received Video / Screen</span>
+                <span id="stat-video-in" class="stat-value">-- / --</span>
+                <span class="stat-sub">Resolution &amp; frame rate</span>
               </div>
             </div>
 
             <div class="stats-audio-engine-card mt-3">
               <div class="stats-engine-header">
-                <strong>Audio Engine & Clock State</strong>
+                <strong>Audio Engine &amp; Codec State</strong>
                 <span id="stat-engine-state" class="badge-engine-running">Active · 48 kHz</span>
               </div>
               <div class="stats-engine-details">
                 <div class="stat-line"><span>Hardware Clock:</span> <strong id="stat-sample-rate">48,000 Hz</strong></div>
-                <div class="stat-line"><span>Audio Context Buffer:</span> <strong id="stat-buffer-size">128 samples (2.67 ms)</strong></div>
+                <div class="stat-line"><span>Audio Profile:</span> <strong id="stat-audio-profile">Music Mode (Unprocessed Stereo 48 kHz)</strong></div>
+                <div class="stat-line"><span>Audio Codec:</span> <strong id="stat-audio-codec">Opus (48 kHz Stereo)</strong></div>
+                <div class="stat-line"><span>Video Bitrate:</span> <strong id="stat-video-bitrate">Tx: 0 kbps · Rx: 0 kbps</strong></div>
+                <div class="stat-line"><span>Video Codec:</span> <strong id="stat-video-codec">VP8 / WebRTC</strong></div>
                 <div class="stat-line"><span>Active Voice Inputs:</span> <strong id="stat-active-mics">1 microphone</strong></div>
-                <div class="stat-line"><span>DAW Tap Mode:</span> <strong id="stat-daw-mode">Native Process Tap (Stereo)</strong></div>
               </div>
             </div>
           </div>
