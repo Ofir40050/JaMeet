@@ -413,9 +413,9 @@ describe('LocalAudioSourceManager Multi-Voice Input', () => {
     expect(initialTrack).toBeDefined();
     expect(manager.hasActiveVoiceTrack()).toBe(true);
 
-    // 2. Mock getUserMedia failure for next attempt
+    // 2. Mock getUserMedia failure for all fallback attempts
     const getUserMediaSpy = vi.spyOn(navigator.mediaDevices, 'getUserMedia')
-      .mockRejectedValueOnce(new Error('Requested device not found'));
+      .mockRejectedValue(new Error('Requested device not found'));
 
     // 3. Attempt to replace with failing device
     await expect(
