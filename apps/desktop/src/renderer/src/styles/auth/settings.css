@@ -307,21 +307,18 @@
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  box-shadow: none;
+  gap: 18px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 24px 28px;
   margin: 0;
   width: 100%;
   box-sizing: border-box;
 }
 
 .settings-section + .settings-section {
-  padding-top: 32px;
-  border-top: 1px solid var(--border-subtle);
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .settings-section-header {
@@ -329,7 +326,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .settings-section-title,
@@ -339,7 +336,7 @@
   text-transform: uppercase;
   letter-spacing: 0.09em;
   color: var(--text-dim);
-  margin: 0 0 10px 0;
+  margin: 0 0 12px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -351,11 +348,11 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 20px 22px;
+  padding: 24px 28px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .settings-video-wrap {
