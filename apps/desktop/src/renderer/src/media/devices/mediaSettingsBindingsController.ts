@@ -56,7 +56,11 @@ export function initMediaSettingsBindings(options: MediaSettingsBindingsOptions)
       };
       prefs.voiceInputs.push(newMic);
       options.onSavePreferences();
-      await options.onSyncAllVoiceMics();
+      try {
+        await options.onSyncAllVoiceMics();
+      } catch (err) {
+        console.warn(`Could not immediately initialize added microphone ${newId}:`, err);
+      }
       await options.onEnumerateAndPopulate();
       options.onSetMessage(options.isInCall() ? 'device-dialog-status' : 'setup-status', `Microphone ${newId} added.`);
     });

@@ -42,9 +42,24 @@ export async function enumerateAndPopulateDevices(options: DeviceEnumerationOpti
   }
   await onRefreshRunningApps();
 
-  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  let devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
   const groups: Record<MediaDeviceKind, MediaDeviceInfo[]> = { videoinput: [], audioinput: [], audiooutput: [] };
   for (const device of devices) groups[device.kind]?.push(device);
+
+  // If audio inputs have empty labels (permission not yet granted/queried on Windows), probe microphone briefly to unlock device labels
+  if (groups.audioinput.length > 0 && groups.audioinput.every((d) => !d.label)) {
+    try {
+      const probe = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      probe.getTracks().forEach((t) => t.stop());
+      devices = await navigator.mediaDevices.enumerateDevices().catch(() => devices);
+      groups.videoinput = [];
+      groups.audioinput = [];
+      groups.audiooutput = [];
+      for (const device of devices) groups[device.kind]?.push(device);
+    } catch {
+      // Continue with available device list if probe is rejected
+    }
+  }
 
   const fillHelper = (ids: string[], devList: MediaDeviceInfo[], selected: string | undefined, fallback: string) => {
     fillSelects({

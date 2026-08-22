@@ -166,11 +166,24 @@ export class LocalAudioSourceManager {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(mode, deviceId, preferences), video: false });
-    } catch (error) {
-      if (preferences.sampleRate) {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(mode, deviceId, { ...preferences, sampleRate: undefined }), video: false });
-      } else {
-        throw error;
+    } catch {
+      try {
+        // Fallback 1: Relax sample rate & multichannel constraints
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: audioConstraints(mode, deviceId, { ...preferences, sampleRate: undefined, channelRoute: 'all' }),
+          video: false
+        });
+      } catch {
+        try {
+          // Fallback 2: Relax deviceId if saved deviceId does not exist on this machine
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraints(mode, undefined, { ...preferences, sampleRate: undefined, channelRoute: 'all' }),
+            video: false
+          });
+        } catch {
+          // Fallback 3: Generic audio input capture
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        }
       }
     }
     const rawTrack = stream.getAudioTracks()[0];
@@ -752,11 +765,24 @@ export class LocalAudioSourceManager {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(mode, deviceId, preferences), video: false });
-    } catch (error) {
-      if (preferences.sampleRate) {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(mode, deviceId, { ...preferences, sampleRate: undefined }), video: false });
-      } else {
-        throw error;
+    } catch {
+      try {
+        // Fallback 1: Relax sample rate & multichannel constraints
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: audioConstraints(mode, deviceId, { ...preferences, sampleRate: undefined, channelRoute: 'all' }),
+          video: false
+        });
+      } catch {
+        try {
+          // Fallback 2: Relax deviceId if saved deviceId does not exist on this machine
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraints(mode, undefined, { ...preferences, sampleRate: undefined, channelRoute: 'all' }),
+            video: false
+          });
+        } catch {
+          // Fallback 3: Generic audio input capture
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        }
       }
     }
     const rawTrack = stream.getAudioTracks()[0];

@@ -59,6 +59,9 @@ export async function prepareStudio(
       options.onReplaceMusicInput().catch((e) => console.warn('replaceMusicInput error:', e))
     ]);
 
+    // 3. Re-populate devices now that permissions and streams are live so device labels are complete!
+    await options.onEnumerateAndPopulate().catch((e) => console.warn('post-acquisition enumerate error:', e));
+
     options.onUpdateLocalPreviews();
     setMessage('setup-status', '');
   } catch (error) {

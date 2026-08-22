@@ -167,7 +167,10 @@ export function createVoiceInputsUi(ctx: VoiceInputsUiContext) {
         devSelect.className = 'custom-select mb-2';
         devSelect.id = `${isCall ? 'call-' : ''}voice-dev-${mic.id}`;
         if (!audioInputs.length) devSelect.add(new Option('Default Audio Input', ''));
-        audioInputs.forEach((d, i) => devSelect.add(new Option(formatDeviceDisplayName(d.label) || `Audio Input ${i + 1}`, d.deviceId)));
+        audioInputs.forEach((d, i) => {
+          const displayLabel = d.label ? formatDeviceDisplayName(d.label) : (audioInputs.length === 1 ? 'Default Microphone' : `Microphone ${i + 1}`);
+          devSelect.add(new Option(displayLabel, d.deviceId));
+        });
         if (mic.deviceId && audioInputs.some((d) => d.deviceId === mic.deviceId)) devSelect.value = mic.deviceId;
         else if (audioInputs.length) devSelect.value = audioInputs[0]!.deviceId;
 
