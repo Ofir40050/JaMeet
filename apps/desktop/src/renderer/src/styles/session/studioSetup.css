@@ -360,7 +360,8 @@
 /* ========================================================
    RIGHT COLUMN: STUDIO CONFIGURATION AREA (3 CLEAR GROUPS)
    ======================================================== */
-.settings-panel {
+#setup-view .settings-panel,
+.audio-settings-modal .settings-panel {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
@@ -374,7 +375,8 @@
   position: relative;
 }
 
-.settings-panel-content {
+#setup-view .settings-panel-content,
+.audio-settings-modal .settings-panel-content {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -386,18 +388,21 @@
   scrollbar-width: thin;
 }
 
-.settings-header {
+#setup-view .settings-header,
+.audio-settings-modal .settings-header {
   margin: 0;
 }
 
-.settings-header-row {
+#setup-view .settings-header-row,
+.audio-settings-modal .settings-header-row {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
 }
 
-.settings-header-row h2 {
+#setup-view .settings-header-row h2,
+.audio-settings-modal .settings-header-row h2 {
   font-size: 18px;
   font-weight: 700;
   color: var(--text-main);
@@ -882,14 +887,16 @@
 }
 
 /* --- GROUP 2: SESSION MODE (AUDIO PROFILE & PROCESSING) --- */
-.settings-section {
+#setup-view .settings-section,
+.audio-settings-modal .settings-section {
   display: flex;
   flex-direction: column;
   gap: 0;
   margin: 0;
 }
 
-.section-label {
+#setup-view .section-label,
+.audio-settings-modal .section-label {
   font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.09em;

@@ -209,11 +209,12 @@
   box-sizing: border-box;
 }
 
+#settings-view .settings-panel,
 .settings-panel {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 24px 28px;
+  padding: 24px 28px !important;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -221,8 +222,8 @@
   box-sizing: border-box;
 }
 
-.settings-field-group,
-.settings-section,
+#settings-view .settings-field-group,
+#settings-view .settings-section,
 #settings-view .dialog-card,
 #settings-view .auth-form-row-2,
 #settings-view .form-row-2,
@@ -230,10 +231,12 @@
   max-width: 100%;
 }
 
+#settings-view .settings-panel.hidden,
 .settings-panel.hidden {
   display: none !important;
 }
 
+#settings-view .settings-panel-header,
 .settings-panel-header {
   padding: 0 0 16px 0;
   margin-bottom: 4px;
@@ -246,6 +249,7 @@
   padding-right: 0 !important;
 }
 
+#settings-view .header-with-action,
 .header-with-action {
   display: flex;
   align-items: center;
@@ -291,6 +295,7 @@
   transform: none;
 }
 
+#settings-view .settings-panel-header h3,
 .settings-panel-header h3 {
   font-size: 18px;
   font-weight: 700;
@@ -299,6 +304,7 @@
   letter-spacing: -0.01em;
 }
 
+#settings-view .settings-panel-header p,
 .settings-panel-header p {
   font-size: 13px;
   color: var(--text-secondary);
@@ -306,6 +312,7 @@
   line-height: 1.5;
 }
 
+#settings-view .settings-section,
 .settings-section {
   display: flex;
   flex-direction: column;
@@ -313,16 +320,18 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 20px 24px;
+  padding: 20px 24px !important;
   margin: 0;
   width: 100%;
   box-sizing: border-box;
 }
 
+#settings-view .settings-section + .settings-section,
 .settings-section + .settings-section {
   margin-top: 4px;
 }
 
+#settings-view .settings-section-header,
 .settings-section-header {
   display: flex;
   align-items: center;
@@ -331,8 +340,10 @@
   margin-bottom: 2px;
 }
 
+#settings-view .settings-section-title,
+#settings-view .section-label,
 .settings-section-title,
-#settings-view .section-label {
+.section-label {
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -345,6 +356,7 @@
 }
 
 /* Settings Video Preview & Mirroring */
+#settings-view .settings-video-preview-card,
 .settings-video-preview-card {
   width: 100%;
   background: var(--bg-elevated);
@@ -1215,8 +1227,8 @@ video.res-low,
   padding: 0;
 }
 
-/* Profile Header Summary */
-.profile-hero-preview {
+/* Profile Header Summary (Modal only) */
+.auth-dialog-modal .profile-hero-preview {
   display: flex;
   align-items: center;
   gap: 14px;
