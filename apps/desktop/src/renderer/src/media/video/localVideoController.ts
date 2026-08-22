@@ -58,15 +58,25 @@ export function createLocalVideoController(ctx: LocalVideoContext) {
 
   async function replaceCamera(deviceId?: string): Promise<void> {
     if (ctx.getScreenTrack()) throw new Error('Stop screen sharing before changing the camera.');
-    const next = await acquireVideo(deviceId);
+    
+    // Stop the previous camera track FIRST so Windows releases the hardware device lock
+    const currentTrack = ctx.getVideoTrack();
+    currentTrack?.stop();
+
+    let next: MediaStreamTrack;
+    try {
+      next = await acquireVideo(deviceId);
+    } catch (err) {
+      console.warn('[Video] Failed to acquire camera stream for deviceId:', deviceId, err);
+      throw err;
+    }
+
     try {
       if (ctx.isInCall()) await ctx.onReplaceRtcVideoTrack(next);
     } catch (error) {
       next.stop();
       throw error;
     }
-    const currentTrack = ctx.getVideoTrack();
-    currentTrack?.stop();
     ctx.setVideoTrack(next);
     ctx.onSetRtcVideoTrack(next);
 

@@ -527,7 +527,13 @@ export class WebRtcSession {
     console.log(`[WebRTC] Received ${description.type} from peer`);
     const pc = this.ensurePeer();
     await pc.setRemoteDescription(description);
-    for (const candidate of this.pendingCandidates.splice(0)) await pc.addIceCandidate(candidate);
+    for (const candidate of this.pendingCandidates.splice(0)) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (err) {
+        console.warn('[WebRTC] Failed to add buffered ICE candidate:', err);
+      }
+    }
     if (description.type === 'offer') {
       console.log(`[WebRTC] Creating answer for peer offer`);
       const answer = await pc.createAnswer();
@@ -553,8 +559,12 @@ export class WebRtcSession {
       console.log(`[WebRTC] Queuing remote ICE candidate (remoteDescription not ready yet)`);
       this.pendingCandidates.push(candidate);
     } else {
-      console.log(`[WebRTC] Adding remote ICE candidate: sdpMid=${candidate.sdpMid}`);
-      await pc.addIceCandidate(candidate);
+      try {
+        console.log(`[WebRTC] Adding remote ICE candidate: sdpMid=${candidate.sdpMid}`);
+        await pc.addIceCandidate(candidate);
+      } catch (err) {
+        console.warn('[WebRTC] Failed to add remote ICE candidate:', err);
+      }
     }
   }
 
