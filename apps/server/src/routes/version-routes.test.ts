@@ -35,4 +35,38 @@ describe('Server Version Awareness Endpoint', () => {
     expect(body.downloadUrl).toBe('https://github.com/Ofir40050/JaMeet/releases/tag/v0.2.0');
     expect(body.feedbackUrl).toBe('https://github.com/Ofir40050/JaMeet/issues/new');
   });
+
+  it('handles GET and HEAD probes on root /, /healthz, and /health successfully for deployment monitors', async () => {
+    const config = loadConfig({
+      ...process.env,
+      NODE_ENV: 'test'
+    });
+
+    appInstance = await createApp(config);
+
+    // Root GET probe
+    const rootGet = await appInstance.app.inject({ method: 'GET', url: '/' });
+    expect(rootGet.statusCode).toBe(200);
+    expect(JSON.parse(rootGet.body)).toMatchObject({ ok: true, service: 'jameet-server', status: 'online' });
+
+    // Root HEAD probe (Render default health check)
+    const rootHead = await appInstance.app.inject({ method: 'HEAD', url: '/' });
+    expect(rootHead.statusCode).toBe(200);
+
+    // Healthz GET & HEAD probe
+    const healthzGet = await appInstance.app.inject({ method: 'GET', url: '/healthz' });
+    expect(healthzGet.statusCode).toBe(200);
+    expect(JSON.parse(healthzGet.body)).toEqual({ ok: true });
+
+    const healthzHead = await appInstance.app.inject({ method: 'HEAD', url: '/healthz' });
+    expect(healthzHead.statusCode).toBe(200);
+
+    // Health GET & HEAD probe
+    const healthGet = await appInstance.app.inject({ method: 'GET', url: '/health' });
+    expect(healthGet.statusCode).toBe(200);
+    expect(JSON.parse(healthGet.body)).toEqual({ ok: true });
+
+    const healthHead = await appInstance.app.inject({ method: 'HEAD', url: '/health' });
+    expect(healthHead.statusCode).toBe(200);
+  });
 });

@@ -173,8 +173,22 @@ export async function createApp(
     cleanupServerResources();
   });
 
-  app.get('/healthz', async () => ({ ok: true }));
-  app.get('/health', async () => ({ ok: true }));
+  // Root and Health Probe Endpoints (Supports both GET and HEAD for Render probes)
+  app.route({
+    method: ['GET', 'HEAD'],
+    url: '/',
+    handler: async () => ({ ok: true, service: 'jameet-server', status: 'online' })
+  });
+  app.route({
+    method: ['GET', 'HEAD'],
+    url: '/healthz',
+    handler: async () => ({ ok: true })
+  });
+  app.route({
+    method: ['GET', 'HEAD'],
+    url: '/health',
+    handler: async () => ({ ok: true })
+  });
 
   // REST Version Awareness Endpoint
   registerVersionRoutes(app, config);
