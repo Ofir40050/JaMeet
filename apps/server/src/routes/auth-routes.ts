@@ -6,7 +6,16 @@ import {
   guestAuthRequestSchema
 } from '@jameet/shared';
 import type { UserStore } from '../auth/auth.js';
+import {
+  checkLoginRateLimit,
+  recordFailedLogin,
+  recordSuccessfulLogin,
+  checkGuestRateLimit,
+  recordGuestCreation,
+  FAILED_LOGIN_DELAY_MS
+} from '../auth/auth-rate-limit.js';
 import { extractClientInfo } from '../core/client-info.js';
+import { getClientIp } from '../core/client-ip.js';
 import { logger } from '../core/logger.js';
 
 export function registerAuthRoutes(app: FastifyInstance, userStore: UserStore): void {
@@ -36,10 +45,24 @@ export function registerAuthRoutes(app: FastifyInstance, userStore: UserStore): 
       logger.warn('auth_login_failed', 'Login payload validation failed');
       return reply.code(400).send({ ok: false, message: 'Please enter your username/email and password.' });
     }
-    const identifierType = parsed.data.usernameOrEmail.includes('@') ? 'email' : 'username';
+
+    const clientIp = getClientIp(request);
+    const identifier = parsed.data.usernameOrEmail;
+    const rateCheck = checkLoginRateLimit(clientIp, identifier);
+    if (!rateCheck.allowed) {
+      logger.warn('auth_login_throttled', 'Login attempt throttled due to rate limits', { clientIp, identifier, reason: rateCheck.reason });
+      reply.header('Retry-After', String(rateCheck.retryAfterSeconds ?? 60));
+      return reply.code(429).send({
+        ok: false,
+        message: rateCheck.reason || 'Too many failed login attempts. Please wait before trying again.'
+      });
+    }
+
+    const identifierType = identifier.includes('@') ? 'email' : 'username';
     const clientInfo = extractClientInfo(request);
     try {
       const result = await userStore.login(parsed.data);
+      recordSuccessfulLogin(clientIp, identifier);
       userStore.recordLogin(result.user.id, clientInfo);
       logger.info('auth_login_success', 'User login successful', { userId: result.user.id, username: result.user.username });
       return reply.send({ ok: true, token: result.token, user: result.user });
@@ -47,6 +70,13 @@ export function registerAuthRoutes(app: FastifyInstance, userStore: UserStore): 
       const msg = err instanceof Error ? err.message : 'Invalid credentials.';
       const isAuthFail = msg.includes('Invalid username or password');
       const statusCode = isAuthFail ? 401 : 500;
+
+      if (isAuthFail) {
+        recordFailedLogin(clientIp, identifier);
+        // Delay to slow down automated brute-force attempts
+        await new Promise((resolve) => setTimeout(resolve, FAILED_LOGIN_DELAY_MS));
+      }
+
       logger.warn('auth_login_failed', 'User login failed', { identifierType, statusCode, reason: msg });
       return reply.code(statusCode).send({ ok: false, message: msg });
     }
@@ -108,9 +138,21 @@ export function registerAuthRoutes(app: FastifyInstance, userStore: UserStore): 
   });
 
   app.post('/api/auth/guest', async (request, reply) => {
+    const clientIp = getClientIp(request);
+    const rateCheck = checkGuestRateLimit(clientIp);
+    if (!rateCheck.allowed) {
+      logger.warn('auth_guest_throttled', 'Guest creation throttled', { clientIp, reason: rateCheck.reason });
+      reply.header('Retry-After', String(rateCheck.retryAfterSeconds ?? 60));
+      return reply.code(429).send({
+        ok: false,
+        message: rateCheck.reason || 'Too many guest sessions created. Please wait.'
+      });
+    }
+
     const parsed = guestAuthRequestSchema.safeParse(request.body);
     const displayName = parsed.success ? parsed.data.displayName : 'Guest Musician';
     const guestIdentity = userStore.createGuestIdentity(displayName);
+    recordGuestCreation(clientIp);
     return reply.send({ ok: true, identity: guestIdentity });
   });
 }

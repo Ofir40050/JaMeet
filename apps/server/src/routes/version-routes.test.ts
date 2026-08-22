@@ -69,4 +69,56 @@ describe('Server Version Awareness Endpoint', () => {
     const healthHead = await appInstance.app.inject({ method: 'HEAD', url: '/health' });
     expect(healthHead.statusCode).toBe(200);
   });
+
+  it('enforces brute force throttling on /api/auth/login and rate limits /api/auth/guest', async () => {
+    const config = loadConfig({
+      ...process.env,
+      NODE_ENV: 'test'
+    });
+
+    appInstance = await createApp(config);
+
+    // Test guest creation throttling
+    for (let i = 0; i < 10; i++) {
+      const res = await appInstance.app.inject({
+        method: 'POST',
+        url: '/api/auth/guest',
+        payload: { displayName: `Guest ${i}` },
+        remoteAddress: '198.51.100.99'
+      });
+      expect(res.statusCode).toBe(200);
+    }
+
+    // 11th guest request from same IP should receive 429
+    const blockedGuest = await appInstance.app.inject({
+      method: 'POST',
+      url: '/api/auth/guest',
+      payload: { displayName: 'Spam Guest' },
+      remoteAddress: '198.51.100.99'
+    });
+    expect(blockedGuest.statusCode).toBe(429);
+    expect(JSON.parse(blockedGuest.body).message).toContain('Too many guest sessions');
+
+    // Test login brute force throttling for a targeted account
+    const targetUser = 'brute_force_target';
+    for (let i = 0; i < 5; i++) {
+      const failRes = await appInstance.app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { usernameOrEmail: targetUser, password: 'WrongPassword123!' },
+        remoteAddress: '198.51.100.100'
+      });
+      expect(failRes.statusCode).toBe(401);
+    }
+
+    // 6th attempt should be blocked with 429 Too Many Requests
+    const throttledLogin = await appInstance.app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { usernameOrEmail: targetUser, password: 'WrongPassword123!' },
+      remoteAddress: '198.51.100.100'
+    });
+    expect(throttledLogin.statusCode).toBe(429);
+    expect(JSON.parse(throttledLogin.body).message).toContain('Too many failed login attempts');
+  });
 });

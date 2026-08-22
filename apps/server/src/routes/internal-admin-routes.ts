@@ -9,10 +9,10 @@ export function registerInternalAdminRoutes(
 ): void {
   // Internal Loopback-Only Administration Endpoint
   app.post('/api/internal/admin/session-access', async (request, reply) => {
-    const remoteIp = request.socket.remoteAddress || request.ip;
-    const isLoopback = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
+    const directSocketIp = request.raw?.socket?.remoteAddress || request.socket?.remoteAddress;
+    const isLoopback = directSocketIp === '127.0.0.1' || directSocketIp === '::1' || directSocketIp === '::ffff:127.0.0.1';
     if (!isLoopback) {
-      return reply.code(403).send({ ok: false, message: 'Forbidden: administration is only available via local loopback.' });
+      return reply.code(403).send({ ok: false, message: 'Forbidden: administration is only available via direct local loopback.' });
     }
 
     const authHeader = request.headers.authorization;
