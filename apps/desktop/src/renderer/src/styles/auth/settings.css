@@ -29,11 +29,11 @@
 }
 
 .settings-topbar-inner {
-  max-width: 1120px;
+  max-width: 1040px;
   width: 100%;
   height: 100%;
   margin: 0 auto;
-  padding: 0 32px;
+  padding: 0 28px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -95,11 +95,11 @@
 
 .settings-workspace-layout {
   display: flex;
-  max-width: 1120px;
+  max-width: 1040px;
   width: 100%;
   margin: 0 auto;
-  padding: 28px 32px 48px;
-  gap: 28px;
+  padding: 24px 28px 40px;
+  gap: 24px;
   background: transparent;
   border: none;
   border-radius: 0;
@@ -109,11 +109,11 @@
 }
 
 .settings-sidebar {
-  width: 220px;
+  width: 200px;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 12px 10px;
+  padding: 10px 8px;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -213,10 +213,10 @@
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 52px 68px 64px 68px;
+  padding: 44px 54px 54px 54px;
   display: flex;
   flex-direction: column;
-  gap: 36px;
+  gap: 32px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -235,8 +235,8 @@
 }
 
 .settings-panel-header {
-  padding: 12px 10px 32px 10px;
-  margin-bottom: 16px;
+  padding: 10px 8px 30px 8px;
+  margin-bottom: 12px;
   border-bottom: 1px solid var(--border-subtle);
   width: 100%;
   box-sizing: border-box;
@@ -292,7 +292,7 @@
 }
 
 .settings-panel-header h3 {
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 700;
   color: var(--text-main);
   margin: 0 0 10px 0;
@@ -309,18 +309,18 @@
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 22px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 32px 40px;
+  padding: 28px 34px;
   margin: 0;
   width: 100%;
   box-sizing: border-box;
 }
 
 .settings-section + .settings-section {
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 .settings-section-header {
@@ -333,12 +333,12 @@
 
 .settings-section-title,
 #settings-view .section-label {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.09em;
   color: var(--text-dim);
-  margin: 0 0 18px 0;
+  margin: 0 0 16px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -350,11 +350,11 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 32px 40px;
+  padding: 28px 34px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
 .settings-video-wrap {
@@ -482,7 +482,7 @@ video.res-low,
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 18px 26px;
+  padding: 16px 24px;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -496,7 +496,7 @@ video.res-low,
   background: transparent !important;
   border: none !important;
   border-radius: 0 !important;
-  padding: 16px 8px;
+  padding: 14px 6px;
   cursor: pointer;
   box-sizing: border-box;
   transition: background 0.12s ease;
@@ -505,7 +505,7 @@ video.res-low,
 .settings-radio-row + .settings-radio-row {
   border-top: 1px solid var(--border-subtle) !important;
   margin-top: 0;
-  padding-top: 16px;
+  padding-top: 12px;
 }
 
 .settings-radio-row input[type="radio"] {
@@ -518,25 +518,25 @@ video.res-low,
 .settings-radio-content {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   flex: 1;
 }
 
 .settings-radio-content strong {
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-main);
   line-height: 1.35;
 }
 
 .settings-radio-content span {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-muted);
   line-height: 1.5;
 }
 
 .settings-hint {
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--text-secondary);
   line-height: 1.55;
   margin: 0;
@@ -552,13 +552,13 @@ video.res-low,
   gap: 8px !important;
   width: auto !important;
   align-self: flex-start !important;
-  height: 38px !important;
-  padding: 0 20px !important;
+  height: 36px !important;
+  padding: 0 18px !important;
   background: var(--bg-elevated) !important;
   border: 1px solid var(--border-subtle) !important;
   border-radius: var(--radius-xs) !important;
   color: var(--text-secondary) !important;
-  font-size: 13px !important;
+  font-size: 12.5px !important;
   font-weight: 600 !important;
   cursor: pointer !important;
   box-sizing: border-box !important;
@@ -578,7 +578,7 @@ video.res-low,
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 22px 28px;
+  padding: 20px 26px;
   box-sizing: border-box;
   margin: 0;
   width: 100%;
@@ -643,10 +643,10 @@ video.res-low,
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 32px 40px;
+  padding: 28px 34px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 22px;
   box-sizing: border-box;
   width: 100%;
 }
@@ -807,12 +807,12 @@ video.res-low,
 #settings-view .profile-hero-preview {
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 26px;
   background: var(--bg-elevated) !important;
   border: 1px solid var(--border-subtle) !important;
   border-radius: var(--radius-md) !important;
-  padding: 32px 40px !important;
-  margin: 0 0 24px 0 !important;
+  padding: 28px 34px !important;
+  margin: 0 0 18px 0 !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
   box-sizing: border-box;
   width: 100%;
@@ -828,15 +828,15 @@ video.res-low,
 
 #settings-view .profile-avatar-wrap {
   position: relative;
-  width: 62px;
-  height: 62px;
+  width: 60px;
+  height: 60px;
   flex-shrink: 0;
 }
 
 #settings-view .profile-avatar-circle {
-  width: 62px;
-  height: 62px;
-  font-size: 21px;
+  width: 60px;
+  height: 60px;
+  font-size: 20px;
   font-weight: 700;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -927,7 +927,7 @@ video.res-low,
 #settings-view .form-row-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 26px 32px;
+  gap: 24px 30px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -935,7 +935,7 @@ video.res-low,
 #settings-view .form-row-3 {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 26px;
+  gap: 24px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -943,7 +943,7 @@ video.res-low,
 #settings-view .field-group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 9px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -1845,8 +1845,8 @@ video.res-low,
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 24px 30px;
-  margin-top: 20px;
+  padding: 18px 24px;
+  margin-top: 18px;
 }
 
 .privacy-disclosure-header {
