@@ -84,7 +84,7 @@ JaMeet supports two TURN relay providers:
    - Required environment variables:
      - `TURN_PROVIDER=cloudflare`
      - `CLOUDFLARE_TURN_KEY_ID`: Cloudflare Calls TURN Key ID.
-     - `CLOUDFLARE_TURN_API_TOKEN`: Cloudflare API Token with `Calls:Edit` permission (for ICE credential generation).
+     - `CLOUDFLARE_TURN_API_TOKEN`: Server-side TURN key API token used with the TURN Key ID to generate temporary ICE credentials.
      - `CLOUDFLARE_ACCOUNT_ID`: Cloudflare Account ID (for GraphQL Analytics query).
      - `CLOUDFLARE_TURN_ANALYTICS_API_TOKEN`: Cloudflare API Token with `Account Analytics:Read` permission.
      - `TURN_MONTHLY_SOFT_LIMIT_GB`: Soft limit in GB (default: `700`).

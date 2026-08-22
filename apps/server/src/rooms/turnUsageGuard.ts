@@ -13,10 +13,17 @@ export function getUtcMonthKey(now = new Date()): string {
   return `${year}-${month}`;
 }
 
-export function getUtcMonthStartIso(now = new Date()): string {
+export function getUtcMonthStartDateStr(now = new Date()): string {
   const year = now.getUTCFullYear();
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-  return `${year}-${month}-01T00:00:00Z`;
+  return `${year}-${month}-01`;
+}
+
+export function getUtcCurrentDateStr(now = new Date()): string {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(now.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export class TurnUsageGuard {
@@ -26,6 +33,7 @@ export class TurnUsageGuard {
   private warned500GB = false;
   private warned600GB = false;
   private warnedSoftLimit = false;
+  private inFlightQueryMonth: string | null = null;
   private inFlightQuery: Promise<number> | null = null;
 
   resetState(): void {
@@ -35,6 +43,7 @@ export class TurnUsageGuard {
     this.warned500GB = false;
     this.warned600GB = false;
     this.warnedSoftLimit = false;
+    this.inFlightQueryMonth = null;
     this.inFlightQuery = null;
   }
 
@@ -84,17 +93,17 @@ export class TurnUsageGuard {
     now: Date
   ): Promise<number> {
     const endpoint = 'https://api.cloudflare.com/client/v4/graphql';
-    const monthStartIso = getUtcMonthStartIso(now);
-    const nowIso = now.toISOString();
+    const dateStart = getUtcMonthStartDateStr(now);
+    const dateEnd = getUtcCurrentDateStr(now);
 
-    const query = `query GetTurnUsage($accountTag: String!, $datetimeStart: Time!, $datetimeEnd: Time!, $turnKeyId: String!) {
+    const query = `query GetTurnUsage($accountTag: String!, $dateStart: Date!, $dateEnd: Date!, $keyId: String!) {
   viewer {
     accounts(filter: { accountTag: $accountTag }) {
-      turnUsageAdaptiveGroups(
+      callsTurnUsageAdaptiveGroups(
         filter: {
-          datetime_geq: $datetimeStart
-          datetime_leq: $datetimeEnd
-          turnKeyId: $turnKeyId
+          date_geq: $dateStart
+          date_leq: $dateEnd
+          keyId: $keyId
         }
         limit: 1000
       ) {
@@ -117,9 +126,9 @@ export class TurnUsageGuard {
         query,
         variables: {
           accountTag: config.CLOUDFLARE_ACCOUNT_ID,
-          datetimeStart: monthStartIso,
-          datetimeEnd: nowIso,
-          turnKeyId: config.CLOUDFLARE_TURN_KEY_ID
+          dateStart,
+          dateEnd,
+          keyId: config.CLOUDFLARE_TURN_KEY_ID
         }
       }),
       signal: AbortSignal.timeout(5000)
@@ -134,18 +143,40 @@ export class TurnUsageGuard {
       throw new Error('Cloudflare GraphQL Analytics query returned errors');
     }
 
-    const accounts = (data?.data as Record<string, unknown>)?.viewer as Record<string, unknown>;
-    const accountList = accounts?.accounts as Array<Record<string, unknown>> | undefined;
-    const turnGroups = accountList?.[0]?.turnUsageAdaptiveGroups as Array<Record<string, unknown>> | undefined;
+    const viewer = data?.data && typeof data.data === 'object' ? (data.data as Record<string, unknown>).viewer : undefined;
+    const accounts = viewer && typeof viewer === 'object' ? (viewer as Record<string, unknown>).accounts : undefined;
+    if (!Array.isArray(accounts) || accounts.length === 0) {
+      throw new Error('Cloudflare GraphQL Analytics response contains missing or empty accounts array');
+    }
+
+    const account = accounts[0];
+    if (!account || typeof account !== 'object') {
+      throw new Error('Cloudflare GraphQL Analytics response contains invalid account entry');
+    }
+
+    const turnGroups = (account as Record<string, unknown>).callsTurnUsageAdaptiveGroups;
+    if (!Array.isArray(turnGroups)) {
+      throw new Error('Cloudflare GraphQL Analytics response callsTurnUsageAdaptiveGroups is not an array');
+    }
+
+    if (turnGroups.length === 0) {
+      return 0;
+    }
 
     let totalEgressBytes = 0;
-    if (Array.isArray(turnGroups)) {
-      for (const group of turnGroups) {
-        const sum = group?.sum as Record<string, unknown> | undefined;
-        if (typeof sum?.egressBytes === 'number') {
-          totalEgressBytes += sum.egressBytes;
-        }
+    for (const group of turnGroups) {
+      if (!group || typeof group !== 'object') {
+        throw new Error('Cloudflare GraphQL Analytics group is invalid');
       }
+      const sum = (group as Record<string, unknown>).sum;
+      if (!sum || typeof sum !== 'object') {
+        throw new Error('Cloudflare GraphQL Analytics group sum is invalid');
+      }
+      const egress = (sum as Record<string, unknown>).egressBytes;
+      if (typeof egress !== 'number' || !Number.isFinite(egress) || Number.isNaN(egress) || egress < 0) {
+        throw new Error('Cloudflare GraphQL Analytics egressBytes is missing or invalid');
+      }
+      totalEgressBytes += egress;
     }
 
     return totalEgressBytes;
@@ -173,6 +204,11 @@ export class TurnUsageGuard {
       this.resetForNewMonth(monthKey);
     }
 
+    if (this.inFlightQuery && this.inFlightQueryMonth !== monthKey) {
+      this.inFlightQuery = null;
+      this.inFlightQueryMonth = null;
+    }
+
     const checkIntervalMs = config.TURN_USAGE_CHECK_INTERVAL_SECONDS * 1000;
     const nowMs = now.getTime();
     const isCacheValid =
@@ -181,19 +217,27 @@ export class TurnUsageGuard {
 
     if (!isCacheValid) {
       if (!this.inFlightQuery) {
+        const queryMonth = monthKey;
+        this.inFlightQueryMonth = queryMonth;
         this.inFlightQuery = this.executeGraphQLQuery(config, fetchFn, now).finally(() => {
-          this.inFlightQuery = null;
+          if (this.inFlightQueryMonth === queryMonth) {
+            this.inFlightQuery = null;
+            this.inFlightQueryMonth = null;
+          }
         });
       }
 
       try {
         const usageBytes = await this.inFlightQuery;
-        this.lastSuccessfulUsageBytes = usageBytes;
-        this.lastSuccessfulCheckTime = now.getTime();
-        this.evaluateMilestones(usageBytes, config.TURN_MONTHLY_SOFT_LIMIT_GB);
+        if (this.currentMonth === monthKey) {
+          this.lastSuccessfulUsageBytes = usageBytes;
+          this.lastSuccessfulCheckTime = now.getTime();
+          this.evaluateMilestones(usageBytes, config.TURN_MONTHLY_SOFT_LIMIT_GB);
+        }
       } catch (err: unknown) {
         const gracePeriodMs = 15 * 60 * 1000; // 15 minutes
         const hasGraceCache =
+          this.currentMonth === monthKey &&
           this.lastSuccessfulUsageBytes !== null &&
           nowMs - this.lastSuccessfulCheckTime <= gracePeriodMs;
 
@@ -228,3 +272,4 @@ export class TurnUsageGuard {
 }
 
 export const defaultTurnUsageGuard = new TurnUsageGuard();
+
