@@ -10,6 +10,10 @@ const schema = z.object({
   TURN_PROVIDER: z.enum(['self_hosted', 'cloudflare']).default('self_hosted'),
   CLOUDFLARE_TURN_KEY_ID: z.string().optional(),
   CLOUDFLARE_TURN_API_TOKEN: z.string().optional(),
+  CLOUDFLARE_ACCOUNT_ID: z.string().optional(),
+  CLOUDFLARE_TURN_ANALYTICS_API_TOKEN: z.string().optional(),
+  TURN_MONTHLY_SOFT_LIMIT_GB: z.coerce.number().min(0).default(700),
+  TURN_USAGE_CHECK_INTERVAL_SECONDS: z.coerce.number().int().min(10).default(300),
   TURN_HOST: z.string().default('localhost'),
   TURN_PORT: z.coerce.number().int().positive().default(3478),
   TURN_TLS_PORT: z.coerce.number().int().positive().default(5349),
@@ -92,6 +96,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       }
       if (!config.CLOUDFLARE_TURN_API_TOKEN || config.CLOUDFLARE_TURN_API_TOKEN.trim() === '') {
         throw new Error('CLOUDFLARE_TURN_API_TOKEN is required when TURN_PROVIDER is cloudflare');
+      }
+      if (config.TURN_MONTHLY_SOFT_LIMIT_GB > 0) {
+        if (!config.CLOUDFLARE_ACCOUNT_ID || config.CLOUDFLARE_ACCOUNT_ID.trim() === '') {
+          throw new Error('CLOUDFLARE_ACCOUNT_ID is required in production when Cloudflare TURN is enabled with a monthly soft limit');
+        }
+        if (!config.CLOUDFLARE_TURN_ANALYTICS_API_TOKEN || config.CLOUDFLARE_TURN_ANALYTICS_API_TOKEN.trim() === '') {
+          throw new Error('CLOUDFLARE_TURN_ANALYTICS_API_TOKEN is required in production when Cloudflare TURN is enabled with a monthly soft limit');
+        }
       }
     }
   }

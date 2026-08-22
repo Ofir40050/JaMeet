@@ -99,6 +99,10 @@ const SENSITIVE_KEY_PATTERNS = [
   /turn_shared_secret/i,
   /cloudflare_turn_api_token/i,
   /cloudflare_turn_key_id/i,
+  /cloudflare_turn_analytics_api_token/i,
+  /cloudflare_account_id/i,
+  /turn_analytics_api_token/i,
+  /analytics_token/i,
   /turn_api_token/i,
   /turn_key/i,
   /admintoken/i,
@@ -129,13 +133,13 @@ export function sanitizeLogString(input: string): string {
 
   // 4. Redact JSON-style key-values: "password": "...", "token": "...", etc.
   str = str.replace(
-    /"((?:password|passphrase|currentPassword|newPassword|secret|token|sessionToken|session_token|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token|credential|credentials|email|usernameOrEmail|username_or_email|CLOUDFLARE_TURN_API_TOKEN|CLOUDFLARE_TURN_KEY_ID|cloudflare_turn_api_token|cloudflare_turn_key_id|cloudflareTurnApiToken|cloudflareTurnKeyId|turn_api_token|turn_key_id|turnApiKey|turnKeyId))"\s*:\s*("(?:[^"\\]|\\.)*"|(?!\[REDACTED)[^\s,}\]]+)/gi,
+    /"((?:password|passphrase|currentPassword|newPassword|secret|token|sessionToken|session_token|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token|credential|credentials|email|usernameOrEmail|username_or_email|CLOUDFLARE_TURN_API_TOKEN|CLOUDFLARE_TURN_KEY_ID|CLOUDFLARE_TURN_ANALYTICS_API_TOKEN|CLOUDFLARE_ACCOUNT_ID|cloudflare_turn_api_token|cloudflare_turn_key_id|cloudflare_turn_analytics_api_token|cloudflare_account_id|cloudflareTurnApiToken|cloudflareTurnKeyId|cloudflareTurnAnalyticsApiToken|cloudflareAccountId|turn_analytics_api_token|analytics_token|turn_api_token|turn_key_id|turnApiKey|turnKeyId))"\s*:\s*("(?:[^"\\]|\\.)*"|(?!\[REDACTED)[^\s,}\]]+)/gi,
     '"$1":"[REDACTED]"'
   );
 
   // 5. Redact Key-Value patterns in text, query strings, headers, error messages:
   str = str.replace(
-    /((?:password|passphrase|currentPassword|newPassword|secret|token|sessionToken|session_token|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token|credential|credentials|email|usernameOrEmail|username_or_email|CLOUDFLARE_TURN_API_TOKEN|CLOUDFLARE_TURN_KEY_ID|cloudflare_turn_api_token|cloudflare_turn_key_id|cloudflareTurnApiToken|cloudflareTurnKeyId|turn_api_token|turn_key_id|turnApiKey|turnKeyId))\s*([:=])\s*("(?:[^"\\]|\\.)*"|'[^']*'|(?!\[REDACTED)[^\s,;&'"}]+)/gi,
+    /((?:password|passphrase|currentPassword|newPassword|secret|token|sessionToken|session_token|turnSharedSecret|turn_shared_secret|authToken|auth_token|reconnectToken|reconnect_token|adminToken|admin_token|credential|credentials|email|usernameOrEmail|username_or_email|CLOUDFLARE_TURN_API_TOKEN|CLOUDFLARE_TURN_KEY_ID|CLOUDFLARE_TURN_ANALYTICS_API_TOKEN|CLOUDFLARE_ACCOUNT_ID|cloudflare_turn_api_token|cloudflare_turn_key_id|cloudflare_turn_analytics_api_token|cloudflare_account_id|cloudflareTurnApiToken|cloudflareTurnKeyId|cloudflareTurnAnalyticsApiToken|cloudflareAccountId|turn_analytics_api_token|analytics_token|turn_api_token|turn_key_id|turnApiKey|turnKeyId))\s*([:=])\s*("(?:[^"\\]|\\.)*"|'[^']*'|(?!\[REDACTED)[^\s,;&'"}]+)/gi,
     '$1$2[REDACTED]'
   );
 

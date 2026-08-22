@@ -79,10 +79,16 @@ Coturn uses host networking because the official coturn container recommends it 
 JaMeet supports two TURN relay providers:
 1. **Cloudflare Realtime TURN (`TURN_PROVIDER=cloudflare`) [Recommended for Render & Managed Cloud]**:
    - Generates temporary dynamic WebRTC ICE credentials via Cloudflare Calls TURN API.
+   - Includes automatic monthly egress usage monitoring via Cloudflare GraphQL Analytics with a 700 GB soft limit guard and milestone warning alerts at 500 GB and 600 GB.
+   - *Note*: This is an application-level soft protection guard, not an exact Cloudflare billing cap. Existing issued credentials and ongoing active calls can continue briefly after the threshold is crossed.
    - Required environment variables:
      - `TURN_PROVIDER=cloudflare`
      - `CLOUDFLARE_TURN_KEY_ID`: Cloudflare Calls TURN Key ID.
-     - `CLOUDFLARE_TURN_API_TOKEN`: Cloudflare API Token with `Calls:Edit` permission.
+     - `CLOUDFLARE_TURN_API_TOKEN`: Cloudflare API Token with `Calls:Edit` permission (for ICE credential generation).
+     - `CLOUDFLARE_ACCOUNT_ID`: Cloudflare Account ID (for GraphQL Analytics query).
+     - `CLOUDFLARE_TURN_ANALYTICS_API_TOKEN`: Cloudflare API Token with `Account Analytics:Read` permission.
+     - `TURN_MONTHLY_SOFT_LIMIT_GB`: Soft limit in GB (default: `700`).
+     - `TURN_USAGE_CHECK_INTERVAL_SECONDS`: Usage cache refresh interval in seconds (default: `300`).
      - `TURN_CREDENTIAL_TTL_SECONDS`: Temporary credential lifetime in seconds (default: `86400`, max: `172800`).
 
 2. **Self-Hosted Coturn (`TURN_PROVIDER=self_hosted`) [Dedicated Host/VM]**:

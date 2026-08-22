@@ -187,7 +187,9 @@ describe('TURN credentials', () => {
       NODE_ENV: 'production',
       TURN_PROVIDER: 'cloudflare',
       CLOUDFLARE_TURN_KEY_ID: 'my-key',
-      CLOUDFLARE_TURN_API_TOKEN: 'my-token'
+      CLOUDFLARE_TURN_API_TOKEN: 'my-token',
+      CLOUDFLARE_ACCOUNT_ID: 'my-acc',
+      CLOUDFLARE_TURN_ANALYTICS_API_TOKEN: 'my-analytics-token'
     });
     expect(validProd.TURN_PROVIDER).toBe('cloudflare');
   });

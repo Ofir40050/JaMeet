@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import type { IceServerConfig } from '@jameet/shared';
 import type { ServerConfig } from '../core/config.js';
 import { logger } from '../core/logger.js';
+import { TurnUsageGuard, defaultTurnUsageGuard } from './turnUsageGuard.js';
 
 export const SAFE_DEFAULT_STUN_SERVERS: IceServerConfig[] = [
   { urls: 'stun:stun.cloudflare.com:3478' },
@@ -75,10 +76,17 @@ export function parseCloudflareIceServers(raw: unknown): IceServerConfig[] {
 
 export async function generateCloudflareIceServers(
   config: ServerConfig,
-  fetchFn: typeof fetch = fetch
+  fetchFn: typeof fetch = fetch,
+  now = Date.now(),
+  guard: TurnUsageGuard = defaultTurnUsageGuard
 ): Promise<IceServerConfig[]> {
   if (!config.CLOUDFLARE_TURN_KEY_ID || !config.CLOUDFLARE_TURN_API_TOKEN) {
     logger.error('cloudflare_turn_missing_config', 'Cloudflare TURN credentials missing in server configuration');
+    return SAFE_DEFAULT_STUN_SERVERS;
+  }
+
+  const usageCheck = await guard.checkTurnAllowed(config, fetchFn, new Date(now));
+  if (!usageCheck.allowed) {
     return SAFE_DEFAULT_STUN_SERVERS;
   }
 
@@ -129,10 +137,11 @@ export async function getIceServers(
   config: ServerConfig,
   participantId: string,
   now = Date.now(),
-  fetchFn: typeof fetch = fetch
+  fetchFn: typeof fetch = fetch,
+  guard: TurnUsageGuard = defaultTurnUsageGuard
 ): Promise<IceServerConfig[]> {
   if (config.TURN_PROVIDER === 'cloudflare') {
-    return generateCloudflareIceServers(config, fetchFn);
+    return generateCloudflareIceServers(config, fetchFn, now, guard);
   }
   return createSelfHostedIceServers(config, participantId, now);
 }
