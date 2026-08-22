@@ -5,8 +5,7 @@ import { logger } from '../core/logger.js';
 import { TurnUsageGuard, defaultTurnUsageGuard } from './turnUsageGuard.js';
 
 export const SAFE_DEFAULT_STUN_SERVERS: IceServerConfig[] = [
-  { urls: 'stun:stun.cloudflare.com:3478' },
-  { urls: 'stun:stun.l.google.com:19302' }
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }
 ];
 
 export function createSelfHostedIceServers(
@@ -14,6 +13,13 @@ export function createSelfHostedIceServers(
   participantId: string,
   now = Date.now()
 ): IceServerConfig[] {
+  const isLocalHost = !config.TURN_HOST || config.TURN_HOST === 'localhost' || config.TURN_HOST === '127.0.0.1';
+
+  // In production, if TURN_HOST is not configured or points to localhost, NEVER return localhost ICE servers
+  if (config.NODE_ENV === 'production' && isLocalHost) {
+    return SAFE_DEFAULT_STUN_SERVERS;
+  }
+
   const expires = Math.floor(now / 1000) + config.TURN_CREDENTIAL_TTL_SECONDS;
   const username = `${expires}:${participantId}`;
   const credential = createHmac('sha1', config.TURN_SHARED_SECRET).update(username).digest('base64');
@@ -31,6 +37,11 @@ export function createSelfHostedIceServers(
   if (config.TURN_TLS_ENABLED) {
     servers.push({ urls: `turns:${config.TURN_HOST}:${config.TURN_TLS_PORT}?transport=tcp`, username, credential });
   }
+
+  if (!isLocalHost) {
+    servers.unshift(...SAFE_DEFAULT_STUN_SERVERS);
+  }
+
   return servers;
 }
 

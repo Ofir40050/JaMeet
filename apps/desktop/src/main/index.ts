@@ -176,9 +176,9 @@ else {
     protocol.handle('musiczoom-app', handleBundleProtocol);
 
     session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin) =>
-      isTrustedOrigin(requestingOrigin) && ['media', 'speaker-selection'].includes(permission));
+      isTrustedOrigin(requestingOrigin) && ['media', 'speaker-selection', 'display-capture'].includes(permission));
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) =>
-      callback(isTrustedOrigin(webContents.getURL()) && ['media', 'speaker-selection'].includes(permission)));
+      callback(isTrustedOrigin(webContents.getURL()) && ['media', 'speaker-selection', 'display-capture'].includes(permission)));
 
     setupDisplayMediaRequestHandler(session.defaultSession);
 

@@ -46,10 +46,15 @@ export async function enumerateAndPopulateDevices(options: DeviceEnumerationOpti
   const groups: Record<MediaDeviceKind, MediaDeviceInfo[]> = { videoinput: [], audioinput: [], audiooutput: [] };
   for (const device of devices) groups[device.kind]?.push(device);
 
-  // If audio inputs have empty labels (permission not yet granted/queried on Windows), probe microphone briefly to unlock device labels
-  if (groups.audioinput.length > 0 && groups.audioinput.every((d) => !d.label)) {
+  // If audio or video inputs have empty labels (permission not yet granted/queried on Windows), probe briefly to unlock device labels
+  const needsAudioProbe = groups.audioinput.length > 0 && groups.audioinput.every((d) => !d.label);
+  const needsVideoProbe = groups.videoinput.length > 0 && groups.videoinput.every((d) => !d.label);
+  if (needsAudioProbe || needsVideoProbe) {
     try {
-      const probe = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const probe = await navigator.mediaDevices.getUserMedia({
+        audio: needsAudioProbe,
+        video: needsVideoProbe
+      });
       probe.getTracks().forEach((t) => t.stop());
       devices = await navigator.mediaDevices.enumerateDevices().catch(() => devices);
       groups.videoinput = [];
@@ -57,7 +62,20 @@ export async function enumerateAndPopulateDevices(options: DeviceEnumerationOpti
       groups.audiooutput = [];
       for (const device of devices) groups[device.kind]?.push(device);
     } catch {
-      // Continue with available device list if probe is rejected
+      // If combined probe failed (e.g. mic connected but no camera), fallback to audio-only if needed
+      if (needsAudioProbe) {
+        try {
+          const audioProbe = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          audioProbe.getTracks().forEach((t) => t.stop());
+          devices = await navigator.mediaDevices.enumerateDevices().catch(() => devices);
+          groups.videoinput = [];
+          groups.audioinput = [];
+          groups.audiooutput = [];
+          for (const device of devices) groups[device.kind]?.push(device);
+        } catch {
+          // Continue with available device list if probe is rejected
+        }
+      }
     }
   }
 

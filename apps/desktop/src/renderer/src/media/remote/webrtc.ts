@@ -266,6 +266,31 @@ export class WebRtcSession {
 
   private sessionMode(): AudioMode { return this.localMode === 'music' || this.remoteMode === 'music' || Boolean(this.audio.music) || this.remoteHasMusic ? 'music' : 'talk'; }
 
+  private resolveEffectiveIceServers(): IceServerConfig[] {
+    const isProd = Boolean(typeof import.meta !== 'undefined' && import.meta.env?.PROD);
+    const filtered = (this.iceServers || []).filter((server) => {
+      const urlList = Array.isArray(server.urls) ? server.urls : [server.urls];
+      if (isProd) {
+        const hasLocalhost = urlList.some((u) => u.includes('localhost') || u.includes('127.0.0.1'));
+        if (hasLocalhost) return false;
+      }
+      return true;
+    });
+
+    const hasStun = filtered.some((s) => {
+      const urlList = Array.isArray(s.urls) ? s.urls : [s.urls];
+      return urlList.some((u) => u.startsWith('stun:'));
+    });
+
+    if (!hasStun || filtered.length === 0) {
+      return [
+        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
+        ...filtered
+      ];
+    }
+    return filtered;
+  }
+
   private ensurePeer(): RTCPeerConnection {
     if (this.pc && this.pc.signalingState !== 'closed') return this.pc;
     this.voiceStatsQuerySeq++;
@@ -275,7 +300,8 @@ export class WebRtcSession {
       this.onVoiceStereoChange?.(false);
     }
     const policy = import.meta.env.VITE_ICE_TRANSPORT_POLICY === 'relay' ? 'relay' : 'all';
-    const pc = new RTCPeerConnection({ iceServers: this.iceServers, iceTransportPolicy: policy });
+    const effectiveIceServers = this.resolveEffectiveIceServers();
+    const pc = new RTCPeerConnection({ iceServers: effectiveIceServers, iceTransportPolicy: policy });
     this.pc = pc;
     this.pendingCandidates = [];
     this.iceRestarted = false;
