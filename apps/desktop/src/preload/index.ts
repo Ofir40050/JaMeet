@@ -113,7 +113,8 @@ const jameetApi = {
   logger: {
     log: (entry: unknown): void => ipcRenderer.send('logger:log', entry),
     crash: (crashData: unknown): Promise<unknown> => ipcRenderer.invoke('logger:crash', crashData),
-    getLogPaths: (): Promise<{ logDir: string; logFilePath: string; crashFilePath: string }> => ipcRenderer.invoke('logger:get-log-paths')
+    getLogPaths: (): Promise<{ logDir: string; logFilePath: string; crashFilePath: string }> => ipcRenderer.invoke('logger:get-log-paths'),
+    setSendCrashReports: (enabled: boolean): void => ipcRenderer.send('logger:set-send-crash-reports', enabled)
   },
   platform: process.platform
 };

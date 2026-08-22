@@ -108,6 +108,34 @@
                     <span>View Diagnostics</span>
                   </button>
                 </div>
+
+                <div class="settings-section mt-4">
+                  <h4 class="settings-section-title">Privacy &amp; Diagnostics</h4>
+                  <p class="settings-hint">Control anonymous diagnostic and error reporting to help improve JaMeet stability.</p>
+
+                  <div class="settings-field-row mt-2">
+                    <label class="settings-toggle-label" for="setting-send-crash-reports">
+                      <div class="settings-toggle-text">
+                        <strong>Anonymous Crash &amp; Diagnostics Reporting</strong>
+                        <span>Automatically send diagnostic reports when an unexpected error or crash occurs. No audio, video, or musical content is ever collected.</span>
+                      </div>
+                      <input type="checkbox" id="setting-send-crash-reports" class="studio-toggle-input" checked />
+                    </label>
+                  </div>
+
+                  <div class="privacy-disclosure-box mt-3">
+                    <div class="privacy-disclosure-header">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                      <strong>JaMeet Privacy &amp; Beta Disclosure</strong>
+                    </div>
+                    <ul class="privacy-bullets">
+                      <li><strong>Technical Diagnostics Only:</strong> Crash reports contain only system architecture, OS version, and sanitized error stack traces to fix software bugs.</li>
+                      <li><strong>Zero Content Collection:</strong> No audio streams, video frames, stems, recordings, lyrics, or project files are ever uploaded or analyzed.</li>
+                      <li><strong>No Call Recording:</strong> Live sessions are encrypted peer-to-peer or via TURN relay and are never recorded by JaMeet.</li>
+                      <li><strong>Full User Control:</strong> You can disable diagnostic reporting at any time using the toggle above.</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
 
               <!-- PANEL 2: AUDIO -->

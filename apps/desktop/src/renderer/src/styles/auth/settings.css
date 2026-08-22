@@ -1542,3 +1542,53 @@ video.res-low,
     grid-template-columns: 1fr;
   }
 }
+
+/* Privacy & Beta Disclosure Styling */
+.privacy-disclosure-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 12px 14px;
+}
+
+.privacy-disclosure-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 8px;
+}
+
+.privacy-disclosure-header svg {
+  color: var(--accent-primary, #38bdf8);
+}
+
+.privacy-bullets {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.privacy-bullets li {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  position: relative;
+  padding-left: 14px;
+}
+
+.privacy-bullets li::before {
+  content: '•';
+  position: absolute;
+  left: 3px;
+  color: var(--text-dim);
+}
+
+.privacy-bullets li strong {
+  color: var(--text-secondary);
+}

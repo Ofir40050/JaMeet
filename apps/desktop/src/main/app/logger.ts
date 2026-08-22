@@ -32,6 +32,7 @@ export class DesktopLogger {
   private arch: string;
   private osRelease: string;
   private isInitialized = false;
+  private sendCrashReports = true;
   private activeFlushPromise: Promise<void> | null = null;
 
   constructor(customLogDir?: string, customInstanceId?: string) {
@@ -192,7 +193,18 @@ export class DesktopLogger {
     }
   }
 
+  public setSendCrashReports(enabled: boolean): void {
+    this.sendCrashReports = Boolean(enabled);
+  }
+
+  public getSendCrashReports(): boolean {
+    return this.sendCrashReports;
+  }
+
   public async flushPendingCrashes(): Promise<void> {
+    if (!this.sendCrashReports) {
+      return;
+    }
     if (this.activeFlushPromise) {
       return this.activeFlushPromise;
     }
@@ -661,6 +673,11 @@ export class DesktopLogger {
       ipcMain.handle('logger:get-log-paths', async (event) => {
         if (!isTrustedSender(event)) return null;
         return this.getLogPaths();
+      });
+
+      ipcMain.on('logger:set-send-crash-reports', (event, enabled: unknown) => {
+        if (!isTrustedSender(event)) return;
+        this.setSendCrashReports(Boolean(enabled));
       });
     } catch (err) {
       console.warn('[DesktopLogger] Could not register IPC handlers:', err);

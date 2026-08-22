@@ -1007,6 +1007,8 @@ let peerParticipantId: string | null = null;
 export type { VoiceInputConfig };
 
 let prefs: Preferences = readPreferences();
+const initialDesktopApi = (window as any).jameet || (window as any).musiczoom;
+initialDesktopApi?.logger?.setSendCrashReports?.(prefs.sendCrashReports !== false);
 let pending: PendingAction | undefined;
 let currentCode = '';
 let currentRole: 'host' | 'guest' = 'guest';
@@ -1702,6 +1704,17 @@ for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="set
     prefs.mode = radio.value as AudioMode;
     savePreferences();
     void syncAllVoiceMics(prefs.mode);
+  });
+}
+
+const crashReportingToggle = document.getElementById('setting-send-crash-reports') as HTMLInputElement | null;
+if (crashReportingToggle) {
+  crashReportingToggle.checked = prefs.sendCrashReports !== false;
+  crashReportingToggle.addEventListener('change', () => {
+    prefs.sendCrashReports = crashReportingToggle.checked;
+    savePreferences();
+    const api = (window as any).jameet || (window as any).musiczoom;
+    api?.logger?.setSendCrashReports?.(prefs.sendCrashReports);
   });
 }
 

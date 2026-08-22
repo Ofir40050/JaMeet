@@ -143,6 +143,16 @@ export function sanitizeLogString(input: string): string {
     '$1$2[REDACTED]'
   );
 
+  // 6. Redact local filesystem usernames from file paths (macOS, Windows, Linux)
+  // macOS: /Users/<username>/ -> /Users/[USER]/
+  str = str.replace(/(\/Users\/)[^\/\s"':\\]+(\/)/gi, '$1[USER]$2');
+  // Linux: /home/<username>/ -> /home/[USER]/
+  str = str.replace(/(\/home\/)[^\/\s"':\\]+(\/)/gi, '$1[USER]$2');
+  // Windows: C:\Users\<username>\ -> C:\Users\[USER]\
+  str = str.replace(/([a-zA-Z]:\\Users\\)[^\\/\s"':]+(\\)/gi, '$1[USER]$2');
+  // Windows forward-slash variant: C:/Users/<username>/ -> C:/Users/[USER]/
+  str = str.replace(/([a-zA-Z]:\/Users\/)[^\\/\s"':]+(\/)/gi, '$1[USER]$2');
+
   return str;
 }
 

@@ -581,5 +581,115 @@ describe('Desktop Production Crash Reporting & Structured Logging', () => {
       const crashContent2 = readFileSync(testLogger.getLogPaths().crashFilePath, 'utf8');
       expect(crashContent2.trim().split('\n').length).toBe(initialCrashLinesCount);
     });
+
+    it('does not upload crash reports to /api/crashes when sendCrashReports is disabled', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => ({
+        status: 201,
+        ok: true,
+        json: async () => ({ ok: true, reportId: 'crash-opt-out-1', duplicate: false })
+      } as any));
+
+      testLogger.setSendCrashReports(false);
+      expect(testLogger.getSendCrashReports()).toBe(false);
+
+      testLogger.recordCrash({
+        reportId: 'crash-opt-out-1',
+        process: 'renderer',
+        reason: 'Opt-out test crash'
+      });
+
+      // Flusher must respect opt-out preference and NOT make fetch call
+      await testLogger.flushPendingCrashes();
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // Re-enabling consent allows flushing
+      testLogger.setSendCrashReports(true);
+      expect(testLogger.getSendCrashReports()).toBe(true);
+
+      await testLogger.flushPendingCrashes();
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/api/crashes'),
+        expect.objectContaining({ method: 'POST' })
+      );
+      expect(testLogger.loadPendingQueue()).toHaveLength(0);
+
+      fetchSpy.mockRestore();
+    });
+
+    it('updates sendCrashReports state via logger:set-send-crash-reports IPC message', () => {
+      let setPreferenceHandler: Function | undefined;
+      const originalOn = (ipcMain as any)?.on;
+      (ipcMain as any).on = vi.fn((channel: string, handler: Function) => {
+        if (channel === 'logger:set-send-crash-reports') {
+          setPreferenceHandler = handler;
+        }
+      });
+
+      const freshLogger = new DesktopLogger(testLogDir, 'test-instance-ipc-pref');
+      freshLogger.setupGlobalHandlers();
+
+      expect(setPreferenceHandler).toBeDefined();
+      const trustedEvent = { senderFrame: { url: 'jameet-app://bundle/index.html' } };
+
+      expect(freshLogger.getSendCrashReports()).toBe(true);
+      setPreferenceHandler!(trustedEvent, false);
+      expect(freshLogger.getSendCrashReports()).toBe(false);
+
+      setPreferenceHandler!(trustedEvent, true);
+      expect(freshLogger.getSendCrashReports()).toBe(true);
+
+      (ipcMain as any).on = originalOn;
+    });
+
+    it('sanitizes and redacts local filesystem usernames in error stacks and log paths', () => {
+      const macStack = 'Error: Cannot load DAW driver\n    at loadDriver (/Users/ofir40050/Projects/JaMeet/driver.node:12:4)\n    at init (/Users/ofir40050/Projects/JaMeet/index.ts:40:1)';
+      const winStack = 'Error: File not found\n    at readFile (C:\\Users\\JohnDoe\\AppData\\Roaming\\JaMeet\\config.json:5:2)\n    at run (c:\\users\\johndoe\\projects\\index.js:10:1)';
+      const linuxStack = 'Error: Permission denied /home/developer/workspace/jameet/data.bin:1:1';
+
+      const macReport = testLogger.recordCrash({
+        process: 'main',
+        reason: 'Native driver load failure in /Users/ofir40050/Projects/JaMeet',
+        error: {
+          message: 'Failed to access /Users/ofir40050/Music/Vocals.wav',
+          stack: macStack
+        }
+      });
+
+      expect(macReport.reason).toBe('Native driver load failure in /Users/[USER]/Projects/JaMeet');
+      expect(macReport.error?.message).toBe('Failed to access /Users/[USER]/Music/Vocals.wav');
+      expect(macReport.error?.stack).toContain('/Users/[USER]/Projects/JaMeet/driver.node:12:4');
+      expect(macReport.error?.stack).toContain('/Users/[USER]/Projects/JaMeet/index.ts:40:1');
+      expect(macReport.error?.stack).not.toContain('ofir40050');
+
+      const winReport = testLogger.recordCrash({
+        process: 'main',
+        reason: 'Windows file error in C:\\Users\\JohnDoe\\AppData\\Roaming',
+        error: {
+          message: 'Error in C:\\Users\\JohnDoe\\Documents\\Song.jmt',
+          stack: winStack
+        }
+      });
+
+      expect(winReport.reason).toContain('C:\\Users\\[USER]\\AppData');
+      expect(winReport.error?.message).toContain('C:\\Users\\[USER]\\Documents\\Song.jmt');
+      expect(winReport.error?.stack).toContain('C:\\Users\\[USER]\\AppData\\Roaming\\JaMeet\\config.json:5:2');
+      expect(winReport.error?.stack).toContain('c:\\users\\[USER]\\projects\\index.js:10:1');
+      expect(winReport.error?.stack).not.toContain('JohnDoe');
+      expect(winReport.error?.stack).not.toContain('johndoe');
+
+      const linuxReport = testLogger.recordCrash({
+        process: 'main',
+        reason: 'Linux error in /home/developer/test',
+        error: {
+          message: 'Cannot open /home/developer/file.raw',
+          stack: linuxStack
+        }
+      });
+
+      expect(linuxReport.reason).toBe('Linux error in /home/[USER]/test');
+      expect(linuxReport.error?.message).toBe('Cannot open /home/[USER]/file.raw');
+      expect(linuxReport.error?.stack).toContain('/home/[USER]/workspace/jameet/data.bin:1:1');
+      expect(linuxReport.error?.stack).not.toContain('developer');
+    });
   });
 });

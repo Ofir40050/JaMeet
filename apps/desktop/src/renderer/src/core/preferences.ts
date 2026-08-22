@@ -35,6 +35,7 @@ export type Preferences = {
   inputGain: number;
   musicBitrate: number;
   audioOnly: boolean;
+  sendCrashReports: boolean;
 };
 
 function createDefaultPreferences(): Preferences {
@@ -49,6 +50,7 @@ function createDefaultPreferences(): Preferences {
     inputGain: 1,
     musicBitrate: 256_000,
     audioOnly: false,
+    sendCrashReports: true,
     voiceInputs: [
       { id: 1, name: 'Microphone 1 (Primary · Lead)', channelRoute: '1', gain: 1, enabled: true }
     ],
@@ -95,6 +97,7 @@ export function readPreferences(): Preferences {
       outputVolume: typeof raw.outputVolume === 'number' ? raw.outputVolume : 1,
       musicBitrate: typeof raw.musicBitrate === 'number' ? raw.musicBitrate : 256_000,
       audioOnly: Boolean(raw.audioOnly),
+      sendCrashReports: raw.sendCrashReports !== undefined ? Boolean(raw.sendCrashReports) : true,
       cameraId: raw.cameraId,
       audioInputId: voiceInputs[0]?.deviceId,
       voiceChannel: voiceInputs[0]?.channelRoute ?? '1',
