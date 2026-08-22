@@ -1,13 +1,24 @@
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createApp } from '../app.js';
 import { loadConfig } from '../core/config.js';
 
 describe('Server Version Awareness Endpoint', () => {
   let appInstance: any;
+  let testDataDir: string;
+
+  beforeEach(() => {
+    testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jameet-version-test-'));
+  });
 
   afterEach(async () => {
     if (appInstance?.app) {
       await appInstance.app.close();
+    }
+    if (testDataDir && fs.existsSync(testDataDir)) {
+      fs.rmSync(testDataDir, { recursive: true, force: true });
     }
   });
 
@@ -15,6 +26,7 @@ describe('Server Version Awareness Endpoint', () => {
     const config = loadConfig({
       ...process.env,
       NODE_ENV: 'test',
+      DATA_DIR: testDataDir,
       LATEST_APP_VERSION: '0.2.0',
       MIN_SUPPORTED_APP_VERSION: '0.1.5',
       APP_DOWNLOAD_URL: 'https://github.com/Ofir40050/JaMeet/releases/tag/v0.2.0',
@@ -39,7 +51,8 @@ describe('Server Version Awareness Endpoint', () => {
   it('handles GET and HEAD probes on root /, /healthz, and /health successfully for deployment monitors', async () => {
     const config = loadConfig({
       ...process.env,
-      NODE_ENV: 'test'
+      NODE_ENV: 'test',
+      DATA_DIR: testDataDir
     });
 
     appInstance = await createApp(config);
@@ -73,7 +86,8 @@ describe('Server Version Awareness Endpoint', () => {
   it('enforces brute force throttling on /api/auth/login and rate limits /api/auth/guest', async () => {
     const config = loadConfig({
       ...process.env,
-      NODE_ENV: 'test'
+      NODE_ENV: 'test',
+      DATA_DIR: testDataDir
     });
 
     appInstance = await createApp(config);

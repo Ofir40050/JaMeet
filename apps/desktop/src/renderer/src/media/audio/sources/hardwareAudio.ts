@@ -124,10 +124,10 @@ export function routeHardwareAudioChunk(
       const currentLead = mic.nextPlayTime - now;
       const timingError = currentLead - TARGET_LEAD_TIME;
 
-      clockState.filteredError = 0.98 * clockState.filteredError + 0.02 * timingError;
-      clockState.integralError = Math.max(-0.05, Math.min(0.05, clockState.integralError + clockState.filteredError * 0.0005));
+      clockState.filteredError = 0.95 * clockState.filteredError + 0.05 * timingError;
+      clockState.integralError = Math.max(-0.05, Math.min(0.05, clockState.integralError + clockState.filteredError * 0.002));
 
-      const correction = (clockState.filteredError * 0.15) + (clockState.integralError * 0.04);
+      const correction = (clockState.filteredError * 0.3) + (clockState.integralError * 0.05);
       clockState.resampleRatio = Math.max(0.9985, Math.min(1.0015, 1.0 - correction));
     }
 
@@ -167,6 +167,6 @@ export function routeHardwareAudioChunk(
     sourceNode.connect(mic.gainNode);
 
     sourceNode.start(mic.nextPlayTime);
-    mic.nextPlayTime += audioBuffer.duration;
+    mic.nextPlayTime += (audioBuffer.duration * clockState.resampleRatio);
   }
 }

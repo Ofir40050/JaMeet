@@ -436,6 +436,7 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
 
     let maxLeadTime = 0;
     let minLeadTime = 1.0;
+    let lastLeadTime = TARGET_LEAD_TIME;
 
     for (let p = 0; p < totalPackets; p++) {
       now = p * packetArrivalInterval;
@@ -451,19 +452,21 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
         resampleRatio = 1.0;
         readPos = (writePos - frameCount + RING_CAPACITY) % RING_CAPACITY;
         initialized = true;
+        lastLeadTime = TARGET_LEAD_TIME;
       } else {
         const currentLead = nextPlayTime - now;
         const timingError = currentLead - TARGET_LEAD_TIME;
+        lastLeadTime = currentLead;
 
         if (p > 100) { // After initial convergence
           maxLeadTime = Math.max(maxLeadTime, currentLead);
           minLeadTime = Math.min(minLeadTime, currentLead);
         }
 
-        filteredError = 0.98 * filteredError + 0.02 * timingError;
-        integralError = Math.max(-0.05, Math.min(0.05, integralError + filteredError * 0.0005));
+        filteredError = 0.95 * filteredError + 0.05 * timingError;
+        integralError = Math.max(-0.05, Math.min(0.05, integralError + filteredError * 0.002));
 
-        const correction = (filteredError * 0.15) + (integralError * 0.04);
+        const correction = (filteredError * 0.3) + (integralError * 0.05);
         resampleRatio = Math.max(0.9985, Math.min(1.0015, 1.0 - correction));
       }
 
@@ -471,11 +474,11 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
       const step = resampleRatio;
       readPos = (readPos + frameCount * step) % RING_CAPACITY;
 
-      // 4. Advance Web Audio schedule (480 samples @ 48 kHz context = exactly 10.0 ms)
-      nextPlayTime += (frameCount / 48000.0);
+      // 4. Advance Web Audio schedule (scaled by resampleRatio for seamless clock tracking)
+      nextPlayTime += (frameCount / 48000.0) * resampleRatio;
     }
 
-    const finalLeadTime = nextPlayTime! - now;
+    const finalLeadTime = lastLeadTime;
 
     // Strict assertions for 10-minute continuous streaming:
     // 1. Final lead time stays locked near target 25ms (within ±3ms)
