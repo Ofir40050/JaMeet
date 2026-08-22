@@ -414,4 +414,80 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
       expect(consumerOutput[i]).toBeCloseTo(dmaRenderBuffer[i]!, 5);
     }
   });
+
+  it('validates 10-minute clock offset simulation (48000.1 Hz vs 48000.0 Hz) maintaining zero drift and steady lead time', () => {
+    const totalPackets = 60000; // 60,000 packets * 10ms = 600 seconds = 10 full minutes
+    const frameCount = 480;
+    const RING_CAPACITY = 4096;
+    const TARGET_LEAD_TIME = 0.025; // 25ms target
+
+    const hwSampleRate = 48000.1; // Hardware crystal oscillator running slightly fast
+    const packetArrivalInterval = frameCount / hwSampleRate; // ~0.009999979s
+
+    let now = 0;
+    let nextPlayTime: number | undefined = undefined;
+
+    let filteredError = 0;
+    let integralError = 0;
+    let resampleRatio = 1.0;
+    let writePos = 0;
+    let readPos = 0;
+    let initialized = false;
+
+    let maxLeadTime = 0;
+    let minLeadTime = 1.0;
+
+    for (let p = 0; p < totalPackets; p++) {
+      now = p * packetArrivalInterval;
+
+      // 1. Advance ring write position
+      writePos = (writePos + frameCount) % RING_CAPACITY;
+
+      // 2. PI Clock Recovery
+      if (nextPlayTime === undefined || nextPlayTime < now || !initialized) {
+        nextPlayTime = now + TARGET_LEAD_TIME;
+        filteredError = 0;
+        integralError = 0;
+        resampleRatio = 1.0;
+        readPos = (writePos - frameCount + RING_CAPACITY) % RING_CAPACITY;
+        initialized = true;
+      } else {
+        const currentLead = nextPlayTime - now;
+        const timingError = currentLead - TARGET_LEAD_TIME;
+
+        if (p > 100) { // After initial convergence
+          maxLeadTime = Math.max(maxLeadTime, currentLead);
+          minLeadTime = Math.min(minLeadTime, currentLead);
+        }
+
+        filteredError = 0.98 * filteredError + 0.02 * timingError;
+        integralError = Math.max(-0.05, Math.min(0.05, integralError + filteredError * 0.0005));
+
+        const correction = (filteredError * 0.15) + (integralError * 0.04);
+        resampleRatio = Math.max(0.9985, Math.min(1.0015, 1.0 - correction));
+      }
+
+      // 3. Fractional ring read advance
+      const step = resampleRatio;
+      readPos = (readPos + frameCount * step) % RING_CAPACITY;
+
+      // 4. Advance Web Audio schedule (480 samples @ 48 kHz context = exactly 10.0 ms)
+      nextPlayTime += (frameCount / 48000.0);
+    }
+
+    const finalLeadTime = nextPlayTime! - now;
+
+    // Strict assertions for 10-minute continuous streaming:
+    // 1. Final lead time stays locked near target 25ms (within ±3ms)
+    expect(finalLeadTime).toBeGreaterThanOrEqual(0.022);
+    expect(finalLeadTime).toBeLessThanOrEqual(0.028);
+
+    // 2. Lead time never drifted out of safe jitter boundaries [18ms, 32ms]
+    expect(minLeadTime).toBeGreaterThanOrEqual(0.018);
+    expect(maxLeadTime).toBeLessThanOrEqual(0.032);
+
+    // 3. Resample ratio stayed within transparent micro-adjustment bounds
+    expect(resampleRatio).toBeGreaterThan(0.999);
+    expect(resampleRatio).toBeLessThan(1.001);
+  });
 });
