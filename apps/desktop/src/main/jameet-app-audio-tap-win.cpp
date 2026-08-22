@@ -288,35 +288,48 @@ static int capture_audio(const char* targetType, const char* targetValue) {
     }
 
     IAudioClient* pAudioClient = NULL;
-    DWORD targetPid = 0;
-
-    if (strcmp(targetType, "app") == 0 && targetValue && strlen(targetValue) > 0) {
-        targetPid = (DWORD)atoi(targetValue);
-        if (targetPid > 0) {
-            fprintf(stderr, "[AppAudioTap-Win] Attempting targeted Process Loopback for PID %u...\n", (unsigned int)targetPid);
-            pAudioClient = activate_process_loopback(targetPid);
-        }
-    }
-
     IMMDeviceEnumerator* pEnumerator = NULL;
     IMMDevice* pDefaultRender = NULL;
+    DWORD targetPid = 0;
 
-    if (!pAudioClient) {
-        if (targetPid > 0) {
-            fprintf(stderr, "[AppAudioTap-Win] Process Loopback not supported on this Windows build; falling back to endpoint loopback.\n");
+    if (strcmp(targetType, "app") == 0) {
+        if (!targetValue || strlen(targetValue) == 0) {
+            fprintf(stderr, "[AppAudioTap-Win] Error: No application PID specified for targeted app audio tap\n");
+            if (hMmcss) AvRevertMmThreadCharacteristics(hMmcss);
+            CoUninitialize();
+            return 1;
+        }
+        targetPid = (DWORD)atoi(targetValue);
+        if (targetPid == 0) {
+            fprintf(stderr, "[AppAudioTap-Win] Error: Invalid application PID '%s'\n", targetValue);
+            if (hMmcss) AvRevertMmThreadCharacteristics(hMmcss);
+            CoUninitialize();
+            return 1;
         }
 
+        fprintf(stderr, "[AppAudioTap-Win] Activating targeted Process Loopback for PID %u...\n", (unsigned int)targetPid);
+        pAudioClient = activate_process_loopback(targetPid);
+        if (!pAudioClient) {
+            fprintf(stderr, "[AppAudioTap-Win] Error: Process Loopback failed for PID %u. Aborting to avoid capturing unintended system/browser audio.\n", (unsigned int)targetPid);
+            if (hMmcss) AvRevertMmThreadCharacteristics(hMmcss);
+            CoUninitialize();
+            return 1;
+        }
+    } else {
+        // Explicit global / system audio loopback
         hr = CoCreateInstance(CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL, IID_IMMDeviceEnumerator, (void**)&pEnumerator);
         if (FAILED(hr) || !pEnumerator) {
             fprintf(stderr, "[AppAudioTap-Win] Failed to create MMDeviceEnumerator\n");
+            if (hMmcss) AvRevertMmThreadCharacteristics(hMmcss);
             CoUninitialize();
             return 1;
         }
 
         hr = pEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &pDefaultRender);
         if (FAILED(hr) || !pDefaultRender) {
-            fprintf(stderr, "[AppAudioTap-Win] No default render endpoint found\n");
+            fprintf(stderr, "[AppAudioTap-Win] No default render endpoint found for global audio loopback\n");
             pEnumerator->Release();
+            if (hMmcss) AvRevertMmThreadCharacteristics(hMmcss);
             CoUninitialize();
             return 1;
         }
@@ -326,6 +339,7 @@ static int capture_audio(const char* targetType, const char* targetValue) {
             fprintf(stderr, "[AppAudioTap-Win] Failed to activate render IAudioClient\n");
             pDefaultRender->Release();
             pEnumerator->Release();
+            if (hMmcss) AvRevertMmThreadCharacteristics(hMmcss);
             CoUninitialize();
             return 1;
         }
