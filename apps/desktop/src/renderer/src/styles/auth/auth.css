@@ -288,15 +288,19 @@
 }
 
 .auth-phone-input-wrap {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-  width: 100%;
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 8px !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 .auth-phone-code-select {
-  width: 140px;
-  min-width: 140px;
+  width: 140px !important;
+  min-width: 140px !important;
+  max-width: 140px !important;
+  flex: 0 0 140px !important;
   height: 42px !important;
   background: #181818 !important;
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -304,8 +308,8 @@
   border-radius: var(--radius-sm) !important;
   padding: 0 10px !important;
   font-size: 13px !important;
-  font-weight: 500;
-  cursor: pointer;
+  font-weight: 500 !important;
+  cursor: pointer !important;
   box-sizing: border-box !important;
 }
 
@@ -319,8 +323,10 @@
 }
 
 .auth-phone-number-input {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 .auth-input:hover {

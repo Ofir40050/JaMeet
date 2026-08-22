@@ -1065,7 +1065,8 @@
   line-height: 1.45;
 }
 
-.custom-select {
+#setup-view .custom-select,
+.audio-settings-modal .custom-select {
   height: 36px;
   background: var(--bg-input);
   border: 1px solid var(--border-subtle);
@@ -1079,15 +1080,18 @@
   transition: border-color 0.15s ease;
 }
 
-.custom-select:hover {
+#setup-view .custom-select:hover,
+.audio-settings-modal .custom-select:hover {
   border-color: var(--border-medium);
 }
 
-.custom-select:focus {
+#setup-view .custom-select:focus,
+.audio-settings-modal .custom-select:focus {
   border-color: var(--accent-primary);
 }
 
-.mini-channel-select {
+#setup-view .mini-channel-select,
+.audio-settings-modal .mini-channel-select {
   height: 36px;
   font-size: 12px;
 }
