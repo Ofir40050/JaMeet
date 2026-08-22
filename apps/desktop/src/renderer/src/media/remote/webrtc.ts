@@ -321,10 +321,19 @@ export class WebRtcSession {
     }
     void this.updateAllAudioSenderParameters();
 
-    pc.onicecandidate = (event) => this.signaling.sendCandidate(this.code, event.candidate?.toJSON() ?? null);
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        console.log(`[WebRTC] ICE candidate gathered: type=${event.candidate.type}, protocol=${event.candidate.protocol}, address=${event.candidate.address || 'redacted'}:${event.candidate.port}`);
+      } else {
+        console.log('[WebRTC] ICE candidate gathering finished');
+      }
+      this.signaling.sendCandidate(this.code, event.candidate?.toJSON() ?? null);
+    };
     pc.ontrack = (event) => {
+      console.log(`[WebRTC] Remote track received: kind=${event.track.kind}, id=${event.track.id}, label=${event.track.label}, readyState=${event.track.readyState}`);
       if (event.track.kind === 'audio') {
         const source = this.getAudioTransceiverPurpose(event.transceiver);
+        console.log(`[WebRTC] Routing remote audio: sourceId=${source.id}, purpose=${source.purpose}`);
         this.onRemoteAudio(source.id, source.purpose, event.track);
         return;
       }
@@ -333,7 +342,9 @@ export class WebRtcSession {
         this.remoteStream.removeTrack(existing);
       }
       this.remoteStream.addTrack(event.track);
+      console.log(`[WebRTC] Remote video stream updated: trackCount=${this.remoteStream.getTracks().length}`);
       event.track.onended = () => {
+        console.log(`[WebRTC] Remote video track ended: id=${event.track.id}`);
         if (this.remoteStream.getVideoTracks().includes(event.track)) {
           this.remoteStream.removeTrack(event.track);
           this.onRemoteStream(this.remoteStream.getTracks().length ? this.remoteStream : undefined);
@@ -341,8 +352,12 @@ export class WebRtcSession {
       };
       this.onRemoteStream(this.remoteStream);
     };
-    pc.onconnectionstatechange = () => this.handleConnectionState();
+    pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC] RTCPeerConnection connectionState: ${pc.connectionState}`);
+      this.handleConnectionState();
+    };
     pc.oniceconnectionstatechange = () => {
+      console.log(`[WebRTC] RTCPeerConnection iceConnectionState: ${pc.iceConnectionState}`);
       logger.info('webrtc_ice_state_changed', `ICE connection state: ${pc.iceConnectionState}`, { iceConnectionState: pc.iceConnectionState }, { sessionCode: this.code });
     };
     return pc;
@@ -494,29 +509,35 @@ export class WebRtcSession {
     }
     this.isNegotiating = true;
     try {
+      console.log(`[WebRTC] Creating offer for session ${this.code} (iceRestart=${iceRestart})`);
       const offer = await pc.createOffer({ iceRestart });
       const description = { type: 'offer' as const, sdp: applyOpusPolicy(offer.sdp ?? '', this.sessionMode(), this.musicBitrate) };
       await pc.setLocalDescription(description);
+      console.log(`[WebRTC] Local description set (offer), sending to peer`);
       this.signaling.sendDescription(this.code, description);
     } catch (err) {
       logger.warn('webrtc_negotiation_failure', 'WebRTC negotiation failed', { code: this.code, role: this.role }, err, { sessionCode: this.code });
-      console.warn('Negotiation error:', err);
+      console.warn('[WebRTC] Negotiation error:', err);
     } finally {
       this.isNegotiating = false;
     }
   }
 
   private async receiveDescription(description: RTCSessionDescriptionInit): Promise<void> {
+    console.log(`[WebRTC] Received ${description.type} from peer`);
     const pc = this.ensurePeer();
     await pc.setRemoteDescription(description);
     for (const candidate of this.pendingCandidates.splice(0)) await pc.addIceCandidate(candidate);
     if (description.type === 'offer') {
+      console.log(`[WebRTC] Creating answer for peer offer`);
       const answer = await pc.createAnswer();
       const local = { type: 'answer' as const, sdp: applyOpusPolicy(answer.sdp ?? '', this.sessionMode(), this.musicBitrate) };
       await pc.setLocalDescription(local);
+      console.log(`[WebRTC] Local description set (answer), sending to peer`);
       this.signaling.sendDescription(this.code, local);
       await this.updateAllAudioSenderParameters();
     } else if (description.type === 'answer') {
+      console.log(`[WebRTC] Answer set as remote description`);
       await this.updateAllAudioSenderParameters();
       if (this.queuedNegotiation) {
         this.queuedNegotiation = false;
@@ -528,8 +549,13 @@ export class WebRtcSession {
   private async receiveCandidate(candidate: RTCIceCandidateInit | null): Promise<void> {
     if (!candidate) return;
     const pc = this.ensurePeer();
-    if (!pc.remoteDescription) this.pendingCandidates.push(candidate);
-    else await pc.addIceCandidate(candidate);
+    if (!pc.remoteDescription) {
+      console.log(`[WebRTC] Queuing remote ICE candidate (remoteDescription not ready yet)`);
+      this.pendingCandidates.push(candidate);
+    } else {
+      console.log(`[WebRTC] Adding remote ICE candidate: sdpMid=${candidate.sdpMid}`);
+      await pc.addIceCandidate(candidate);
+    }
   }
 
   private handleConnectionState(): void {
