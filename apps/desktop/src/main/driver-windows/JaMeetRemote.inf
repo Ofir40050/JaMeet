@@ -51,17 +51,26 @@ AddReg = JaMeetRemote_Device.NT.HW.AddReg
 HKR,,Security,,"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)"
 
 [JaMeetRemote_Device.NT.Interfaces]
-AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_Wave%, JaMeetRemote.Interface.Wave
-AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_Wave%, JaMeetRemote.Interface.Wave
-AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_Wave%, JaMeetRemote.Interface.Wave
-AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_Wave%, JaMeetRemote.Interface.Wave
-AddInterface = %KSCATEGORY_TOPOLOGY%, %KSNAME_Topo%, JaMeetRemote.Interface.Topo
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_WaveIn%,  JaMeetRemote.Interface.WaveIn
+AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_WaveIn%,  JaMeetRemote.Interface.WaveIn
+AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_WaveOut%, JaMeetRemote.Interface.WaveOut
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_WaveOut%, JaMeetRemote.Interface.WaveOut
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_WaveIn%,  JaMeetRemote.Interface.WaveIn
+AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_WaveOut%, JaMeetRemote.Interface.WaveOut
+AddInterface = %KSCATEGORY_TOPOLOGY%, %KSNAME_Topo%,    JaMeetRemote.Interface.Topo
 
-[JaMeetRemote.Interface.Wave]
-AddReg = JaMeetRemote.Interface.Wave.AddReg
+[JaMeetRemote.Interface.WaveIn]
+AddReg = JaMeetRemote.Interface.WaveIn.AddReg
 
-[JaMeetRemote.Interface.Wave.AddReg]
-HKR,,FriendlyName,,%JaMeetRemote.Wave.szPname%
+[JaMeetRemote.Interface.WaveIn.AddReg]
+HKR,,FriendlyName,,%JaMeetRemote.WaveIn.szPname%
+HKR,,CLSID,,%Proxy.CLSID%
+
+[JaMeetRemote.Interface.WaveOut]
+AddReg = JaMeetRemote.Interface.WaveOut.AddReg
+
+[JaMeetRemote.Interface.WaveOut.AddReg]
+HKR,,FriendlyName,,%JaMeetRemote.WaveOut.szPname%
 HKR,,CLSID,,%Proxy.CLSID%
 
 [JaMeetRemote.Interface.Topo]
@@ -84,14 +93,16 @@ ServiceBinary  = %13%\JaMeetRemote.sys
 [JaMeetRemote_Logging_Install]
 
 [Strings]
-ManufacturerName          = "JaMeet"
-DiskName                  = "JaMeet Remote Installation Disk"
-JaMeetRemote.DeviceDesc   = "JaMeet Remote"
-JaMeetRemote.Wave.szPname = "JaMeet Remote Audio"
-JaMeetRemote.Topo.szPname = "JaMeet Remote Topology"
+ManufacturerName             = "JaMeet"
+DiskName                     = "JaMeet Remote Installation Disk"
+JaMeetRemote.DeviceDesc      = "JaMeet Remote"
+JaMeetRemote.WaveIn.szPname  = "JaMeet Remote In"
+JaMeetRemote.WaveOut.szPname = "JaMeet Remote Out"
+JaMeetRemote.Topo.szPname    = "JaMeet Remote Topology"
 
-KSNAME_Wave               = "Wave"
-KSNAME_Topo               = "Topology"
+KSNAME_WaveIn                = "WaveIn"
+KSNAME_WaveOut               = "WaveOut"
+KSNAME_Topo                  = "Topology"
 
 Proxy.CLSID               = "{17CCA71B-ECD7-11D0-B908-00A0C9223196}"
 KSCATEGORY_AUDIO          = "{6994AD04-93EF-11D0-A3CC-00A0C9223196}"

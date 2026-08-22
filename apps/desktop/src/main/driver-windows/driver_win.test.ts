@@ -16,8 +16,9 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     expect(fs.existsSync(infPath)).toBe(true);
     const infContent = fs.readFileSync(infPath, 'utf-8');
 
-    // Friendly name
-    expect(infContent).toContain('JaMeet Remote');
+    // Friendly names for distinct Full-Duplex endpoints
+    expect(infContent).toContain('JaMeet Remote In');
+    expect(infContent).toContain('JaMeet Remote Out');
     expect(infContent).toContain('Class       = MEDIA');
     expect(infContent).toContain('ClassGUID   = {4d36e96c-e325-11ce-bfc1-08002be10318}');
 

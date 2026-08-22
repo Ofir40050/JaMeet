@@ -215,10 +215,10 @@ export function createLocalAudioCaptureController(ctx: LocalAudioCaptureContext)
           for (const statusId of ['music-app-status', 'call-music-app-status']) {
             const el = document.getElementById(statusId);
             if (el) {
-              const isUnsupported = err instanceof Error && (err.message.includes('not supported') || err.message.includes('not available'));
+              const isUnsupported = err instanceof Error && (err.message.includes('not supported') || err.message.includes('not available') || err.message.includes('failed to start'));
               el.textContent = isUnsupported
-                ? 'DAW App capture unavailable on this platform (Use physical input)'
-                : 'Waiting for application audio output';
+                ? 'App audio tap requires Windows 10 (Build 20348+) or Windows 11 (Use JaMeet Remote or System Audio)'
+                : 'Selected DAW / App audio tap failed (Ensure application is playing audio)';
             }
           }
         }
