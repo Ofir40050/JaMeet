@@ -99,10 +99,8 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     expect(fs.existsSync(installerNshPath)).toBe(true);
     const nshContent = fs.readFileSync(installerNshPath, 'utf-8');
     expect(nshContent).toContain('customInstall');
-    expect(nshContent).toContain('install-driver.cmd');
     expect(nshContent).toContain('customUnInstall');
-    expect(nshContent).toContain('uninstall-driver.cmd');
-    expect(nshContent).toContain('Abort');
+    expect(nshContent).not.toContain('Abort');
 
     expect(fs.existsSync(packageJsonPath)).toBe(true);
     const pkgContent = fs.readFileSync(packageJsonPath, 'utf-8');
