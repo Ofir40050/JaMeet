@@ -74,7 +74,27 @@ sudo ufw enable
 
 Coturn uses host networking because the official coturn container recommends it for relay port ranges. [Coturn Docker networking](https://github.com/coturn/coturn/blob/master/docker/coturn/README.md)
 
-On the server:
+### Production TURN Configuration
+
+JaMeet supports two TURN relay providers:
+1. **Cloudflare Realtime TURN (`TURN_PROVIDER=cloudflare`) [Recommended for Render & Managed Cloud]**:
+   - Generates temporary dynamic WebRTC ICE credentials via Cloudflare Calls TURN API.
+   - Required environment variables:
+     - `TURN_PROVIDER=cloudflare`
+     - `CLOUDFLARE_TURN_KEY_ID`: Cloudflare Calls TURN Key ID.
+     - `CLOUDFLARE_TURN_API_TOKEN`: Cloudflare API Token with `Calls:Edit` permission.
+     - `TURN_CREDENTIAL_TTL_SECONDS`: Temporary credential lifetime in seconds (default: `3600`, max: `172800`).
+
+2. **Self-Hosted Coturn (`TURN_PROVIDER=self_hosted`) [Dedicated Host/VM]**:
+   - Uses a dedicated Coturn instance with shared HMAC secret credentials.
+   - Required environment variables:
+     - `TURN_PROVIDER=self_hosted`
+     - `TURN_HOST`: Public hostname or IP of the Coturn server.
+     - `TURN_PORT`: STUN/TURN listener port (default: `3478`).
+     - `TURN_SHARED_SECRET`: Secret key for HMAC token generation.
+     - `TURN_TLS_ENABLED`: Set to `true` if TURNS/TLS is configured on port `5349`.
+
+On a self-hosted server:
 
 ```bash
 cp deploy/production.env.example .env

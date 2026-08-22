@@ -7,13 +7,16 @@ const schema = z.object({
   ALLOWED_ORIGINS: z.string().default('jameet-app://bundle,musiczoom-app://bundle,http://localhost:5173'),
   DATA_DIR: z.string().optional(),
   BETA_END_AT: z.string().optional(),
+  TURN_PROVIDER: z.enum(['self_hosted', 'cloudflare']).default('self_hosted'),
+  CLOUDFLARE_TURN_KEY_ID: z.string().optional(),
+  CLOUDFLARE_TURN_API_TOKEN: z.string().optional(),
   TURN_HOST: z.string().default('localhost'),
   TURN_PORT: z.coerce.number().int().positive().default(3478),
   TURN_TLS_PORT: z.coerce.number().int().positive().default(5349),
   TURN_TLS_ENABLED: z.string().default('false').transform((v) => v === 'true'),
   TURN_REALM: z.string().default('jameet.local'),
   TURN_SHARED_SECRET: z.string().min(16).default('development-secret-change-me'),
-  TURN_CREDENTIAL_TTL_SECONDS: z.coerce.number().int().min(60).default(3600),
+  TURN_CREDENTIAL_TTL_SECONDS: z.coerce.number().int().min(60).max(172800).default(3600),
   DISCONNECT_GRACE_MS: z.coerce.number().int().min(0).default(30000),
   EMPTY_ROOM_TTL_MS: z.coerce.number().int().min(60000).default(28800000),
   JAMEET_ADMIN_SECRET: z.string().optional()
@@ -75,8 +78,22 @@ export function parseBetaEndAt(val?: string | null): number | null {
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const config = schema.parse(env);
-  if (config.NODE_ENV === 'production' && config.TURN_SHARED_SECRET === 'development-secret-change-me') {
-    throw new Error('TURN_SHARED_SECRET must be changed in production');
+  if (config.NODE_ENV === 'production') {
+    if (config.TURN_PROVIDER === 'self_hosted') {
+      if (config.TURN_SHARED_SECRET === 'development-secret-change-me') {
+        throw new Error('TURN_SHARED_SECRET must be changed in production when using self_hosted TURN provider');
+      }
+      if (config.TURN_HOST === 'localhost' || config.TURN_HOST === '127.0.0.1') {
+        throw new Error('TURN_HOST must be configured with a valid public hostname or IP in production when using self_hosted TURN provider');
+      }
+    } else if (config.TURN_PROVIDER === 'cloudflare') {
+      if (!config.CLOUDFLARE_TURN_KEY_ID || config.CLOUDFLARE_TURN_KEY_ID.trim() === '') {
+        throw new Error('CLOUDFLARE_TURN_KEY_ID is required when TURN_PROVIDER is cloudflare');
+      }
+      if (!config.CLOUDFLARE_TURN_API_TOKEN || config.CLOUDFLARE_TURN_API_TOKEN.trim() === '') {
+        throw new Error('CLOUDFLARE_TURN_API_TOKEN is required when TURN_PROVIDER is cloudflare');
+      }
+    }
   }
   if (config.BETA_END_AT !== undefined && config.BETA_END_AT !== '') {
     parseBetaEndAt(config.BETA_END_AT);

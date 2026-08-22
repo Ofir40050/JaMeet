@@ -20,7 +20,7 @@ import type { ServerConfig } from '../core/config.js';
 import type { RoomStore, Room } from '../rooms/rooms.js';
 import { UserStore, authorizeSessionAccess, validateStoredUserSessionAccess } from '../auth/auth.js';
 import type { ProjectStore } from '../projects/projects.js';
-import { createIceServers } from '../rooms/turn.js';
+import { getIceServers } from '../rooms/turn.js';
 import type { SocketRateLimiter } from '../core/rate-limiter.js';
 import type { SocketData } from '../types/socket.js';
 import { logger } from '../core/logger.js';
@@ -184,13 +184,15 @@ export function registerMeetingSocketHandlers(socket: Socket, context: MeetingSo
         isGuest: identity.isGuest
       }, { sessionCode: createdRoom.code });
 
+      const iceServers = await getIceServers(config, parsed.data.participantId);
+
       ack({
         ok: true,
         code: createdRoom.code,
         role: 'host',
         waiting: false,
         locked: false,
-        iceServers: createIceServers(config, parsed.data.participantId),
+        iceServers,
         peerPresent: false,
         identity,
         hostIdentity: identity,
@@ -327,13 +329,15 @@ export function registerMeetingSocketHandlers(socket: Socket, context: MeetingSo
       }, { sessionCode: joined.room.code });
 
       const hostParticipant = Array.from(joined.room.participants.values()).find((p) => p.role === 'host');
+      const iceServers = await getIceServers(config, parsed.data.participantId);
+
       ack({
         ok: true,
         code: joined.room.code,
         role: joined.participant.role,
         waiting: false,
         locked: Boolean(joined.room.isLocked),
-        iceServers: createIceServers(config, parsed.data.participantId),
+        iceServers,
         peerPresent: Boolean(peer),
         peerMedia: peer?.media,
         peerParticipantId: peer?.id,
@@ -456,13 +460,15 @@ export function registerMeetingSocketHandlers(socket: Socket, context: MeetingSo
           void admittedSocket.join(admitted.room.code);
         }
 
+        const iceServers = await getIceServers(config, admitted.participant.id);
+
         io.to(admitted.participant.socketId).emit('waiting:admitted', {
           ok: true,
           code: admitted.room.code,
           role: 'guest',
           waiting: false,
           locked: Boolean(admitted.room.isLocked),
-          iceServers: createIceServers(config, admitted.participant.id),
+          iceServers,
           peerPresent: true,
           peerMedia: hostParticipant.media,
           peerParticipantId: hostParticipant.id,

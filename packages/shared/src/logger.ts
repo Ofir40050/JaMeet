@@ -97,6 +97,10 @@ const SENSITIVE_KEY_PATTERNS = [
   /lyricsworkspace/i,
   /turnsharedsecret/i,
   /turn_shared_secret/i,
+  /cloudflare_turn_api_token/i,
+  /cloudflare_turn_key_id/i,
+  /turn_api_token/i,
+  /turn_key/i,
   /admintoken/i,
   /admin_token/i
 ];
