@@ -53,6 +53,7 @@ HKR,,Security,,"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)"
 [JaMeetRemote_Device.NT.Interfaces]
 AddInterface = %KSCATEGORY_AUDIO%,    %KSNAME_Wave%, JaMeetRemote.Interface.Wave
 AddInterface = %KSCATEGORY_CAPTURE%,  %KSNAME_Wave%, JaMeetRemote.Interface.Wave
+AddInterface = %KSCATEGORY_RENDER%,   %KSNAME_Wave%, JaMeetRemote.Interface.Wave
 AddInterface = %KSCATEGORY_REALTIME%, %KSNAME_Wave%, JaMeetRemote.Interface.Wave
 AddInterface = %KSCATEGORY_TOPOLOGY%, %KSNAME_Topo%, JaMeetRemote.Interface.Topo
 
@@ -86,7 +87,7 @@ ServiceBinary  = %13%\JaMeetRemote.sys
 ManufacturerName          = "JaMeet"
 DiskName                  = "JaMeet Remote Installation Disk"
 JaMeetRemote.DeviceDesc   = "JaMeet Remote"
-JaMeetRemote.Wave.szPname = "JaMeet Remote Audio Capture"
+JaMeetRemote.Wave.szPname = "JaMeet Remote Audio"
 JaMeetRemote.Topo.szPname = "JaMeet Remote Topology"
 
 KSNAME_Wave               = "Wave"
@@ -95,5 +96,6 @@ KSNAME_Topo               = "Topology"
 Proxy.CLSID               = "{17CCA71B-ECD7-11D0-B908-00A0C9223196}"
 KSCATEGORY_AUDIO          = "{6994AD04-93EF-11D0-A3CC-00A0C9223196}"
 KSCATEGORY_CAPTURE        = "{65E8773D-8F56-11D0-A3B9-00A0C9223196}"
+KSCATEGORY_RENDER         = "{65E8773E-8F56-11D0-A3B9-00A0C9223196}"
 KSCATEGORY_REALTIME       = "{EB115FFC-10C8-4964-831D-6DCB02E6F23F}"
 KSCATEGORY_TOPOLOGY       = "{DDA54A40-1E4C-11D1-A050-405705C10000}"

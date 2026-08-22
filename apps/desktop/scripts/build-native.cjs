@@ -57,6 +57,21 @@ if (process.platform === 'darwin') {
 
   const winBuilds = [
     {
+      name: 'set-rate.exe',
+      cmd: `clang++ -O2 "${path.join(rootDir, 'src/main/set-rate-win.cpp')}" -lole32 -lmmdevapi -lavrt -o bin/set-rate.exe`,
+      fallbackCmd: `g++ -O2 "${path.join(rootDir, 'src/main/set-rate-win.cpp')}" -lole32 -lmmdevapi -lavrt -o bin/set-rate.exe`
+    },
+    {
+      name: 'jameet-hardware-input.exe',
+      cmd: `clang++ -O2 "${path.join(rootDir, 'src/main/jameet-hardware-input-win.cpp')}" -lole32 -lmmdevapi -lavrt -o bin/jameet-hardware-input.exe`,
+      fallbackCmd: `g++ -O2 "${path.join(rootDir, 'src/main/jameet-hardware-input-win.cpp')}" -lole32 -lmmdevapi -lavrt -o bin/jameet-hardware-input.exe`
+    },
+    {
+      name: 'jameet-app-audio-tap.exe',
+      cmd: `clang++ -O2 "${path.join(rootDir, 'src/main/jameet-app-audio-tap-win.cpp')}" -lole32 -lmmdevapi -lavrt -o bin/jameet-app-audio-tap.exe`,
+      fallbackCmd: `g++ -O2 "${path.join(rootDir, 'src/main/jameet-app-audio-tap-win.cpp')}" -lole32 -lmmdevapi -lavrt -o bin/jameet-app-audio-tap.exe`
+    },
+    {
       name: 'jameet-remote-producer.exe',
       cmd: `clang -O2 -I"${bridgeDir}" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" -lcfgmgr32 -o bin/jameet-remote-producer.exe`,
       fallbackCmd: `gcc -O2 -I"${bridgeDir}" "${path.join(bridgeDir, 'jameet-remote-producer.c')}" "${path.join(bridgeDir, 'jameet_remote_bridge.c')}" "${path.join(bridgeDir, 'jameet_remote_transport_win32.c')}" -lcfgmgr32 -o bin/jameet-remote-producer.exe`

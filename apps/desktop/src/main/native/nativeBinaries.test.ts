@@ -17,13 +17,14 @@ describe('Native Binary Path Resolution', () => {
 
   it('resolves packaged Windows production paths with .exe extension', () => {
     const mockResourcesPath = 'C:\\Program Files\\JaMeet\\resources';
-    const resolved = getNativeBinaryPath('set-rate', {
-      isPackaged: true,
-      resourcesPath: mockResourcesPath,
-      platform: 'win32'
-    });
-
-    expect(resolved).toBe(join(mockResourcesPath, 'bin', 'set-rate.exe'));
+    for (const bin of ['set-rate', 'jameet-hardware-input', 'jameet-app-audio-tap', 'jameet-remote-producer', 'jameet-device-installer']) {
+      const resolved = getNativeBinaryPath(bin, {
+        isPackaged: true,
+        resourcesPath: mockResourcesPath,
+        platform: 'win32'
+      });
+      expect(resolved).toBe(join(mockResourcesPath, 'bin', `${bin}.exe`));
+    }
   });
 
   it('resolves development paths relative to workspace bin directory', () => {

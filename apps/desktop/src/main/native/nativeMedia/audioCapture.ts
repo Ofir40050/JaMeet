@@ -41,15 +41,17 @@ export function registerAudioCaptureIpc(context: { getMainWindow: () => BrowserW
 
   ipcMain.handle('set-system-sample-rate', async (event, sampleRate: number, deviceName?: string) => {
     if (!isTrustedSender(event)) return false;
-    if (process.platform === 'darwin' && sampleRate > 0) {
+    if ((process.platform === 'darwin' || process.platform === 'win32') && sampleRate > 0) {
       const { execFile, execSync } = await import('child_process');
       const { join } = await import('path');
       const { existsSync, chmodSync } = await import('fs');
       const binPath = getNativeBinaryPath('set-rate');
-      const srcPath = join(__dirname, '../../src/main/set-rate.c');
+      const srcPath = join(__dirname, process.platform === 'win32' ? '../../src/main/set-rate-win.cpp' : '../../src/main/set-rate.c');
       if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
         try {
-          execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio "${srcPath}" -o "${binPath}"`);
+          if (process.platform === 'darwin') {
+            execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio "${srcPath}" -o "${binPath}"`);
+          }
         } catch (e) {
           console.error('Failed to compile set-rate:', e);
         }
@@ -62,10 +64,10 @@ export function registerAudioCaptureIpc(context: { getMainWindow: () => BrowserW
       return new Promise<boolean>((resolve) => {
         execFile(binPath, [String(sampleRate), deviceName ?? ''], (error, stdout) => {
           if (error) {
-            console.error('CoreAudio set-rate error:', error);
+            console.error('Set-rate error:', error);
             resolve(false);
           } else {
-            console.log('CoreAudio rate change:', stdout.trim());
+            console.log('Sample rate change:', stdout.trim());
             resolve(true);
           }
         });
@@ -76,15 +78,17 @@ export function registerAudioCaptureIpc(context: { getMainWindow: () => BrowserW
 
   ipcMain.handle('set-system-input-volume', async (event, volume: number) => {
     if (!isTrustedSender(event)) return false;
-    if (process.platform === 'darwin' && typeof volume === 'number') {
+    if ((process.platform === 'darwin' || process.platform === 'win32') && typeof volume === 'number') {
       const { execFile, execSync } = await import('child_process');
       const { join } = await import('path');
       const { existsSync, chmodSync } = await import('fs');
       const binPath = getNativeBinaryPath('set-rate');
-      const srcPath = join(__dirname, '../../src/main/set-rate.c');
+      const srcPath = join(__dirname, process.platform === 'win32' ? '../../src/main/set-rate-win.cpp' : '../../src/main/set-rate.c');
       if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
         try {
-          execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio -framework CoreFoundation "${srcPath}" -o "${binPath}"`);
+          if (process.platform === 'darwin') {
+            execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio -framework CoreFoundation "${srcPath}" -o "${binPath}"`);
+          }
         } catch (e) {
           console.error('Failed to compile set-rate:', e);
         }
@@ -105,15 +109,17 @@ export function registerAudioCaptureIpc(context: { getMainWindow: () => BrowserW
 
   ipcMain.handle('get-hardware-audio-devices', async (event) => {
     if (!isTrustedSender(event)) return [];
-    if (process.platform === 'darwin') {
+    if (process.platform === 'darwin' || process.platform === 'win32') {
       const { execFile, execSync } = await import('child_process');
       const { join } = await import('path');
       const { existsSync, chmodSync } = await import('fs');
       const binPath = getNativeBinaryPath('set-rate');
-      const srcPath = join(__dirname, '../../src/main/set-rate.c');
+      const srcPath = join(__dirname, process.platform === 'win32' ? '../../src/main/set-rate-win.cpp' : '../../src/main/set-rate.c');
       if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
         try {
-          execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio -framework CoreFoundation "${srcPath}" -o "${binPath}"`);
+          if (process.platform === 'darwin') {
+            execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio -framework CoreFoundation "${srcPath}" -o "${binPath}"`);
+          }
         } catch (e) {
           console.error('Failed to compile set-rate:', e);
         }
@@ -126,7 +132,7 @@ export function registerAudioCaptureIpc(context: { getMainWindow: () => BrowserW
       return new Promise<unknown[]>((resolve) => {
         execFile(binPath, ['devices'], (error, stdout) => {
           if (error) {
-            console.error('CoreAudio list-devices error:', error);
+            console.error('List-devices error:', error);
             resolve([]);
           } else {
             try {
@@ -143,15 +149,17 @@ export function registerAudioCaptureIpc(context: { getMainWindow: () => BrowserW
 
   ipcMain.handle('list-audio-applications', async (event) => {
     if (!isTrustedSender(event)) return [];
-    if (process.platform === 'darwin') {
+    if (process.platform === 'darwin' || process.platform === 'win32') {
       const { execFile, execSync } = await import('child_process');
       const { join } = await import('path');
       const { existsSync, chmodSync } = await import('fs');
       const binPath = getNativeBinaryPath('jameet-app-audio-tap');
-      const srcPath = join(__dirname, '../../src/main/jameet-app-audio-tap.swift');
+      const srcPath = join(__dirname, process.platform === 'win32' ? '../../src/main/jameet-app-audio-tap-win.cpp' : '../../src/main/jameet-app-audio-tap.swift');
       if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
         try {
-          execSync(`mkdir -p "${join(__dirname, '../../bin')}" && swiftc -O "${srcPath}" -o "${binPath}"`);
+          if (process.platform === 'darwin') {
+            execSync(`mkdir -p "${join(__dirname, '../../bin')}" && swiftc -O "${srcPath}" -o "${binPath}"`);
+          }
         } catch (e) {
           console.error('Failed to compile jameet-app-audio-tap:', e);
         }
@@ -181,7 +189,7 @@ export function registerAudioCaptureIpc(context: { getMainWindow: () => BrowserW
 
   ipcMain.handle('start-app-audio-capture', async (event, target: number | string, channelRoute?: string) => {
     if (!isTrustedSender(event)) return false;
-    if (process.platform === 'darwin' && target !== undefined && target !== null) {
+    if ((process.platform === 'darwin' || process.platform === 'win32') && target !== undefined && target !== null) {
       const targetStr = String(target).trim();
       if (targetStr.length === 0) return false;
       if (activeAudioTapProcess) {
@@ -192,10 +200,12 @@ export function registerAudioCaptureIpc(context: { getMainWindow: () => BrowserW
       const { join } = await import('path');
       const { existsSync, chmodSync } = await import('fs');
       const binPath = getNativeBinaryPath('jameet-app-audio-tap');
-      const srcPath = join(__dirname, '../../src/main/jameet-app-audio-tap.swift');
+      const srcPath = join(__dirname, process.platform === 'win32' ? '../../src/main/jameet-app-audio-tap-win.cpp' : '../../src/main/jameet-app-audio-tap.swift');
       if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
         try {
-          execSync(`mkdir -p "${join(__dirname, '../../bin')}" && swiftc -O "${srcPath}" -o "${binPath}"`);
+          if (process.platform === 'darwin') {
+            execSync(`mkdir -p "${join(__dirname, '../../bin')}" && swiftc -O "${srcPath}" -o "${binPath}"`);
+          }
         } catch (e) {
           console.error('Failed to compile jameet-app-audio-tap:', e);
         }
@@ -272,7 +282,7 @@ export function registerAudioCaptureIpc(context: { getMainWindow: () => BrowserW
 
   ipcMain.handle('start-hardware-audio-capture', async (event, deviceId?: string) => {
     if (!isTrustedSender(event)) return false;
-    if (process.platform === 'darwin') {
+    if (process.platform === 'darwin' || process.platform === 'win32') {
       const targetArg = deviceId && deviceId.length > 0 ? deviceId : 'default';
       if (activeHardwareAudioProcess && activeHardwareDeviceId === targetArg) {
         return true;
@@ -286,10 +296,12 @@ export function registerAudioCaptureIpc(context: { getMainWindow: () => BrowserW
       const { join } = await import('path');
       const { existsSync, chmodSync } = await import('fs');
       const binPath = getNativeBinaryPath('jameet-hardware-input');
-      const srcPath = join(__dirname, '../../src/main/jameet-hardware-input.c');
+      const srcPath = join(__dirname, process.platform === 'win32' ? '../../src/main/jameet-hardware-input-win.cpp' : '../../src/main/jameet-hardware-input.c');
       if (!existsSync(binPath) && !app.isPackaged && existsSync(srcPath)) {
         try {
-          execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio -framework AudioToolbox -framework CoreFoundation "${srcPath}" -o "${binPath}"`);
+          if (process.platform === 'darwin') {
+            execSync(`mkdir -p "${join(__dirname, '../../bin')}" && clang -O2 -framework CoreAudio -framework AudioToolbox -framework CoreFoundation "${srcPath}" -o "${binPath}"`);
+          }
         } catch (e) {
           console.error('Failed to compile jameet-hardware-input:', e);
         }

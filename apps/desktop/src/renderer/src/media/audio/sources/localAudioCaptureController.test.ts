@@ -6,7 +6,7 @@ import type { LocalAudioSourceManager } from './audioSources';
 
 describe('LocalAudioCaptureController Voice Input Transaction', () => {
   let prefs: Preferences;
-  let savePreferencesMock: ReturnType<typeof vi.fn>;
+  let savePreferencesMock: any;
   let voiceMeters: Map<number, LevelMeter>;
   let activeMicLevels: Map<number, number>;
   let activeMicPeaks: Map<number, number>;
@@ -42,7 +42,7 @@ describe('LocalAudioCaptureController Voice Input Transaction', () => {
     const audio = { ...mockAudio, ...audioOverrides } as LocalAudioSourceManager;
     return createLocalAudioCaptureController({
       getPreferences: () => prefs,
-      onSavePreferences: savePreferencesMock,
+      onSavePreferences: () => savePreferencesMock(),
       onSetModeRadios: vi.fn(),
       getVoiceMeters: () => voiceMeters,
       getOrCreateVoiceMeter: (id: number) => {
@@ -73,7 +73,7 @@ describe('LocalAudioCaptureController Voice Input Transaction', () => {
       isInCall: () => false,
       onSignalingUpdateMedia: vi.fn(),
       getCurrentCode: () => 'ROOM123',
-      getMetadata: () => ({}),
+      getMetadata: () => ({} as any),
       onRtcAudioChanged: vi.fn(async () => {}),
       onRtcAudioSourceChanged: vi.fn(async () => {}),
       onPopulateMusicAppSelectOptions: vi.fn(),

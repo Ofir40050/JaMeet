@@ -171,7 +171,7 @@ export class LocalAudioSourceManager {
       }
     }
     const rawTrack = stream.getAudioTracks()[0];
-    if (!rawTrack || (rawTrack.readyState && rawTrack.readyState !== 'live') || rawTrack.readyState === 'ended') {
+    if (!rawTrack || rawTrack.readyState !== 'live') {
       try { rawTrack?.stop(); } catch {}
       throw new Error(`Microphone ${micIndex} did not provide a live audio track.`);
     }

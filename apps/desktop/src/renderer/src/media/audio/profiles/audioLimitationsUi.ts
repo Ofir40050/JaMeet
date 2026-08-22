@@ -23,10 +23,6 @@ export function renderAudioLimitations(options: AudioLimitationsUiOptions): void
 
   const summary = `Hardware Stream: ${hzText} · ${channelText}`;
   const limits = audioLimitations(source.mode, { ...source.effective, channelCount: isStereo ? 2 : 1, sampleRate: effectiveHz });
-  const desktopApi = typeof window !== 'undefined' ? ((window as any).jameet || (window as any).musiczoom) : undefined;
-  if (desktopApi?.platform === 'win32' && (prefs.musicSourceType === 'app' || prefs.musicSourceType === 'interface')) {
-    limits.push('Direct DAW tap is macOS-optimized; on Windows, use physical audio input device or virtual cable.');
-  }
   options.onSetMessage('audio-limitations', [summary, ...limits].join('  '), limits.length > 0);
   for (const id of ['input-gain', 'call-input-gain']) {
     const control = document.getElementById(id) as HTMLInputElement | null;

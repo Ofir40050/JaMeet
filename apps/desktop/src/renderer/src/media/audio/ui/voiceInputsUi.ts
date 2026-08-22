@@ -25,6 +25,7 @@ export interface VoiceInputsUiContext {
   getAudio: () => LocalAudioSourceManager;
   getCachedHardwareDevices: () => HardwareAudioDeviceInfo[];
   onSyncAllVoiceMics: () => Promise<void>;
+  onUpdateVoiceInputTransaction?: (micId: number, updates: { deviceId?: string; channelRoute?: string; gain?: number }) => Promise<void>;
   onEnumerateAndPopulate: () => Promise<void>;
   getStudioMixerChannels: () => StudioMixerChannel[];
   isStudioMixerOpen: () => boolean;
@@ -48,13 +49,16 @@ export function createVoiceInputsUi(ctx: VoiceInputsUiContext) {
 
   function updateVoiceInIndicator(): void {
     let anyActive = false;
-    for (const db of ctx.getActiveMicLevels().values()) {
-      if (db > -48) {
+    for (const lvl of ctx.getActiveMicLevels().values()) {
+      if (lvl > 0.05) {
         anyActive = true;
         break;
       }
     }
-    $('voice-in-indicator')?.classList.toggle('active', !ctx.isMuted() && anyActive);
+    const indicator = $('voice-in-indicator');
+    if (indicator) {
+      indicator.classList.toggle('active', anyActive && !ctx.isMuted());
+    }
   }
 
   function renderVoiceLevel(micId: number, reading: LevelReading): void {
@@ -102,14 +106,15 @@ export function createVoiceInputsUi(ctx: VoiceInputsUiContext) {
 
   function renderVoiceInputControls(audioInputs: MediaDeviceInfo[]): void {
     const prefs = ctx.getPreferences();
-    const voiceMicsList = document.getElementById('voice-mics-list');
-    const callVoiceMicsList = document.getElementById('call-voice-mics-list');
+    const cachedHardwareDevices = ctx.getCachedHardwareDevices();
+    const setupMicsList = document.getElementById('voice-mics-list');
+    const inCallMicsList = document.getElementById('call-voice-mics-list');
     const setupMetersList = document.getElementById('setup-meters-list');
     const inCallMetersList = document.getElementById('in-call-meters-list');
     const topbarMicsBar = document.getElementById('call-topbar-mics-bar');
 
-    if (voiceMicsList) voiceMicsList.replaceChildren();
-    if (callVoiceMicsList) callVoiceMicsList.replaceChildren();
+    if (setupMicsList) setupMicsList.replaceChildren();
+    if (inCallMicsList) inCallMicsList.replaceChildren();
     if (setupMetersList) setupMetersList.replaceChildren();
     if (inCallMetersList) inCallMetersList.replaceChildren();
     if (topbarMicsBar) topbarMicsBar.replaceChildren();

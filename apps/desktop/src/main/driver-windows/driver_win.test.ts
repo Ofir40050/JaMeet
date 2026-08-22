@@ -24,6 +24,7 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     // Interface categories
     expect(infContent).toContain('KSCATEGORY_AUDIO');
     expect(infContent).toContain('KSCATEGORY_CAPTURE');
+    expect(infContent).toContain('KSCATEGORY_RENDER');
     expect(infContent).toContain('KSCATEGORY_REALTIME');
     expect(infContent).toContain('KSCATEGORY_TOPOLOGY');
 

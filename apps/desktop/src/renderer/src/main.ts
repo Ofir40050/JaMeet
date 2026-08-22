@@ -1189,7 +1189,7 @@ const {
   getAudio: () => audio,
   getCachedHardwareDevices: () => cachedHardwareDevices,
   onSyncAllVoiceMics: () => syncAllVoiceMics(),
-  onUpdateVoiceInputTransaction: (micId, updates) => updateVoiceInputTransaction(micId, updates),
+  onUpdateVoiceInputTransaction: (micId: number, updates: { deviceId?: string; channelRoute?: string; gain?: number }) => updateVoiceInputTransaction(micId, updates),
   onEnumerateAndPopulate: () => enumerateAndPopulate(),
   getStudioMixerChannels: () => studioMixerChannels,
   isStudioMixerOpen: () => studioMixerOpen,
