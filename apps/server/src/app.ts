@@ -23,6 +23,7 @@ import { registerCrashRoutes } from './routes/crash-routes.js';
 import { registerAuthRoutes } from './routes/auth-routes.js';
 import { registerSessionRoutes } from './routes/session-routes.js';
 import { registerProjectRoutes } from './routes/project-routes.js';
+import { registerVersionRoutes } from './routes/version-routes.js';
 import { setupSocketServer } from './sockets/socket-server.js';
 
 export async function createApp(
@@ -174,6 +175,9 @@ export async function createApp(
 
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/health', async () => ({ ok: true }));
+
+  // REST Version Awareness Endpoint
+  registerVersionRoutes(app, config);
 
   // REST Canonical Crash Report Ingestion Endpoint
   registerCrashRoutes(app, crashStore);

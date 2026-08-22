@@ -9,6 +9,7 @@ export interface ProfileUiControllerOptions {
   onLogout: () => Promise<void>;
   onShowHomeView: () => void;
   onSaveProfile: (formValues: ProfileFormValues) => void;
+  onSendFeedback?: () => void;
 }
 
 export function initProfileUiController(options: ProfileUiControllerOptions): void {
@@ -19,6 +20,7 @@ export function initProfileUiController(options: ProfileUiControllerOptions): vo
     onOpenGuestSettings: () => options.onOpenGeneralSettings(),
     onOpenSignIn: () => options.onOpenAuthView('login'),
     onOpenRegister: () => options.onOpenAuthView('register'),
+    onSendFeedback: () => options.onSendFeedback?.(),
     onLogout: async () => {
       await options.onLogout();
       options.onShowHomeView();

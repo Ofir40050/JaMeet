@@ -5,6 +5,7 @@
 @import './core/responsive.css';
 @import './core/topbar.css';
 @import './core/dialogs.css';
+@import './core/updates.css';
 
 /* Home */
 @import './home/home.css';

@@ -23,7 +23,11 @@ const schema = z.object({
   TURN_CREDENTIAL_TTL_SECONDS: z.coerce.number().int().min(60).max(172800).default(28800),
   DISCONNECT_GRACE_MS: z.coerce.number().int().min(0).default(30000),
   EMPTY_ROOM_TTL_MS: z.coerce.number().int().min(60000).default(28800000),
-  JAMEET_ADMIN_SECRET: z.string().optional()
+  JAMEET_ADMIN_SECRET: z.string().optional(),
+  LATEST_APP_VERSION: z.string().default('0.1.0'),
+  MIN_SUPPORTED_APP_VERSION: z.string().default('0.1.0'),
+  APP_DOWNLOAD_URL: z.string().url().default('https://github.com/Ofir40050/JaMeet/releases'),
+  FEEDBACK_URL: z.string().url().default('https://github.com/Ofir40050/JaMeet/issues/new')
 });
 
 export type ServerConfig = z.infer<typeof schema>;

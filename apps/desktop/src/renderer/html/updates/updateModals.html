@@ -1,0 +1,62 @@
+<!-- NON-BLOCKING UPDATE BANNER -->
+<div id="update-available-banner" class="update-banner hidden" role="alert" aria-live="polite">
+  <div class="update-banner-content">
+    <span class="update-banner-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4"/><path d="M12 16V8"/></svg>
+    </span>
+    <span class="update-banner-text">
+      A new JaMeet Beta update (<strong id="update-banner-latest-version">v0.2.0</strong>) is available.
+    </span>
+    <div class="update-banner-actions">
+      <button id="btn-update-banner-download" type="button" class="btn-update-banner-action primary">
+        <span>Download Update</span>
+      </button>
+      <button id="btn-update-banner-dismiss" type="button" class="btn-update-banner-action secondary" aria-label="Dismiss">
+        <span>Dismiss</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- BLOCKING UPDATE REQUIRED MODAL -->
+<dialog id="update-required-dialog" class="studio-dialog update-required-modal">
+  <div class="dialog-content auth-dialog-content">
+    <div class="dialog-head">
+      <div class="dialog-title-wrap">
+        <span class="dialog-icon danger">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+        </span>
+        <div>
+          <h2>Update Required</h2>
+          <p class="dialog-subtitle-top">Your version of JaMeet is no longer supported by the server.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="dialog-body">
+      <p class="update-required-desc">
+        To maintain protocol compatibility and real-time audio stability, please update to the latest release.
+      </p>
+
+      <div class="update-version-card">
+        <div class="update-version-row">
+          <span>Installed Version:</span>
+          <strong id="update-required-current-version">v0.1.0</strong>
+        </div>
+        <div class="update-version-row">
+          <span>Minimum Required:</span>
+          <strong id="update-required-min-version" class="text-accent">v0.2.0</strong>
+        </div>
+      </div>
+
+      <div class="update-required-actions mt-4">
+        <button id="btn-update-required-download" type="button" class="primary large w-full glow btn-auth-submit">
+          <span class="btn-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ui-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          </span>
+          <span>Download Latest Release</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</dialog>

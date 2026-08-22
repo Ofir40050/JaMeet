@@ -82,6 +82,8 @@ import { type HardwareAudioDeviceInfo } from './media/devices/hardwareAudioDevic
 import { getMeterInterval, getEffectiveMusicBitrate } from './media/devices/mediaPreferenceCalculations';
 import { bindDeviceSelect } from './media/devices/deviceChangeController';
 import { initAuthDomainController } from './auth/login/authDomainController';
+import { buildFeedbackUrl } from './core/feedbackHelper';
+import { checkAppVersion } from './core/versionCheckController';
 import { createScreenSharingController } from './sessions/call/controls/screenSharingController';
 import { createVoiceInputsUi } from './media/audio/ui/voiceInputsUi';
 import { createLocalAudioCaptureController } from './media/audio/sources/localAudioCaptureController';
@@ -836,6 +838,29 @@ initRecentSessionsController({
     showView('home-view');
   }
 });
+const handleOpenFeedback = async (): Promise<void> => {
+  const api = (window as any).jameet || (window as any).musiczoom;
+  let appVer = '0.1.0';
+  let appPlatform = 'darwin';
+  let appArch = 'arm64';
+  try {
+    const info = await api?.getAppInfo?.();
+    if (info?.version) appVer = info.version;
+    if (info?.platform) appPlatform = info.platform;
+    if (info?.arch) appArch = info.arch;
+  } catch {}
+  const feedbackUrl = buildFeedbackUrl({
+    appVersion: appVer,
+    platform: appPlatform,
+    arch: appArch
+  });
+  if (api?.openExternalUrl) {
+    void api.openExternalUrl(feedbackUrl);
+  } else {
+    window.open(feedbackUrl, '_blank');
+  }
+};
+
 initAuthDomainController({
   auth,
   onOpenSettings: (section) => openSettings(section as any),
@@ -849,7 +874,8 @@ initAuthDomainController({
   },
   onPrepareStudio: (action) => {
     void prepareStudio(action);
-  }
+  },
+  onSendFeedback: handleOpenFeedback
 });
 initLyricsDomainController({
   getActiveProject: () => activeProject,
@@ -1718,6 +1744,10 @@ if (crashReportingToggle) {
   });
 }
 
+$('btn-settings-feedback')?.addEventListener('click', () => {
+  void handleOpenFeedback();
+});
+
 auth.onStateChange((user, guestName) => updateAuthUi(user, guestName || ''));
 
 initCallSignalingListenersController({
@@ -1912,3 +1942,25 @@ initStudioMixerPopoversAndControls({
   getMusicEqDsp: (slotIdx) => audio.getMusicEqDsp(slotIdx),
   onToggleStudioMixer: (forceOpen) => toggleStudioMixer(forceOpen)
 });
+
+void (async () => {
+  try {
+    const api = (window as any).jameet || (window as any).musiczoom;
+    let appVer = '0.1.0';
+    try {
+      const info = await api?.getAppInfo?.();
+      if (info?.version) appVer = info.version;
+    } catch {}
+    await checkAppVersion({
+      serverUrl: signalingUrl,
+      currentVersion: appVer,
+      onOpenExternal: (url) => {
+        if (api?.openExternalUrl) void api.openExternalUrl(url);
+        else window.open(url, '_blank');
+      }
+    });
+  } catch (err) {
+    console.warn('[VersionCheck] Background version check failed:', err);
+  }
+})();
+

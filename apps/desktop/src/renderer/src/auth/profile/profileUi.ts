@@ -22,6 +22,7 @@ export interface ProfileUiOptions {
   onOpenGuestSettings?: () => void;
   onOpenSignIn?: () => void;
   onOpenRegister?: () => void;
+  onSendFeedback?: () => void;
   onLogout?: () => Promise<void> | void;
   onSaveProfile?: (values: ProfileFormValues) => Promise<void> | void;
 }
@@ -317,8 +318,16 @@ export function initProfileUi(opts: ProfileUiOptions): void {
   $('account-menu-settings-btn')?.addEventListener('click', () => {
     options?.onOpenSettings?.();
   });
+  $('account-menu-feedback-btn')?.addEventListener('click', () => {
+    closeAccountMenu();
+    options?.onSendFeedback?.();
+  });
   $('account-menu-guest-settings-btn')?.addEventListener('click', () => {
     options?.onOpenGuestSettings?.();
+  });
+  $('account-menu-guest-feedback-btn')?.addEventListener('click', () => {
+    closeAccountMenu();
+    options?.onSendFeedback?.();
   });
   $('account-menu-signin-btn')?.addEventListener('click', () => {
     closeAccountMenu();

@@ -669,4 +669,5 @@ export const updateScheduledSessionSchema = z.object({
 export type UpdateScheduledSessionRequest = z.infer<typeof updateScheduledSessionSchema>;
 
 export * from './logger.js';
+export * from './version.js';
 

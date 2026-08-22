@@ -24,6 +24,7 @@ export interface AuthDomainControllerOptions {
   getPendingJoinCode: () => string | undefined;
   onClearPendingJoinCode: () => void;
   onPrepareStudio: (action: { type: 'join'; code: string }) => void;
+  onSendFeedback?: () => void;
 }
 
 export function initAuthDomainController(options: AuthDomainControllerOptions): void {
@@ -38,6 +39,7 @@ export function initAuthDomainController(options: AuthDomainControllerOptions): 
     onOpenAccountSettings: () => options.onOpenSettings('account'),
     onOpenGeneralSettings: () => options.onOpenSettings('general'),
     onOpenAuthView: (mode) => options.onOpenAuthView(mode),
+    onSendFeedback: () => options.onSendFeedback?.(),
     onLogout: async () => {
       await handleLogout();
     },

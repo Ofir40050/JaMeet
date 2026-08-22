@@ -9,6 +9,7 @@ const jameetApi = {
     return () => ipcRenderer.removeListener('deep-link', handler);
   },
   copyText: (value: string): Promise<void> => ipcRenderer.invoke('copy-text', value),
+  openExternalUrl: (url: string): Promise<boolean> => ipcRenderer.invoke('open-external-url', url),
   listDisplaySources: (): Promise<Array<{ id: string; name: string; thumbnail: string }>> => ipcRenderer.invoke('list-display-sources'),
   selectDisplaySource: (id: string): boolean => ipcRenderer.sendSync('select-display-source', id),
   openSystemAudioSettings: (): Promise<void> => ipcRenderer.invoke('open-system-audio-settings'),

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, net, protocol, session, Notification, dialog } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, net, protocol, session, Notification, dialog, shell } from 'electron';
 import { existsSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -236,6 +236,21 @@ else {
         console.error('Failed to show scheduled notification:', err);
         return false;
       }
+    });
+
+    ipcMain.handle('open-external-url', async (event, url: unknown) => {
+      if (!isTrustedSender(event)) return false;
+      if (typeof url !== 'string') return false;
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:' || parsed.protocol === 'mailto:') {
+          await shell.openExternal(url);
+          return true;
+        }
+      } catch {
+        // Invalid URL string
+      }
+      return false;
     });
 
     registerRemoteVoiceIpc();
