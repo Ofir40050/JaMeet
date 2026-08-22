@@ -574,6 +574,301 @@ VOID WaveRTServicingDpcRoutine(
     }
 }
 
+/* Forward declaration of Render DPC routine */
+KDEFERRED_ROUTINE WaveRTRenderServicingDpcRoutine;
+
+/*
+ * CMiniportWaveRTRenderStream
+ * Real-time WaveRT render stream receiving audio from Windows/DAW applications
+ * using PortCls IPortWaveRTStream buffer allocation model and monotonic servicing.
+ */
+class CMiniportWaveRTRenderStream : public IMiniportWaveRTStreamNotification, public CUnknown {
+private:
+    PPORTWAVERTSTREAM m_pPortStream;
+    PMDL m_pAudioBufferMdl;
+    PVOID m_pDmaBuffer;
+    ULONG m_ulDmaBufferSize;
+    ULONG m_ulNotificationCount;
+    ULONG m_ulNotificationIntervalFrames;
+    ULONGLONG m_ullStreamStart100ns;
+    ULONGLONG m_ullServicingCount;
+    ULONG m_ulPosition;
+    ULONGLONG m_ullLinearPosition;
+    BOOLEAN m_bFloatFormat;
+    KTIMER m_Timer;
+    KDPC m_Dpc;
+    KSPIN_LOCK m_EventLock;
+    PKEVENT m_pNotificationEvents[2];
+    ULONG m_ulNotificationEventCount;
+    KSSTATE m_StreamState;
+
+public:
+    DECLARE_STD_UNKNOWN();
+
+    CMiniportWaveRTRenderStream(PUNKNOWN pUnknownOuter, PPORTWAVERTSTREAM pPortStream) : CUnknown(pUnknownOuter) {
+        m_pPortStream = pPortStream;
+        if (m_pPortStream) {
+            m_pPortStream->AddRef();
+        }
+        m_pAudioBufferMdl = NULL;
+        m_pDmaBuffer = NULL;
+        m_ulDmaBufferSize = 0;
+        m_ulNotificationCount = 2;
+        m_ulNotificationIntervalFrames = 480; /* Default 10 ms @ 48 kHz */
+        m_ullStreamStart100ns = 0;
+        m_ullServicingCount = 0;
+        m_ulPosition = 0;
+        m_ullLinearPosition = 0;
+        m_bFloatFormat = TRUE;
+        m_ulNotificationEventCount = 0;
+        m_pNotificationEvents[0] = NULL;
+        m_pNotificationEvents[1] = NULL;
+        m_StreamState = KSSTATE_STOP;
+
+        KeInitializeSpinLock(&m_EventLock);
+        KeInitializeTimer(&m_Timer);
+        KeInitializeDpc(&m_Dpc, WaveRTRenderServicingDpcRoutine, this);
+    }
+
+    ~CMiniportWaveRTRenderStream() {
+        m_StreamState = KSSTATE_STOP;
+        KeCancelTimer(&m_Timer);
+        KeRemoveQueueDpc(&m_Dpc);
+        KeFlushQueuedDpcs();
+
+        if (m_pPortStream && m_pAudioBufferMdl) {
+            if (m_pDmaBuffer) {
+                m_pPortStream->UnmapAllocatedPages(m_pDmaBuffer, m_pAudioBufferMdl);
+                m_pDmaBuffer = NULL;
+            }
+            m_pPortStream->FreePagesFromMdl(m_pAudioBufferMdl);
+            m_pAudioBufferMdl = NULL;
+        }
+
+        if (m_pPortStream) {
+            m_pPortStream->Release();
+            m_pPortStream = NULL;
+        }
+    }
+
+    STDMETHODIMP NonDelegatingQueryInterface(REFIID Interface, PVOID* Object) {
+        if (!Object) return STATUS_INVALID_PARAMETER;
+        if (IsEqualGUID(Interface, IID_IUnknown)) {
+            *Object = (PUNKNOWN)(PMINIPORTWAVERTSTREAMNOTIFICATION)this;
+        } else if (IsEqualGUID(Interface, IID_IMiniportWaveRTStream)) {
+            *Object = (PMINIPORTWAVERTSTREAM)this;
+        } else if (IsEqualGUID(Interface, IID_IMiniportWaveRTStreamNotification)) {
+            *Object = (PMINIPORTWAVERTSTREAMNOTIFICATION)this;
+        } else {
+            *Object = NULL;
+            return STATUS_INVALID_PARAMETER;
+        }
+        ((PUNKNOWN)*Object)->AddRef();
+        return STATUS_SUCCESS;
+    }
+
+    STDMETHODIMP SetState(IN KSSTATE State) {
+        m_StreamState = State;
+        if (State == KSSTATE_RUN) {
+            m_ullServicingCount = 0;
+            m_ullStreamStart100ns = KeQueryInterruptTime();
+            ULONGLONG idealDeadline100ns = m_ullStreamStart100ns + (((ULONGLONG)1 * m_ulNotificationIntervalFrames * 10000000ULL) / 48000ULL);
+            ULONGLONG now100ns = KeQueryInterruptTime();
+            LONGLONG remaining100ns = (idealDeadline100ns > now100ns) ? (LONGLONG)(idealDeadline100ns - now100ns) : 1;
+
+            LARGE_INTEGER dueTime;
+            dueTime.QuadPart = -remaining100ns;
+            KeSetTimer(&m_Timer, dueTime, &m_Dpc);
+        } else if (State == KSSTATE_STOP) {
+            KeCancelTimer(&m_Timer);
+            KeRemoveQueueDpc(&m_Dpc);
+            m_ulPosition = 0;
+            m_ullServicingCount = 0;
+            m_ullStreamStart100ns = 0;
+        } else if (State == KSSTATE_PAUSE) {
+            KeCancelTimer(&m_Timer);
+            KeRemoveQueueDpc(&m_Dpc);
+        }
+        return STATUS_SUCCESS;
+    }
+
+    STDMETHODIMP GetPosition(OUT PKSAUDIO_POSITION Position) {
+        if (!Position) return STATUS_INVALID_PARAMETER;
+        Position->PlayOffset = m_ulPosition;
+        Position->WriteOffset = m_ulPosition;
+        return STATUS_SUCCESS;
+    }
+
+    STDMETHODIMP GetClockRegister(OUT PKSRTC_KEY Register) {
+        if (!Register || !m_pPortStream) return STATUS_INVALID_PARAMETER;
+        return m_pPortStream->GetClockRegister(Register);
+    }
+
+    STDMETHODIMP AllocateAudioBuffer(
+        IN ULONG RequestedSize,
+        OUT PMDL* BufferMdl,
+        OUT ULONG* ActualSize,
+        OUT ULONG* OffsetFromFirstPage,
+        OUT MEMORY_CACHING_TYPE* CacheType
+    ) {
+        if (!BufferMdl || !ActualSize || !OffsetFromFirstPage || !CacheType || !m_pPortStream) {
+            return STATUS_INVALID_PARAMETER;
+        }
+        ULONG bytesPerFrame = m_bFloatFormat ? (2 * sizeof(float)) : (2 * sizeof(int16_t));
+        ULONG minSize = JAMEET_WAVERT_BUFFER_FRAMES * bytesPerFrame;
+        ULONG allocSize = (RequestedSize > minSize) ? RequestedSize : minSize;
+        allocSize = (ULONG)ROUND_TO_PAGES(allocSize);
+
+        PMDL pMdl = m_pPortStream->AllocatePagesForMdl(allocSize, MmCached);
+        if (!pMdl) return STATUS_INSUFFICIENT_RESOURCES;
+
+        PVOID pBuffer = m_pPortStream->MapAllocatedPages(pMdl, MmCached);
+        if (!pBuffer) {
+            m_pPortStream->FreePagesFromMdl(pMdl);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        RtlZeroMemory(pBuffer, allocSize);
+        m_pAudioBufferMdl = pMdl;
+        m_pDmaBuffer = pBuffer;
+        m_ulDmaBufferSize = allocSize;
+
+        *BufferMdl = pMdl;
+        *ActualSize = allocSize;
+        *OffsetFromFirstPage = 0;
+        *CacheType = MmCached;
+        return STATUS_SUCCESS;
+    }
+
+    STDMETHODIMP FreeAudioBuffer(IN PMDL BufferMdl, IN PVOID Buffer) {
+        if (!m_pPortStream || !BufferMdl || !Buffer) return STATUS_INVALID_PARAMETER;
+        if (BufferMdl != m_pAudioBufferMdl || Buffer != m_pDmaBuffer) return STATUS_INVALID_PARAMETER;
+
+        m_pPortStream->UnmapAllocatedPages(Buffer, BufferMdl);
+        m_pPortStream->FreePagesFromMdl(BufferMdl);
+        m_pAudioBufferMdl = NULL;
+        m_pDmaBuffer = NULL;
+        m_ulDmaBufferSize = 0;
+        return STATUS_SUCCESS;
+    }
+
+    STDMETHODIMP GetHWLatency(OUT PKSRTC_HWLATENCY Latency) {
+        if (!Latency) return STATUS_INVALID_PARAMETER;
+        Latency->FifoSize = 0;
+        Latency->ChipsetDelay = 0;
+        Latency->CodecDelay = 0;
+        return STATUS_SUCCESS;
+    }
+
+    STDMETHODIMP SetFormat(IN PKSDATAFORMAT Format) {
+        if (!Format) return STATUS_INVALID_PARAMETER;
+        PWAVEFORMATEX pWfx = (PWAVEFORMATEX)(Format + 1);
+        if (pWfx->nSamplesPerSec != 48000 || pWfx->nChannels != 2) return STATUS_INVALID_PARAMETER;
+        if (pWfx->wFormatTag == WAVE_FORMAT_IEEE_FLOAT && pWfx->wBitsPerSample == 32) {
+            m_bFloatFormat = TRUE;
+        } else if (pWfx->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+            PWAVEFORMATEXTENSIBLE pWfe = (PWAVEFORMATEXTENSIBLE)pWfx;
+            if (IsEqualGUID(pWfe->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) && pWfe->Format.wBitsPerSample == 32) {
+                m_bFloatFormat = TRUE;
+            } else if (IsEqualGUID(pWfe->SubFormat, KSDATAFORMAT_SUBTYPE_PCM) && pWfe->Format.wBitsPerSample == 16) {
+                m_bFloatFormat = FALSE;
+            } else {
+                return STATUS_INVALID_PARAMETER;
+            }
+        } else if (pWfx->wFormatTag == WAVE_FORMAT_PCM && pWfx->wBitsPerSample == 16) {
+            m_bFloatFormat = FALSE;
+        } else {
+            return STATUS_INVALID_PARAMETER;
+        }
+        return STATUS_SUCCESS;
+    }
+
+    STDMETHODIMP RegisterNotificationEvent(IN PKEVENT NotificationEvent) {
+        if (!NotificationEvent) return STATUS_INVALID_PARAMETER;
+        KIRQL oldIrql;
+        KeAcquireSpinLock(&m_EventLock, &oldIrql);
+        if (m_ulNotificationEventCount >= 2) {
+            KeReleaseSpinLock(&m_EventLock, oldIrql);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+        for (ULONG i = 0; i < m_ulNotificationEventCount; i++) {
+            if (m_pNotificationEvents[i] == NotificationEvent) {
+                KeReleaseSpinLock(&m_EventLock, oldIrql);
+                return STATUS_SUCCESS;
+            }
+        }
+        m_pNotificationEvents[m_ulNotificationEventCount++] = NotificationEvent;
+        KeReleaseSpinLock(&m_EventLock, oldIrql);
+        return STATUS_SUCCESS;
+    }
+
+    STDMETHODIMP UnregisterNotificationEvent(IN PKEVENT NotificationEvent) {
+        if (!NotificationEvent) return STATUS_INVALID_PARAMETER;
+        KIRQL oldIrql;
+        KeAcquireSpinLock(&m_EventLock, &oldIrql);
+        for (ULONG i = 0; i < m_ulNotificationEventCount; i++) {
+            if (m_pNotificationEvents[i] == NotificationEvent) {
+                for (ULONG j = i; j < m_ulNotificationEventCount - 1; j++) {
+                    m_pNotificationEvents[j] = m_pNotificationEvents[j + 1];
+                }
+                m_pNotificationEvents[--m_ulNotificationEventCount] = NULL;
+                KeReleaseSpinLock(&m_EventLock, oldIrql);
+                return STATUS_SUCCESS;
+            }
+        }
+        KeReleaseSpinLock(&m_EventLock, oldIrql);
+        return STATUS_NOT_FOUND;
+    }
+
+    VOID ServicePeriodicTransfer() {
+        if (m_StreamState != KSSTATE_RUN || !m_pDmaBuffer || m_ulDmaBufferSize == 0) return;
+
+        ULONG bytesPerFrame = m_bFloatFormat ? (2 * sizeof(float)) : (2 * sizeof(int16_t));
+        ULONG framesToProcess = m_ulNotificationIntervalFrames;
+        ULONG totalBytesToTransfer = framesToProcess * bytesPerFrame;
+        if (totalBytesToTransfer > m_ulDmaBufferSize) return;
+
+        ULONG currentPos = m_ulPosition;
+        m_ulPosition = (currentPos + totalBytesToTransfer) % m_ulDmaBufferSize;
+        m_ullLinearPosition += framesToProcess;
+
+        KIRQL oldIrql;
+        KeAcquireSpinLock(&m_EventLock, &oldIrql);
+        for (ULONG i = 0; i < m_ulNotificationEventCount; i++) {
+            if (m_pNotificationEvents[i]) {
+                KeSetEvent(m_pNotificationEvents[i], 0, FALSE);
+            }
+        }
+        KeReleaseSpinLock(&m_EventLock, oldIrql);
+
+        m_ullServicingCount++;
+        if (m_StreamState == KSSTATE_RUN) {
+            ULONGLONG idealDeadline100ns = m_ullStreamStart100ns + (((m_ullServicingCount + 1) * (ULONGLONG)m_ulNotificationIntervalFrames * 10000000ULL) / 48000ULL);
+            ULONGLONG now100ns = KeQueryInterruptTime();
+            LONGLONG remaining100ns = (idealDeadline100ns > now100ns) ? (LONGLONG)(idealDeadline100ns - now100ns) : 1;
+
+            LARGE_INTEGER dueTime;
+            dueTime.QuadPart = -remaining100ns;
+            KeSetTimer(&m_Timer, dueTime, &m_Dpc);
+        }
+    }
+};
+
+VOID WaveRTRenderServicingDpcRoutine(
+    IN PKDPC Dpc,
+    IN PVOID DeferredContext,
+    IN PVOID SystemArgument1,
+    IN PVOID SystemArgument2
+) {
+    (void)Dpc;
+    (void)SystemArgument1;
+    (void)SystemArgument2;
+    CMiniportWaveRTRenderStream* pStream = (CMiniportWaveRTRenderStream*)DeferredContext;
+    if (pStream) {
+        pStream->ServicePeriodicTransfer();
+    }
+}
+
 /*
  * CMiniportWaveRT
  * Implements IMiniportWaveRT
@@ -641,7 +936,7 @@ public:
         if (!DataRange || !MatchingDataRange || !ResultantFormatLength) {
             return STATUS_INVALID_PARAMETER;
         }
-        if (PinId != 0) {
+        if (PinId != 0 && PinId != 2) {
             return STATUS_NOT_SUPPORTED;
         }
 
@@ -746,7 +1041,9 @@ public:
         IN BOOLEAN Capture,
         IN PKSDATAFORMAT DataFormat
     ) {
-        if (!Stream || !DataFormat || !Capture || Pin != 0 || !PortStream) return STATUS_INVALID_PARAMETER;
+        if (!Stream || !DataFormat || !PortStream) return STATUS_INVALID_PARAMETER;
+        if (Capture && Pin != 0) return STATUS_INVALID_PARAMETER;
+        if (!Capture && Pin != 2) return STATUS_INVALID_PARAMETER;
 
         /* Validate requested format strictly: 48 kHz stereo 32-bit Float or 16-bit PCM */
         PWAVEFORMATEX pWfx = (PWAVEFORMATEX)(DataFormat + 1);
@@ -772,14 +1069,21 @@ public:
             return STATUS_INVALID_PARAMETER;
         }
 
-        CMiniportWaveRTCaptureStream* pStream = new (POOL_FLAG_NON_PAGED, 'TMJR') CMiniportWaveRTCaptureStream(NULL, PortStream);
-        if (!pStream) return STATUS_INSUFFICIENT_RESOURCES;
-
-        pStream->SetFormat(DataFormat);
-
-        *Stream = (PMINIPORTWAVERTSTREAM)pStream;
-        (*Stream)->AddRef();
-        return STATUS_SUCCESS;
+        if (Capture) {
+            CMiniportWaveRTCaptureStream* pStream = new (POOL_FLAG_NON_PAGED, 'TMJR') CMiniportWaveRTCaptureStream(NULL, PortStream);
+            if (!pStream) return STATUS_INSUFFICIENT_RESOURCES;
+            pStream->SetFormat(DataFormat);
+            *Stream = (PMINIPORTWAVERTSTREAM)pStream;
+            (*Stream)->AddRef();
+            return STATUS_SUCCESS;
+        } else {
+            CMiniportWaveRTRenderStream* pStream = new (POOL_FLAG_NON_PAGED, 'TMJR') CMiniportWaveRTRenderStream(NULL, PortStream);
+            if (!pStream) return STATUS_INSUFFICIENT_RESOURCES;
+            pStream->SetFormat(DataFormat);
+            *Stream = (PMINIPORTWAVERTSTREAM)pStream;
+            (*Stream)->AddRef();
+            return STATUS_SUCCESS;
+        }
     }
 };
 

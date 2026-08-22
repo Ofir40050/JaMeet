@@ -84,8 +84,20 @@ export function routeHardwareAudioChunk(
     sourceNode.buffer = audioBuffer;
     sourceNode.connect(mic.gainNode);
 
-    if (mic.nextPlayTime === undefined || mic.nextPlayTime < now || mic.nextPlayTime > now + 0.05) {
-      mic.nextPlayTime = now;
+    // Adaptive Phase-Locked Loop (PLL) clock drift tracking:
+    // Maintains a stable 20ms-30ms lead window between hardware stream and Web Audio timeline
+    const TARGET_LEAD_TIME = 0.025;
+    if (mic.nextPlayTime === undefined || mic.nextPlayTime < now) {
+      mic.nextPlayTime = now + TARGET_LEAD_TIME;
+    } else {
+      const currentLead = mic.nextPlayTime - now;
+      if (currentLead > 0.045) {
+        // Hardware stream slightly faster than Web Audio clock: gently trim 1ms lead to prevent latency buildup
+        mic.nextPlayTime -= 0.001;
+      } else if (currentLead < 0.012) {
+        // Hardware stream slightly slower: gently advance by 1ms to prevent starvation underrun
+        mic.nextPlayTime += 0.001;
+      }
     }
     sourceNode.start(mic.nextPlayTime);
     mic.nextPlayTime += audioBuffer.duration;

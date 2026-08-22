@@ -305,7 +305,11 @@ describe('Windows JaMeet Remote WaveRT Driver Architecture & Hardening Tests', (
     const minwaveContent = fs.readFileSync(minwavePath, 'utf-8');
     const mintopoContent = fs.readFileSync(mintopoPath, 'utf-8');
 
-    // Wave filter Full-Duplex pins and nodes
+    // Wave filter Full-Duplex streams and DPCs
+    expect(minwaveContent).toContain('CMiniportWaveRTCaptureStream');
+    expect(minwaveContent).toContain('CMiniportWaveRTRenderStream');
+    expect(minwaveContent).toContain('WaveRTServicingDpcRoutine');
+    expect(minwaveContent).toContain('WaveRTRenderServicingDpcRoutine');
     expect(minwaveContent).toContain('PINNAME_RECORDING_SOURCE');
     expect(minwaveContent).toContain('PINNAME_PLAYBACK_SOURCE');
     expect(minwaveContent).toContain('KSNODETYPE_ADC');
